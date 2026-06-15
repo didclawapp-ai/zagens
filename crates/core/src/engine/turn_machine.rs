@@ -765,6 +765,9 @@ pub struct ThreadMessageReplayStats {
     pub tool_call_planned_count: u32,
     pub steer_injection_count: u32,
     pub compaction_artifact_count: u32,
+    pub scratchpad_summary_count: u32,
+    pub scratchpad_reminder_count: u32,
+    pub cycle_briefing_count: u32,
 }
 
 /// Message-plane index rebuildable from kernel logs (no message bodies).
@@ -800,7 +803,18 @@ pub struct SessionMessageRoleIndex {
     pub user_message_count: u32,
     pub assistant_message_count: u32,
     pub tool_result_message_count: u32,
+    /// User rows with text blocks and no `tool_result` (steer, scratchpad injects, initial prompt).
+    pub text_user_message_count: u32,
     pub total_message_count: u32,
+}
+
+/// Kernel-log lower bounds for memory-plane user injections (steer / scratchpad).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct KernelMemoryPlaneUserEstimate {
+    pub min_steer_user_messages: u32,
+    pub min_scratchpad_summary_user_messages: u32,
+    pub min_scratchpad_reminder_user_messages: u32,
+    pub min_memory_injected_user_messages: u32,
 }
 
 /// Kernel-log lower bounds for role-indexed session rows (assistant + tool results).
@@ -817,12 +831,15 @@ pub fn build_session_message_role_index(messages: &[Message]) -> SessionMessageR
     let mut user_message_count = 0u32;
     let mut assistant_message_count = 0u32;
     let mut tool_result_message_count = 0u32;
+    let mut text_user_message_count = 0u32;
     for msg in messages {
         match msg.role.as_str() {
             "user" => {
                 user_message_count += 1;
                 if message_has_tool_result(msg) {
                     tool_result_message_count += 1;
+                } else if message_has_text_block(msg) {
+                    text_user_message_count += 1;
                 }
             }
             "assistant" => assistant_message_count += 1,
@@ -833,8 +850,15 @@ pub fn build_session_message_role_index(messages: &[Message]) -> SessionMessageR
         user_message_count,
         assistant_message_count,
         tool_result_message_count,
+        text_user_message_count,
         total_message_count: messages.len() as u32,
     }
+}
+
+fn message_has_text_block(msg: &Message) -> bool {
+    msg.content
+        .iter()
+        .any(|block| matches!(block, ContentBlock::Text { .. }))
 }
 
 fn message_has_tool_result(msg: &Message) -> bool {
@@ -852,6 +876,44 @@ pub fn replay_kernel_message_role_estimate(
         min_assistant_messages: stats.model_message_count,
         min_tool_result_messages: stats.tool_call_planned_count,
         min_steer_user_messages: stats.steer_injection_count,
+    }
+}
+
+/// Build kernel-log lower bounds for memory-plane user injections.
+#[must_use]
+pub fn replay_kernel_memory_plane_user_estimate(
+    stats: &ThreadMessageReplayStats,
+) -> KernelMemoryPlaneUserEstimate {
+    let min_steer_user_messages = stats.steer_injection_count;
+    let min_scratchpad_summary_user_messages = stats.scratchpad_summary_count;
+    let min_scratchpad_reminder_user_messages = stats.scratchpad_reminder_count;
+    let min_memory_injected_user_messages = min_steer_user_messages
+        .saturating_add(min_scratchpad_summary_user_messages)
+        .saturating_add(min_scratchpad_reminder_user_messages);
+    KernelMemoryPlaneUserEstimate {
+        min_steer_user_messages,
+        min_scratchpad_summary_user_messages,
+        min_scratchpad_reminder_user_messages,
+        min_memory_injected_user_messages,
+    }
+}
+
+/// Weak check: session text-user rows can host kernel memory-plane injections.
+#[must_use]
+pub fn verify_session_memory_plane_user_depth(
+    session: &SessionMessageRoleIndex,
+    kernel: &KernelMemoryPlaneUserEstimate,
+) -> Option<String> {
+    if kernel.min_memory_injected_user_messages == 0 {
+        return None;
+    }
+    if session.text_user_message_count >= kernel.min_memory_injected_user_messages {
+        None
+    } else {
+        Some(format!(
+            "session text user messages ({}) below kernel memory-plane injections ({})",
+            session.text_user_message_count, kernel.min_memory_injected_user_messages
+        ))
     }
 }
 
@@ -947,6 +1009,13 @@ pub fn replay_thread_message_stats(
                 KernelEvent::CompactionArtifactCreated { .. } => {
                     stats.compaction_artifact_count += 1
                 }
+                KernelEvent::ScratchpadSummaryInjected { .. } => {
+                    stats.scratchpad_summary_count += 1
+                }
+                KernelEvent::ScratchpadReminderInjected { .. } => {
+                    stats.scratchpad_reminder_count += 1
+                }
+                KernelEvent::CycleBriefingInjected { .. } => stats.cycle_briefing_count += 1,
                 _ => {}
             }
         }
@@ -1073,10 +1142,13 @@ pub struct SessionMessageTimelineCoverage {
     pub timeline_vs_requests_ok: bool,
     pub plane_depth_ok: bool,
     pub role_index_ok: bool,
+    pub memory_plane_user_ok: bool,
     pub session_assistant_count: Option<u32>,
     pub session_tool_result_count: Option<u32>,
+    pub session_text_user_count: Option<u32>,
     pub kernel_min_assistant_messages: u32,
     pub kernel_min_tool_result_messages: u32,
+    pub kernel_min_memory_injected_user_messages: u32,
     pub overall_ok: bool,
     pub summary: Option<String>,
 }
@@ -1107,11 +1179,16 @@ pub fn build_session_message_timeline_coverage(
 ) -> Option<SessionMessageTimelineCoverage> {
     let stats = &projection.message_stats;
     let timeline = &projection.message_timeline;
-    if stats.model_message_count == 0 && timeline.is_empty() {
+    let has_message_plane = stats.model_message_count > 0 || !timeline.is_empty();
+    let has_memory_plane = stats.steer_injection_count > 0
+        || stats.scratchpad_summary_count > 0
+        || stats.scratchpad_reminder_count > 0;
+    if !has_message_plane && !has_memory_plane {
         return None;
     }
     let plane_index = replay_thread_message_plane_index(stats);
     let role_estimate = replay_kernel_message_role_estimate(stats);
+    let memory_estimate = replay_kernel_memory_plane_user_estimate(stats);
     let coherence_ok = verify_message_timeline_coherence(stats, timeline).is_none();
     let coverage = build_session_message_coverage(session_message_count, stats);
     let coverage_ok = coverage.as_ref().map(|c| c.coverage_ok).unwrap_or(true);
@@ -1123,12 +1200,16 @@ pub fn build_session_message_timeline_coverage(
     let role_index_ok = role_index
         .map(|idx| verify_session_role_index(idx, &role_estimate).is_none())
         .unwrap_or(true);
+    let memory_plane_user_ok = role_index
+        .map(|idx| verify_session_memory_plane_user_depth(idx, &memory_estimate).is_none())
+        .unwrap_or(true);
     let overall_ok = coherence_ok
         && coverage_ok
         && timeline_vs_session_ok
         && timeline_vs_requests_ok
         && plane_depth_ok
-        && role_index_ok;
+        && role_index_ok
+        && memory_plane_user_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -1150,6 +1231,9 @@ pub fn build_session_message_timeline_coverage(
         if let Some(s) = verify_session_role_index(idx, &role_estimate) {
             summaries.push(s);
         }
+        if let Some(s) = verify_session_memory_plane_user_depth(idx, &memory_estimate) {
+            summaries.push(s);
+        }
     }
 
     Some(SessionMessageTimelineCoverage {
@@ -1164,10 +1248,13 @@ pub fn build_session_message_timeline_coverage(
         timeline_vs_requests_ok,
         plane_depth_ok,
         role_index_ok,
+        memory_plane_user_ok,
         session_assistant_count: role_index.map(|idx| idx.assistant_message_count),
         session_tool_result_count: role_index.map(|idx| idx.tool_result_message_count),
+        session_text_user_count: role_index.map(|idx| idx.text_user_message_count),
         kernel_min_assistant_messages: role_estimate.min_assistant_messages,
         kernel_min_tool_result_messages: role_estimate.min_tool_result_messages,
+        kernel_min_memory_injected_user_messages: memory_estimate.min_memory_injected_user_messages,
         overall_ok,
         summary: if summaries.is_empty() {
             None
@@ -1777,12 +1864,14 @@ mod tests {
             user_message_count: 2,
             assistant_message_count: 1,
             tool_result_message_count: 1,
+            text_user_message_count: 1,
             total_message_count: 3,
         };
         assert!(verify_session_role_index(&role_index, &kernel).is_none());
         let thin = SessionMessageRoleIndex {
             assistant_message_count: 0,
             tool_result_message_count: 0,
+            text_user_message_count: 0,
             ..role_index
         };
         assert!(verify_session_role_index(&thin, &kernel).is_some());
@@ -1824,7 +1913,37 @@ mod tests {
         assert_eq!(idx.user_message_count, 2);
         assert_eq!(idx.assistant_message_count, 1);
         assert_eq!(idx.tool_result_message_count, 1);
+        assert_eq!(idx.text_user_message_count, 1);
         assert_eq!(idx.total_message_count, 3);
+    }
+
+    #[test]
+    fn verify_session_memory_plane_user_depth_on_scratchpad_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/scratchpad_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        let memory = replay_kernel_memory_plane_user_estimate(&projection.message_stats);
+        assert_eq!(memory.min_scratchpad_reminder_user_messages, 1);
+        assert_eq!(memory.min_scratchpad_summary_user_messages, 1);
+        assert_eq!(memory.min_memory_injected_user_messages, 2);
+        let role_index = SessionMessageRoleIndex {
+            user_message_count: 3,
+            assistant_message_count: 0,
+            tool_result_message_count: 0,
+            text_user_message_count: 3,
+            total_message_count: 3,
+        };
+        assert!(verify_session_memory_plane_user_depth(&role_index, &memory).is_none());
+        let thin = SessionMessageRoleIndex {
+            text_user_message_count: 1,
+            ..role_index
+        };
+        assert!(verify_session_memory_plane_user_depth(&thin, &memory).is_some());
+        let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index))
+            .expect("coverage");
+        assert!(cov.memory_plane_user_ok);
     }
 
     #[test]

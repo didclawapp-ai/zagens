@@ -62,6 +62,10 @@ pub struct ResumeSessionKernelReplay {
     pub message_role_index_ok: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_role_index_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_memory_plane_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_memory_plane_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

@@ -143,6 +143,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Session resume builds role index from loaded messages; thread replay API accepts optional `session_assistant_count` / `session_tool_result_count`.
   - `kernel_message_role_shadow` + `GET /v1/runtime/kernel-shadow` `message_role_shadow` when `[kernel] machine = shadow | v3`.
   - Resume `kernel_replay` adds `message_role_index_ok` / `message_role_index_summary`.
+- **Runtime (kernel-v2 Phase 3b batch 6o — memory-plane user depth shadow):**
+  - `ThreadMessageReplayStats` aggregates scratchpad summary/reminder and cycle briefing counts from kernel logs.
+  - `SessionMessageRoleIndex.text_user_message_count` + `KernelMemoryPlaneUserEstimate` weak-check steer/scratchpad injections vs session text-user rows.
+  - `build_session_message_timeline_coverage()` adds `memory_plane_user_ok` and kernel min memory-injected user fields.
+  - `kernel_message_memory_plane_shadow` + `GET /v1/runtime/kernel-shadow` `message_memory_plane_shadow`.
+  - Thread replay API accepts optional `session_text_user_count`; resume `kernel_replay` adds memory-plane hints.
 
 ### Removed
 

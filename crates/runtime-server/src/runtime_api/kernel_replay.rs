@@ -12,6 +12,7 @@ use zagens_core::engine::turn_machine::{
 };
 
 use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
+use crate::core::engine::kernel_message_memory_plane_shadow::record_message_memory_plane_check;
 use crate::core::engine::kernel_message_role_shadow::record_message_role_index_check;
 use crate::core::engine::kernel_message_timeline_shadow::record_timeline_coherence_check;
 use zagens_runtime_adapters::persist::KernelEventWriter;
@@ -57,6 +58,9 @@ pub(crate) struct KernelThreadMessageReplayStats {
     tool_call_planned_count: u32,
     steer_injection_count: u32,
     compaction_artifact_count: u32,
+    scratchpad_summary_count: u32,
+    scratchpad_reminder_count: u32,
+    cycle_briefing_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,12 +92,16 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     estimated_min_session_messages: u32,
     plane_depth_ok: bool,
     role_index_ok: bool,
+    memory_plane_user_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_assistant_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_tool_result_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_text_user_count: Option<u32>,
     kernel_min_assistant_messages: u32,
     kernel_min_tool_result_messages: u32,
+    kernel_min_memory_injected_user_messages: u32,
     overall_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
@@ -144,6 +152,8 @@ pub(crate) struct KernelThreadReplayQuery {
     pub session_assistant_count: Option<usize>,
     /// Optional session tool-result row count (`?session_tool_result_count=N`).
     pub session_tool_result_count: Option<usize>,
+    /// Optional session text-only user row count (`?session_text_user_count=N`).
+    pub session_text_user_count: Option<usize>,
 }
 
 fn role_index_for_replay(
@@ -153,13 +163,17 @@ fn role_index_for_replay(
     if let Some(messages) = messages {
         return Some(build_session_message_role_index(messages));
     }
-    if query.session_assistant_count.is_none() && query.session_tool_result_count.is_none() {
+    if query.session_assistant_count.is_none()
+        && query.session_tool_result_count.is_none()
+        && query.session_text_user_count.is_none()
+    {
         return None;
     }
     Some(SessionMessageRoleIndex {
         user_message_count: 0,
         assistant_message_count: query.session_assistant_count.unwrap_or(0) as u32,
         tool_result_message_count: query.session_tool_result_count.unwrap_or(0) as u32,
+        text_user_message_count: query.session_text_user_count.unwrap_or(0) as u32,
         total_message_count: query.session_message_count.unwrap_or(0) as u32,
     })
 }
@@ -290,6 +304,11 @@ pub(crate) fn resume_session_kernel_replay_summary(
             .as_ref()
             .filter(|c| !c.role_index_ok)
             .and_then(|c| c.summary.clone()),
+        message_memory_plane_ok: plane_coverage.as_ref().map(|c| c.memory_plane_user_ok),
+        message_memory_plane_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.memory_plane_user_ok)
+            .and_then(|c| c.summary.clone()),
     })
 }
 
@@ -308,7 +327,14 @@ pub(crate) fn log_session_message_plane_checks(
     if let Some(role_ok) = role_index.map(|_| cov.role_index_ok) {
         record_message_role_index_check(role_ok);
     }
-    if !cov.timeline_vs_session_ok || !cov.plane_depth_ok || !cov.role_index_ok {
+    if role_index.is_some() {
+        record_message_memory_plane_check(cov.memory_plane_user_ok);
+    }
+    if !cov.timeline_vs_session_ok
+        || !cov.plane_depth_ok
+        || !cov.role_index_ok
+        || !cov.memory_plane_user_ok
+    {
         record_timeline_coherence_check(false);
     }
     if let Some(summary) = cov.summary {
@@ -399,6 +425,9 @@ pub(crate) async fn get_kernel_thread_replay(
         tool_call_planned_count: projection.message_stats.tool_call_planned_count,
         steer_injection_count: projection.message_stats.steer_injection_count,
         compaction_artifact_count: projection.message_stats.compaction_artifact_count,
+        scratchpad_summary_count: projection.message_stats.scratchpad_summary_count,
+        scratchpad_reminder_count: projection.message_stats.scratchpad_reminder_count,
+        cycle_briefing_count: projection.message_stats.cycle_briefing_count,
     };
     let message_plane_index = KernelThreadMessagePlaneIndex {
         model_request_count: projection.message_plane_index.model_request_count,
@@ -425,7 +454,8 @@ pub(crate) async fn get_kernel_thread_replay(
                 && cov.timeline_vs_session_ok
                 && cov.timeline_vs_requests_ok
                 && cov.plane_depth_ok
-                && cov.role_index_ok,
+                && cov.role_index_ok
+                && cov.memory_plane_user_ok,
         );
         KernelThreadMessageCoverage {
             session_message_count: cov.session_message_count,
@@ -451,10 +481,13 @@ pub(crate) async fn get_kernel_thread_replay(
         estimated_min_session_messages: cov.estimated_min_session_messages,
         plane_depth_ok: cov.plane_depth_ok,
         role_index_ok: cov.role_index_ok,
+        memory_plane_user_ok: cov.memory_plane_user_ok,
         session_assistant_count: cov.session_assistant_count,
         session_tool_result_count: cov.session_tool_result_count,
+        session_text_user_count: cov.session_text_user_count,
         kernel_min_assistant_messages: cov.kernel_min_assistant_messages,
         kernel_min_tool_result_messages: cov.kernel_min_tool_result_messages,
+        kernel_min_memory_injected_user_messages: cov.kernel_min_memory_injected_user_messages,
         overall_ok: cov.overall_ok,
         summary: cov.summary,
     });
