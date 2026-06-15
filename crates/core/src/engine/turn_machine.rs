@@ -91,6 +91,8 @@ pub struct TurnKernelProjection {
     pub scratchpad_writes_this_step: u32,
     /// Successful tool calls whose planned input carried path-like candidates (turn cumulative).
     pub working_set_path_touch_count: u32,
+    /// Count of `MemoryPlaneQueried` events logged this turn.
+    pub memory_plane_query_count: u32,
 
     // ── Continuation counters ────────────────────────────────────────────────
     pub step_limit_continuations: u32,
@@ -188,6 +190,10 @@ impl TurnKernelProjection {
 
             KernelEvent::CycleBriefingInjected { .. } => {
                 self.cycle_briefing_count += 1;
+            }
+
+            KernelEvent::MemoryPlaneQueried { .. } => {
+                self.memory_plane_query_count += 1;
             }
 
             KernelEvent::SteerInjected { .. } => {
@@ -423,6 +429,7 @@ impl TurnMachine for ReplayTurnMachine {
                 for effect in
                     crate::engine::turn_loop::memory_plane_query_policy::query_memory_effects_before_model_call(
                         projection,
+                        None,
                     )
                 {
                     out.effects.push(effect);
@@ -720,6 +727,13 @@ pub fn verify_memory_projection_chain(events: &[KernelEvent]) -> Option<String> 
     {
         diffs.push(format!("working_layer_tools: {summary}"));
     }
+    if let Some(summary) =
+        crate::engine::turn_loop::memory_plane_query_replay_policy::verify_memory_plane_query_projection_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("memory_plane_queries: {summary}"));
+    }
     if diffs.is_empty() {
         None
     } else {
@@ -790,6 +804,13 @@ pub fn verify_turn_replay_coherence(
     }
     if let Some(summary) = verify_memory_projection_chain(events) {
         diffs.push(format!("memory: {summary}"));
+    }
+    if let Some(summary) =
+        crate::engine::turn_loop::memory_plane_query_replay_policy::verify_memory_plane_query_replay_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("memory_plane_query_replay: {summary}"));
     }
     if !events
         .iter()

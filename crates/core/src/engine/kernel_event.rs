@@ -296,6 +296,17 @@ pub enum KernelEvent {
         cycle: u32,
         step_idx: u32,
     },
+    /// Read-side memory plane query executed (v3 `Effect::QueryMemory` double-write).
+    MemoryPlaneQueried {
+        turn_id: TurnId,
+        step_idx: u32,
+        /// `working` | `episodic` | `archival`
+        layer: String,
+        query_key: String,
+        /// ContextCompiler source id resolved for this query (empty when unknown).
+        #[serde(default)]
+        compiler_source: String,
+    },
 
     // ── Guard decisions ──────────────────────────────────────────────────────
     LoopGuardTriggered {
@@ -370,6 +381,7 @@ impl KernelEvent {
             | KernelEvent::ScratchpadReminderInjected { turn_id, .. }
             | KernelEvent::ScratchpadSummaryInjected { turn_id, .. }
             | KernelEvent::CycleBriefingInjected { turn_id, .. }
+            | KernelEvent::MemoryPlaneQueried { turn_id, .. }
             | KernelEvent::LoopGuardTriggered { turn_id, .. }
             | KernelEvent::CapacityCheckpoint { turn_id, .. }
             | KernelEvent::CycleAdvanced { turn_id, .. }
@@ -399,6 +411,7 @@ impl KernelEvent {
             KernelEvent::ScratchpadReminderInjected { .. } => "scratchpad_reminder_injected",
             KernelEvent::ScratchpadSummaryInjected { .. } => "scratchpad_summary_injected",
             KernelEvent::CycleBriefingInjected { .. } => "cycle_briefing_injected",
+            KernelEvent::MemoryPlaneQueried { .. } => "memory_plane_queried",
             KernelEvent::LoopGuardTriggered { .. } => "loop_guard_triggered",
             KernelEvent::CapacityCheckpoint { .. } => "capacity_checkpoint",
             KernelEvent::CycleAdvanced { .. } => "cycle_advanced",

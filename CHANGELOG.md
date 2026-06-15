@@ -286,6 +286,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `TurnKernelProjection.working_set_path_touch_count` (turn cumulative); `working_set::path_candidates_from_tool_input` helper.
   - `QUERY_WORKING_SET` pre-`CallModel` query when path touches material present; wired into `verify_memory_projection_chain` + golden `pure_read.json`.
 
+- **Runtime (kernel-v2 Phase 3b batch 8e — MemoryPlaneQueried + episodic/compiler wiring):**
+  - `KernelEvent::MemoryPlaneQueried` double-write from v3 `QueryMemory` interpreter with `compiler_source` mapping (`memory_plane_compiler_policy.rs`).
+  - `memory_plane_episodic_policy.rs`: reserved `QUERY_TOPIC_EPISODIC` + live hints for TopicMemory reads.
+  - `memory_plane_query_replay_policy.rs`: query log vs replay/projection coherence checks wired into `verify_turn_replay_coherence`.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

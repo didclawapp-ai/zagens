@@ -2,6 +2,9 @@
 
 use crate::engine::turn_machine::{Effect, TurnKernelProjection};
 
+use super::memory_plane_episodic_policy::{
+    MemoryPlaneEpisodicHints, episodic_query_effects_before_model_call,
+};
 use super::memory_plane_projection_policy::MemoryPlaneLayer;
 
 /// Target memory plane layer for a read query (alias of projection taxonomy).
@@ -17,7 +20,10 @@ pub const QUERY_WORKING_SET: &str = "working_set";
 
 /// Derive pre-`CallModel` memory queries from the current projection (pure, no IO).
 #[must_use]
-pub fn query_memory_effects_before_model_call(projection: &TurnKernelProjection) -> Vec<Effect> {
+pub fn query_memory_effects_before_model_call(
+    projection: &TurnKernelProjection,
+    episodic_hints: Option<MemoryPlaneEpisodicHints>,
+) -> Vec<Effect> {
     let mut out = Vec::new();
     if projection.scratchpad_summary_injected {
         out.push(Effect::QueryMemory {
@@ -43,6 +49,9 @@ pub fn query_memory_effects_before_model_call(projection: &TurnKernelProjection)
             query_key: QUERY_WORKING_SET.into(),
         });
     }
+    if let Some(hints) = episodic_hints {
+        out.extend(episodic_query_effects_before_model_call(projection, hints));
+    }
     out
 }
 
@@ -55,7 +64,7 @@ mod tests {
     #[test]
     fn no_queries_on_empty_projection() {
         let projection = TurnKernelProjection::default();
-        assert!(query_memory_effects_before_model_call(&projection).is_empty());
+        assert!(query_memory_effects_before_model_call(&projection, None).is_empty());
     }
 
     #[test]
