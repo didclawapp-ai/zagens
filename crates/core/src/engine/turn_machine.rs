@@ -734,6 +734,8 @@ pub struct ThreadReplayProjection {
     pub message_stats: ThreadMessageReplayStats,
     /// Per-step model message anchors from the log (block counts only; text stays in session store).
     pub message_timeline: Vec<ThreadMessageTimelineEntry>,
+    /// Aggregated message-plane index (counts only; session depth estimates).
+    pub message_plane_index: ThreadMessagePlaneIndex,
 }
 
 /// One `ModelMessage` anchor rebuildable from kernel logs (no message body).
@@ -762,6 +764,79 @@ pub struct ThreadMessageReplayStats {
     pub tool_call_planned_count: u32,
     pub steer_injection_count: u32,
     pub compaction_artifact_count: u32,
+}
+
+/// Message-plane index rebuildable from kernel logs (no message bodies).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ThreadMessagePlaneIndex {
+    pub model_request_count: u32,
+    pub model_message_count: u32,
+    pub tool_call_planned_count: u32,
+    pub steer_injection_count: u32,
+    /// Lower-bound session rows: model assistant messages + tool result messages.
+    pub estimated_min_session_messages: u32,
+}
+
+/// Build a message-plane index from aggregated thread stats.
+#[must_use]
+pub fn replay_thread_message_plane_index(
+    stats: &ThreadMessageReplayStats,
+) -> ThreadMessagePlaneIndex {
+    ThreadMessagePlaneIndex {
+        model_request_count: stats.model_request_count,
+        model_message_count: stats.model_message_count,
+        tool_call_planned_count: stats.tool_call_planned_count,
+        steer_injection_count: stats.steer_injection_count,
+        estimated_min_session_messages: stats
+            .model_message_count
+            .saturating_add(stats.tool_call_planned_count),
+    }
+}
+
+/// Verify session JSON depth can host the kernel log message-plane estimate.
+#[must_use]
+pub fn verify_session_message_plane_depth(
+    session_message_count: usize,
+    index: &ThreadMessagePlaneIndex,
+) -> Option<String> {
+    let min = index.estimated_min_session_messages as usize;
+    if session_message_count < min {
+        Some(format!(
+            "session messages ({session_message_count}) below kernel plane estimate ({min})"
+        ))
+    } else {
+        None
+    }
+}
+
+/// Verify a step slice has exactly one `ModelMessage` when a model request was issued.
+#[must_use]
+pub fn verify_step_model_message_anchor(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> Option<String> {
+    let step_events = events_for_step(turn_events, step_idx);
+    if step_events.is_empty() {
+        return None;
+    }
+    let has_request = step_events.iter().any(
+        |e| matches!(e, KernelEvent::ModelRequestIssued { step_idx: s, .. } if *s == step_idx),
+    );
+    let message_count = step_events
+        .iter()
+        .filter(|e| matches!(e, KernelEvent::ModelMessage { step_idx: s, .. } if *s == step_idx))
+        .count();
+    if has_request && message_count == 0 {
+        return Some(format!(
+            "step {step_idx} has ModelRequestIssued but no ModelMessage"
+        ));
+    }
+    if has_request && message_count > 1 {
+        return Some(format!(
+            "step {step_idx} has {message_count} ModelMessage events (expected 1)"
+        ));
+    }
+    None
 }
 
 /// Count message-plane events across all turns on a thread.
@@ -903,10 +978,12 @@ pub struct SessionMessageTimelineCoverage {
     pub kernel_model_message_count: u32,
     pub timeline_anchor_count: usize,
     pub model_request_count: u32,
+    pub estimated_min_session_messages: u32,
     pub coherence_ok: bool,
     pub coverage_ok: bool,
     pub timeline_vs_session_ok: bool,
     pub timeline_vs_requests_ok: bool,
+    pub plane_depth_ok: bool,
     pub overall_ok: bool,
     pub summary: Option<String>,
 }
@@ -939,14 +1016,20 @@ pub fn build_session_message_timeline_coverage(
     if stats.model_message_count == 0 && timeline.is_empty() {
         return None;
     }
+    let plane_index = replay_thread_message_plane_index(stats);
     let coherence_ok = verify_message_timeline_coherence(stats, timeline).is_none();
     let coverage = build_session_message_coverage(session_message_count, stats);
     let coverage_ok = coverage.as_ref().map(|c| c.coverage_ok).unwrap_or(true);
     let timeline_vs_session_ok =
         verify_message_timeline_vs_session(session_message_count, timeline).is_none();
     let timeline_vs_requests_ok = verify_timeline_vs_request_count(stats, timeline).is_none();
-    let overall_ok =
-        coherence_ok && coverage_ok && timeline_vs_session_ok && timeline_vs_requests_ok;
+    let plane_depth_ok =
+        verify_session_message_plane_depth(session_message_count, &plane_index).is_none();
+    let overall_ok = coherence_ok
+        && coverage_ok
+        && timeline_vs_session_ok
+        && timeline_vs_requests_ok
+        && plane_depth_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -961,16 +1044,21 @@ pub fn build_session_message_timeline_coverage(
     if let Some(s) = verify_timeline_vs_request_count(stats, timeline) {
         summaries.push(s);
     }
+    if let Some(s) = verify_session_message_plane_depth(session_message_count, &plane_index) {
+        summaries.push(s);
+    }
 
     Some(SessionMessageTimelineCoverage {
         session_message_count,
         kernel_model_message_count: stats.model_message_count,
         timeline_anchor_count: timeline.len(),
         model_request_count: stats.model_request_count,
+        estimated_min_session_messages: plane_index.estimated_min_session_messages,
         coherence_ok,
         coverage_ok,
         timeline_vs_session_ok,
         timeline_vs_requests_ok,
+        plane_depth_ok,
         overall_ok,
         summary: if summaries.is_empty() {
             None
@@ -989,6 +1077,7 @@ pub fn replay_thread_projection(
     let report = build_thread_replay_report(thread_id, turn_events);
     let message_stats = replay_thread_message_stats(turn_events);
     let message_timeline = replay_thread_message_timeline(turn_events);
+    let message_plane_index = replay_thread_message_plane_index(&message_stats);
     let (latest_turn_id, latest_projection) = turn_events
         .iter()
         .rev()
@@ -1006,6 +1095,7 @@ pub fn replay_thread_projection(
         latest_projection,
         message_stats,
         message_timeline,
+        message_plane_index,
     }
 }
 
@@ -1019,6 +1109,10 @@ pub struct KernelResumeHints {
     pub active_tool_count: u32,
     /// Aggregated `ModelMessage` count on the linked thread (log substrate; text stays in session store).
     pub kernel_model_message_count: u32,
+    /// Aggregated `ModelRequestIssued` count on the linked thread.
+    pub kernel_model_request_count: u32,
+    /// Lower-bound session rows estimated from kernel log (assistant + tool results).
+    pub kernel_estimated_min_session_messages: u32,
 }
 
 /// Extract resume hints from the latest turn projection (log-driven resume substrate).
@@ -1035,6 +1129,8 @@ pub fn kernel_resume_hints_from_projection(proj: &TurnKernelProjection) -> Kerne
         scratchpad_summary_injected: proj.scratchpad_summary_injected,
         active_tool_count: proj.active_tool_names.len() as u32,
         kernel_model_message_count: 0,
+        kernel_model_request_count: 0,
+        kernel_estimated_min_session_messages: 0,
     }
 }
 
@@ -1045,6 +1141,10 @@ pub fn kernel_resume_hints_from_thread_projection(
 ) -> KernelResumeHints {
     let mut hints = kernel_resume_hints_from_projection(&projection.latest_projection);
     hints.kernel_model_message_count = projection.message_stats.model_message_count;
+    hints.kernel_model_request_count = projection.message_stats.model_request_count;
+    hints.kernel_estimated_min_session_messages = projection
+        .message_plane_index
+        .estimated_min_session_messages;
     hints
 }
 
@@ -1531,12 +1631,29 @@ mod tests {
             .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
         let raw = std::fs::read_to_string(&path).expect("read fixture");
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
-        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        let projection = replay_thread_projection("t1", &[("t1".into(), events.clone())]);
         let cov = build_session_message_timeline_coverage(3, &projection).expect("coverage");
         assert!(cov.overall_ok);
-        assert!(cov.coherence_ok);
-        assert!(cov.timeline_vs_requests_ok);
-        assert_eq!(cov.timeline_anchor_count, 1);
+        assert!(cov.plane_depth_ok);
+        assert_eq!(cov.estimated_min_session_messages, 2);
+        assert_eq!(
+            projection
+                .message_plane_index
+                .estimated_min_session_messages,
+            2
+        );
+        assert!(verify_step_model_message_anchor(&events, 1).is_none());
+    }
+
+    #[test]
+    fn verify_session_message_plane_depth_on_pure_read_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        assert!(verify_session_message_plane_depth(2, &projection.message_plane_index).is_none());
+        assert!(verify_session_message_plane_depth(1, &projection.message_plane_index).is_some());
     }
 
     #[test]

@@ -92,6 +92,8 @@ impl KernelTurnHost for Engine {
             scratchpad_summary_injected = hints.scratchpad_summary_injected,
             active_tool_count = hints.active_tool_count,
             kernel_model_message_count = hints.kernel_model_message_count,
+            kernel_model_request_count = hints.kernel_model_request_count,
+            kernel_estimated_min_session_messages = hints.kernel_estimated_min_session_messages,
             "restored kernel turn frame from event log"
         );
     }

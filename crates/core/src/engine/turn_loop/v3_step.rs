@@ -11,6 +11,7 @@ use crate::turn::{TurnContext, TurnLoopMode};
 use super::control::{TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome};
 use super::host::TurnLoopHost;
 use super::{streaming_phase, tool_phase};
+use crate::engine::kernel_turn_host::KernelTurnHost;
 
 /// Combined outcome of one v3 turn step (model stream + optional tool batch).
 #[derive(Debug)]
@@ -117,23 +118,23 @@ pub async fn run_v3_turn_step_unified<H: TurnLoopHost>(
     consecutive_tool_error_steps: u32,
     tool_registry: Option<&H::ToolRegistry>,
 ) -> V3StepOutcome {
-    if let Some(out) = host
-        .try_run_v3_turn_step(
-            turn,
-            client,
-            mode,
-            tool_catalog,
-            active_tool_names,
-            force_update_plan_first,
-            stream_retry_attempts,
-            context_recovery_attempts,
-            length_continuations,
-            turn_error,
-            loop_guard,
-            consecutive_tool_error_steps,
-            tool_registry,
-        )
-        .await
+    if let Some(out) = KernelTurnHost::try_run_v3_turn_step(
+        host,
+        turn,
+        client,
+        mode,
+        tool_catalog,
+        active_tool_names,
+        force_update_plan_first,
+        stream_retry_attempts,
+        context_recovery_attempts,
+        length_continuations,
+        turn_error,
+        loop_guard,
+        consecutive_tool_error_steps,
+        tool_registry,
+    )
+    .await
     {
         return out;
     }

@@ -83,9 +83,20 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     coverage_ok: bool,
     timeline_vs_session_ok: bool,
     timeline_vs_requests_ok: bool,
+    estimated_min_session_messages: u32,
+    plane_depth_ok: bool,
     overall_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct KernelThreadMessagePlaneIndex {
+    model_request_count: u32,
+    model_message_count: u32,
+    tool_call_planned_count: u32,
+    steer_injection_count: u32,
+    estimated_min_session_messages: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -108,6 +119,7 @@ pub(crate) struct KernelThreadReplayResponse {
     latest_projection: Option<KernelThreadLatestProjection>,
     message_stats: KernelThreadMessageReplayStats,
     message_timeline: Vec<KernelThreadMessageTimelineEntry>,
+    message_plane_index: KernelThreadMessagePlaneIndex,
     #[serde(skip_serializing_if = "Option::is_none")]
     message_coverage: Option<KernelThreadMessageCoverage>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -224,6 +236,12 @@ pub(crate) fn resume_session_kernel_replay_summary(
         message_coverage_summary: coverage.and_then(|c| c.summary),
         message_timeline_ok: plane_coverage.as_ref().map(|c| c.overall_ok),
         message_timeline_summary: plane_coverage.and_then(|c| c.summary),
+        kernel_model_request_count: Some(projection.message_stats.model_request_count),
+        kernel_estimated_min_session_messages: Some(
+            projection
+                .message_plane_index
+                .estimated_min_session_messages,
+        ),
     })
 }
 
@@ -238,7 +256,7 @@ pub(crate) fn log_session_message_plane_checks(
     };
     record_timeline_coherence_check(cov.coherence_ok && cov.timeline_vs_requests_ok);
     record_message_coverage_check(cov.coverage_ok);
-    if !cov.timeline_vs_session_ok {
+    if !cov.timeline_vs_session_ok || !cov.plane_depth_ok {
         record_timeline_coherence_check(false);
     }
     if let Some(summary) = cov.summary {
@@ -328,6 +346,15 @@ pub(crate) async fn get_kernel_thread_replay(
         steer_injection_count: projection.message_stats.steer_injection_count,
         compaction_artifact_count: projection.message_stats.compaction_artifact_count,
     };
+    let message_plane_index = KernelThreadMessagePlaneIndex {
+        model_request_count: projection.message_plane_index.model_request_count,
+        model_message_count: projection.message_plane_index.model_message_count,
+        tool_call_planned_count: projection.message_plane_index.tool_call_planned_count,
+        steer_injection_count: projection.message_plane_index.steer_injection_count,
+        estimated_min_session_messages: projection
+            .message_plane_index
+            .estimated_min_session_messages,
+    };
     let message_timeline = projection
         .message_timeline
         .into_iter()
@@ -340,7 +367,10 @@ pub(crate) async fn get_kernel_thread_replay(
     let message_coverage = plane_coverage.as_ref().map(|cov| {
         record_message_coverage_check(cov.coverage_ok);
         record_timeline_coherence_check(
-            cov.coherence_ok && cov.timeline_vs_session_ok && cov.timeline_vs_requests_ok,
+            cov.coherence_ok
+                && cov.timeline_vs_session_ok
+                && cov.timeline_vs_requests_ok
+                && cov.plane_depth_ok,
         );
         KernelThreadMessageCoverage {
             session_message_count: cov.session_message_count,
@@ -363,6 +393,8 @@ pub(crate) async fn get_kernel_thread_replay(
         coverage_ok: cov.coverage_ok,
         timeline_vs_session_ok: cov.timeline_vs_session_ok,
         timeline_vs_requests_ok: cov.timeline_vs_requests_ok,
+        estimated_min_session_messages: cov.estimated_min_session_messages,
+        plane_depth_ok: cov.plane_depth_ok,
         overall_ok: cov.overall_ok,
         summary: cov.summary,
     });
@@ -376,6 +408,7 @@ pub(crate) async fn get_kernel_thread_replay(
         latest_projection,
         message_stats,
         message_timeline,
+        message_plane_index,
         message_coverage,
         message_timeline_coverage,
         turns,

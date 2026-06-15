@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tracing::warn;
 use zagens_core::engine::kernel_event::KernelEvent;
-use zagens_core::engine::turn_machine::verify_step_effect_parity;
+use zagens_core::engine::turn_machine::{
+    verify_step_effect_parity, verify_step_model_message_anchor,
+};
 
 #[derive(Debug, Default)]
 pub struct KernelV3EffectShadowStats {
@@ -52,17 +54,25 @@ impl KernelV3EffectShadow {
             return;
         }
         self.stats.record_comparison();
+        let mut diffs = Vec::new();
         if let Some(summary) = verify_step_effect_parity(turn_events, step_idx, executed_tool_count)
         {
-            self.stats.record_diff();
-            warn!(
-                target: "kernel_v3_effect_shadow",
-                step_idx,
-                executed_tool_count,
-                summary,
-                "v3 step effect replay diff"
-            );
+            diffs.push(summary);
         }
+        if let Some(summary) = verify_step_model_message_anchor(turn_events, step_idx) {
+            diffs.push(summary);
+        }
+        if diffs.is_empty() {
+            return;
+        }
+        self.stats.record_diff();
+        warn!(
+            target: "kernel_v3_effect_shadow",
+            step_idx,
+            executed_tool_count,
+            summary = diffs.join("; "),
+            "v3 step shadow diff"
+        );
     }
 }
 
@@ -104,6 +114,12 @@ mod tests {
                     full_prefix_sha256: "b".into(),
                 },
                 token_budget: 8192,
+            },
+            KernelEvent::ModelMessage {
+                turn_id: "t1".into(),
+                step_idx: 1,
+                usage: zagens_core::models::Usage::default(),
+                block_count: 1,
             },
             KernelEvent::TurnEnded {
                 turn_id: "t1".into(),

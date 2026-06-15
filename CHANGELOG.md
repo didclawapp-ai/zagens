@@ -130,6 +130,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `verify_timeline_vs_request_count()` guards timeline anchors vs `ModelRequestIssued` counts.
   - Thread replay API adds `message_timeline_coverage` when `?session_message_count=N`; resume `kernel_replay` adds `message_timeline_ok` / `message_timeline_summary`.
   - `try_run_v3_turn_step` moved from `TurnLoopHost` to `KernelTurnHost` (`V3ToolRegistry` associated type); `TurnLoopHost` shrinks to runtime IO.
+- **Runtime (kernel-v2 Phase 3b batch 6m — message plane index + step anchor shadow):**
+  - `ThreadMessagePlaneIndex` + `replay_thread_message_plane_index()` estimate minimum session depth from kernel logs.
+  - `verify_session_message_plane_depth()` + `verify_step_model_message_anchor()` strengthen resume/replay without rebuilding message bodies.
+  - `build_session_message_timeline_coverage()` adds `plane_depth_ok` / `estimated_min_session_messages`.
+  - Thread replay API exposes `message_plane_index`; resume `kernel_replay` adds request count + plane depth hints.
+  - v3 step shadow verifies per-step `ModelMessage` anchors alongside effect parity.
 
 ### Removed
 
