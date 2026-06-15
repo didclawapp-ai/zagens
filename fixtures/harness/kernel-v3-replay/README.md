@@ -23,4 +23,5 @@ Thread replay API: `GET /v1/runtime/kernel-replay/thread/{thread_id}` returns
 `message_coverage` and `message_timeline_coverage` (session vs log counters and
 timeline anchor coherence). Optional `session_assistant_count` / `session_tool_result_count` / `session_text_user_count`
 enable role and memory-plane checks without loading session bodies. `message_plane_index` summarizes
-rebuildable counters and estimated minimum session depth.
+rebuildable counters and estimated minimum session depth. `compaction_timeline` lists compaction
+artifact anchors when present.

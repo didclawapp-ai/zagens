@@ -737,6 +737,30 @@ pub struct ThreadReplayProjection {
     pub message_timeline: Vec<ThreadMessageTimelineEntry>,
     /// Aggregated message-plane index (counts only; session depth estimates).
     pub message_plane_index: ThreadMessagePlaneIndex,
+    /// Compaction artifact anchors from kernel logs (replaced_range metadata only).
+    pub compaction_timeline: Vec<ThreadCompactionReplayEntry>,
+    pub compaction_index: ThreadCompactionReplayIndex,
+}
+
+/// One compaction artifact anchor rebuildable from kernel logs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadCompactionReplayEntry {
+    pub turn_id: String,
+    pub artifact_id: String,
+    /// Inclusive replaced message index range (`from`..=`to`).
+    pub replaced_from: u32,
+    pub replaced_to: u32,
+    pub messages_removed_count: u32,
+    pub summary_token_count: u32,
+}
+
+/// Aggregated compaction metadata rebuildable from kernel event logs.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ThreadCompactionReplayIndex {
+    pub artifact_count: u32,
+    pub messages_removed_estimate: u32,
+    /// Lower-bound session depth at compaction time (`max(replaced_to) + 1`).
+    pub peak_session_depth_hint: u32,
 }
 
 /// One `ModelMessage` anchor rebuildable from kernel logs (no message body).
@@ -768,6 +792,8 @@ pub struct ThreadMessageReplayStats {
     pub scratchpad_summary_count: u32,
     pub scratchpad_reminder_count: u32,
     pub cycle_briefing_count: u32,
+    pub step_limit_continuation_count: u32,
+    pub loop_guard_continuation_count: u32,
 }
 
 /// Message-plane index rebuildable from kernel logs (no message bodies).
@@ -814,6 +840,7 @@ pub struct KernelMemoryPlaneUserEstimate {
     pub min_steer_user_messages: u32,
     pub min_scratchpad_summary_user_messages: u32,
     pub min_scratchpad_reminder_user_messages: u32,
+    pub min_continuation_user_messages: u32,
     pub min_memory_injected_user_messages: u32,
 }
 
@@ -887,13 +914,18 @@ pub fn replay_kernel_memory_plane_user_estimate(
     let min_steer_user_messages = stats.steer_injection_count;
     let min_scratchpad_summary_user_messages = stats.scratchpad_summary_count;
     let min_scratchpad_reminder_user_messages = stats.scratchpad_reminder_count;
+    let min_continuation_user_messages = stats
+        .step_limit_continuation_count
+        .saturating_add(stats.loop_guard_continuation_count);
     let min_memory_injected_user_messages = min_steer_user_messages
         .saturating_add(min_scratchpad_summary_user_messages)
-        .saturating_add(min_scratchpad_reminder_user_messages);
+        .saturating_add(min_scratchpad_reminder_user_messages)
+        .saturating_add(min_continuation_user_messages);
     KernelMemoryPlaneUserEstimate {
         min_steer_user_messages,
         min_scratchpad_summary_user_messages,
         min_scratchpad_reminder_user_messages,
+        min_continuation_user_messages,
         min_memory_injected_user_messages,
     }
 }
@@ -940,6 +972,88 @@ pub fn verify_session_role_index(
         None
     } else {
         Some(issues.join("; "))
+    }
+}
+
+/// Count inclusive-range messages removed by a compaction artifact.
+#[must_use]
+pub fn compaction_messages_removed_count(replaced_from: u32, replaced_to: u32) -> u32 {
+    if replaced_to >= replaced_from {
+        replaced_to - replaced_from + 1
+    } else {
+        0
+    }
+}
+
+/// Rebuild compaction artifact anchors across a thread from persisted kernel events.
+#[must_use]
+pub fn replay_thread_compaction_timeline(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> Vec<ThreadCompactionReplayEntry> {
+    let mut timeline = Vec::new();
+    for (_, events) in turn_events {
+        for event in events {
+            if let KernelEvent::CompactionArtifactCreated {
+                turn_id,
+                artifact_id,
+                replaced_range,
+                summary_token_count,
+            } = event
+            {
+                let messages_removed_count =
+                    compaction_messages_removed_count(replaced_range.from, replaced_range.to);
+                timeline.push(ThreadCompactionReplayEntry {
+                    turn_id: turn_id.clone(),
+                    artifact_id: artifact_id.clone(),
+                    replaced_from: replaced_range.from,
+                    replaced_to: replaced_range.to,
+                    messages_removed_count,
+                    summary_token_count: *summary_token_count,
+                });
+            }
+        }
+    }
+    timeline
+}
+
+/// Build aggregated compaction index from compaction timeline anchors.
+#[must_use]
+pub fn replay_thread_compaction_index(
+    timeline: &[ThreadCompactionReplayEntry],
+) -> ThreadCompactionReplayIndex {
+    let mut messages_removed_estimate = 0u32;
+    let mut peak_session_depth_hint = 0u32;
+    for entry in timeline {
+        messages_removed_estimate =
+            messages_removed_estimate.saturating_add(entry.messages_removed_count);
+        peak_session_depth_hint = peak_session_depth_hint.max(entry.replaced_to.saturating_add(1));
+    }
+    ThreadCompactionReplayIndex {
+        artifact_count: timeline.len() as u32,
+        messages_removed_estimate,
+        peak_session_depth_hint,
+    }
+}
+
+/// Weak check: current session + compaction-removed rows cover kernel plane estimate.
+#[must_use]
+pub fn verify_session_compaction_depth(
+    session_message_count: usize,
+    compaction: &ThreadCompactionReplayIndex,
+    plane_index: &ThreadMessagePlaneIndex,
+) -> Option<String> {
+    if compaction.artifact_count == 0 {
+        return None;
+    }
+    let restored = session_message_count as u32 + compaction.messages_removed_estimate;
+    let min_needed = plane_index.estimated_min_session_messages;
+    if restored < min_needed {
+        Some(format!(
+            "session ({session_message_count}) + compaction removed ({removed}) = {restored} below kernel plane estimate ({min_needed})",
+            removed = compaction.messages_removed_estimate
+        ))
+    } else {
+        None
     }
 }
 
@@ -1016,6 +1130,12 @@ pub fn replay_thread_message_stats(
                     stats.scratchpad_reminder_count += 1
                 }
                 KernelEvent::CycleBriefingInjected { .. } => stats.cycle_briefing_count += 1,
+                KernelEvent::StepLimitContinuation { .. } => {
+                    stats.step_limit_continuation_count += 1
+                }
+                KernelEvent::LoopGuardContinuation { .. } => {
+                    stats.loop_guard_continuation_count += 1
+                }
                 _ => {}
             }
         }
@@ -1149,6 +1269,10 @@ pub struct SessionMessageTimelineCoverage {
     pub kernel_min_assistant_messages: u32,
     pub kernel_min_tool_result_messages: u32,
     pub kernel_min_memory_injected_user_messages: u32,
+    pub compaction_depth_ok: bool,
+    pub compaction_messages_removed_estimate: u32,
+    pub compaction_restored_session_estimate: u32,
+    pub compaction_peak_session_depth_hint: u32,
     pub overall_ok: bool,
     pub summary: Option<String>,
 }
@@ -1182,11 +1306,15 @@ pub fn build_session_message_timeline_coverage(
     let has_message_plane = stats.model_message_count > 0 || !timeline.is_empty();
     let has_memory_plane = stats.steer_injection_count > 0
         || stats.scratchpad_summary_count > 0
-        || stats.scratchpad_reminder_count > 0;
-    if !has_message_plane && !has_memory_plane {
+        || stats.scratchpad_reminder_count > 0
+        || stats.step_limit_continuation_count > 0
+        || stats.loop_guard_continuation_count > 0;
+    let has_compaction = projection.compaction_index.artifact_count > 0;
+    if !has_message_plane && !has_memory_plane && !has_compaction {
         return None;
     }
-    let plane_index = replay_thread_message_plane_index(stats);
+    let plane_index = &projection.message_plane_index;
+    let compaction_index = &projection.compaction_index;
     let role_estimate = replay_kernel_message_role_estimate(stats);
     let memory_estimate = replay_kernel_memory_plane_user_estimate(stats);
     let coherence_ok = verify_message_timeline_coherence(stats, timeline).is_none();
@@ -1203,13 +1331,19 @@ pub fn build_session_message_timeline_coverage(
     let memory_plane_user_ok = role_index
         .map(|idx| verify_session_memory_plane_user_depth(idx, &memory_estimate).is_none())
         .unwrap_or(true);
+    let compaction_depth_ok =
+        verify_session_compaction_depth(session_message_count, compaction_index, plane_index)
+            .is_none();
+    let compaction_restored_session_estimate =
+        session_message_count as u32 + compaction_index.messages_removed_estimate;
     let overall_ok = coherence_ok
         && coverage_ok
         && timeline_vs_session_ok
         && timeline_vs_requests_ok
         && plane_depth_ok
         && role_index_ok
-        && memory_plane_user_ok;
+        && memory_plane_user_ok
+        && compaction_depth_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -1224,7 +1358,12 @@ pub fn build_session_message_timeline_coverage(
     if let Some(s) = verify_timeline_vs_request_count(stats, timeline) {
         summaries.push(s);
     }
-    if let Some(s) = verify_session_message_plane_depth(session_message_count, &plane_index) {
+    if let Some(s) = verify_session_message_plane_depth(session_message_count, plane_index) {
+        summaries.push(s);
+    }
+    if let Some(s) =
+        verify_session_compaction_depth(session_message_count, compaction_index, plane_index)
+    {
         summaries.push(s);
     }
     if let Some(idx) = role_index {
@@ -1255,6 +1394,10 @@ pub fn build_session_message_timeline_coverage(
         kernel_min_assistant_messages: role_estimate.min_assistant_messages,
         kernel_min_tool_result_messages: role_estimate.min_tool_result_messages,
         kernel_min_memory_injected_user_messages: memory_estimate.min_memory_injected_user_messages,
+        compaction_depth_ok,
+        compaction_messages_removed_estimate: compaction_index.messages_removed_estimate,
+        compaction_restored_session_estimate,
+        compaction_peak_session_depth_hint: compaction_index.peak_session_depth_hint,
         overall_ok,
         summary: if summaries.is_empty() {
             None
@@ -1274,6 +1417,8 @@ pub fn replay_thread_projection(
     let message_stats = replay_thread_message_stats(turn_events);
     let message_timeline = replay_thread_message_timeline(turn_events);
     let message_plane_index = replay_thread_message_plane_index(&message_stats);
+    let compaction_timeline = replay_thread_compaction_timeline(turn_events);
+    let compaction_index = replay_thread_compaction_index(&compaction_timeline);
     let (latest_turn_id, latest_projection) = turn_events
         .iter()
         .rev()
@@ -1292,6 +1437,8 @@ pub fn replay_thread_projection(
         message_stats,
         message_timeline,
         message_plane_index,
+        compaction_timeline,
+        compaction_index,
     }
 }
 
@@ -1944,6 +2091,68 @@ mod tests {
         let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index))
             .expect("coverage");
         assert!(cov.memory_plane_user_ok);
+    }
+
+    #[test]
+    fn replay_thread_compaction_timeline_on_manual_compaction_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/manual_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let timeline = replay_thread_compaction_timeline(&[("t1".into(), events)]);
+        assert_eq!(timeline.len(), 1);
+        assert_eq!(timeline[0].replaced_from, 4);
+        assert_eq!(timeline[0].replaced_to, 19);
+        assert_eq!(timeline[0].messages_removed_count, 16);
+        let index = replay_thread_compaction_index(&timeline);
+        assert_eq!(index.messages_removed_estimate, 16);
+        assert_eq!(index.peak_session_depth_hint, 20);
+    }
+
+    #[test]
+    fn verify_session_compaction_depth_on_manual_compaction_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/manual_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        assert!(
+            verify_session_compaction_depth(
+                5,
+                &projection.compaction_index,
+                &projection.message_plane_index
+            )
+            .is_none()
+        );
+        let stats = ThreadMessageReplayStats {
+            model_message_count: 10,
+            tool_call_planned_count: 10,
+            compaction_artifact_count: 1,
+            ..Default::default()
+        };
+        let plane = replay_thread_message_plane_index(&stats);
+        let compaction = ThreadCompactionReplayIndex {
+            artifact_count: 1,
+            messages_removed_estimate: 10,
+            peak_session_depth_hint: 20,
+        };
+        assert!(verify_session_compaction_depth(0, &compaction, &plane).is_some());
+        assert!(verify_session_compaction_depth(15, &compaction, &plane).is_none());
+    }
+
+    #[test]
+    fn replay_thread_message_stats_counts_continuations_on_lht_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/lht_continue.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let stats = replay_thread_message_stats(&[("t1".into(), events)]);
+        assert_eq!(stats.step_limit_continuation_count, 1);
+        assert_eq!(stats.loop_guard_continuation_count, 1);
+        assert_eq!(stats.steer_injection_count, 1);
+        let memory = replay_kernel_memory_plane_user_estimate(&stats);
+        assert_eq!(memory.min_continuation_user_messages, 2);
+        assert_eq!(memory.min_memory_injected_user_messages, 3);
     }
 
     #[test]

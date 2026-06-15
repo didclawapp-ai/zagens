@@ -11,6 +11,7 @@ use zagens_core::engine::turn_machine::{
     verify_turn_replay_coherence,
 };
 
+use crate::core::engine::kernel_message_compaction_shadow::record_message_compaction_depth_check;
 use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
 use crate::core::engine::kernel_message_memory_plane_shadow::record_message_memory_plane_check;
 use crate::core::engine::kernel_message_role_shadow::record_message_role_index_check;
@@ -61,6 +62,25 @@ pub(crate) struct KernelThreadMessageReplayStats {
     scratchpad_summary_count: u32,
     scratchpad_reminder_count: u32,
     cycle_briefing_count: u32,
+    step_limit_continuation_count: u32,
+    loop_guard_continuation_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct KernelThreadCompactionReplayEntry {
+    turn_id: String,
+    artifact_id: String,
+    replaced_from: u32,
+    replaced_to: u32,
+    messages_removed_count: u32,
+    summary_token_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct KernelThreadCompactionReplayIndex {
+    artifact_count: u32,
+    messages_removed_estimate: u32,
+    peak_session_depth_hint: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -102,6 +122,10 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     kernel_min_assistant_messages: u32,
     kernel_min_tool_result_messages: u32,
     kernel_min_memory_injected_user_messages: u32,
+    compaction_depth_ok: bool,
+    compaction_messages_removed_estimate: u32,
+    compaction_restored_session_estimate: u32,
+    compaction_peak_session_depth_hint: u32,
     overall_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
@@ -137,6 +161,8 @@ pub(crate) struct KernelThreadReplayResponse {
     message_stats: KernelThreadMessageReplayStats,
     message_timeline: Vec<KernelThreadMessageTimelineEntry>,
     message_plane_index: KernelThreadMessagePlaneIndex,
+    compaction_timeline: Vec<KernelThreadCompactionReplayEntry>,
+    compaction_index: KernelThreadCompactionReplayIndex,
     #[serde(skip_serializing_if = "Option::is_none")]
     message_coverage: Option<KernelThreadMessageCoverage>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -309,6 +335,11 @@ pub(crate) fn resume_session_kernel_replay_summary(
             .as_ref()
             .filter(|c| !c.memory_plane_user_ok)
             .and_then(|c| c.summary.clone()),
+        message_compaction_depth_ok: plane_coverage.as_ref().map(|c| c.compaction_depth_ok),
+        message_compaction_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.compaction_depth_ok)
+            .and_then(|c| c.summary.clone()),
     })
 }
 
@@ -330,10 +361,14 @@ pub(crate) fn log_session_message_plane_checks(
     if role_index.is_some() {
         record_message_memory_plane_check(cov.memory_plane_user_ok);
     }
+    if projection.compaction_index.artifact_count > 0 {
+        record_message_compaction_depth_check(cov.compaction_depth_ok);
+    }
     if !cov.timeline_vs_session_ok
         || !cov.plane_depth_ok
         || !cov.role_index_ok
         || !cov.memory_plane_user_ok
+        || !cov.compaction_depth_ok
     {
         record_timeline_coherence_check(false);
     }
@@ -428,6 +463,8 @@ pub(crate) async fn get_kernel_thread_replay(
         scratchpad_summary_count: projection.message_stats.scratchpad_summary_count,
         scratchpad_reminder_count: projection.message_stats.scratchpad_reminder_count,
         cycle_briefing_count: projection.message_stats.cycle_briefing_count,
+        step_limit_continuation_count: projection.message_stats.step_limit_continuation_count,
+        loop_guard_continuation_count: projection.message_stats.loop_guard_continuation_count,
     };
     let message_plane_index = KernelThreadMessagePlaneIndex {
         model_request_count: projection.message_plane_index.model_request_count,
@@ -437,6 +474,23 @@ pub(crate) async fn get_kernel_thread_replay(
         estimated_min_session_messages: projection
             .message_plane_index
             .estimated_min_session_messages,
+    };
+    let compaction_timeline = projection
+        .compaction_timeline
+        .into_iter()
+        .map(|entry| KernelThreadCompactionReplayEntry {
+            turn_id: entry.turn_id,
+            artifact_id: entry.artifact_id,
+            replaced_from: entry.replaced_from,
+            replaced_to: entry.replaced_to,
+            messages_removed_count: entry.messages_removed_count,
+            summary_token_count: entry.summary_token_count,
+        })
+        .collect();
+    let compaction_index = KernelThreadCompactionReplayIndex {
+        artifact_count: projection.compaction_index.artifact_count,
+        messages_removed_estimate: projection.compaction_index.messages_removed_estimate,
+        peak_session_depth_hint: projection.compaction_index.peak_session_depth_hint,
     };
     let message_timeline = projection
         .message_timeline
@@ -449,13 +503,17 @@ pub(crate) async fn get_kernel_thread_replay(
         .collect();
     let message_coverage = plane_coverage.as_ref().map(|cov| {
         record_message_coverage_check(cov.coverage_ok);
+        if projection.compaction_index.artifact_count > 0 {
+            record_message_compaction_depth_check(cov.compaction_depth_ok);
+        }
         record_timeline_coherence_check(
             cov.coherence_ok
                 && cov.timeline_vs_session_ok
                 && cov.timeline_vs_requests_ok
                 && cov.plane_depth_ok
                 && cov.role_index_ok
-                && cov.memory_plane_user_ok,
+                && cov.memory_plane_user_ok
+                && cov.compaction_depth_ok,
         );
         KernelThreadMessageCoverage {
             session_message_count: cov.session_message_count,
@@ -488,6 +546,10 @@ pub(crate) async fn get_kernel_thread_replay(
         kernel_min_assistant_messages: cov.kernel_min_assistant_messages,
         kernel_min_tool_result_messages: cov.kernel_min_tool_result_messages,
         kernel_min_memory_injected_user_messages: cov.kernel_min_memory_injected_user_messages,
+        compaction_depth_ok: cov.compaction_depth_ok,
+        compaction_messages_removed_estimate: cov.compaction_messages_removed_estimate,
+        compaction_restored_session_estimate: cov.compaction_restored_session_estimate,
+        compaction_peak_session_depth_hint: cov.compaction_peak_session_depth_hint,
         overall_ok: cov.overall_ok,
         summary: cov.summary,
     });
@@ -502,6 +564,8 @@ pub(crate) async fn get_kernel_thread_replay(
         message_stats,
         message_timeline,
         message_plane_index,
+        compaction_timeline,
+        compaction_index,
         message_coverage,
         message_timeline_coverage,
         turns,

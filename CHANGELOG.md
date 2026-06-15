@@ -149,6 +149,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `build_session_message_timeline_coverage()` adds `memory_plane_user_ok` and kernel min memory-injected user fields.
   - `kernel_message_memory_plane_shadow` + `GET /v1/runtime/kernel-shadow` `message_memory_plane_shadow`.
   - Thread replay API accepts optional `session_text_user_count`; resume `kernel_replay` adds memory-plane hints.
+- **Runtime (kernel-v2 Phase 3b batch 6p — compaction depth + continuation user rows):**
+  - `ThreadCompactionReplayEntry` + `replay_thread_compaction_timeline()` rebuild compaction `replaced_range` anchors.
+  - `verify_session_compaction_depth()` weak-checks current session + removed rows vs kernel plane estimate.
+  - Continuation counts in `ThreadMessageReplayStats`; memory-plane user estimate includes step-limit / loop-guard rows.
+  - Thread replay API exposes `compaction_timeline` / `compaction_index`; resume adds compaction depth hints.
+  - `kernel_message_compaction_shadow` + `GET /v1/runtime/kernel-shadow` `message_compaction_shadow`.
 
 ### Removed
 

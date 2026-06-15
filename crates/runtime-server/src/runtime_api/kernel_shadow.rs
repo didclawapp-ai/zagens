@@ -8,6 +8,7 @@ use crate::config::{KernelMachineMode, ToolsPolicyMode, ToolsSchedulerMode};
 use crate::core::engine::kernel_effect_shadow::kernel_effect_shadow_stats;
 use crate::core::engine::kernel_guard_shadow::kernel_guard_shadow_stats;
 use crate::core::engine::kernel_memory_shadow::kernel_memory_shadow_stats;
+use crate::core::engine::kernel_message_compaction_shadow::kernel_message_compaction_shadow_stats;
 use crate::core::engine::kernel_message_coverage_shadow::kernel_message_coverage_shadow_stats;
 use crate::core::engine::kernel_message_memory_plane_shadow::kernel_message_memory_plane_shadow_stats;
 use crate::core::engine::kernel_message_role_shadow::kernel_message_role_shadow_stats;
@@ -62,6 +63,8 @@ pub(crate) struct KernelShadowResponse {
     message_role_shadow: Option<ShadowCounterBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message_memory_plane_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message_compaction_shadow: Option<ShadowCounterBlock>,
 }
 
 pub(crate) async fn kernel_shadow_stats(
@@ -83,6 +86,7 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
     let message_timeline_shadow = probe_message_timeline_shadow(config);
     let message_role_shadow = probe_message_role_shadow(config);
     let message_memory_plane_shadow = probe_message_memory_plane_shadow(config);
+    let message_compaction_shadow = probe_message_compaction_shadow(config);
     KernelShadowResponse {
         policy_shadow,
         scheduler_shadow,
@@ -96,6 +100,7 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
         message_timeline_shadow,
         message_role_shadow,
         message_memory_plane_shadow,
+        message_compaction_shadow,
     }
 }
 
@@ -292,6 +297,23 @@ fn probe_message_memory_plane_shadow(config: &crate::config::Config) -> Option<S
         return None;
     }
     let (comparisons, diffs) = kernel_message_memory_plane_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_message_compaction_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_replay_verification() {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_message_compaction_shadow_stats();
     if comparisons == 0 && diffs == 0 {
         return None;
     }

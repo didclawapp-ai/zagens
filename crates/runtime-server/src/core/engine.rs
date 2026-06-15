@@ -34,6 +34,7 @@ mod hook_dispatch;
 pub(crate) mod kernel_effect_shadow;
 pub(crate) mod kernel_guard_shadow;
 pub(crate) mod kernel_memory_shadow;
+pub(crate) mod kernel_message_compaction_shadow;
 pub(crate) mod kernel_message_coverage_shadow;
 pub(crate) mod kernel_message_memory_plane_shadow;
 pub(crate) mod kernel_message_role_shadow;
