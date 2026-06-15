@@ -42,6 +42,7 @@ pub(crate) mod kernel_message_coverage_shadow;
 pub(crate) mod kernel_message_memory_plane_shadow;
 pub(crate) mod kernel_message_role_shadow;
 pub(crate) mod kernel_message_timeline_shadow;
+pub(crate) mod kernel_notify_lsp_anchor_shadow;
 pub(crate) mod kernel_projection_shadow;
 pub(crate) mod kernel_replay_shadow;
 mod kernel_resume;

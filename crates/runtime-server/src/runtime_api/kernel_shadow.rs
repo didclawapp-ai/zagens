@@ -15,6 +15,7 @@ use crate::core::engine::kernel_message_coverage_shadow::kernel_message_coverage
 use crate::core::engine::kernel_message_memory_plane_shadow::kernel_message_memory_plane_shadow_stats;
 use crate::core::engine::kernel_message_role_shadow::kernel_message_role_shadow_stats;
 use crate::core::engine::kernel_message_timeline_shadow::kernel_message_timeline_shadow_stats;
+use crate::core::engine::kernel_notify_lsp_anchor_shadow::kernel_notify_lsp_anchor_shadow_stats;
 use crate::core::engine::kernel_projection_shadow::kernel_projection_shadow_stats;
 use crate::core::engine::kernel_replay_shadow::kernel_replay_shadow_stats;
 use crate::core::engine::kernel_v3_effect_shadow::kernel_v3_effect_shadow_stats;
@@ -71,6 +72,8 @@ pub(crate) struct KernelShadowResponse {
     compaction_artifact_shadow: Option<ShadowCounterBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     continuation_anchor_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notify_lsp_anchor_shadow: Option<ShadowCounterBlock>,
 }
 
 pub(crate) async fn kernel_shadow_stats(
@@ -95,6 +98,7 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
     let message_compaction_shadow = probe_message_compaction_shadow(config);
     let compaction_artifact_shadow = probe_compaction_artifact_shadow(config);
     let continuation_anchor_shadow = probe_continuation_anchor_shadow(config);
+    let notify_lsp_anchor_shadow = probe_notify_lsp_anchor_shadow(config);
     KernelShadowResponse {
         policy_shadow,
         scheduler_shadow,
@@ -111,6 +115,7 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
         message_compaction_shadow,
         compaction_artifact_shadow,
         continuation_anchor_shadow,
+        notify_lsp_anchor_shadow,
     }
 }
 
@@ -358,6 +363,23 @@ fn probe_continuation_anchor_shadow(config: &crate::config::Config) -> Option<Sh
         return None;
     }
     let (comparisons, diffs) = kernel_continuation_anchor_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_notify_lsp_anchor_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_replay_verification() {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_notify_lsp_anchor_shadow_stats();
     if comparisons == 0 && diffs == 0 {
         return None;
     }

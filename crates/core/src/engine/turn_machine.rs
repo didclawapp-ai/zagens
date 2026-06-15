@@ -744,6 +744,8 @@ pub struct ThreadReplayProjection {
     /// Continuation steps replay `InjectSteer` in their step effect chain.
     pub continuation_anchor_ok: bool,
     pub continuation_anchor_summary: Option<String>,
+    pub notify_lsp_anchor_ok: bool,
+    pub notify_lsp_anchor_summary: Option<String>,
 }
 
 /// One compaction artifact anchor rebuildable from kernel logs.
@@ -1250,6 +1252,65 @@ pub fn verify_thread_continuation_anchors(
     }
 }
 
+/// Verify edit-tool steps replay a `NotifyLsp` effect per state-writing tool finish.
+#[must_use]
+pub fn verify_step_notify_lsp_anchor(turn_events: &[KernelEvent], step_idx: u32) -> Option<String> {
+    let step_events = events_for_step(turn_events, step_idx);
+    let expected = step_events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                KernelEvent::ToolCallFinished {
+                    tool_name,
+                    wrote_state: true,
+                    ..
+                } if is_lsp_notify_tool(tool_name)
+            )
+        })
+        .count();
+    if expected == 0 {
+        return None;
+    }
+    let notify_effects = replay_step_effects(turn_events, step_idx)
+        .iter()
+        .filter(|effect| matches!(effect, Effect::NotifyLsp { .. }))
+        .count();
+    if notify_effects >= expected {
+        None
+    } else {
+        Some(format!(
+            "step {step_idx} expected {expected} NotifyLsp replay effects, found {notify_effects}"
+        ))
+    }
+}
+
+/// Verify edit-tool steps across a thread replay `NotifyLsp` in their step effect chain.
+#[must_use]
+pub fn verify_thread_notify_lsp_anchors(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> Option<String> {
+    let mut issues = Vec::new();
+    for (_, events) in turn_events {
+        let mut step_indices = std::collections::BTreeSet::new();
+        for event in events {
+            if let KernelEvent::ModelRequestIssued { step_idx, .. } = event {
+                step_indices.insert(*step_idx);
+            }
+        }
+        for step_idx in step_indices {
+            if let Some(summary) = verify_step_notify_lsp_anchor(events, step_idx) {
+                issues.push(summary);
+            }
+        }
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
 /// Count message-plane events across all turns on a thread.
 #[must_use]
 pub fn replay_thread_message_stats(
@@ -1423,6 +1484,7 @@ pub struct SessionMessageTimelineCoverage {
     pub compaction_artifact_ok: bool,
     pub session_compaction_artifact_count: Option<u32>,
     pub continuation_anchor_ok: bool,
+    pub notify_lsp_anchor_ok: bool,
     pub overall_ok: bool,
     pub summary: Option<String>,
 }
@@ -1494,6 +1556,7 @@ pub fn build_session_message_timeline_coverage(
         })
         .unwrap_or(true);
     let continuation_anchor_ok = projection.continuation_anchor_ok;
+    let notify_lsp_anchor_ok = projection.notify_lsp_anchor_ok;
     let overall_ok = coherence_ok
         && coverage_ok
         && timeline_vs_session_ok
@@ -1503,7 +1566,8 @@ pub fn build_session_message_timeline_coverage(
         && memory_plane_user_ok
         && compaction_depth_ok
         && compaction_artifact_ok
-        && continuation_anchor_ok;
+        && continuation_anchor_ok
+        && notify_lsp_anchor_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -1547,6 +1611,11 @@ pub fn build_session_message_timeline_coverage(
             summaries.push(s);
         }
     }
+    if !notify_lsp_anchor_ok {
+        if let Some(s) = projection.notify_lsp_anchor_summary.clone() {
+            summaries.push(s);
+        }
+    }
 
     Some(SessionMessageTimelineCoverage {
         session_message_count,
@@ -1574,6 +1643,7 @@ pub fn build_session_message_timeline_coverage(
         compaction_artifact_ok,
         session_compaction_artifact_count: session_compaction.map(|s| s.len() as u32),
         continuation_anchor_ok,
+        notify_lsp_anchor_ok,
         overall_ok,
         summary: if summaries.is_empty() {
             None
@@ -1597,6 +1667,8 @@ pub fn replay_thread_projection(
     let compaction_index = replay_thread_compaction_index(&compaction_timeline);
     let continuation_anchor_summary = verify_thread_continuation_anchors(turn_events);
     let continuation_anchor_ok = continuation_anchor_summary.is_none();
+    let notify_lsp_anchor_summary = verify_thread_notify_lsp_anchors(turn_events);
+    let notify_lsp_anchor_ok = notify_lsp_anchor_summary.is_none();
     let (latest_turn_id, latest_projection) = turn_events
         .iter()
         .rev()
@@ -1619,6 +1691,8 @@ pub fn replay_thread_projection(
         compaction_index,
         continuation_anchor_ok,
         continuation_anchor_summary,
+        notify_lsp_anchor_ok,
+        notify_lsp_anchor_summary,
     }
 }
 
@@ -2344,6 +2418,17 @@ mod tests {
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         assert!(verify_step_continuation_anchor(&events, 20).is_none());
         assert!(verify_step_continuation_anchor(&events, 22).is_none());
+    }
+
+    #[test]
+    fn verify_step_notify_lsp_anchor_on_write_batch_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/write_batch.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        assert!(verify_step_notify_lsp_anchor(&events, 1).is_none());
+        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        assert!(projection.notify_lsp_anchor_ok);
     }
 
     #[test]

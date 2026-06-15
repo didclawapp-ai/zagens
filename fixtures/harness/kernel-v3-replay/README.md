@@ -24,7 +24,8 @@ step-limit / loop-guard continuation events.
 Run: `cargo test -p zagens-core golden_replay`
 
 Thread replay API: `GET /v1/runtime/kernel-replay/thread/{thread_id}` returns
-`message_timeline` anchors. Optional `?session_message_count=N` adds structured
+`message_timeline` anchors, `continuation_anchor_ok` (when continuation events exist),
+and `notify_lsp_anchor_ok` (when tool batches ran). Optional `?session_message_count=N` adds structured
 `message_coverage` and `message_timeline_coverage` (session vs log counters and
 timeline anchor coherence). Optional `session_assistant_count` / `session_tool_result_count` / `session_text_user_count`
 enable role and memory-plane checks without loading session bodies. `message_plane_index` summarizes

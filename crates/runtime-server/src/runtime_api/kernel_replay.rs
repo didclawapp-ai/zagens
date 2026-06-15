@@ -18,6 +18,7 @@ use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage
 use crate::core::engine::kernel_message_memory_plane_shadow::record_message_memory_plane_check;
 use crate::core::engine::kernel_message_role_shadow::record_message_role_index_check;
 use crate::core::engine::kernel_message_timeline_shadow::record_timeline_coherence_check;
+use crate::core::engine::kernel_notify_lsp_anchor_shadow::record_notify_lsp_anchor_check;
 use zagens_runtime_adapters::persist::KernelEventWriter;
 use zagens_runtime_api::ResumeSessionKernelReplay;
 
@@ -131,6 +132,8 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     compaction_artifact_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_compaction_artifact_count: Option<u32>,
+    continuation_anchor_ok: bool,
+    notify_lsp_anchor_ok: bool,
     overall_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
@@ -172,6 +175,14 @@ pub(crate) struct KernelThreadReplayResponse {
     message_coverage: Option<KernelThreadMessageCoverage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message_timeline_coverage: Option<KernelThreadMessageTimelineCoverage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    continuation_anchor_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    continuation_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notify_lsp_anchor_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notify_lsp_anchor_summary: Option<String>,
     turns: Vec<KernelThreadTurnReplayEntry>,
 }
 
@@ -376,6 +387,11 @@ pub(crate) fn resume_session_kernel_replay_summary(
             .as_ref()
             .filter(|c| !c.continuation_anchor_ok)
             .and_then(|c| c.summary.clone()),
+        message_notify_lsp_anchor_ok: plane_coverage.as_ref().map(|c| c.notify_lsp_anchor_ok),
+        message_notify_lsp_anchor_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.notify_lsp_anchor_ok)
+            .and_then(|c| c.summary.clone()),
     })
 }
 
@@ -415,6 +431,9 @@ pub(crate) fn log_session_message_plane_checks(
     {
         record_continuation_anchor_check(cov.continuation_anchor_ok);
     }
+    if projection.message_stats.tool_call_planned_count > 0 {
+        record_notify_lsp_anchor_check(cov.notify_lsp_anchor_ok);
+    }
     if !cov.timeline_vs_session_ok
         || !cov.plane_depth_ok
         || !cov.role_index_ok
@@ -422,6 +441,7 @@ pub(crate) fn log_session_message_plane_checks(
         || !cov.compaction_depth_ok
         || !cov.compaction_artifact_ok
         || !cov.continuation_anchor_ok
+        || !cov.notify_lsp_anchor_ok
     {
         record_timeline_coherence_check(false);
     }
@@ -575,7 +595,9 @@ pub(crate) async fn get_kernel_thread_replay(
                 && cov.role_index_ok
                 && cov.memory_plane_user_ok
                 && cov.compaction_depth_ok
-                && cov.compaction_artifact_ok,
+                && cov.compaction_artifact_ok
+                && cov.continuation_anchor_ok
+                && cov.notify_lsp_anchor_ok,
         );
         KernelThreadMessageCoverage {
             session_message_count: cov.session_message_count,
@@ -614,9 +636,20 @@ pub(crate) async fn get_kernel_thread_replay(
         compaction_peak_session_depth_hint: cov.compaction_peak_session_depth_hint,
         compaction_artifact_ok: cov.compaction_artifact_ok,
         session_compaction_artifact_count: cov.session_compaction_artifact_count,
+        continuation_anchor_ok: cov.continuation_anchor_ok,
+        notify_lsp_anchor_ok: cov.notify_lsp_anchor_ok,
         overall_ok: cov.overall_ok,
         summary: cov.summary,
     });
+
+    let has_continuation = projection.message_stats.step_limit_continuation_count > 0
+        || projection.message_stats.loop_guard_continuation_count > 0;
+    if has_continuation {
+        record_continuation_anchor_check(projection.continuation_anchor_ok);
+    }
+    if projection.message_stats.tool_call_planned_count > 0 {
+        record_notify_lsp_anchor_check(projection.notify_lsp_anchor_ok);
+    }
 
     Ok(Json(KernelThreadReplayResponse {
         thread_id: report.thread_id,
@@ -632,6 +665,28 @@ pub(crate) async fn get_kernel_thread_replay(
         compaction_index,
         message_coverage,
         message_timeline_coverage,
+        continuation_anchor_ok: if has_continuation {
+            Some(projection.continuation_anchor_ok)
+        } else {
+            None
+        },
+        continuation_anchor_summary: if has_continuation && !projection.continuation_anchor_ok {
+            projection.continuation_anchor_summary.clone()
+        } else {
+            None
+        },
+        notify_lsp_anchor_ok: if projection.message_stats.tool_call_planned_count > 0 {
+            Some(projection.notify_lsp_anchor_ok)
+        } else {
+            None
+        },
+        notify_lsp_anchor_summary: if projection.message_stats.tool_call_planned_count > 0
+            && !projection.notify_lsp_anchor_ok
+        {
+            projection.notify_lsp_anchor_summary.clone()
+        } else {
+            None
+        },
         turns,
     }))
 }

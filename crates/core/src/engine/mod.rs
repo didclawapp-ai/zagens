@@ -142,7 +142,8 @@ pub use turn_machine::{
     verify_session_compaction_depth, verify_session_memory_plane_user_depth,
     verify_session_message_coverage, verify_session_message_plane_depth, verify_session_role_index,
     verify_step_continuation_anchor, verify_step_effect_parity, verify_step_model_message_anchor,
-    verify_thread_continuation_anchors, verify_timeline_vs_request_count,
+    verify_step_notify_lsp_anchor, verify_thread_continuation_anchors,
+    verify_thread_notify_lsp_anchors, verify_timeline_vs_request_count,
     verify_turn_replay_coherence,
 };
 pub use turn_port::TurnEnginePort;

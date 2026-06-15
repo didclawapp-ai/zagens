@@ -167,6 +167,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `verify_thread_continuation_anchors()` thread-level continuation replay check; timeline coverage adds `continuation_anchor_ok`.
   - `kernel_continuation_anchor_shadow` + `GET /v1/runtime/kernel-shadow` `continuation_anchor_shadow`; resume exposes continuation anchor hints.
 
+- **Runtime (kernel-v2 Phase 3b batch 6s — NotifyLsp interpreter + thread replay anchors):**
+  - `EffectInterpreter` executes `NotifyLsp` via `flush_pending_lsp_diagnostics()` (v3 step + standalone paths).
+  - `verify_step_notify_lsp_anchor()` / `verify_thread_notify_lsp_anchors()` cross-check edit-tool steps vs replay `NotifyLsp` effects.
+  - Thread replay API exposes `continuation_anchor_ok` / `notify_lsp_anchor_ok`; timeline coverage includes both anchor fields.
+  - `kernel_notify_lsp_anchor_shadow` + `GET /v1/runtime/kernel-shadow` `notify_lsp_anchor_shadow`; v3 step shadow checks notify-LSP anchors.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

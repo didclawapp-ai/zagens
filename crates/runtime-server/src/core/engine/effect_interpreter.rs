@@ -230,6 +230,11 @@ impl<'a> EffectInterpreter<'a> {
                     .await;
                 InterpretOutcome::Executed
             }
+            Effect::NotifyLsp { tool_name } => {
+                let _ = tool_name;
+                self.engine.flush_pending_lsp_diagnostics().await;
+                InterpretOutcome::Executed
+            }
             _ => self.interpret(effect).await,
         }
     }
@@ -325,7 +330,11 @@ impl<'a> EffectInterpreter<'a> {
                 self.engine.run_compaction_effect().await;
                 InterpretOutcome::Executed
             }
-            Effect::NotifyLsp { .. } => InterpretOutcome::NotImplemented,
+            Effect::NotifyLsp { tool_name } => {
+                let _ = tool_name;
+                self.engine.flush_pending_lsp_diagnostics().await;
+                InterpretOutcome::Executed
+            }
             Effect::Sleep { .. } => InterpretOutcome::NotImplemented,
             _ => InterpretOutcome::NotImplemented,
         }

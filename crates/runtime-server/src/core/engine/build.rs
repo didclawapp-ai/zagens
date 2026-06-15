@@ -50,6 +50,9 @@ use crate::core::engine::kernel_message_role_shadow::{
 use crate::core::engine::kernel_message_timeline_shadow::{
     KernelMessageTimelineShadowStats, register_global_message_timeline_shadow_stats,
 };
+use crate::core::engine::kernel_notify_lsp_anchor_shadow::{
+    KernelNotifyLspAnchorShadowStats, register_global_notify_lsp_anchor_shadow_stats,
+};
 use crate::core::session::Session;
 use crate::hooks::HookExecutor;
 use crate::long_horizon::LongHorizonSessionState;
@@ -280,6 +283,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         ));
         register_global_continuation_anchor_shadow_stats(std::sync::Arc::new(
             KernelContinuationAnchorShadowStats::default(),
+        ));
+        register_global_notify_lsp_anchor_shadow_stats(std::sync::Arc::new(
+            KernelNotifyLspAnchorShadowStats::default(),
         ));
     }
     if kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop() {
