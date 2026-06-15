@@ -135,9 +135,18 @@ pub(crate) fn build_allowed_tools(
                 "Custom sub-agent requires a non-empty allowed_tools list"
             ));
         }
+        // When an explicit list is provided for a capped role, intersect with
+        // the role's hard cap so callers cannot smuggle write/shell tools in.
         let narrowed = match agent_type {
             SubAgentType::Explore | SubAgentType::Review => {
                 let cap = read_only_tool_cap(agent_type);
+                deduped
+                    .into_iter()
+                    .filter(|t| cap.contains(&t.as_str()))
+                    .collect::<Vec<_>>()
+            }
+            SubAgentType::Verifier => {
+                let cap = verifier_tool_cap();
                 deduped
                     .into_iter()
                     .filter(|t| cap.contains(&t.as_str()))
@@ -159,12 +168,25 @@ pub(crate) fn build_allowed_tools(
         ));
     }
 
-    // CRAFT P3: hard tool clipping for read-only roles.
-    // Explore and Review return explicit narrow lists — no write files,
-    // no shell. Other types keep full inheritance.
+    // C5: hard tool clipping for CRAFT roles.
+    //
+    // - Explore: read-only (no shell, no write) — pure observer.
+    // - Review: read-only (no shell, no write) — identifies issues and
+    //   annotates `[verify: cmd]` tags; does not run commands itself
+    //   (C3 gate enforces evidence markers; execution is Verifier's job).
+    // - Verifier: read + exec_shell + run_tests (no write tools, no
+    //   agent_spawn) — runs the `[verify:]` commands the Reviewer prescribed.
+    // - Implementer, General, and others: full inheritance (write + shell
+    //   needed for coding work; parent's PolicyEngine gates approval).
     match agent_type {
         SubAgentType::Explore | SubAgentType::Review => Ok(Some(
             read_only_tool_cap(agent_type)
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+        )),
+        SubAgentType::Verifier => Ok(Some(
+            verifier_tool_cap()
                 .iter()
                 .map(|s| (*s).to_string())
                 .collect(),
@@ -185,17 +207,42 @@ pub(crate) fn read_only_tool_cap(agent_type: &SubAgentType) -> &'static [&'stati
             "web_search",
             "note",
         ],
+        // C5: Reviewer is truly read-only — identifies issues and writes
+        // `[verify: cmd]` annotations but does not execute commands.
+        // `exec_shell` removed so Reviewer cannot run arbitrary code.
+        // C3 evidence gate (enforce_reviewer_evidence_gate) already requires
+        // BLOCKER verdicts to carry a `[verify:]` marker; execution is the
+        // Verifier's responsibility.
         SubAgentType::Review => &[
             "list_dir",
             "read_file",
             "grep_files",
             "glob_files",
             "file_search",
-            "exec_shell",
             "note",
         ],
         _ => &[],
     }
+}
+
+/// Explicit tool cap for Verifier sub-agents (C5).
+///
+/// Verifier runs the `[verify: cmd]` commands prescribed by the Reviewer.
+/// It needs shell execution and read access, but must not modify source
+/// files (no `write_file` / `edit_file` / `apply_patch`) and must not
+/// spawn further sub-agents (capability attenuation chain ends here).
+pub(crate) fn verifier_tool_cap() -> &'static [&'static str] {
+    &[
+        "list_dir",
+        "read_file",
+        "grep_files",
+        "glob_files",
+        "file_search",
+        "exec_shell",
+        "run_tests",
+        "diagnostics",
+        "note",
+    ]
 }
 
 pub(crate) fn summarize_subagent_result(result: &SubAgentResult) -> String {

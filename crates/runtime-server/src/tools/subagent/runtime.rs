@@ -187,6 +187,22 @@ impl SubAgentRuntime {
         self
     }
 
+    /// Return the configured model override for an agent type from `role_models`,
+    /// or `None` if the parent model should be used unchanged.
+    ///
+    /// Lookup order: exact type key → `"default"` → `None`.
+    /// Used by programmatic (executor) spawn paths that bypass the normal
+    /// `agent_spawn` tool flow to ensure role-specific model overrides
+    /// (e.g. `[subagents] verifier_model`) are honoured even for C1 auto-spawns.
+    #[must_use]
+    pub fn role_model_override(&self, agent_type: &SubAgentType) -> Option<String> {
+        let type_key = agent_type.as_str();
+        self.role_models
+            .get(type_key)
+            .or_else(|| self.role_models.get("default"))
+            .cloned()
+    }
+
     /// Preserve whether the parent session is using per-turn model routing.
     #[must_use]
     pub fn with_auto_model(mut self, auto_model: bool) -> Self {

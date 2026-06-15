@@ -236,6 +236,9 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
                 let options = super::types::SubAgentSpawnOptions {
                     task_id: Some(task_id.to_string()),
                     nickname: Some(format!("auto-fix round {fix_round}")),
+                    // C10: honour [subagents] implementer_model / default_model for
+                    // programmatic auto-spawns (same as agent_spawn tool lookup).
+                    model: task.runtime.role_model_override(&SubAgentType::Implementer),
                     ..Default::default()
                 };
                 {
@@ -281,6 +284,8 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
                         let options = super::types::SubAgentSpawnOptions {
                             task_id: Some(task_id.to_string()),
                             nickname: Some(format!("gate-fix round {fix_round}")),
+                            // C10: honour role-specific model for gate-triggered re-implements.
+                            model: task.runtime.role_model_override(&SubAgentType::Implementer),
                             ..Default::default()
                         };
                         {

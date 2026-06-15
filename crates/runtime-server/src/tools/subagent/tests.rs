@@ -1104,6 +1104,116 @@ fn build_allowed_tools_custom_requires_explicit_list() {
     );
 }
 
+// C5: capability attenuation tests
+
+#[test]
+fn build_allowed_tools_review_has_no_exec_shell() {
+    // C5: Reviewer is truly read-only — identifies issues and writes
+    // `[verify: cmd]` annotations but does not execute commands.
+    let result = build_allowed_tools(&SubAgentType::Review, None, true).unwrap();
+    let tools = result.expect("Review should return explicit cap");
+    assert!(
+        tools.iter().any(|t| t == "read_file"),
+        "should have read_file"
+    );
+    assert!(
+        tools.iter().any(|t| t == "grep_files"),
+        "should have grep_files"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "exec_shell"),
+        "Review must NOT have exec_shell"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "write_file"),
+        "Review must NOT have write_file"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "apply_patch"),
+        "Review must NOT have apply_patch"
+    );
+}
+
+#[test]
+fn build_allowed_tools_review_explicit_cannot_add_exec_shell() {
+    // Even with an explicit list, Review cap blocks exec_shell (C5).
+    let result = build_allowed_tools(
+        &SubAgentType::Review,
+        Some(vec!["exec_shell".to_string(), "read_file".to_string()]),
+        true,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(
+        !result.iter().any(|t| t == "exec_shell"),
+        "exec_shell must be blocked for Review"
+    );
+    assert!(
+        result.iter().any(|t| t == "read_file"),
+        "read_file must pass through"
+    );
+}
+
+#[test]
+fn build_allowed_tools_verifier_has_exec_shell_but_no_write() {
+    // C5: Verifier runs [verify:] commands — needs exec_shell but must
+    // not write source files or spawn sub-agents.
+    let result = build_allowed_tools(&SubAgentType::Verifier, None, true).unwrap();
+    let tools = result.expect("Verifier should return explicit cap");
+    assert!(
+        tools.iter().any(|t| t == "exec_shell"),
+        "Verifier needs exec_shell"
+    );
+    assert!(
+        tools.iter().any(|t| t == "read_file"),
+        "Verifier needs read_file"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "write_file"),
+        "Verifier must NOT have write_file"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "edit_file"),
+        "Verifier must NOT have edit_file"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "apply_patch"),
+        "Verifier must NOT have apply_patch"
+    );
+    assert!(
+        !tools.iter().any(|t| t == "agent_spawn"),
+        "Verifier must NOT have agent_spawn"
+    );
+}
+
+#[test]
+fn build_allowed_tools_verifier_explicit_cannot_add_write() {
+    // Even with an explicit list, Verifier cap blocks write tools (C5).
+    let result = build_allowed_tools(
+        &SubAgentType::Verifier,
+        Some(vec![
+            "write_file".to_string(),
+            "exec_shell".to_string(),
+            "read_file".to_string(),
+        ]),
+        true,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(
+        !result.iter().any(|t| t == "write_file"),
+        "write_file must be blocked for Verifier"
+    );
+    assert!(
+        result.iter().any(|t| t == "exec_shell"),
+        "exec_shell must pass through"
+    );
+    assert!(
+        result.iter().any(|t| t == "read_file"),
+        "read_file must pass through"
+    );
+}
+
 #[test]
 fn build_allowed_tools_explicit_list_returned_as_some() {
     let explicit = vec!["read_file".to_string(), "list_dir".to_string()];
