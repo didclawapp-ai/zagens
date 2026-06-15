@@ -1,13 +1,15 @@
 //! Kernel turn/thread replay API — load persisted events and verify coherence (P3B-6b/6c).
 
 use axum::Json;
-use axum::extract::{Path, State};
-use serde::Serialize;
+use axum::extract::{Path, Query, State};
+use serde::{Deserialize, Serialize};
 
 use zagens_core::engine::turn_machine::{
-    ThreadReplayProjection, replay_thread_projection, replay_turn_projection,
-    verify_session_message_coverage, verify_turn_replay_coherence,
+    ThreadReplayProjection, build_session_message_coverage, replay_thread_projection,
+    replay_turn_projection, verify_turn_replay_coherence,
 };
+
+use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
 use zagens_runtime_adapters::persist::KernelEventWriter;
 use zagens_runtime_api::ResumeSessionKernelReplay;
 
@@ -54,6 +56,22 @@ pub(crate) struct KernelThreadMessageReplayStats {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub(crate) struct KernelThreadMessageTimelineEntry {
+    turn_id: String,
+    step_idx: u32,
+    block_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct KernelThreadMessageCoverage {
+    session_message_count: usize,
+    kernel_model_message_count: u32,
+    coverage_ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct KernelThreadLatestProjection {
     turn_id: String,
     step_idx: u32,
@@ -72,7 +90,16 @@ pub(crate) struct KernelThreadReplayResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     latest_projection: Option<KernelThreadLatestProjection>,
     message_stats: KernelThreadMessageReplayStats,
+    message_timeline: Vec<KernelThreadMessageTimelineEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message_coverage: Option<KernelThreadMessageCoverage>,
     turns: Vec<KernelThreadTurnReplayEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct KernelThreadReplayQuery {
+    /// Optional session JSON message count for coverage comparison (observability).
+    pub session_message_count: Option<usize>,
 }
 
 fn turn_replay_response(
@@ -147,6 +174,8 @@ pub(crate) fn resume_session_kernel_replay_summary(
     if let Some(count) = session_message_count {
         log_session_message_coverage(count, &projection);
     }
+    let coverage = session_message_count
+        .and_then(|count| build_session_message_coverage(count, &projection.message_stats));
     let report = projection.report;
     Some(ResumeSessionKernelReplay {
         turn_count: report.turn_count,
@@ -159,6 +188,8 @@ pub(crate) fn resume_session_kernel_replay_summary(
         active_tool_count: Some(projection.latest_projection.active_tool_names.len() as u32),
         model_message_count: Some(projection.message_stats.model_message_count),
         tool_call_planned_count: Some(projection.message_stats.tool_call_planned_count),
+        message_coverage_ok: coverage.as_ref().map(|c| c.coverage_ok),
+        message_coverage_summary: coverage.and_then(|c| c.summary),
     })
 }
 
@@ -167,9 +198,13 @@ pub(crate) fn log_session_message_coverage(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
 ) {
-    if let Some(summary) =
-        verify_session_message_coverage(session_message_count, &projection.message_stats)
-    {
+    let Some(coverage) =
+        build_session_message_coverage(session_message_count, &projection.message_stats)
+    else {
+        return;
+    };
+    record_message_coverage_check(coverage.coverage_ok);
+    if let Some(summary) = coverage.summary {
         eprintln!(
             "[resume-session] kernel message coverage diff (thread {}): {summary}",
             projection.report.thread_id
@@ -196,6 +231,7 @@ pub(crate) async fn get_kernel_turn_replay(
 pub(crate) async fn get_kernel_thread_replay(
     State(state): State<RuntimeApiState>,
     Path(thread_id): Path<String>,
+    Query(query): Query<KernelThreadReplayQuery>,
 ) -> Result<Json<KernelThreadReplayResponse>, ApiError> {
     let manager = state.runtime_threads.clone();
     let thread_id_for_load = thread_id.clone();
@@ -238,6 +274,27 @@ pub(crate) async fn get_kernel_thread_replay(
         steer_injection_count: projection.message_stats.steer_injection_count,
         compaction_artifact_count: projection.message_stats.compaction_artifact_count,
     };
+    let message_timeline = projection
+        .message_timeline
+        .into_iter()
+        .map(|entry| KernelThreadMessageTimelineEntry {
+            turn_id: entry.turn_id,
+            step_idx: entry.step_idx,
+            block_count: entry.block_count,
+        })
+        .collect();
+    let message_coverage = query
+        .session_message_count
+        .and_then(|count| build_session_message_coverage(count, &projection.message_stats))
+        .map(|cov| {
+            record_message_coverage_check(cov.coverage_ok);
+            KernelThreadMessageCoverage {
+                session_message_count: cov.session_message_count,
+                kernel_model_message_count: cov.kernel_model_message_count,
+                coverage_ok: cov.coverage_ok,
+                summary: cov.summary,
+            }
+        });
 
     Ok(Json(KernelThreadReplayResponse {
         thread_id: report.thread_id,
@@ -247,6 +304,8 @@ pub(crate) async fn get_kernel_thread_replay(
         all_coherent: report.all_coherent,
         latest_projection,
         message_stats,
+        message_timeline,
+        message_coverage,
         turns,
     }))
 }

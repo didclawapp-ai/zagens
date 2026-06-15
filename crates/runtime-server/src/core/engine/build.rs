@@ -29,6 +29,9 @@ use super::kernel_replay_shadow::KernelReplayShadow;
 use super::runtime_ext::EngineRuntimeExt;
 use super::types::EngineConfig;
 use crate::core::capacity::CapacityController;
+use crate::core::engine::kernel_message_coverage_shadow::{
+    KernelMessageCoverageShadowStats, register_global_message_coverage_shadow_stats,
+};
 use crate::core::session::Session;
 use crate::hooks::HookExecutor;
 use crate::long_horizon::LongHorizonSessionState;
@@ -239,6 +242,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         super::kernel_replay_shadow::register_global_replay_shadow_stats(
             kernel_replay_shadow.stats.clone(),
         );
+        register_global_message_coverage_shadow_stats(std::sync::Arc::new(
+            KernelMessageCoverageShadowStats::default(),
+        ));
     }
     if kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop() {
         super::kernel_v3_effect_shadow::register_global_v3_effect_shadow_stats(

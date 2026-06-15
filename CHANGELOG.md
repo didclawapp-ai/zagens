@@ -111,6 +111,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (kernel-v2 Phase 3b batch 6h — v3 step effect-plan driver):**
   - `EffectInterpreter::run_v3_turn_step()` drives IO via `plan_v3_step_effects()` + `interpret_v3_step_effect()` instead of inline phase calls.
   - Per-tool `ExecuteBatch` plan entries collapse to one runtime batch while preserving replay parity counts.
+- **Runtime (kernel-v2 Phase 3b batch 6i — message timeline + structured coverage):**
+  - `replay_thread_message_timeline()` rebuilds per-step `ModelMessage` anchors (turn, step, block count) from kernel logs.
+  - `SessionMessageCoverage` + `build_session_message_coverage()` return structured session-vs-log diffs (resume + thread replay API).
+  - `GET /v1/runtime/kernel-replay/thread/{id}?session_message_count=N` adds `message_timeline` and optional `message_coverage`.
+  - `ResumeSessionResponse.kernel_replay` adds `message_coverage_ok` / `message_coverage_summary`.
+- **Runtime (kernel-v2 Phase 3b batch 6j — coverage shadow + resume message hints):**
+  - `kernel_message_coverage_shadow` records session-vs-log coverage checks at resume / thread replay.
+  - `GET /v1/runtime/kernel-shadow` adds `message_coverage_shadow` when `[kernel] machine = "shadow"` or `"v3"`.
+  - `KernelResumeHints.kernel_model_message_count` restored from thread projection on engine load.
 
 ### Removed
 

@@ -732,6 +732,25 @@ pub struct ThreadReplayProjection {
     pub latest_turn_id: Option<String>,
     pub latest_projection: TurnKernelProjection,
     pub message_stats: ThreadMessageReplayStats,
+    /// Per-step model message anchors from the log (block counts only; text stays in session store).
+    pub message_timeline: Vec<ThreadMessageTimelineEntry>,
+}
+
+/// One `ModelMessage` anchor rebuildable from kernel logs (no message body).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadMessageTimelineEntry {
+    pub turn_id: String,
+    pub step_idx: u32,
+    pub block_count: u32,
+}
+
+/// Structured session JSON vs kernel log message coverage (observability).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionMessageCoverage {
+    pub session_message_count: usize,
+    pub kernel_model_message_count: u32,
+    pub coverage_ok: bool,
+    pub summary: Option<String>,
 }
 
 /// Aggregated message-plane counters rebuildable from kernel event logs (not full text).
@@ -772,23 +791,66 @@ pub fn replay_thread_message_stats(
     stats
 }
 
+/// Rebuild model-message anchors across a thread from persisted kernel events.
+#[must_use]
+pub fn replay_thread_message_timeline(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> Vec<ThreadMessageTimelineEntry> {
+    let mut timeline = Vec::new();
+    for (_, events) in turn_events {
+        for event in events {
+            if let KernelEvent::ModelMessage {
+                turn_id,
+                step_idx,
+                block_count,
+                ..
+            } = event
+            {
+                timeline.push(ThreadMessageTimelineEntry {
+                    turn_id: turn_id.clone(),
+                    step_idx: *step_idx,
+                    block_count: *block_count,
+                });
+            }
+        }
+    }
+    timeline
+}
+
+/// Best-effort coverage check: session JSON message count vs kernel log counters (observability).
+#[must_use]
+pub fn build_session_message_coverage(
+    session_message_count: usize,
+    stats: &ThreadMessageReplayStats,
+) -> Option<SessionMessageCoverage> {
+    if stats.model_message_count == 0 {
+        return None;
+    }
+    let kernel_model_message_count = stats.model_message_count;
+    let expected_min = kernel_model_message_count as usize;
+    let coverage_ok = session_message_count >= expected_min;
+    let summary = if coverage_ok {
+        None
+    } else {
+        Some(format!(
+            "session messages ({session_message_count}) below kernel model_message events ({expected_min})"
+        ))
+    };
+    Some(SessionMessageCoverage {
+        session_message_count,
+        kernel_model_message_count,
+        coverage_ok,
+        summary,
+    })
+}
+
 /// Best-effort coverage check: session JSON message count vs kernel log counters (observability).
 #[must_use]
 pub fn verify_session_message_coverage(
     session_message_count: usize,
     stats: &ThreadMessageReplayStats,
 ) -> Option<String> {
-    if stats.model_message_count == 0 {
-        return None;
-    }
-    // Assistant turns in session often pair with model messages; allow slack for system/user-only rows.
-    let expected_min = stats.model_message_count as usize;
-    if session_message_count >= expected_min {
-        return None;
-    }
-    Some(format!(
-        "session messages ({session_message_count}) below kernel model_message events ({expected_min})"
-    ))
+    build_session_message_coverage(session_message_count, stats).and_then(|c| c.summary)
 }
 
 /// Build thread replay report and the latest non-empty turn projection (resume substrate).
@@ -799,6 +861,7 @@ pub fn replay_thread_projection(
 ) -> ThreadReplayProjection {
     let report = build_thread_replay_report(thread_id, turn_events);
     let message_stats = replay_thread_message_stats(turn_events);
+    let message_timeline = replay_thread_message_timeline(turn_events);
     let (latest_turn_id, latest_projection) = turn_events
         .iter()
         .rev()
@@ -815,6 +878,7 @@ pub fn replay_thread_projection(
         latest_turn_id,
         latest_projection,
         message_stats,
+        message_timeline,
     }
 }
 
@@ -826,6 +890,8 @@ pub struct KernelResumeHints {
     pub max_steps: u32,
     pub scratchpad_summary_injected: bool,
     pub active_tool_count: u32,
+    /// Aggregated `ModelMessage` count on the linked thread (log substrate; text stays in session store).
+    pub kernel_model_message_count: u32,
 }
 
 /// Extract resume hints from the latest turn projection (log-driven resume substrate).
@@ -841,7 +907,18 @@ pub fn kernel_resume_hints_from_projection(proj: &TurnKernelProjection) -> Kerne
         max_steps: proj.max_steps,
         scratchpad_summary_injected: proj.scratchpad_summary_injected,
         active_tool_count: proj.active_tool_names.len() as u32,
+        kernel_model_message_count: 0,
     }
+}
+
+/// Resume hints from thread projection plus aggregated message counters.
+#[must_use]
+pub fn kernel_resume_hints_from_thread_projection(
+    projection: &ThreadReplayProjection,
+) -> KernelResumeHints {
+    let mut hints = kernel_resume_hints_from_projection(&projection.latest_projection);
+    hints.kernel_model_message_count = projection.message_stats.model_message_count;
+    hints
 }
 
 /// Replay all IO effects implied by a turn's event log via [`ReplayTurnMachine`].
@@ -1286,6 +1363,24 @@ mod tests {
         };
         assert!(verify_session_message_coverage(3, &stats).is_none());
         assert!(verify_session_message_coverage(1, &stats).is_some());
+        let cov = build_session_message_coverage(1, &stats).expect("coverage");
+        assert!(!cov.coverage_ok);
+        assert!(cov.summary.is_some());
+        let ok = build_session_message_coverage(3, &stats).expect("coverage");
+        assert!(ok.coverage_ok);
+        assert!(ok.summary.is_none());
+    }
+
+    #[test]
+    fn replay_thread_message_timeline_on_pure_read_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let timeline = replay_thread_message_timeline(&[("t1".into(), events)]);
+        assert_eq!(timeline.len(), 1);
+        assert_eq!(timeline[0].step_idx, 1);
+        assert_eq!(timeline[0].block_count, 2);
     }
 
     #[test]

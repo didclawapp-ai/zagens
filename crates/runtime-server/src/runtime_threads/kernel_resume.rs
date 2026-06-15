@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use zagens_core::engine::KernelResumeHints;
 use zagens_core::engine::Op;
-use zagens_core::engine::turn_machine::kernel_resume_hints_from_projection;
+use zagens_core::engine::turn_machine::kernel_resume_hints_from_thread_projection;
 
 use crate::core::engine::EngineHandle;
 use crate::runtime_api::kernel_replay::collect_thread_kernel_replay;
@@ -19,9 +19,7 @@ pub(crate) fn load_kernel_resume_hints(
     if projection.report.turns_with_events == 0 {
         return None;
     }
-    Some(kernel_resume_hints_from_projection(
-        &projection.latest_projection,
-    ))
+    Some(kernel_resume_hints_from_thread_projection(&projection))
 }
 
 pub(crate) async fn push_kernel_resume_to_engine(

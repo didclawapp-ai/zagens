@@ -17,3 +17,7 @@ array of tagged `KernelEvent` records (same shape as `kernel_events.payload`).
 | `deferred_activation.json` | Deferred tool promotion without tool batch |
 
 Run: `cargo test -p zagens-core golden_replay`
+
+Thread replay API: `GET /v1/runtime/kernel-replay/thread/{thread_id}` returns
+`message_timeline` anchors. Optional `?session_message_count=N` adds structured
+`message_coverage` when comparing session JSON row count to kernel log counters.

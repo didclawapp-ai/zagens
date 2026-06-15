@@ -88,6 +88,7 @@ impl KernelTurnHost for Engine {
             max_steps = hints.max_steps,
             scratchpad_summary_injected = hints.scratchpad_summary_injected,
             active_tool_count = hints.active_tool_count,
+            kernel_model_message_count = hints.kernel_model_message_count,
             "restored kernel turn frame from event log"
         );
     }

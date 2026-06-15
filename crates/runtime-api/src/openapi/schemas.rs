@@ -46,6 +46,10 @@ pub struct ResumeSessionKernelReplay {
     pub model_message_count: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_planned_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_coverage_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_coverage_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
