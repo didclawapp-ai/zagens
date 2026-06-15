@@ -29,6 +29,9 @@ use super::kernel_replay_shadow::KernelReplayShadow;
 use super::runtime_ext::EngineRuntimeExt;
 use super::types::EngineConfig;
 use crate::core::capacity::CapacityController;
+use crate::core::engine::kernel_compaction_artifact_shadow::{
+    KernelCompactionArtifactShadowStats, register_global_compaction_artifact_shadow_stats,
+};
 use crate::core::engine::kernel_message_compaction_shadow::{
     KernelMessageCompactionShadowStats, register_global_message_compaction_shadow_stats,
 };
@@ -268,6 +271,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         ));
         register_global_message_compaction_shadow_stats(std::sync::Arc::new(
             KernelMessageCompactionShadowStats::default(),
+        ));
+        register_global_compaction_artifact_shadow_stats(std::sync::Arc::new(
+            KernelCompactionArtifactShadowStats::default(),
         ));
     }
     if kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop() {

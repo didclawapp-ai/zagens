@@ -31,6 +31,7 @@ mod engine_helpers;
 mod engine_v3_step;
 mod handle;
 mod hook_dispatch;
+pub(crate) mod kernel_compaction_artifact_shadow;
 pub(crate) mod kernel_effect_shadow;
 pub(crate) mod kernel_guard_shadow;
 pub(crate) mod kernel_memory_shadow;

@@ -17,6 +17,7 @@ use std::collections::HashSet;
 use tokio::sync::mpsc;
 
 use crate::chat::{ContentBlock, Message};
+use crate::compaction::CompactionArtifact;
 use crate::engine::kernel_event::{CapacityAction, KernelEvent, TurnOutcome};
 use crate::models::Usage;
 use crate::turn::{TurnLoopMode, TurnOutcomeStatus};
@@ -763,6 +764,90 @@ pub struct ThreadCompactionReplayIndex {
     pub peak_session_depth_hint: u32,
 }
 
+/// Session-store compaction row index (half-open `[start, end)` ranges).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionCompactionArtifactEntry {
+    pub artifact_id: String,
+    pub replaced_start: u32,
+    pub replaced_end: u32,
+    pub messages_removed_count: u32,
+    pub summary_token_count: u32,
+}
+
+/// Build session compaction index rows from persisted SQLite artifacts.
+#[must_use]
+pub fn build_session_compaction_artifact_index(
+    artifacts: &[CompactionArtifact],
+) -> Vec<SessionCompactionArtifactEntry> {
+    artifacts
+        .iter()
+        .map(|artifact| SessionCompactionArtifactEntry {
+            artifact_id: artifact.id.clone(),
+            replaced_start: artifact.replaced_start as u32,
+            replaced_end: artifact.replaced_end as u32,
+            messages_removed_count: artifact.replaced_count() as u32,
+            summary_token_count: artifact.summary_tokens,
+        })
+        .collect()
+}
+
+/// Verify kernel log compaction anchors match session-store artifact metadata.
+#[must_use]
+pub fn verify_compaction_artifacts_vs_kernel_timeline(
+    kernel: &[ThreadCompactionReplayEntry],
+    session: &[SessionCompactionArtifactEntry],
+) -> Option<String> {
+    if kernel.is_empty() && session.is_empty() {
+        return None;
+    }
+    if kernel.len() != session.len() {
+        return Some(format!(
+            "kernel compaction events ({}) != session artifacts ({})",
+            kernel.len(),
+            session.len()
+        ));
+    }
+    let mut issues = Vec::new();
+    for (k, s) in kernel.iter().zip(session.iter()) {
+        if k.artifact_id != s.artifact_id {
+            issues.push(format!(
+                "artifact id mismatch kernel={} session={}",
+                k.artifact_id, s.artifact_id
+            ));
+        }
+        if k.replaced_from != s.replaced_start {
+            issues.push(format!(
+                "artifact {} replaced_start kernel={} session={}",
+                k.artifact_id, k.replaced_from, s.replaced_start
+            ));
+        }
+        let kernel_end_exclusive = k.replaced_to.saturating_add(1);
+        if kernel_end_exclusive != s.replaced_end {
+            issues.push(format!(
+                "artifact {} replaced_end kernel={} session={}",
+                k.artifact_id, kernel_end_exclusive, s.replaced_end
+            ));
+        }
+        if k.messages_removed_count != s.messages_removed_count {
+            issues.push(format!(
+                "artifact {} removed_count kernel={} session={}",
+                k.artifact_id, k.messages_removed_count, s.messages_removed_count
+            ));
+        }
+        if k.summary_token_count != s.summary_token_count {
+            issues.push(format!(
+                "artifact {} summary_tokens kernel={} session={}",
+                k.artifact_id, k.summary_token_count, s.summary_token_count
+            ));
+        }
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
 /// One `ModelMessage` anchor rebuildable from kernel logs (no message body).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThreadMessageTimelineEntry {
@@ -1103,6 +1188,35 @@ pub fn verify_step_model_message_anchor(
     None
 }
 
+/// Verify continuation steps replay an `InjectSteer` effect (event-driven v3 substrate).
+#[must_use]
+pub fn verify_step_continuation_anchor(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> Option<String> {
+    let step_events = events_for_step(turn_events, step_idx);
+    let has_continuation = step_events.iter().any(|event| {
+        matches!(
+            event,
+            KernelEvent::StepLimitContinuation { .. } | KernelEvent::LoopGuardContinuation { .. }
+        )
+    });
+    if !has_continuation {
+        return None;
+    }
+    let effects = replay_step_effects(turn_events, step_idx);
+    if effects
+        .iter()
+        .any(|effect| matches!(effect, Effect::InjectSteer { .. }))
+    {
+        None
+    } else {
+        Some(format!(
+            "step {step_idx} has continuation events but no InjectSteer in step replay chain"
+        ))
+    }
+}
+
 /// Count message-plane events across all turns on a thread.
 #[must_use]
 pub fn replay_thread_message_stats(
@@ -1273,6 +1387,8 @@ pub struct SessionMessageTimelineCoverage {
     pub compaction_messages_removed_estimate: u32,
     pub compaction_restored_session_estimate: u32,
     pub compaction_peak_session_depth_hint: u32,
+    pub compaction_artifact_ok: bool,
+    pub session_compaction_artifact_count: Option<u32>,
     pub overall_ok: bool,
     pub summary: Option<String>,
 }
@@ -1300,6 +1416,7 @@ pub fn build_session_message_timeline_coverage(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
     role_index: Option<&SessionMessageRoleIndex>,
+    session_compaction: Option<&[SessionCompactionArtifactEntry]>,
 ) -> Option<SessionMessageTimelineCoverage> {
     let stats = &projection.message_stats;
     let timeline = &projection.message_timeline;
@@ -1336,6 +1453,12 @@ pub fn build_session_message_timeline_coverage(
             .is_none();
     let compaction_restored_session_estimate =
         session_message_count as u32 + compaction_index.messages_removed_estimate;
+    let compaction_artifact_ok = session_compaction
+        .map(|session| {
+            verify_compaction_artifacts_vs_kernel_timeline(&projection.compaction_timeline, session)
+                .is_none()
+        })
+        .unwrap_or(true);
     let overall_ok = coherence_ok
         && coverage_ok
         && timeline_vs_session_ok
@@ -1343,7 +1466,8 @@ pub fn build_session_message_timeline_coverage(
         && plane_depth_ok
         && role_index_ok
         && memory_plane_user_ok
-        && compaction_depth_ok;
+        && compaction_depth_ok
+        && compaction_artifact_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -1375,6 +1499,14 @@ pub fn build_session_message_timeline_coverage(
         }
     }
 
+    if let Some(session) = session_compaction {
+        if let Some(s) =
+            verify_compaction_artifacts_vs_kernel_timeline(&projection.compaction_timeline, session)
+        {
+            summaries.push(s);
+        }
+    }
+
     Some(SessionMessageTimelineCoverage {
         session_message_count,
         kernel_model_message_count: stats.model_message_count,
@@ -1398,6 +1530,8 @@ pub fn build_session_message_timeline_coverage(
         compaction_messages_removed_estimate: compaction_index.messages_removed_estimate,
         compaction_restored_session_estimate,
         compaction_peak_session_depth_hint: compaction_index.peak_session_depth_hint,
+        compaction_artifact_ok,
+        session_compaction_artifact_count: session_compaction.map(|s| s.len() as u32),
         overall_ok,
         summary: if summaries.is_empty() {
             None
@@ -1975,7 +2109,8 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read fixture");
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         let projection = replay_thread_projection("t1", &[("t1".into(), events.clone())]);
-        let cov = build_session_message_timeline_coverage(3, &projection, None).expect("coverage");
+        let cov =
+            build_session_message_timeline_coverage(3, &projection, None, None).expect("coverage");
         assert!(cov.overall_ok);
         assert!(cov.plane_depth_ok);
         assert_eq!(cov.estimated_min_session_messages, 2);
@@ -2022,7 +2157,7 @@ mod tests {
             ..role_index
         };
         assert!(verify_session_role_index(&thin, &kernel).is_some());
-        let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index))
+        let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index), None)
             .expect("coverage");
         assert!(cov.role_index_ok);
         assert!(cov.overall_ok);
@@ -2088,7 +2223,7 @@ mod tests {
             ..role_index
         };
         assert!(verify_session_memory_plane_user_depth(&thin, &memory).is_some());
-        let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index))
+        let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index), None)
             .expect("coverage");
         assert!(cov.memory_plane_user_ok);
     }
@@ -2153,6 +2288,47 @@ mod tests {
         let memory = replay_kernel_memory_plane_user_estimate(&stats);
         assert_eq!(memory.min_continuation_user_messages, 2);
         assert_eq!(memory.min_memory_injected_user_messages, 3);
+    }
+
+    #[test]
+    fn verify_step_continuation_anchor_on_lht_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/lht_continue.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        assert!(verify_step_continuation_anchor(&events, 20).is_none());
+        assert!(verify_step_continuation_anchor(&events, 22).is_none());
+    }
+
+    #[test]
+    fn verify_compaction_artifacts_vs_kernel_timeline_on_manual_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/manual_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        let session = vec![SessionCompactionArtifactEntry {
+            artifact_id: "art-manual-001".into(),
+            replaced_start: 4,
+            replaced_end: 20,
+            messages_removed_count: 16,
+            summary_token_count: 512,
+        }];
+        assert!(
+            verify_compaction_artifacts_vs_kernel_timeline(
+                &projection.compaction_timeline,
+                &session
+            )
+            .is_none()
+        );
+        let bad = SessionCompactionArtifactEntry {
+            artifact_id: "other".into(),
+            ..session[0].clone()
+        };
+        assert!(
+            verify_compaction_artifacts_vs_kernel_timeline(&projection.compaction_timeline, &[bad])
+                .is_some()
+        );
     }
 
     #[test]

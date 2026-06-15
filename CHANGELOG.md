@@ -156,6 +156,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Thread replay API exposes `compaction_timeline` / `compaction_index`; resume adds compaction depth hints.
   - `kernel_message_compaction_shadow` + `GET /v1/runtime/kernel-shadow` `message_compaction_shadow`.
 
+- **Runtime (kernel-v2 Phase 3b batch 6q — compaction artifact cross-check + continuation anchors):**
+  - `SessionCompactionArtifactEntry` + `verify_compaction_artifacts_vs_kernel_timeline()` cross-check kernel log vs session-store compaction metadata.
+  - `verify_step_continuation_anchor()` ensures continuation steps replay `InjectSteer` effects (v3 event-driven substrate).
+  - Session resume loads SQLite compaction artifacts and extends timeline coverage with `compaction_artifact_ok`.
+  - `kernel_compaction_artifact_shadow` + resume `kernel_replay` compaction artifact hints; v3 step shadow checks continuation anchors.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

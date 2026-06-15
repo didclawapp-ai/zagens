@@ -5,12 +5,13 @@ use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
 use zagens_core::engine::turn_machine::{
-    SessionMessageRoleIndex, ThreadReplayProjection, build_session_message_coverage,
-    build_session_message_role_index, build_session_message_timeline_coverage,
-    replay_thread_projection, replay_turn_projection, verify_message_timeline_coherence,
-    verify_turn_replay_coherence,
+    SessionMessageRoleIndex, ThreadReplayProjection, build_session_compaction_artifact_index,
+    build_session_message_coverage, build_session_message_role_index,
+    build_session_message_timeline_coverage, replay_thread_projection, replay_turn_projection,
+    verify_message_timeline_coherence, verify_turn_replay_coherence,
 };
 
+use crate::core::engine::kernel_compaction_artifact_shadow::record_message_compaction_artifact_check;
 use crate::core::engine::kernel_message_compaction_shadow::record_message_compaction_depth_check;
 use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
 use crate::core::engine::kernel_message_memory_plane_shadow::record_message_memory_plane_check;
@@ -126,6 +127,9 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     compaction_messages_removed_estimate: u32,
     compaction_restored_session_estimate: u32,
     compaction_peak_session_depth_hint: u32,
+    compaction_artifact_ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_compaction_artifact_count: Option<u32>,
     overall_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
@@ -208,8 +212,16 @@ fn timeline_coverage_for_projection(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
     role_index: Option<&SessionMessageRoleIndex>,
+    session_compaction: Option<
+        &[zagens_core::engine::turn_machine::SessionCompactionArtifactEntry],
+    >,
 ) -> Option<zagens_core::engine::turn_machine::SessionMessageTimelineCoverage> {
-    build_session_message_timeline_coverage(session_message_count, projection, role_index)
+    build_session_message_timeline_coverage(
+        session_message_count,
+        projection,
+        role_index,
+        session_compaction,
+    )
 }
 
 fn turn_replay_response(
@@ -276,19 +288,32 @@ pub(crate) fn resume_session_kernel_replay_summary(
     manager: &RuntimeThreadManager,
     thread_id: &str,
     session_messages: Option<&[zagens_core::chat::Message]>,
+    session_compaction_artifacts: Option<&[zagens_core::compaction::CompactionArtifact]>,
 ) -> Option<ResumeSessionKernelReplay> {
     let projection = collect_thread_kernel_replay(manager, thread_id).ok()?;
     if projection.report.turns_with_events == 0 {
         return None;
     }
     let role_index = session_messages.map(build_session_message_role_index);
+    let session_compaction =
+        session_compaction_artifacts.map(build_session_compaction_artifact_index);
     if let Some(messages) = session_messages {
-        log_session_message_plane_checks(messages.len(), &projection, role_index.as_ref());
+        log_session_message_plane_checks(
+            messages.len(),
+            &projection,
+            role_index.as_ref(),
+            session_compaction.as_deref(),
+        );
     }
     let plane_coverage = session_messages
         .map(|messages| messages.len())
         .and_then(|count| {
-            timeline_coverage_for_projection(count, &projection, role_index.as_ref())
+            timeline_coverage_for_projection(
+                count,
+                &projection,
+                role_index.as_ref(),
+                session_compaction.as_deref(),
+            )
         });
     let coverage = plane_coverage
         .as_ref()
@@ -340,6 +365,11 @@ pub(crate) fn resume_session_kernel_replay_summary(
             .as_ref()
             .filter(|c| !c.compaction_depth_ok)
             .and_then(|c| c.summary.clone()),
+        message_compaction_artifact_ok: plane_coverage.as_ref().map(|c| c.compaction_artifact_ok),
+        message_compaction_artifact_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.compaction_artifact_ok)
+            .and_then(|c| c.summary.clone()),
     })
 }
 
@@ -348,9 +378,16 @@ pub(crate) fn log_session_message_plane_checks(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
     role_index: Option<&SessionMessageRoleIndex>,
+    session_compaction: Option<
+        &[zagens_core::engine::turn_machine::SessionCompactionArtifactEntry],
+    >,
 ) {
-    let Some(cov) = timeline_coverage_for_projection(session_message_count, projection, role_index)
-    else {
+    let Some(cov) = timeline_coverage_for_projection(
+        session_message_count,
+        projection,
+        role_index,
+        session_compaction,
+    ) else {
         return;
     };
     record_timeline_coherence_check(cov.coherence_ok && cov.timeline_vs_requests_ok);
@@ -364,11 +401,15 @@ pub(crate) fn log_session_message_plane_checks(
     if projection.compaction_index.artifact_count > 0 {
         record_message_compaction_depth_check(cov.compaction_depth_ok);
     }
+    if session_compaction.is_some() {
+        record_message_compaction_artifact_check(cov.compaction_artifact_ok);
+    }
     if !cov.timeline_vs_session_ok
         || !cov.plane_depth_ok
         || !cov.role_index_ok
         || !cov.memory_plane_user_ok
         || !cov.compaction_depth_ok
+        || !cov.compaction_artifact_ok
     {
         record_timeline_coherence_check(false);
     }
@@ -385,8 +426,16 @@ pub(crate) fn log_session_message_coverage(
     session_message_count: usize,
     projection: &ThreadReplayProjection,
     role_index: Option<&SessionMessageRoleIndex>,
+    session_compaction: Option<
+        &[zagens_core::engine::turn_machine::SessionCompactionArtifactEntry],
+    >,
 ) {
-    log_session_message_plane_checks(session_message_count, projection, role_index);
+    log_session_message_plane_checks(
+        session_message_count,
+        projection,
+        role_index,
+        session_compaction,
+    );
 }
 
 pub(crate) async fn get_kernel_turn_replay(
@@ -425,7 +474,7 @@ pub(crate) async fn get_kernel_thread_replay(
 
     let role_index = role_index_for_replay(None, &query);
     let plane_coverage = query.session_message_count.and_then(|count| {
-        timeline_coverage_for_projection(count, &projection, role_index.as_ref())
+        timeline_coverage_for_projection(count, &projection, role_index.as_ref(), None)
     });
 
     let report = projection.report;
@@ -513,7 +562,8 @@ pub(crate) async fn get_kernel_thread_replay(
                 && cov.plane_depth_ok
                 && cov.role_index_ok
                 && cov.memory_plane_user_ok
-                && cov.compaction_depth_ok,
+                && cov.compaction_depth_ok
+                && cov.compaction_artifact_ok,
         );
         KernelThreadMessageCoverage {
             session_message_count: cov.session_message_count,
@@ -550,6 +600,8 @@ pub(crate) async fn get_kernel_thread_replay(
         compaction_messages_removed_estimate: cov.compaction_messages_removed_estimate,
         compaction_restored_session_estimate: cov.compaction_restored_session_estimate,
         compaction_peak_session_depth_hint: cov.compaction_peak_session_depth_hint,
+        compaction_artifact_ok: cov.compaction_artifact_ok,
+        session_compaction_artifact_count: cov.session_compaction_artifact_count,
         overall_ok: cov.overall_ok,
         summary: cov.summary,
     });

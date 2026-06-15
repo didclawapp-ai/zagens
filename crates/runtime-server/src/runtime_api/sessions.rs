@@ -200,11 +200,16 @@ pub(crate) async fn resume_session_thread(
                             state.runtime_threads.as_ref(),
                             stored_tid,
                         );
+                        let compaction_artifacts = state
+                            .shared_session_manager
+                            .load_compaction_artifacts(&id)
+                            .unwrap_or_default();
                         let kernel_replay =
                             super::kernel_replay::resume_session_kernel_replay_summary(
                                 state.runtime_threads.as_ref(),
                                 stored_tid,
                                 Some(&session.messages),
+                                Some(&compaction_artifacts),
                             );
                         return Ok((
                             StatusCode::OK,

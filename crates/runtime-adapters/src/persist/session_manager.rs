@@ -225,6 +225,18 @@ impl SessionManager {
         Ok(path)
     }
 
+    /// Load compaction artifacts for a session from SQLite (empty when JSON-only mode).
+    pub fn load_compaction_artifacts(
+        &self,
+        session_id: &str,
+    ) -> std::io::Result<Vec<zagens_core::compaction::CompactionArtifact>> {
+        if let Some(ref db) = self.db {
+            return crate::persist::load_compaction_artifacts(&db.lock().unwrap(), session_id)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+        }
+        Ok(Vec::new())
+    }
+
     /// Save a crash-recovery checkpoint for in-flight turns.
     pub fn save_checkpoint(&self, session: &SavedSession) -> std::io::Result<PathBuf> {
         let checkpoints = self.sessions_dir.join("checkpoints");
