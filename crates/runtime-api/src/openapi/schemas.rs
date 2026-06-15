@@ -7,6 +7,7 @@ use serde_json::Value;
 use crate::task::{TaskCounts, TaskRecord, TaskStatus, TaskSummary, TasksResponse};
 
 use zagens_core::coherence::CoherenceState;
+use zagens_core::engine::ReplayEffectCounts;
 use zagens_core::models::{ServerToolUsage, Usage};
 use zagens_runtime_adapters::persist::SessionMetadata;
 use zagens_runtime_orchestrator::runtime_threads::{
@@ -82,6 +83,19 @@ pub struct ResumeSessionKernelReplay {
     pub message_notify_lsp_anchor_ok: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_notify_lsp_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_memory_plane_replay_anchor_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_memory_plane_replay_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_compaction_replay_anchor_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_compaction_replay_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_effect_counts: Option<ReplayEffectCounts>,
+    /// Anchor-class replay effect total (`inject_steer` + `run_compaction` + `notify_lsp`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_anchor_effect_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -173,6 +187,9 @@ pub const SCHEMA_EXPORTS: &[(&str, SchemaExportFn)] = &[
     }),
     ("ResumeSessionKernelReplay", || {
         schemars::schema_for!(ResumeSessionKernelReplay)
+    }),
+    ("ReplayEffectCounts", || {
+        schemars::schema_for!(ReplayEffectCounts)
     }),
     ("ResumeSessionResponse", || {
         schemars::schema_for!(ResumeSessionResponse)

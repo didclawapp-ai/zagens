@@ -116,13 +116,19 @@ impl KernelTurnHost for Engine {
                     .verify_turn_in_memory(&events, live);
             }
             if mode.uses_v3_turn_loop() {
-                let (call_model, execute_batch) =
-                    zagens_core::engine::replay_effect_counts(&events);
+                let counts = zagens_core::engine::replay_effect_counts(&events);
+                super::super::kernel_v3_replay_counts::record_v3_turn_replay_effect_counts(
+                    &live.turn_id,
+                    counts,
+                );
                 tracing::info!(
                     target: "kernel_v3",
                     turn_id = %live.turn_id,
-                    call_model,
-                    execute_batch,
+                    call_model = counts.call_model,
+                    execute_batch = counts.execute_batch,
+                    inject_steer = counts.inject_steer,
+                    run_compaction = counts.run_compaction,
+                    notify_lsp = counts.notify_lsp,
                     "v3 turn effect replay counts"
                 );
             }
@@ -340,99 +346,7 @@ impl TurnLoopHost for Engine {
             return;
         }
 
-        let compaction_id = format!("compact_{}", &uuid::Uuid::new_v4().to_string()[..8]);
-        Engine::emit_compaction_started(
-            self,
-            compaction_id.clone(),
-            true,
-            "Auto context compaction started".to_string(),
-        )
-        .await;
-        let _ = self
-            .tx_event
-            .send(Event::status("Auto-compacting context...".to_string()))
-            .await;
-        let auto_messages_before = self.session.messages.len();
-        self.fire_pre_compact(self.runtime_ext().turn_app_mode, false);
-        match compact_messages_safe(
-            client,
-            &self.session.messages,
-            &self.config.compaction,
-            Some(&self.session.workspace),
-            Some(&compaction_pins),
-            Some(&compaction_paths),
-        )
-        .await
-        {
-            Ok(result) => {
-                if !result.messages.is_empty() || self.session.messages.is_empty() {
-                    let auto_messages_after = result.messages.len();
-                    self.session.messages = result.messages;
-                    Engine::merge_compaction_summary(self, result.summary_prompt);
-                    Engine::emit_session_updated(self).await;
-                    let removed = auto_messages_before.saturating_sub(auto_messages_after);
-                    let status = if result.retries_used > 0 {
-                        format!(
-                            "Auto-compaction complete: {auto_messages_before} → {auto_messages_after} messages ({removed} removed, {} retries)",
-                            result.retries_used
-                        )
-                    } else {
-                        format!(
-                            "Auto-compaction complete: {auto_messages_before} → {auto_messages_after} messages ({removed} removed)"
-                        )
-                    };
-                    Engine::emit_compaction_completed(
-                        self,
-                        compaction_id.clone(),
-                        true,
-                        status.clone(),
-                        Some(auto_messages_before),
-                        Some(auto_messages_after),
-                    )
-                    .await;
-                    self.fire_post_compact(
-                        self.runtime_ext().turn_app_mode,
-                        false,
-                        auto_messages_before,
-                        auto_messages_after,
-                    );
-                    if let Some(artifact) = result.artifact {
-                        emit_kernel_event(
-                            self,
-                            KernelEvent::CompactionArtifactCreated {
-                                turn_id: turn.id.clone(),
-                                artifact_id: artifact.id,
-                                replaced_range: MessageRange {
-                                    from: artifact.replaced_start as u32,
-                                    to: artifact
-                                        .replaced_end
-                                        .saturating_sub(1)
-                                        .max(artifact.replaced_start)
-                                        as u32,
-                                },
-                                summary_token_count: artifact.summary_tokens,
-                            },
-                        );
-                    }
-                    let _ = self.tx_event.send(Event::status(status)).await;
-                } else {
-                    let message = "Auto-compaction skipped: empty result".to_string();
-                    Engine::emit_compaction_failed(
-                        self,
-                        compaction_id.clone(),
-                        true,
-                        message.clone(),
-                    )
-                    .await;
-                    let _ = self.tx_event.send(Event::status(message)).await;
-                }
-            }
-            Err(err) => {
-                let message = format!("Auto-compaction failed: {err}");
-                Engine::emit_compaction_failed(self, compaction_id, true, message.clone()).await;
-                let _ = self.tx_event.send(Event::status(message)).await;
-            }
-        }
+        Engine::route_auto_compaction(self, client, &turn.id).await;
     }
 
     fn estimated_input_tokens(&self) -> usize {
@@ -716,87 +630,42 @@ impl TurnLoopHost for Engine {
         Engine::add_session_message(self, msg).await;
     }
 
-    async fn maybe_continue_at_step_limit(&mut self, _turn: &TurnContext) -> bool {
-        // Only long-horizon code tasks convert step-exhaustion into a
-        // continuation; everything else terminates at the cap as before.
+    async fn maybe_continue_at_step_limit(&mut self, turn: &TurnContext) -> bool {
         if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
             return false;
         }
         let plan = self.config_ext().plan_state.lock().await.snapshot();
         let checklist = self.config_ext().todos.lock().await.snapshot();
-        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &checklist);
-        // Nothing to continue toward: no graph, already complete, or trivial.
-        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+        let Some(open) =
+            crate::long_horizon::CodeTaskGraph::continuation_open_items(&plan, &checklist)
+        else {
             return false;
-        }
-        let open = graph.open_items;
-        let text = if self.config.locale_tag.starts_with("zh") {
-            format!(
-                "已达本轮工具步数上限,但长程任务尚未完成(还剩 {open} 项)。请继续推进未完成的清单项:聚焦下一个 in_progress / pending 项,对声称完成的项用其 `[verify:]` 命令实跑验证,不要重复已完成的工作,也不要在此停下。"
-            )
-        } else {
-            format!(
-                "Hit the per-turn tool-step budget, but the long-horizon task is not finished ({open} item(s) left). Keep going on the unfinished checklist: focus the next in_progress / pending item, verify any claimed-done item by actually running its `[verify:]` command, do not repeat completed work, and do not stop here."
-            )
         };
-        Engine::add_session_message(
-            self,
-            Message {
-                role: "user".to_string(),
-                content: vec![ContentBlock::Text {
-                    text,
-                    cache_control: None,
-                }],
-            },
-        )
-        .await;
-        let _ = self
-            .tx_event
-            .send(Event::status(format!(
-                "long_horizon.step_limit_continue: {{\"open_items\":{open}}}"
-            )))
+        let text = crate::long_horizon::build_step_limit_continue_nudge(
+            open,
+            self.config.locale_tag.as_str(),
+        );
+        self.inject_step_limit_continuation_steer(turn, text, open)
             .await;
         true
     }
 
-    async fn maybe_continue_after_loop_guard_halt(&mut self, _turn: &TurnContext) -> bool {
-        // Only long-horizon code tasks convert a loop-guard halt into a
-        // continuation; everything else terminates as before.
+    async fn maybe_continue_after_loop_guard_halt(&mut self, turn: &TurnContext) -> bool {
         if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
             return false;
         }
         let plan = self.config_ext().plan_state.lock().await.snapshot();
         let checklist = self.config_ext().todos.lock().await.snapshot();
-        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &checklist);
-        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+        let Some(open) =
+            crate::long_horizon::CodeTaskGraph::continuation_open_items(&plan, &checklist)
+        else {
             return false;
-        }
-        let open = graph.open_items;
-        let text = if self.config.locale_tag.starts_with("zh") {
-            format!(
-                "检测到你在重复调用同一个反复失败的工具,已被循环保护中断。长程任务尚未完成(还剩 {open} 项)。不要再用相同参数重试同一工具——换一种方法:换工具、改参数、或先读取相关文件/错误输出定位根因,然后继续推进未完成的清单项。不要在此停下。"
-            )
-        } else {
-            format!(
-                "You got stuck repeatedly calling the same failing tool and the loop guard halted the turn. The long-horizon task is not finished ({open} item(s) left). Do NOT retry the same tool with the same arguments — change approach: switch tools, change the arguments, or read the relevant file / error output to find the root cause first, then keep going on the unfinished checklist. Do not stop here."
-            )
         };
-        Engine::add_session_message(
-            self,
-            Message {
-                role: "user".to_string(),
-                content: vec![ContentBlock::Text {
-                    text,
-                    cache_control: None,
-                }],
-            },
-        )
-        .await;
-        let _ = self
-            .tx_event
-            .send(Event::status(format!(
-                "long_horizon.loop_guard_continue: {{\"open_items\":{open}}}"
-            )))
+        let text = crate::long_horizon::build_loop_guard_continue_nudge(
+            open,
+            self.config.locale_tag.as_str(),
+        );
+        self.inject_loop_guard_continuation_steer(turn, text, open)
             .await;
         true
     }
@@ -909,7 +778,8 @@ impl TurnLoopHost for Engine {
         ) else {
             return false;
         };
-        Engine::add_session_message(self, summary_msg).await;
+        let text = crate::core::engine::memory_plane_ops::user_message_plain_text(&summary_msg);
+        self.inject_memory_plane_steer_message(text).await;
         self.scratchpad_summary_injected_this_turn = true;
         emit_kernel_event(
             self,
@@ -928,7 +798,8 @@ impl TurnLoopHost for Engine {
             &self.config.scratchpad,
             &self.scratchpad_step,
         ) {
-            Engine::add_session_message(self, reminder).await;
+            let text = crate::core::engine::memory_plane_ops::user_message_plain_text(&reminder);
+            self.inject_memory_plane_steer_message(text).await;
             emit_kernel_event(
                 self,
                 KernelEvent::ScratchpadReminderInjected {

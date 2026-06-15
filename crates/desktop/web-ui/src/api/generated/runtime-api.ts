@@ -1024,6 +1024,69 @@ export type components = {
             readonly messages: readonly unknown[];
             readonly system_prompt?: string | null;
         };
+        /** @description Aggregated replay effect counts for v3 observability at turn end. */
+        readonly ReplayEffectCounts: {
+            /** Format: uint32 */
+            readonly call_model: number;
+            /** Format: uint32 */
+            readonly execute_batch: number;
+            /** Format: uint32 */
+            readonly inject_steer: number;
+            /** Format: uint32 */
+            readonly run_compaction: number;
+            /** Format: uint32 */
+            readonly notify_lsp: number;
+        };
+        readonly ResumeSessionKernelReplay: {
+            /** Format: uint */
+            readonly turn_count: number;
+            /** Format: uint */
+            readonly turns_with_events: number;
+            /** Format: uint */
+            readonly turns_coherent: number;
+            readonly all_coherent: boolean;
+            readonly latest_turn_id?: string | null;
+            /** Format: uint32 */
+            readonly latest_step_idx?: number | null;
+            /** Format: uint32 */
+            readonly latest_max_steps?: number | null;
+            /** Format: uint32 */
+            readonly active_tool_count?: number | null;
+            /** Format: uint32 */
+            readonly model_message_count?: number | null;
+            /** Format: uint32 */
+            readonly tool_call_planned_count?: number | null;
+            readonly message_coverage_ok?: boolean | null;
+            readonly message_coverage_summary?: string | null;
+            readonly message_timeline_ok?: boolean | null;
+            readonly message_timeline_summary?: string | null;
+            /** Format: uint32 */
+            readonly kernel_model_request_count?: number | null;
+            /** Format: uint32 */
+            readonly kernel_estimated_min_session_messages?: number | null;
+            readonly message_role_index_ok?: boolean | null;
+            readonly message_role_index_summary?: string | null;
+            readonly message_memory_plane_ok?: boolean | null;
+            readonly message_memory_plane_summary?: string | null;
+            readonly message_compaction_depth_ok?: boolean | null;
+            readonly message_compaction_summary?: string | null;
+            readonly message_compaction_artifact_ok?: boolean | null;
+            readonly message_compaction_artifact_summary?: string | null;
+            readonly message_continuation_anchor_ok?: boolean | null;
+            readonly message_continuation_anchor_summary?: string | null;
+            readonly message_notify_lsp_anchor_ok?: boolean | null;
+            readonly message_notify_lsp_anchor_summary?: string | null;
+            readonly message_memory_plane_replay_anchor_ok?: boolean | null;
+            readonly message_memory_plane_replay_anchor_summary?: string | null;
+            readonly message_compaction_replay_anchor_ok?: boolean | null;
+            readonly message_compaction_replay_anchor_summary?: string | null;
+            readonly replay_effect_counts?: components["schemas"]["ReplayEffectCounts"] | null;
+            /**
+             * Format: uint32
+             * @description Anchor-class replay effect total (`inject_steer` + `run_compaction` + `notify_lsp`).
+             */
+            readonly replay_anchor_effect_count?: number | null;
+        };
         /** ResumeSessionResponse */
         readonly ResumeSessionResponse: {
             readonly thread_id: string;
@@ -1031,6 +1094,7 @@ export type components = {
             /** Format: uint */
             readonly message_count: number;
             readonly state: string;
+            readonly kernel_replay?: components["schemas"]["ResumeSessionKernelReplay"] | null;
         };
         readonly ThreadRecord: {
             /**

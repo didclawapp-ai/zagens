@@ -103,6 +103,19 @@ impl CodeTaskGraph {
         }
     }
 
+    /// Open items when the graph warrants a bounded LHT continuation nudge.
+    #[must_use]
+    pub fn continuation_open_items(
+        plan: &PlanSnapshot,
+        checklist: &TodoListSnapshot,
+    ) -> Option<u32> {
+        let graph = Self::from_snapshots(plan, checklist);
+        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+            return None;
+        }
+        Some(graph.open_items)
+    }
+
     /// Graph has no plan steps and no checklist items.
     #[must_use]
     pub fn is_empty(&self) -> bool {

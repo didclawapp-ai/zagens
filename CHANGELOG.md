@@ -173,6 +173,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Thread replay API exposes `continuation_anchor_ok` / `notify_lsp_anchor_ok`; timeline coverage includes both anchor fields.
   - `kernel_notify_lsp_anchor_shadow` + `GET /v1/runtime/kernel-shadow` `notify_lsp_anchor_shadow`; v3 step shadow checks notify-LSP anchors.
 
+- **Runtime (kernel-v2 Phase 3b batch 6t — v3 NotifyLsp effect plan tail):**
+  - `notify_lsp_effects_from_step_events()` derives post-`ExecuteBatch` `NotifyLsp` effects from `ToolCallFinished` events (matches `ReplayTurnMachine` replay chain).
+  - `EffectInterpreter::run_v3_turn_step` appends and executes the notify-LSP tail after tool batch IO, reducing reliance on `run.rs` pre-step flush for edit diagnostics.
+  - Core v3 fallback (`v3_step.rs`) runs the same notify tail via `flush_pending_lsp_diagnostics()`; `is_lsp_notify_tool` exported for reuse.
+
+- **Runtime (kernel-v2 Phase 3b batch 6u — continuation event-driven InjectSteer):**
+  - `build_step_limit_continue_nudge()` / `build_loop_guard_continue_nudge()` extracted to `long_horizon/nudge.rs`; `CodeTaskGraph::continuation_open_items()` centralizes eligibility.
+  - `continuation_ops.rs`: v3 routes step-limit / loop-guard nudges through `EffectInterpreter::InjectSteer` (with nudge body); legacy path unchanged (direct session write).
+  - `continuation_inject_steer_effects_for_step()` mirrors replay empty-text `InjectSteer` anchors at step boundaries.
+
+- **Runtime (kernel-v2 Phase 3b batch 6v — memory-plane replay anchors):**
+  - `ReplayTurnMachine` maps `ScratchpadReminderInjected` / `ScratchpadSummaryInjected` / `CycleBriefingInjected` → empty-text `InjectSteer` replay anchors.
+  - `verify_thread_memory_plane_replay_anchors()` + `memory_plane_inject_steer_effects_from_events()` cross-check memory-plane injections vs replay effect chain.
+  - Thread replay / resume expose `memory_plane_replay_anchor_ok`; timeline coverage includes replay anchor field.
+  - `kernel_memory_plane_replay_anchor_shadow` + `GET /v1/runtime/kernel-shadow` `memory_plane_replay_anchor_shadow`.
+
+- **Runtime (kernel-v2 Phase 3b batch 6w — compaction replay anchors):**
+  - `ReplayTurnMachine` maps `CompactionArtifactCreated` → `RunCompaction` (alongside existing capacity trim/handoff checkpoints).
+  - `verify_thread_compaction_replay_anchors()` + `compaction_run_effects_from_events()` cross-check compaction events vs replay effect chain.
+  - Thread replay / resume expose `compaction_replay_anchor_ok`; timeline coverage includes replay anchor field.
+  - `kernel_compaction_replay_anchor_shadow` + `GET /v1/runtime/kernel-shadow` `compaction_replay_anchor_shadow`.
+
+- **Runtime (kernel-v2 Phase 3b batch 6x — v3 memory-plane InjectSteer + OpenAPI sync):**
+  - `memory_plane_ops.rs`: scratchpad summary/reminder injections route through `EffectInterpreter::InjectSteer` when `[kernel] machine = v3`.
+  - Regenerated `docs/tech/openapi/zagens-runtime-v1.openapi.json` with resume replay anchor fields (6u–6w).
+
+- **Runtime (kernel-v2 Phase 3b batch 6y — v3 live auto-compaction + step replay anchors):**
+  - `compaction_ops.rs`: extract `execute_in_turn_auto_compaction`; v3 routes auto-compaction through `Effect::RunCompaction` (`route_auto_compaction`); manual `/compact` stays on `handle_manual_compaction` (not `RunCompaction`).
+  - `verify_step_memory_plane_replay_anchor` / `verify_step_compaction_replay_anchor` + `kernel_v3_effect_shadow` per-step checks.
+
+- **Runtime (kernel-v2 Phase 3b batch 6z — v3 capacity trim/handoff via RunCompaction):**
+  - `RunCompactionScope` (`InTurnAuto` / `CapacityTrim` / `CapacityHandoff`) stashed on `EngineRuntimeExt`; `run_compaction_effect` dispatches to the matching IO path.
+  - `route_capacity_trim_refresh` / `route_capacity_handoff_replan` wire capacity checkpoints through v3 `RunCompaction` (legacy IO unchanged).
+
+- **Runtime (kernel-v2 Phase 3b batch 6za — v3 cycle advance InjectSteer anchor):**
+  - `cycle_briefing_ops.rs`: `route_cycle_advance` routes `perform_cycle_advance` through empty-text `Effect::InjectSteer` when `[kernel] machine = v3` (matches `CycleBriefingInjected` replay anchor).
+  - `InjectSteerEffectKind::CycleAdvance` stashed on `EngineRuntimeExt`; `run_inject_steer_effect` dispatches before normal steer text handling.
+
+- **Runtime (kernel-v2 Phase 3b batch 6zb — replay effect counts + anchor-only gate):**
+  - `ReplayEffectCounts` aggregates `CallModel` / `ExecuteBatch` / `InjectSteer` / `RunCompaction` / `NotifyLsp` from replay chains; v3 turn-end logging emits all fields.
+  - `effect_replay_anchor.rs`: `kernel_effect_replay_anchor_only` suppresses compaction/cycle IO in `run_compaction_effect` and cycle-advance steer dispatch (resume/replay substrate).
+
+- **Runtime (kernel-v2 Phase 3b batch 6zc — replay effect counts observability):**
+  - `replay_thread_effect_counts` + `ThreadReplayProjection.effect_counts`; thread/turn replay API expose aggregated counts.
+  - `kernel_v3_replay_counts` records last v3 turn counts; `GET /v1/runtime/kernel-shadow` adds `v3_replay_effect_counts`.
+
+- **Runtime (kernel-v2 Phase 3b batch 6zd — resume replay effect counts + OpenAPI):**
+  - `ResumeSessionKernelReplay.replay_effect_counts` exposes thread-level replay-chain counts on `POST /v1/sessions/{id}/resume`.
+  - `ReplayEffectCounts` gains `JsonSchema`; regenerated `docs/tech/openapi/zagens-runtime-v1.openapi.json`.
+
+- **Runtime (kernel-v2 Phase 3b batch 6ze — resume replay anchor-only interpret):**
+  - `apply_kernel_resume_with_replay` loads latest-turn events and re-interprets anchor effects (`RunCompaction` / `InjectSteer` / `NotifyLsp`) under `kernel_effect_replay_anchor_only`.
+  - `Op::ApplyKernelResume` routes through replay-aware resume; steer/LSP IO suppressed in anchor-only mode.
+  - Regenerated `crates/desktop/web-ui/src/api/generated/runtime-api.ts` (`ReplayEffectCounts` / `replay_effect_counts`).
+
+- **Runtime (kernel-v2 Phase 3b batch 6zf — full-thread resume replay anchor + shadow):**
+  - `KernelResumeHints.thread_turn_ids_with_events` carries all turns with kernel events; resume replays anchor effects across the full thread (not latest turn only).
+  - `kernel_resume_replay_anchor_shadow` records resume runs / turns interpreted / anchors interpreted / turns skipped; `GET /v1/runtime/kernel-shadow` adds `resume_replay_anchor_shadow`.
+
+- **Runtime (kernel-v2 Phase 3b batch 6zg — resume anchor vs thread replay alignment):**
+  - `ReplayEffectCounts::anchor_effect_total` + `KernelResumeHints.expected_anchor_effect_count`; resume compares interpreted anchors vs `replay_thread_effect_counts`.
+  - `resume_replay_anchor_shadow` adds `anchor_alignment_checks` / `anchor_alignment_diffs`; `ResumeSessionKernelReplay.replay_anchor_effect_count` on resume API.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

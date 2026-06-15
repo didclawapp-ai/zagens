@@ -323,7 +323,7 @@ pub enum Effect {
     },
     /// Inject a steer/system message into the session.
     InjectSteer { text: String },
-    /// Trigger run_auto_compaction.
+    /// Trigger in-turn auto-compaction or capacity trim/handoff (replay anchor).
     RunCompaction,
     /// Notify LSP after an edit-generating tool.
     NotifyLsp { tool_name: String },
@@ -395,6 +395,13 @@ impl TurnMachine for ReplayTurnMachine {
                     text: text.to_string(),
                 });
             }
+            KernelEvent::ScratchpadReminderInjected { .. }
+            | KernelEvent::ScratchpadSummaryInjected { .. }
+            | KernelEvent::CycleBriefingInjected { .. } => {
+                out.effects.push(Effect::InjectSteer {
+                    text: String::new(),
+                });
+            }
             KernelEvent::ToolCallPlanned { call_id, .. } => {
                 out.effects.push(Effect::ExecuteBatch {
                     call_ids: vec![call_id.clone()],
@@ -416,6 +423,9 @@ impl TurnMachine for ReplayTurnMachine {
                     out.effects.push(Effect::RunCompaction);
                 }
             }
+            KernelEvent::CompactionArtifactCreated { .. } => {
+                out.effects.push(Effect::RunCompaction);
+            }
             KernelEvent::StepLimitContinuation { .. }
             | KernelEvent::LoopGuardContinuation { .. } => {
                 out.effects.push(Effect::InjectSteer {
@@ -430,7 +440,9 @@ impl TurnMachine for ReplayTurnMachine {
     }
 }
 
-fn is_lsp_notify_tool(name: &str) -> bool {
+/// Tools whose successful state write should trigger an LSP diagnostics flush.
+#[must_use]
+pub fn is_lsp_notify_tool(name: &str) -> bool {
     matches!(
         name,
         "edit_file" | "write_file" | "apply_patch" | "multi_tool_use.parallel"
@@ -746,6 +758,14 @@ pub struct ThreadReplayProjection {
     pub continuation_anchor_summary: Option<String>,
     pub notify_lsp_anchor_ok: bool,
     pub notify_lsp_anchor_summary: Option<String>,
+    /// Scratchpad / reminder / cycle-briefing events replay `InjectSteer` in the effect chain.
+    pub memory_plane_replay_anchor_ok: bool,
+    pub memory_plane_replay_anchor_summary: Option<String>,
+    /// Compaction artifact / trim-handoff events replay `RunCompaction` in the effect chain.
+    pub compaction_replay_anchor_ok: bool,
+    pub compaction_replay_anchor_summary: Option<String>,
+    /// Aggregated replay-chain effect counts for the thread (v3 observability).
+    pub effect_counts: ReplayEffectCounts,
 }
 
 /// One compaction artifact anchor rebuildable from kernel logs.
@@ -1285,6 +1305,201 @@ pub fn verify_step_notify_lsp_anchor(turn_events: &[KernelEvent], step_idx: u32)
     }
 }
 
+/// Kernel events that inject memory-plane user rows (symbol anchors; body stays in session JSON).
+#[must_use]
+pub fn is_memory_plane_injection_kernel_event(event: &KernelEvent) -> bool {
+    matches!(
+        event,
+        KernelEvent::ScratchpadReminderInjected { .. }
+            | KernelEvent::ScratchpadSummaryInjected { .. }
+            | KernelEvent::CycleBriefingInjected { .. }
+    )
+}
+
+/// Memory-plane `InjectSteer` replay effects (empty text anchors).
+#[must_use]
+pub fn memory_plane_inject_steer_effects_from_events(events: &[KernelEvent]) -> Vec<Effect> {
+    events
+        .iter()
+        .filter(|event| is_memory_plane_injection_kernel_event(event))
+        .map(|_| Effect::InjectSteer {
+            text: String::new(),
+        })
+        .collect()
+}
+
+/// Count memory-plane `InjectSteer` effects emitted by [`ReplayTurnMachine`] for observed events.
+fn count_memory_plane_replay_inject_effects(events: &[KernelEvent]) -> usize {
+    let mut machine = ReplayTurnMachine;
+    let mut projection = TurnKernelProjection::default();
+    let mut count = 0;
+    for event in events {
+        let is_memory_plane = is_memory_plane_injection_kernel_event(&event);
+        let out = machine.step(&mut projection, event.clone());
+        projection.apply(&event);
+        if is_memory_plane {
+            count += out
+                .effects
+                .iter()
+                .filter(|effect| matches!(effect, Effect::InjectSteer { .. }))
+                .count();
+        }
+    }
+    count
+}
+
+/// Verify scratchpad / reminder / cycle-briefing events replay `InjectSteer` in the effect chain.
+#[must_use]
+pub fn verify_thread_memory_plane_replay_anchors(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> Option<String> {
+    let mut issues = Vec::new();
+    for (turn_id, events) in turn_events {
+        let expected = events
+            .iter()
+            .filter(|event| is_memory_plane_injection_kernel_event(event))
+            .count();
+        if expected == 0 {
+            continue;
+        }
+        let replayed = count_memory_plane_replay_inject_effects(events);
+        if replayed < expected {
+            issues.push(format!(
+                "turn {turn_id} expected {expected} memory-plane InjectSteer replay effects, found {replayed}"
+            ));
+        }
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
+/// Verify memory-plane injections in a step slice replay `InjectSteer` in the step effect chain.
+#[must_use]
+pub fn verify_step_memory_plane_replay_anchor(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> Option<String> {
+    let step_events = events_for_step(turn_events, step_idx);
+    let expected = step_events
+        .iter()
+        .filter(|event| is_memory_plane_injection_kernel_event(event))
+        .count();
+    if expected == 0 {
+        return None;
+    }
+    let inject_effects = replay_step_effects(turn_events, step_idx)
+        .iter()
+        .filter(|effect| matches!(effect, Effect::InjectSteer { .. }))
+        .count();
+    if inject_effects >= expected {
+        None
+    } else {
+        Some(format!(
+            "step {step_idx} expected >= {expected} memory-plane InjectSteer replay effects, found {inject_effects}"
+        ))
+    }
+}
+
+/// Kernel events that should replay a `RunCompaction` effect.
+#[must_use]
+pub fn is_compaction_run_kernel_event(event: &KernelEvent) -> bool {
+    match event {
+        KernelEvent::CompactionArtifactCreated { .. } => true,
+        KernelEvent::CapacityCheckpoint { action, .. } => {
+            matches!(action, CapacityAction::Trim | CapacityAction::Handoff)
+        }
+        _ => false,
+    }
+}
+
+/// `RunCompaction` replay effects for compaction artifact / capacity-trim events.
+#[must_use]
+pub fn compaction_run_effects_from_events(events: &[KernelEvent]) -> Vec<Effect> {
+    events
+        .iter()
+        .filter(|event| is_compaction_run_kernel_event(event))
+        .map(|_| Effect::RunCompaction)
+        .collect()
+}
+
+/// Count `RunCompaction` effects emitted by [`ReplayTurnMachine`] for compaction events.
+fn count_compaction_replay_run_effects(events: &[KernelEvent]) -> usize {
+    let mut machine = ReplayTurnMachine;
+    let mut projection = TurnKernelProjection::default();
+    let mut count = 0;
+    for event in events {
+        let is_compaction = is_compaction_run_kernel_event(&event);
+        let out = machine.step(&mut projection, event.clone());
+        projection.apply(&event);
+        if is_compaction {
+            count += out
+                .effects
+                .iter()
+                .filter(|effect| matches!(effect, Effect::RunCompaction))
+                .count();
+        }
+    }
+    count
+}
+
+/// Verify compaction artifact / trim-handoff events replay `RunCompaction` in the effect chain.
+#[must_use]
+pub fn verify_thread_compaction_replay_anchors(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> Option<String> {
+    let mut issues = Vec::new();
+    for (turn_id, events) in turn_events {
+        let expected = events
+            .iter()
+            .filter(|event| is_compaction_run_kernel_event(event))
+            .count();
+        if expected == 0 {
+            continue;
+        }
+        let replayed = count_compaction_replay_run_effects(events);
+        if replayed < expected {
+            issues.push(format!(
+                "turn {turn_id} expected {expected} RunCompaction replay effects, found {replayed}"
+            ));
+        }
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
+/// Verify compaction events in a step slice replay `RunCompaction` in the step effect chain.
+#[must_use]
+pub fn verify_step_compaction_replay_anchor(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> Option<String> {
+    let step_events = events_for_step(turn_events, step_idx);
+    let expected = step_events
+        .iter()
+        .filter(|event| is_compaction_run_kernel_event(event))
+        .count();
+    if expected == 0 {
+        return None;
+    }
+    let run_effects = replay_step_effects(turn_events, step_idx)
+        .iter()
+        .filter(|effect| matches!(effect, Effect::RunCompaction))
+        .count();
+    if run_effects >= expected {
+        None
+    } else {
+        Some(format!(
+            "step {step_idx} expected >= {expected} RunCompaction replay effects, found {run_effects}"
+        ))
+    }
+}
+
 /// Verify edit-tool steps across a thread replay `NotifyLsp` in their step effect chain.
 #[must_use]
 pub fn verify_thread_notify_lsp_anchors(
@@ -1485,6 +1700,8 @@ pub struct SessionMessageTimelineCoverage {
     pub session_compaction_artifact_count: Option<u32>,
     pub continuation_anchor_ok: bool,
     pub notify_lsp_anchor_ok: bool,
+    pub memory_plane_replay_anchor_ok: bool,
+    pub compaction_replay_anchor_ok: bool,
     pub overall_ok: bool,
     pub summary: Option<String>,
 }
@@ -1557,6 +1774,8 @@ pub fn build_session_message_timeline_coverage(
         .unwrap_or(true);
     let continuation_anchor_ok = projection.continuation_anchor_ok;
     let notify_lsp_anchor_ok = projection.notify_lsp_anchor_ok;
+    let memory_plane_replay_anchor_ok = projection.memory_plane_replay_anchor_ok;
+    let compaction_replay_anchor_ok = projection.compaction_replay_anchor_ok;
     let overall_ok = coherence_ok
         && coverage_ok
         && timeline_vs_session_ok
@@ -1567,7 +1786,9 @@ pub fn build_session_message_timeline_coverage(
         && compaction_depth_ok
         && compaction_artifact_ok
         && continuation_anchor_ok
-        && notify_lsp_anchor_ok;
+        && notify_lsp_anchor_ok
+        && memory_plane_replay_anchor_ok
+        && compaction_replay_anchor_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -1616,6 +1837,16 @@ pub fn build_session_message_timeline_coverage(
             summaries.push(s);
         }
     }
+    if !memory_plane_replay_anchor_ok {
+        if let Some(s) = projection.memory_plane_replay_anchor_summary.clone() {
+            summaries.push(s);
+        }
+    }
+    if !compaction_replay_anchor_ok {
+        if let Some(s) = projection.compaction_replay_anchor_summary.clone() {
+            summaries.push(s);
+        }
+    }
 
     Some(SessionMessageTimelineCoverage {
         session_message_count,
@@ -1644,6 +1875,8 @@ pub fn build_session_message_timeline_coverage(
         session_compaction_artifact_count: session_compaction.map(|s| s.len() as u32),
         continuation_anchor_ok,
         notify_lsp_anchor_ok,
+        memory_plane_replay_anchor_ok,
+        compaction_replay_anchor_ok,
         overall_ok,
         summary: if summaries.is_empty() {
             None
@@ -1669,6 +1902,11 @@ pub fn replay_thread_projection(
     let continuation_anchor_ok = continuation_anchor_summary.is_none();
     let notify_lsp_anchor_summary = verify_thread_notify_lsp_anchors(turn_events);
     let notify_lsp_anchor_ok = notify_lsp_anchor_summary.is_none();
+    let memory_plane_replay_anchor_summary = verify_thread_memory_plane_replay_anchors(turn_events);
+    let memory_plane_replay_anchor_ok = memory_plane_replay_anchor_summary.is_none();
+    let compaction_replay_anchor_summary = verify_thread_compaction_replay_anchors(turn_events);
+    let compaction_replay_anchor_ok = compaction_replay_anchor_summary.is_none();
+    let effect_counts = replay_thread_effect_counts(turn_events);
     let (latest_turn_id, latest_projection) = turn_events
         .iter()
         .rev()
@@ -1693,6 +1931,11 @@ pub fn replay_thread_projection(
         continuation_anchor_summary,
         notify_lsp_anchor_ok,
         notify_lsp_anchor_summary,
+        memory_plane_replay_anchor_ok,
+        memory_plane_replay_anchor_summary,
+        compaction_replay_anchor_ok,
+        compaction_replay_anchor_summary,
+        effect_counts,
     }
 }
 
@@ -1710,6 +1953,10 @@ pub struct KernelResumeHints {
     pub kernel_model_request_count: u32,
     /// Lower-bound session rows estimated from kernel log (assistant + tool results).
     pub kernel_estimated_min_session_messages: u32,
+    /// Turn ids with persisted kernel events on the linked thread (resume replay substrate).
+    pub thread_turn_ids_with_events: Vec<String>,
+    /// Expected anchor-class replay effect count for the linked thread (`replay_thread_effect_counts`).
+    pub expected_anchor_effect_count: u32,
 }
 
 /// Extract resume hints from the latest turn projection (log-driven resume substrate).
@@ -1728,6 +1975,8 @@ pub fn kernel_resume_hints_from_projection(proj: &TurnKernelProjection) -> Kerne
         kernel_model_message_count: 0,
         kernel_model_request_count: 0,
         kernel_estimated_min_session_messages: 0,
+        thread_turn_ids_with_events: Vec::new(),
+        expected_anchor_effect_count: 0,
     }
 }
 
@@ -1742,6 +1991,14 @@ pub fn kernel_resume_hints_from_thread_projection(
     hints.kernel_estimated_min_session_messages = projection
         .message_plane_index
         .estimated_min_session_messages;
+    hints.thread_turn_ids_with_events = projection
+        .report
+        .turns
+        .iter()
+        .filter(|turn| turn.event_count > 0)
+        .map(|turn| turn.turn_id.clone())
+        .collect();
+    hints.expected_anchor_effect_count = projection.effect_counts.anchor_effect_total();
     hints
 }
 
@@ -1759,20 +2016,78 @@ pub fn replay_turn_effects(events: &[KernelEvent]) -> Vec<Effect> {
     effects
 }
 
-/// Count CallModel / ExecuteBatch effects from a replay chain (shadow/v3 observability).
+/// Aggregated replay effect counts for v3 observability at turn end.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+pub struct ReplayEffectCounts {
+    pub call_model: u32,
+    pub execute_batch: u32,
+    pub inject_steer: u32,
+    pub run_compaction: u32,
+    pub notify_lsp: u32,
+}
+
+impl ReplayEffectCounts {
+    /// Anchor-class effects replayed on resume (`InjectSteer` + `RunCompaction` + `NotifyLsp`).
+    #[must_use]
+    pub fn anchor_effect_total(self) -> u32 {
+        self.inject_steer + self.run_compaction + self.notify_lsp
+    }
+}
+
+/// Compare resume anchor-only interpret count vs thread replay effect totals.
 #[must_use]
-pub fn replay_effect_counts(events: &[KernelEvent]) -> (u32, u32) {
+pub fn verify_resume_anchor_effect_alignment(expected: u32, interpreted: u64) -> Option<String> {
+    if interpreted == u64::from(expected) {
+        return None;
+    }
+    Some(format!(
+        "resume anchor effect mismatch: interpreted={interpreted} expected={expected}"
+    ))
+}
+
+/// Count replay-chain effects by kind (shadow / v3 turn-end logging).
+#[must_use]
+pub fn replay_effect_counts(events: &[KernelEvent]) -> ReplayEffectCounts {
     let effects = replay_turn_effects(events);
-    let mut call_model = 0u32;
-    let mut execute_batch = 0u32;
+    let mut counts = ReplayEffectCounts::default();
     for effect in effects {
         match effect {
-            Effect::CallModel { .. } => call_model += 1,
-            Effect::ExecuteBatch { .. } => execute_batch += 1,
+            Effect::CallModel { .. } => counts.call_model += 1,
+            Effect::ExecuteBatch { .. } => counts.execute_batch += 1,
+            Effect::InjectSteer { .. } => counts.inject_steer += 1,
+            Effect::RunCompaction => counts.run_compaction += 1,
+            Effect::NotifyLsp { .. } => counts.notify_lsp += 1,
             _ => {}
         }
     }
-    (call_model, execute_batch)
+    counts
+}
+
+/// Sum replay effect counts across all turns on a thread.
+#[must_use]
+pub fn replay_thread_effect_counts(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> ReplayEffectCounts {
+    let mut total = ReplayEffectCounts::default();
+    for (_, events) in turn_events {
+        let counts = replay_effect_counts(events);
+        total.call_model += counts.call_model;
+        total.execute_batch += counts.execute_batch;
+        total.inject_steer += counts.inject_steer;
+        total.run_compaction += counts.run_compaction;
+        total.notify_lsp += counts.notify_lsp;
+    }
+    total
 }
 
 /// Slice a turn log down to one step's events (from `ModelRequestIssued` through tool work).
@@ -1802,6 +2117,9 @@ pub fn replay_step_effects(events: &[KernelEvent], step_idx: u32) -> Vec<Effect>
 }
 
 /// Planned v3 step effects before tool outcomes are known (`ExecuteBatch` when tools planned).
+///
+/// After `ExecuteBatch` completes, append [`notify_lsp_effects_from_step_events`] so the
+/// live v3 chain matches replay (`ToolCallFinished` → `NotifyLsp`).
 #[must_use]
 pub fn plan_v3_step_effects(token_budget: u32, tool_call_ids: &[String]) -> Vec<Effect> {
     let mut effects = vec![Effect::CallModel { token_budget }];
@@ -1811,6 +2129,53 @@ pub fn plan_v3_step_effects(token_budget: u32, tool_call_ids: &[String]) -> Vec<
         });
     }
     effects
+}
+
+/// Post-`ExecuteBatch` notify-LSP tail derived from observed `ToolCallFinished` events.
+#[must_use]
+pub fn notify_lsp_effects_from_step_events(step_events: &[KernelEvent]) -> Vec<Effect> {
+    step_events
+        .iter()
+        .filter_map(|event| {
+            let KernelEvent::ToolCallFinished {
+                tool_name,
+                wrote_state: true,
+                ..
+            } = event
+            else {
+                return None;
+            };
+            if is_lsp_notify_tool(tool_name) {
+                Some(Effect::NotifyLsp {
+                    tool_name: tool_name.clone(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Continuation `InjectSteer` effects at a step boundary (matches `ReplayTurnMachine`; empty text).
+#[must_use]
+pub fn continuation_inject_steer_effects_for_step(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> Vec<Effect> {
+    turn_events
+        .iter()
+        .filter_map(|event| match event {
+            KernelEvent::StepLimitContinuation { step_idx: s, .. }
+            | KernelEvent::LoopGuardContinuation { step_idx: s, .. }
+                if *s == step_idx =>
+            {
+                Some(Effect::InjectSteer {
+                    text: String::new(),
+                })
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// Verify replay effect counts for one step match the executed tool batch size.
@@ -1824,16 +2189,18 @@ pub fn verify_step_effect_parity(
     if step_events.is_empty() {
         return None;
     }
-    let (call_model, execute_batch) = replay_effect_counts(&step_events);
+    let counts = replay_effect_counts(&step_events);
     let mut diffs = Vec::new();
-    if call_model != 1 {
+    if counts.call_model != 1 {
         diffs.push(format!(
-            "step {step_idx} CallModel replay count {call_model} != 1"
+            "step {step_idx} CallModel replay count {} != 1",
+            counts.call_model
         ));
     }
-    if execute_batch != executed_tool_count {
+    if counts.execute_batch != executed_tool_count {
         diffs.push(format!(
-            "step {step_idx} ExecuteBatch replay count {execute_batch} != executed {executed_tool_count}"
+            "step {step_idx} ExecuteBatch replay count {} != executed {executed_tool_count}",
+            counts.execute_batch
         ));
     }
     if diffs.is_empty() {
@@ -2126,10 +2493,47 @@ mod tests {
             .join("../../fixtures/harness/kernel-v3-replay/pure_read.json");
         let raw = std::fs::read_to_string(&path).expect("read fixture");
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
-        let (call_model, execute_batch) = replay_effect_counts(&events);
-        assert_eq!(call_model, 1);
-        assert_eq!(execute_batch, 1);
+        let counts = replay_effect_counts(&events);
+        assert_eq!(counts.call_model, 1);
+        assert_eq!(counts.execute_batch, 1);
         assert!(verify_effect_replay_chain(&events).is_none());
+    }
+
+    #[test]
+    fn replay_effect_counts_on_scratchpad_compaction_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/scratchpad_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let counts = replay_effect_counts(&events);
+        assert_eq!(counts.inject_steer, 3);
+        assert_eq!(counts.run_compaction, 1);
+    }
+
+    #[test]
+    fn replay_thread_effect_counts_on_scratchpad_compaction_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/scratchpad_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let turn_events = [("t1".into(), events)];
+        let counts = replay_thread_effect_counts(&turn_events);
+        assert_eq!(counts.inject_steer, 3);
+        assert_eq!(counts.run_compaction, 1);
+        let projection = replay_thread_projection("t1", &turn_events);
+        assert_eq!(projection.effect_counts, counts);
+    }
+
+    #[test]
+    fn replay_effect_counts_on_write_batch_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/write_batch.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let counts = replay_effect_counts(&events);
+        assert_eq!(counts.call_model, 1);
+        assert_eq!(counts.execute_batch, 2);
+        assert_eq!(counts.notify_lsp, 1);
     }
 
     #[test]
@@ -2320,6 +2724,63 @@ mod tests {
     }
 
     #[test]
+    fn verify_thread_compaction_replay_anchors_on_manual_compaction_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/manual_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let turn_events = [("t1".into(), events.clone())];
+        assert!(verify_thread_compaction_replay_anchors(&turn_events).is_none());
+        let projection = replay_thread_projection("t1", &turn_events);
+        assert!(projection.compaction_replay_anchor_ok);
+        assert_eq!(compaction_run_effects_from_events(&events).len(), 1);
+    }
+
+    #[test]
+    fn verify_step_compaction_replay_anchor_on_capacity_checkpoint_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/capacity_checkpoint.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        assert!(verify_step_compaction_replay_anchor(&events, 1).is_none());
+    }
+
+    #[test]
+    fn verify_thread_compaction_replay_anchors_on_capacity_checkpoint_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/capacity_checkpoint.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let turn_events = [("t1".into(), events.clone())];
+        assert!(verify_thread_compaction_replay_anchors(&turn_events).is_none());
+        assert_eq!(compaction_run_effects_from_events(&events).len(), 1);
+    }
+
+    #[test]
+    fn verify_step_memory_plane_and_compaction_replay_anchors_on_scratchpad_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/scratchpad_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        assert!(verify_step_memory_plane_replay_anchor(&events, 1).is_none());
+        assert!(verify_step_compaction_replay_anchor(&events, 1).is_none());
+    }
+
+    #[test]
+    fn verify_thread_memory_plane_replay_anchors_on_scratchpad_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/scratchpad_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let turn_events = [("t1".into(), events.clone())];
+        assert!(verify_thread_memory_plane_replay_anchors(&turn_events).is_none());
+        let projection = replay_thread_projection("t1", &turn_events);
+        assert!(projection.memory_plane_replay_anchor_ok);
+        let replay_effects = memory_plane_inject_steer_effects_from_events(&events);
+        assert_eq!(replay_effects.len(), 3);
+    }
+
+    #[test]
     fn verify_session_memory_plane_user_depth_on_scratchpad_fixture() {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/harness/kernel-v3-replay/scratchpad_compaction.json");
@@ -2418,6 +2879,11 @@ mod tests {
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         assert!(verify_step_continuation_anchor(&events, 20).is_none());
         assert!(verify_step_continuation_anchor(&events, 22).is_none());
+        let step_limit = continuation_inject_steer_effects_for_step(&events, 20);
+        assert_eq!(step_limit.len(), 1);
+        assert!(matches!(step_limit[0], Effect::InjectSteer { ref text } if text.is_empty()));
+        let loop_guard = continuation_inject_steer_effects_for_step(&events, 22);
+        assert_eq!(loop_guard.len(), 1);
     }
 
     #[test]
@@ -2427,8 +2893,28 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read fixture");
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         assert!(verify_step_notify_lsp_anchor(&events, 1).is_none());
-        let projection = replay_thread_projection("t1", &[("t1".into(), events)]);
+        let projection = replay_thread_projection("t1", &[("t1".into(), events.clone())]);
         assert!(projection.notify_lsp_anchor_ok);
+        let step_events = events_for_step(&events, 1);
+        let notify_tail = notify_lsp_effects_from_step_events(&step_events);
+        assert_eq!(notify_tail.len(), 1);
+        assert!(matches!(
+            notify_tail[0],
+            Effect::NotifyLsp { ref tool_name } if tool_name == "edit_file"
+        ));
+        let replay_notify: Vec<_> = replay_step_effects(&events, 1)
+            .into_iter()
+            .filter(|e| matches!(e, Effect::NotifyLsp { .. }))
+            .collect();
+        assert_eq!(notify_tail.len(), replay_notify.len());
+        for (planned, replayed) in notify_tail.iter().zip(replay_notify.iter()) {
+            match (planned, replayed) {
+                (Effect::NotifyLsp { tool_name: a }, Effect::NotifyLsp { tool_name: b }) => {
+                    assert_eq!(a, b)
+                }
+                _ => panic!("notify tail mismatch: {planned:?} vs {replayed:?}"),
+            }
+        }
     }
 
     #[test]
@@ -2514,6 +3000,59 @@ mod tests {
         assert_eq!(projection.latest_projection.turn_id, "t2");
         assert_eq!(projection.latest_projection.step_limit_continuations, 1);
         assert!(projection.report.all_coherent);
+    }
+
+    #[test]
+    fn kernel_resume_hints_thread_turn_ids_from_projection() {
+        let good = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t1".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: "a".into(),
+                max_steps: 5,
+            },
+            KernelEvent::TurnEnded {
+                turn_id: "t1".into(),
+                outcome: TurnOutcome::Completed,
+                total_steps: 1,
+            },
+        ];
+        let later = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t2".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: "b".into(),
+                max_steps: 8,
+            },
+            KernelEvent::TurnEnded {
+                turn_id: "t2".into(),
+                outcome: TurnOutcome::Completed,
+                total_steps: 1,
+            },
+        ];
+        let projection =
+            replay_thread_projection("thread-x", &[("t1".into(), good), ("t2".into(), later)]);
+        let hints = kernel_resume_hints_from_thread_projection(&projection);
+        assert_eq!(hints.latest_turn_id.as_deref(), Some("t2"));
+        assert_eq!(
+            hints.thread_turn_ids_with_events,
+            vec!["t1".to_string(), "t2".to_string()]
+        );
+        assert_eq!(hints.expected_anchor_effect_count, 0);
+    }
+
+    #[test]
+    fn kernel_resume_hints_expected_anchor_count_from_projection() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/scratchpad_compaction.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let turn_events = [("t1".into(), events)];
+        let projection = replay_thread_projection("thread-x", &turn_events);
+        let hints = kernel_resume_hints_from_thread_projection(&projection);
+        assert_eq!(hints.expected_anchor_effect_count, 4);
+        assert!(verify_resume_anchor_effect_alignment(4, 4).is_none());
+        assert!(verify_resume_anchor_effect_alignment(4, 3).is_some());
     }
 
     #[test]

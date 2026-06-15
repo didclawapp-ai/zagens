@@ -259,6 +259,274 @@
           "messages"
         ]
       },
+      "ReplayEffectCounts": {
+        "description": "Aggregated replay effect counts for v3 observability at turn end.",
+        "type": "object",
+        "properties": {
+          "call_model": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "execute_batch": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "inject_steer": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "run_compaction": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "notify_lsp": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "call_model",
+          "execute_batch",
+          "inject_steer",
+          "run_compaction",
+          "notify_lsp"
+        ]
+      },
+      "ResumeSessionKernelReplay": {
+        "type": "object",
+        "properties": {
+          "turn_count": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "turns_with_events": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "turns_coherent": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "all_coherent": {
+            "type": "boolean"
+          },
+          "latest_turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest_step_idx": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "latest_max_steps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "active_tool_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "model_message_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "tool_call_planned_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "message_coverage_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_coverage_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_timeline_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_timeline_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kernel_model_request_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "kernel_estimated_min_session_messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "message_role_index_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_role_index_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_memory_plane_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_memory_plane_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_compaction_depth_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_compaction_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_compaction_artifact_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_compaction_artifact_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_continuation_anchor_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_continuation_anchor_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_notify_lsp_anchor_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_notify_lsp_anchor_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_memory_plane_replay_anchor_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_memory_plane_replay_anchor_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message_compaction_replay_anchor_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_compaction_replay_anchor_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "replay_effect_counts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplayEffectCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "replay_anchor_effect_count": {
+            "description": "Anchor-class replay effect total (`inject_steer` + `run_compaction` + `notify_lsp`).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "turn_count",
+          "turns_with_events",
+          "turns_coherent",
+          "all_coherent"
+        ]
+      },
       "ResumeSessionResponse": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "ResumeSessionResponse",
@@ -277,6 +545,16 @@
           },
           "state": {
             "type": "string"
+          },
+          "kernel_replay": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeSessionKernelReplay"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

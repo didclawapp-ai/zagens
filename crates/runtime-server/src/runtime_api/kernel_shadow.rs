@@ -6,9 +6,11 @@ use serde::Serialize;
 
 use crate::config::{KernelMachineMode, ToolsPolicyMode, ToolsSchedulerMode};
 use crate::core::engine::kernel_compaction_artifact_shadow::kernel_compaction_artifact_shadow_stats;
+use crate::core::engine::kernel_compaction_replay_anchor_shadow::kernel_compaction_replay_anchor_shadow_stats;
 use crate::core::engine::kernel_continuation_anchor_shadow::kernel_continuation_anchor_shadow_stats;
 use crate::core::engine::kernel_effect_shadow::kernel_effect_shadow_stats;
 use crate::core::engine::kernel_guard_shadow::kernel_guard_shadow_stats;
+use crate::core::engine::kernel_memory_plane_replay_anchor_shadow::kernel_memory_plane_replay_anchor_shadow_stats;
 use crate::core::engine::kernel_memory_shadow::kernel_memory_shadow_stats;
 use crate::core::engine::kernel_message_compaction_shadow::kernel_message_compaction_shadow_stats;
 use crate::core::engine::kernel_message_coverage_shadow::kernel_message_coverage_shadow_stats;
@@ -18,7 +20,11 @@ use crate::core::engine::kernel_message_timeline_shadow::kernel_message_timeline
 use crate::core::engine::kernel_notify_lsp_anchor_shadow::kernel_notify_lsp_anchor_shadow_stats;
 use crate::core::engine::kernel_projection_shadow::kernel_projection_shadow_stats;
 use crate::core::engine::kernel_replay_shadow::kernel_replay_shadow_stats;
+use crate::core::engine::kernel_resume_replay_anchor_shadow::{
+    kernel_resume_replay_anchor_alignment_stats, kernel_resume_replay_anchor_shadow_stats,
+};
 use crate::core::engine::kernel_v3_effect_shadow::kernel_v3_effect_shadow_stats;
+use crate::core::engine::kernel_v3_replay_counts::v3_last_replay_effect_counts;
 
 use super::{ApiError, RuntimeApiState};
 
@@ -38,6 +44,30 @@ pub(crate) struct ReplayShadowBlock {
     persist_diffs: u64,
     diff_rate_pct: f64,
     persist_diff_rate_pct: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct V3ReplayEffectCountsBlock {
+    mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_turn_id: Option<String>,
+    call_model: u32,
+    execute_batch: u32,
+    inject_steer: u32,
+    run_compaction: u32,
+    notify_lsp: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ResumeReplayAnchorShadowBlock {
+    mode: String,
+    resume_runs: u64,
+    turns_interpreted: u64,
+    anchors_interpreted: u64,
+    turns_skipped: u64,
+    anchor_alignment_checks: u64,
+    anchor_alignment_diffs: u64,
+    anchor_alignment_diff_rate_pct: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -74,6 +104,14 @@ pub(crate) struct KernelShadowResponse {
     continuation_anchor_shadow: Option<ShadowCounterBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     notify_lsp_anchor_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    memory_plane_replay_anchor_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compaction_replay_anchor_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v3_replay_effect_counts: Option<V3ReplayEffectCountsBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resume_replay_anchor_shadow: Option<ResumeReplayAnchorShadowBlock>,
 }
 
 pub(crate) async fn kernel_shadow_stats(
@@ -99,6 +137,10 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
     let compaction_artifact_shadow = probe_compaction_artifact_shadow(config);
     let continuation_anchor_shadow = probe_continuation_anchor_shadow(config);
     let notify_lsp_anchor_shadow = probe_notify_lsp_anchor_shadow(config);
+    let memory_plane_replay_anchor_shadow = probe_memory_plane_replay_anchor_shadow(config);
+    let compaction_replay_anchor_shadow = probe_compaction_replay_anchor_shadow(config);
+    let v3_replay_effect_counts = probe_v3_replay_effect_counts(config);
+    let resume_replay_anchor_shadow = probe_resume_replay_anchor_shadow(config);
     KernelShadowResponse {
         policy_shadow,
         scheduler_shadow,
@@ -116,6 +158,10 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
         compaction_artifact_shadow,
         continuation_anchor_shadow,
         notify_lsp_anchor_shadow,
+        memory_plane_replay_anchor_shadow,
+        compaction_replay_anchor_shadow,
+        v3_replay_effect_counts,
+        resume_replay_anchor_shadow,
     }
 }
 
@@ -255,6 +301,57 @@ fn probe_v3_effect_shadow(config: &crate::config::Config) -> Option<ShadowCounte
     })
 }
 
+fn probe_v3_replay_effect_counts(
+    config: &crate::config::Config,
+) -> Option<V3ReplayEffectCountsBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_v3_turn_loop() {
+        return None;
+    }
+    let last = v3_last_replay_effect_counts();
+    if last.turn_id.is_none() {
+        return None;
+    }
+    Some(V3ReplayEffectCountsBlock {
+        mode: mode.as_str().to_string(),
+        last_turn_id: last.turn_id,
+        call_model: last.counts.call_model,
+        execute_batch: last.counts.execute_batch,
+        inject_steer: last.counts.inject_steer,
+        run_compaction: last.counts.run_compaction,
+        notify_lsp: last.counts.notify_lsp,
+    })
+}
+
+fn probe_resume_replay_anchor_shadow(
+    config: &crate::config::Config,
+) -> Option<ResumeReplayAnchorShadowBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_replay_verification() && !mode.uses_v3_turn_loop() {
+        return None;
+    }
+    let (resume_runs, turns_interpreted, anchors_interpreted, turns_skipped) =
+        kernel_resume_replay_anchor_shadow_stats();
+    let (anchor_alignment_checks, anchor_alignment_diffs) =
+        kernel_resume_replay_anchor_alignment_stats();
+    if resume_runs == 0 {
+        return None;
+    }
+    Some(ResumeReplayAnchorShadowBlock {
+        mode: mode.as_str().to_string(),
+        resume_runs,
+        turns_interpreted,
+        anchors_interpreted,
+        turns_skipped,
+        anchor_alignment_checks,
+        anchor_alignment_diffs,
+        anchor_alignment_diff_rate_pct: shadow_diff_rate_pct(
+            anchor_alignment_checks,
+            anchor_alignment_diffs,
+        ),
+    })
+}
+
 fn probe_message_coverage_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
     let mode = config.kernel_machine_mode();
     if !mode.uses_replay_verification() {
@@ -380,6 +477,44 @@ fn probe_notify_lsp_anchor_shadow(config: &crate::config::Config) -> Option<Shad
         return None;
     }
     let (comparisons, diffs) = kernel_notify_lsp_anchor_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_memory_plane_replay_anchor_shadow(
+    config: &crate::config::Config,
+) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_replay_verification() {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_memory_plane_replay_anchor_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_compaction_replay_anchor_shadow(
+    config: &crate::config::Config,
+) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_replay_verification() {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_compaction_replay_anchor_shadow_stats();
     if comparisons == 0 && diffs == 0 {
         return None;
     }

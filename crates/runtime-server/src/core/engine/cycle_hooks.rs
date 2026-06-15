@@ -55,7 +55,7 @@ impl Engine {
         } else {
             "context threshold"
         };
-        self.perform_cycle_advance(mode, reason).await
+        self.route_cycle_advance(mode, reason).await
     }
 
     /// Force a cycle handoff regardless of the threshold gate. Used as a
@@ -72,14 +72,18 @@ impl Engine {
     /// calling `perform_cycle_advance`.  Wired via `context_recovery.rs`;
     /// this comment tracks the call site for P2-Switch migration.
     pub(super) async fn force_cycle_handoff_for_overflow(&mut self, mode: AppMode) -> bool {
-        self.perform_cycle_advance(mode, "context overflow").await
+        self.route_cycle_advance(mode, "context overflow").await
     }
 
     /// Body of a cycle advance: produce the model-curated briefing, archive
     /// the outgoing cycle, capture structured state, build the seed messages,
     /// and atomically swap the session buffer. Returns `true` when the swap
     /// completed and `false` when the briefing turn failed (no swap done).
-    async fn perform_cycle_advance(&mut self, mode: AppMode, reason: &str) -> bool {
+    pub(in crate::core::engine) async fn perform_cycle_advance(
+        &mut self,
+        mode: AppMode,
+        reason: &str,
+    ) -> bool {
         let lht_enabled = self.config.long_horizon.enabled;
         let Some(client) = self.deepseek_client.clone() else {
             crate::logging::warn(

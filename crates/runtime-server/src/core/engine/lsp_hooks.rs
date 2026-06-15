@@ -55,6 +55,10 @@ impl Engine {
     /// (the same shape as the post-tool steer messages) so we don't need to
     /// invent a new envelope.
     pub(super) async fn flush_pending_lsp_diagnostics(&mut self) {
+        if self.effect_replay_anchor_only() {
+            self.pending_lsp_blocks.clear();
+            return;
+        }
         if self.pending_lsp_blocks.is_empty() {
             return;
         }

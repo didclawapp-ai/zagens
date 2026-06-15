@@ -5,14 +5,17 @@ use axum::extract::{Path, Query, State};
 use serde::{Deserialize, Serialize};
 
 use zagens_core::engine::turn_machine::{
-    SessionMessageRoleIndex, ThreadReplayProjection, build_session_compaction_artifact_index,
-    build_session_message_coverage, build_session_message_role_index,
-    build_session_message_timeline_coverage, replay_thread_projection, replay_turn_projection,
-    verify_message_timeline_coherence, verify_turn_replay_coherence,
+    ReplayEffectCounts, SessionMessageRoleIndex, ThreadReplayProjection,
+    build_session_compaction_artifact_index, build_session_message_coverage,
+    build_session_message_role_index, build_session_message_timeline_coverage,
+    replay_thread_projection, replay_turn_projection, verify_message_timeline_coherence,
+    verify_turn_replay_coherence,
 };
 
 use crate::core::engine::kernel_compaction_artifact_shadow::record_message_compaction_artifact_check;
+use crate::core::engine::kernel_compaction_replay_anchor_shadow::record_compaction_replay_anchor_check;
 use crate::core::engine::kernel_continuation_anchor_shadow::record_continuation_anchor_check;
+use crate::core::engine::kernel_memory_plane_replay_anchor_shadow::record_memory_plane_replay_anchor_check;
 use crate::core::engine::kernel_message_compaction_shadow::record_message_compaction_depth_check;
 use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
 use crate::core::engine::kernel_message_memory_plane_shadow::record_message_memory_plane_check;
@@ -42,6 +45,8 @@ pub(crate) struct KernelTurnReplayResponse {
     step_limit_continuations: u32,
     loop_guard_continuations: u32,
     cycle_handoff_attempts: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effect_counts: Option<ReplayEffectCounts>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -134,6 +139,8 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     session_compaction_artifact_count: Option<u32>,
     continuation_anchor_ok: bool,
     notify_lsp_anchor_ok: bool,
+    memory_plane_replay_anchor_ok: bool,
+    compaction_replay_anchor_ok: bool,
     overall_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
@@ -183,6 +190,16 @@ pub(crate) struct KernelThreadReplayResponse {
     notify_lsp_anchor_ok: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     notify_lsp_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    memory_plane_replay_anchor_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    memory_plane_replay_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compaction_replay_anchor_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compaction_replay_anchor_summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effect_counts: Option<ReplayEffectCounts>,
     turns: Vec<KernelThreadTurnReplayEntry>,
 }
 
@@ -243,6 +260,7 @@ fn turn_replay_response(
     let report = replay_turn_projection(&events);
     let coherence_error = verify_turn_replay_coherence(&events, None);
     let outcome = report.outcome.as_ref().map(|o| format!("{o:?}"));
+    let effect_counts = Some(zagens_core::engine::replay_effect_counts(&events));
     KernelTurnReplayResponse {
         turn_id,
         event_count: report.event_count,
@@ -256,6 +274,7 @@ fn turn_replay_response(
         step_limit_continuations: report.projection.step_limit_continuations,
         loop_guard_continuations: report.projection.loop_guard_continuations,
         cycle_handoff_attempts: report.projection.cycle_handoff_attempts,
+        effect_counts,
     }
 }
 
@@ -392,6 +411,30 @@ pub(crate) fn resume_session_kernel_replay_summary(
             .as_ref()
             .filter(|c| !c.notify_lsp_anchor_ok)
             .and_then(|c| c.summary.clone()),
+        message_memory_plane_replay_anchor_ok: plane_coverage
+            .as_ref()
+            .map(|c| c.memory_plane_replay_anchor_ok),
+        message_memory_plane_replay_anchor_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.memory_plane_replay_anchor_ok)
+            .and_then(|c| c.summary.clone()),
+        message_compaction_replay_anchor_ok: plane_coverage
+            .as_ref()
+            .map(|c| c.compaction_replay_anchor_ok),
+        message_compaction_replay_anchor_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.compaction_replay_anchor_ok)
+            .and_then(|c| c.summary.clone()),
+        replay_effect_counts: if report.turns_with_events > 0 {
+            Some(projection.effect_counts)
+        } else {
+            None
+        },
+        replay_anchor_effect_count: if report.turns_with_events > 0 {
+            Some(projection.effect_counts.anchor_effect_total())
+        } else {
+            None
+        },
     })
 }
 
@@ -434,6 +477,17 @@ pub(crate) fn log_session_message_plane_checks(
     if projection.message_stats.tool_call_planned_count > 0 {
         record_notify_lsp_anchor_check(cov.notify_lsp_anchor_ok);
     }
+    let has_memory_plane_injection = projection.message_stats.scratchpad_summary_count > 0
+        || projection.message_stats.scratchpad_reminder_count > 0
+        || projection.message_stats.cycle_briefing_count > 0;
+    if has_memory_plane_injection {
+        record_memory_plane_replay_anchor_check(cov.memory_plane_replay_anchor_ok);
+    }
+    let has_compaction_replay = projection.compaction_index.artifact_count > 0
+        || projection.message_stats.compaction_artifact_count > 0;
+    if has_compaction_replay {
+        record_compaction_replay_anchor_check(cov.compaction_replay_anchor_ok);
+    }
     if !cov.timeline_vs_session_ok
         || !cov.plane_depth_ok
         || !cov.role_index_ok
@@ -442,6 +496,8 @@ pub(crate) fn log_session_message_plane_checks(
         || !cov.compaction_artifact_ok
         || !cov.continuation_anchor_ok
         || !cov.notify_lsp_anchor_ok
+        || !cov.memory_plane_replay_anchor_ok
+        || !cov.compaction_replay_anchor_ok
     {
         record_timeline_coherence_check(false);
     }
@@ -597,7 +653,9 @@ pub(crate) async fn get_kernel_thread_replay(
                 && cov.compaction_depth_ok
                 && cov.compaction_artifact_ok
                 && cov.continuation_anchor_ok
-                && cov.notify_lsp_anchor_ok,
+                && cov.notify_lsp_anchor_ok
+                && cov.memory_plane_replay_anchor_ok
+                && cov.compaction_replay_anchor_ok,
         );
         KernelThreadMessageCoverage {
             session_message_count: cov.session_message_count,
@@ -638,6 +696,8 @@ pub(crate) async fn get_kernel_thread_replay(
         session_compaction_artifact_count: cov.session_compaction_artifact_count,
         continuation_anchor_ok: cov.continuation_anchor_ok,
         notify_lsp_anchor_ok: cov.notify_lsp_anchor_ok,
+        memory_plane_replay_anchor_ok: cov.memory_plane_replay_anchor_ok,
+        compaction_replay_anchor_ok: cov.compaction_replay_anchor_ok,
         overall_ok: cov.overall_ok,
         summary: cov.summary,
     });
@@ -649,6 +709,17 @@ pub(crate) async fn get_kernel_thread_replay(
     }
     if projection.message_stats.tool_call_planned_count > 0 {
         record_notify_lsp_anchor_check(projection.notify_lsp_anchor_ok);
+    }
+    let has_memory_plane_injection = projection.message_stats.scratchpad_summary_count > 0
+        || projection.message_stats.scratchpad_reminder_count > 0
+        || projection.message_stats.cycle_briefing_count > 0;
+    if has_memory_plane_injection {
+        record_memory_plane_replay_anchor_check(projection.memory_plane_replay_anchor_ok);
+    }
+    let has_compaction_replay = projection.compaction_index.artifact_count > 0
+        || projection.message_stats.compaction_artifact_count > 0;
+    if has_compaction_replay {
+        record_compaction_replay_anchor_check(projection.compaction_replay_anchor_ok);
     }
 
     Ok(Json(KernelThreadReplayResponse {
@@ -684,6 +755,35 @@ pub(crate) async fn get_kernel_thread_replay(
             && !projection.notify_lsp_anchor_ok
         {
             projection.notify_lsp_anchor_summary.clone()
+        } else {
+            None
+        },
+        memory_plane_replay_anchor_ok: if has_memory_plane_injection {
+            Some(projection.memory_plane_replay_anchor_ok)
+        } else {
+            None
+        },
+        memory_plane_replay_anchor_summary: if has_memory_plane_injection
+            && !projection.memory_plane_replay_anchor_ok
+        {
+            projection.memory_plane_replay_anchor_summary.clone()
+        } else {
+            None
+        },
+        compaction_replay_anchor_ok: if has_compaction_replay {
+            Some(projection.compaction_replay_anchor_ok)
+        } else {
+            None
+        },
+        compaction_replay_anchor_summary: if has_compaction_replay
+            && !projection.compaction_replay_anchor_ok
+        {
+            projection.compaction_replay_anchor_summary.clone()
+        } else {
+            None
+        },
+        effect_counts: if report.turns_with_events > 0 {
+            Some(projection.effect_counts)
         } else {
             None
         },

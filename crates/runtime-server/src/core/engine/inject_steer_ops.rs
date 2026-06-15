@@ -14,6 +14,16 @@ impl Engine {
         step_idx: u32,
         text: String,
     ) {
+        if self.try_run_pending_inject_steer_kind().await {
+            return;
+        }
+        if self.effect_replay_anchor_only() {
+            tracing::info!(
+                target: "kernel_v3",
+                "replay anchor-only: skipping InjectSteer IO"
+            );
+            return;
+        }
         let steer = text.trim().to_string();
         if steer.is_empty() {
             return;

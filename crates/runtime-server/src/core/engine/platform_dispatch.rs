@@ -100,7 +100,7 @@ impl EnginePlatformExt<crate::sandbox::SandboxPolicy, crate::tools::user_input::
                     .await;
             }
             Op::ApplyKernelResume { hints } => {
-                engine.apply_kernel_resume_hints(&hints);
+                engine.apply_kernel_resume_with_replay(&hints).await;
             }
             Op::CompactContext => {
                 engine.handle_compact_context_op().await;

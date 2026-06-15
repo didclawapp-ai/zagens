@@ -14,7 +14,9 @@ use zagens_core::engine::turn_loop::control::{
 };
 use zagens_core::engine::turn_loop::v3_step::{V3StepOutcome, execute_batch_call_ids};
 use zagens_core::engine::turn_loop::{TurnLoopHost, streaming_phase, tool_phase};
-use zagens_core::engine::turn_machine::{Effect, plan_v3_step_effects};
+use zagens_core::engine::turn_machine::{
+    Effect, events_for_step, notify_lsp_effects_from_step_events, plan_v3_step_effects,
+};
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::Engine;
@@ -142,6 +144,32 @@ impl<'a> EffectInterpreter<'a> {
                         .iter()
                         .all(|o| *o == InterpretOutcome::Executed),
                     "ExecuteBatch plan tail must execute"
+                );
+            }
+        }
+
+        if ctx.execute_batch_ran {
+            let turn_events = self
+                .engine
+                .runtime_ext()
+                .kernel_projection_shadow
+                .turn_events();
+            let step_events = events_for_step(turn_events, ctx.turn.step);
+            let notify_tail = notify_lsp_effects_from_step_events(&step_events);
+            if !notify_tail.is_empty() {
+                tracing::info!(
+                    target: "kernel_v3",
+                    turn_id = %ctx.turn.id,
+                    step = ctx.turn.step,
+                    notify_count = notify_tail.len(),
+                    "v3 step: NotifyLsp tail (effect plan)"
+                );
+                let notify_outcomes = self.interpret_all(notify_tail, Some(&mut ctx)).await;
+                debug_assert!(
+                    notify_outcomes
+                        .iter()
+                        .all(|o| *o == InterpretOutcome::Executed),
+                    "NotifyLsp tail must execute"
                 );
             }
         }

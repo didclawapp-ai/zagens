@@ -40,7 +40,8 @@ pub use graph::CodeTaskGraph;
 pub use handoff::{build_lht_handoff_section, merge_lht_into_handoff};
 pub use manifest_gate::CompletionGateExec;
 pub use nudge::{
-    LongHorizonSessionState, NudgeDecision, build_auto_continue_message, build_nudge_message,
+    LongHorizonSessionState, NudgeDecision, build_auto_continue_message,
+    build_loop_guard_continue_nudge, build_nudge_message, build_step_limit_continue_nudge,
 };
 pub use objective::derive_objective;
 pub use task_graph::{

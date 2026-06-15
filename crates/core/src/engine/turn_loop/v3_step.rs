@@ -12,6 +12,7 @@ use super::control::{TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome};
 use super::host::TurnLoopHost;
 use super::{streaming_phase, tool_phase};
 use crate::engine::kernel_turn_host::KernelTurnHost;
+use crate::engine::turn_machine::{events_for_step, notify_lsp_effects_from_step_events};
 
 /// Combined outcome of one v3 turn step (model stream + optional tool batch).
 #[derive(Debug)]
@@ -96,6 +97,22 @@ pub async fn run_v3_step<H: TurnLoopHost>(
         )
         .await
     };
+
+    let step_events = events_for_step(&host.kernel_shadow_turn_events(), turn.step);
+    let notify_tail = notify_lsp_effects_from_step_events(&step_events);
+    if !notify_tail.is_empty() {
+        tracing::info!(
+            target: "kernel_v3",
+            turn_id = %turn.id,
+            step = turn.step,
+            notify_count = notify_tail.len(),
+            "v3 step: NotifyLsp tail (core fallback)"
+        );
+        for effect in notify_tail {
+            let _ = effect;
+            host.flush_pending_lsp_diagnostics().await;
+        }
+    }
 
     V3StepOutcome { stream, tools }
 }

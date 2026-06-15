@@ -5,8 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::warn;
 use zagens_core::engine::kernel_event::KernelEvent;
 use zagens_core::engine::turn_machine::{
-    verify_step_continuation_anchor, verify_step_effect_parity, verify_step_model_message_anchor,
-    verify_step_notify_lsp_anchor,
+    verify_step_compaction_replay_anchor, verify_step_continuation_anchor,
+    verify_step_effect_parity, verify_step_memory_plane_replay_anchor,
+    verify_step_model_message_anchor, verify_step_notify_lsp_anchor,
 };
 
 #[derive(Debug, Default)]
@@ -67,6 +68,12 @@ impl KernelV3EffectShadow {
             diffs.push(summary);
         }
         if let Some(summary) = verify_step_notify_lsp_anchor(turn_events, step_idx) {
+            diffs.push(summary);
+        }
+        if let Some(summary) = verify_step_memory_plane_replay_anchor(turn_events, step_idx) {
+            diffs.push(summary);
+        }
+        if let Some(summary) = verify_step_compaction_replay_anchor(turn_events, step_idx) {
             diffs.push(summary);
         }
         if diffs.is_empty() {

@@ -36,7 +36,7 @@ impl Engine {
             return false;
         }
 
-        self.apply_targeted_context_refresh(turn, client, mode, snapshot.as_ref())
+        self.route_capacity_trim_refresh(turn, client, mode, snapshot.as_ref())
             .await
     }
 
@@ -80,8 +80,13 @@ impl Engine {
                 false
             }
             GuardrailAction::VerifyAndReplan => {
-                self.apply_verify_and_replan(turn, mode, snapshot.as_ref(), "high_risk_post_tool")
-                    .await
+                self.route_capacity_handoff_replan(
+                    turn,
+                    mode,
+                    snapshot.as_ref(),
+                    "high_risk_post_tool",
+                )
+                .await
             }
             GuardrailAction::NoIntervention | GuardrailAction::TargetedContextRefresh => false,
         }
@@ -140,7 +145,7 @@ impl Engine {
         }
 
         let category_labels: Vec<String> = error_categories.iter().map(|c| c.to_string()).collect();
-        self.apply_verify_and_replan(
+        self.route_capacity_handoff_replan(
             turn,
             mode,
             Some(&forced),

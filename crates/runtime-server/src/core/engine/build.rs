@@ -32,8 +32,15 @@ use crate::core::capacity::CapacityController;
 use crate::core::engine::kernel_compaction_artifact_shadow::{
     KernelCompactionArtifactShadowStats, register_global_compaction_artifact_shadow_stats,
 };
+use crate::core::engine::kernel_compaction_replay_anchor_shadow::{
+    KernelCompactionReplayAnchorShadowStats, register_global_compaction_replay_anchor_shadow_stats,
+};
 use crate::core::engine::kernel_continuation_anchor_shadow::{
     KernelContinuationAnchorShadowStats, register_global_continuation_anchor_shadow_stats,
+};
+use crate::core::engine::kernel_memory_plane_replay_anchor_shadow::{
+    KernelMemoryPlaneReplayAnchorShadowStats,
+    register_global_memory_plane_replay_anchor_shadow_stats,
 };
 use crate::core::engine::kernel_message_compaction_shadow::{
     KernelMessageCompactionShadowStats, register_global_message_compaction_shadow_stats,
@@ -52,6 +59,9 @@ use crate::core::engine::kernel_message_timeline_shadow::{
 };
 use crate::core::engine::kernel_notify_lsp_anchor_shadow::{
     KernelNotifyLspAnchorShadowStats, register_global_notify_lsp_anchor_shadow_stats,
+};
+use crate::core::engine::kernel_resume_replay_anchor_shadow::{
+    KernelResumeReplayAnchorShadowStats, register_global_resume_replay_anchor_shadow_stats,
 };
 use crate::core::session::Session;
 use crate::hooks::HookExecutor;
@@ -275,17 +285,26 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         register_global_message_memory_plane_shadow_stats(std::sync::Arc::new(
             KernelMessageMemoryPlaneShadowStats::default(),
         ));
+        register_global_memory_plane_replay_anchor_shadow_stats(std::sync::Arc::new(
+            KernelMemoryPlaneReplayAnchorShadowStats::default(),
+        ));
         register_global_message_compaction_shadow_stats(std::sync::Arc::new(
             KernelMessageCompactionShadowStats::default(),
         ));
         register_global_compaction_artifact_shadow_stats(std::sync::Arc::new(
             KernelCompactionArtifactShadowStats::default(),
         ));
+        register_global_compaction_replay_anchor_shadow_stats(std::sync::Arc::new(
+            KernelCompactionReplayAnchorShadowStats::default(),
+        ));
         register_global_continuation_anchor_shadow_stats(std::sync::Arc::new(
             KernelContinuationAnchorShadowStats::default(),
         ));
         register_global_notify_lsp_anchor_shadow_stats(std::sync::Arc::new(
             KernelNotifyLspAnchorShadowStats::default(),
+        ));
+        register_global_resume_replay_anchor_shadow_stats(std::sync::Arc::new(
+            KernelResumeReplayAnchorShadowStats::default(),
         ));
     }
     if kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop() {
@@ -323,6 +342,14 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         kernel_machine_mode,
         kernel_active_turn_id: None,
         kernel_active_step: 0,
+        kernel_run_compaction_scope: None,
+        kernel_capacity_snapshot: None,
+        kernel_capacity_turn_mode: None,
+        kernel_capacity_handoff_reason: None,
+        kernel_capacity_intervention_ok: None,
+        kernel_pending_inject_steer_kind: None,
+        kernel_cycle_advance_ok: None,
+        kernel_effect_replay_anchor_only: false,
     };
 
     let hosts = EngineHostBundle {

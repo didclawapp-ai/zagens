@@ -830,9 +830,54 @@ fn is_zh(lang: &str) -> bool {
     lang.trim().to_ascii_lowercase().starts_with("zh")
 }
 
+/// Step-limit continuation nudge when a long-horizon code task hits the per-turn step cap.
+#[must_use]
+pub fn build_step_limit_continue_nudge(open_items: u32, lang: &str) -> String {
+    if is_zh(lang) {
+        format!(
+            "已达本轮工具步数上限,但长程任务尚未完成(还剩 {open_items} 项)。请继续推进未完成的清单项:聚焦下一个 in_progress / pending 项,对声称完成的项用其 `[verify:]` 命令实跑验证,不要重复已完成的工作,也不要在此停下。"
+        )
+    } else {
+        format!(
+            "Hit the per-turn tool-step budget, but the long-horizon task is not finished ({open_items} item(s) left). Keep going on the unfinished checklist: focus the next in_progress / pending item, verify any claimed-done item by actually running its `[verify:]` command, do not repeat completed work, and do not stop here."
+        )
+    }
+}
+
+/// Loop-guard halt continuation nudge — asks the model to change approach instead of retrying.
+#[must_use]
+pub fn build_loop_guard_continue_nudge(open_items: u32, lang: &str) -> String {
+    if is_zh(lang) {
+        format!(
+            "检测到你在重复调用同一个反复失败的工具,已被循环保护中断。长程任务尚未完成(还剩 {open_items} 项)。不要再用相同参数重试同一工具——换一种方法:换工具、改参数、或先读取相关文件/错误输出定位根因,然后继续推进未完成的清单项。不要在此停下。"
+        )
+    } else {
+        format!(
+            "You got stuck repeatedly calling the same failing tool and the loop guard halted the turn. The long-horizon task is not finished ({open_items} item(s) left). Do NOT retry the same tool with the same arguments — change approach: switch tools, change the arguments, or read the relevant file / error output to find the root cause first, then keep going on the unfinished checklist. Do not stop here."
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn step_limit_continue_nudge_zh_and_en() {
+        let zh = build_step_limit_continue_nudge(3, "zh-CN");
+        assert!(zh.contains("3"));
+        assert!(zh.contains("verify"));
+        let en = build_step_limit_continue_nudge(2, "en");
+        assert!(en.contains("2 item"));
+    }
+
+    #[test]
+    fn loop_guard_continue_nudge_zh_and_en() {
+        let zh = build_loop_guard_continue_nudge(1, "zh");
+        assert!(zh.contains("循环保护"));
+        let en = build_loop_guard_continue_nudge(4, "en-US");
+        assert!(en.contains("loop guard"));
+    }
 
     #[test]
     fn verification_cmd_matches_cargo_test() {

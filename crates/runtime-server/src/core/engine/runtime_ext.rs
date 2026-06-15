@@ -14,6 +14,9 @@ use crate::tools::subagent::{SharedSubAgentManager, SubAgentCompletion};
 
 use zagens_runtime_adapters::persist::KernelEventWriter;
 
+use zagens_core::capacity::CapacitySnapshot;
+use zagens_core::turn::TurnLoopMode;
+
 use crate::long_horizon::LongHorizonSessionState;
 
 use super::kernel_effect_shadow::KernelEffectShadow;
@@ -72,4 +75,16 @@ pub struct EngineRuntimeExt {
     /// Active turn frame for kernel events emitted outside `run.rs`.
     pub kernel_active_turn_id: Option<String>,
     pub kernel_active_step: u32,
+    /// Pending scope for the next v3 `RunCompaction` interpret call.
+    pub kernel_run_compaction_scope: Option<super::compaction_ops::RunCompactionScope>,
+    /// Stashed capacity checkpoint context consumed by `run_compaction_effect`.
+    pub kernel_capacity_snapshot: Option<CapacitySnapshot>,
+    pub kernel_capacity_turn_mode: Option<TurnLoopMode>,
+    pub kernel_capacity_handoff_reason: Option<String>,
+    pub kernel_capacity_intervention_ok: Option<bool>,
+    /// Pending IO behind an empty-text v3 `InjectSteer` call (cycle advance).
+    pub kernel_pending_inject_steer_kind: Option<super::cycle_briefing_ops::InjectSteerEffectKind>,
+    pub kernel_cycle_advance_ok: Option<bool>,
+    /// When true, `RunCompaction` / cycle-advance effects record anchors only (no IO).
+    pub kernel_effect_replay_anchor_only: bool,
 }
