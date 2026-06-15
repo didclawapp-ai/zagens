@@ -357,6 +357,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         kernel_cycle_advance_ok: None,
         kernel_effect_replay_anchor_only: false,
         kernel_v3_approval_outcomes: std::collections::HashMap::new(),
+        kernel_memory_query_sources: std::collections::BTreeSet::new(),
     };
 
     let hosts = EngineHostBundle {

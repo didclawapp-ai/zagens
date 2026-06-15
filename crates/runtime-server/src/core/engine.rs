@@ -59,6 +59,7 @@ pub(crate) mod kernel_v3_replay_counts;
 mod layered_context;
 mod loop_guard;
 mod lsp_hooks;
+mod memory_plane_compiler_ops;
 mod memory_plane_ops;
 mod memory_plane_query_ops;
 mod message_handlers;
@@ -80,6 +81,7 @@ mod tool_context;
 mod tool_dispatch_port;
 mod tool_execution;
 mod tool_setup;
+mod topic_memory_kernel_ops;
 pub(crate) mod turn_loop;
 mod types;
 

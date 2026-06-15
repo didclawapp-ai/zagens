@@ -8,7 +8,7 @@ use crate::engine::turn_machine::TurnKernelProjection;
 pub enum MemoryPlaneLayer {
     /// Scratchpad, steer, cycle briefing, continuation nudges (turn-local working memory).
     Working,
-    /// Topic / episodic retrieval (reserved — no dedicated kernel events yet).
+    /// Topic / episodic retrieval (TopicMemory graph injection).
     Episodic,
     /// Compaction artifacts and archival summaries.
     Archival,
@@ -74,6 +74,9 @@ pub fn count_memory_plane_layers(events: &[KernelEvent]) -> MemoryPlaneLayerCoun
             KernelEvent::CompactionArtifactCreated { .. } => {
                 out.archival += 1;
             }
+            KernelEvent::TopicMemoryInjected { .. } => {
+                out.episodic += 1;
+            }
             _ => {}
         }
     }
@@ -94,7 +97,7 @@ pub fn memory_plane_layer_counts_from_projection(
             .saturating_add(projection.steer_injection_count)
             .saturating_add(projection.step_limit_continuations)
             .saturating_add(projection.loop_guard_continuations),
-        episodic: 0,
+        episodic: projection.topic_memory_injection_count,
         archival: projection.compaction_artifact_count,
     }
 }

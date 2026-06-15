@@ -993,6 +993,18 @@ impl TurnLoopHost for Engine {
             None
         };
 
+        let queried_sources = self.runtime_ext().kernel_memory_query_sources.clone();
+        if !queried_sources.is_empty() {
+            tracing::info!(
+                target: "kernel_v3",
+                step = snapshot.step_idx,
+                queried = ?queried_sources,
+                has_working_set,
+                has_compaction,
+                "compiler_request_context: memory query sources this step"
+            );
+        }
+
         Some(CompilerRequestContext {
             system_prompt,
             turn_meta_text,

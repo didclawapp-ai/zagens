@@ -7,6 +7,7 @@ use zagens_core::engine::turn_loop::memory_plane_compiler_policy::{
 use zagens_core::engine::turn_loop::memory_plane_query_policy::MemoryPlaneQueryLayer;
 use zagens_core::engine::turn_machine::{TurnKernelProjection, emit_kernel_event};
 
+use super::memory_plane_compiler_ops::record_memory_query_compiler_source;
 use super::*;
 
 impl Engine {
@@ -42,6 +43,11 @@ impl Engine {
         if !self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
             return;
         }
+        record_memory_query_compiler_source(
+            self.runtime_ext_mut(),
+            compiler_source,
+            material_present,
+        );
         tracing::info!(
             target: "kernel_v3",
             turn_id = ?turn_id,

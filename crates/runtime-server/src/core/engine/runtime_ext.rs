@@ -90,4 +90,6 @@ pub struct EngineRuntimeExt {
     /// Per-call v3 approval outcomes stashed before `ExecuteBatch` (cleared each v3 step).
     pub kernel_v3_approval_outcomes:
         std::collections::HashMap<String, super::approval_ops::V3ApprovalStepOutcome>,
+    /// Compiler sources explicitly queried via v3 `QueryMemory` this step (batch 8g).
+    pub kernel_memory_query_sources: std::collections::BTreeSet<String>,
 }

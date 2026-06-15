@@ -93,6 +93,8 @@ pub struct TurnKernelProjection {
     pub working_set_path_touch_count: u32,
     /// Count of `MemoryPlaneQueried` events logged this turn.
     pub memory_plane_query_count: u32,
+    /// Count of `TopicMemoryInjected` events logged this turn (episodic layer).
+    pub topic_memory_injection_count: u32,
 
     // ── Continuation counters ────────────────────────────────────────────────
     pub step_limit_continuations: u32,
@@ -194,6 +196,10 @@ impl TurnKernelProjection {
 
             KernelEvent::MemoryPlaneQueried { .. } => {
                 self.memory_plane_query_count += 1;
+            }
+
+            KernelEvent::TopicMemoryInjected { .. } => {
+                self.topic_memory_injection_count += 1;
             }
 
             KernelEvent::SteerInjected { .. } => {

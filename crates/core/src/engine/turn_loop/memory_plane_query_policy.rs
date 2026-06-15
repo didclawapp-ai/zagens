@@ -50,7 +50,10 @@ pub fn query_memory_effects_before_model_call(
         });
     }
     if let Some(hints) = episodic_hints {
-        out.extend(episodic_query_effects_before_model_call(projection, hints));
+        out.extend(episodic_query_effects_before_model_call(
+            projection,
+            Some(hints),
+        ));
     }
     out
 }

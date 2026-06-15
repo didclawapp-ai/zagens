@@ -296,6 +296,14 @@ pub enum KernelEvent {
         cycle: u32,
         step_idx: u32,
     },
+    /// Episodic topic-memory block injected into the system prompt (B2 double-write).
+    TopicMemoryInjected {
+        turn_id: TurnId,
+        step_idx: u32,
+        /// Estimated tokens in the injected `<topic_memory>` block.
+        #[serde(default)]
+        block_token_est: u32,
+    },
     /// Read-side memory plane query executed (v3 `Effect::QueryMemory` double-write).
     MemoryPlaneQueried {
         turn_id: TurnId,
@@ -381,6 +389,7 @@ impl KernelEvent {
             | KernelEvent::ScratchpadReminderInjected { turn_id, .. }
             | KernelEvent::ScratchpadSummaryInjected { turn_id, .. }
             | KernelEvent::CycleBriefingInjected { turn_id, .. }
+            | KernelEvent::TopicMemoryInjected { turn_id, .. }
             | KernelEvent::MemoryPlaneQueried { turn_id, .. }
             | KernelEvent::LoopGuardTriggered { turn_id, .. }
             | KernelEvent::CapacityCheckpoint { turn_id, .. }
@@ -411,6 +420,7 @@ impl KernelEvent {
             KernelEvent::ScratchpadReminderInjected { .. } => "scratchpad_reminder_injected",
             KernelEvent::ScratchpadSummaryInjected { .. } => "scratchpad_summary_injected",
             KernelEvent::CycleBriefingInjected { .. } => "cycle_briefing_injected",
+            KernelEvent::TopicMemoryInjected { .. } => "topic_memory_injected",
             KernelEvent::MemoryPlaneQueried { .. } => "memory_plane_queried",
             KernelEvent::LoopGuardTriggered { .. } => "loop_guard_triggered",
             KernelEvent::CapacityCheckpoint { .. } => "capacity_checkpoint",

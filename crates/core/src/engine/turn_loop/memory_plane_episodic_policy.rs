@@ -1,31 +1,39 @@
-//! Episodic / TopicMemory query derivation (Phase 3b batch 4 / 8e — reserved substrate).
+//! Episodic / TopicMemory query derivation (Phase 3b batch 4 / 8e–8g).
 
 use crate::engine::turn_machine::{Effect, TurnKernelProjection};
 
 use super::memory_plane_projection_policy::MemoryPlaneLayer;
 
-/// Symbolic query key for topic-memory episodic reads (reserved).
+/// Symbolic query key for topic-memory episodic reads.
 pub const QUERY_TOPIC_EPISODIC: &str = "topic_episodic";
 
-/// Optional live hints not rebuildable from the kernel log alone (yet).
+/// Optional live hints when episodic kernel events are not yet in the shadow log.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MemoryPlaneEpisodicHints {
     pub topic_memory_enabled: bool,
 }
 
-/// Derive episodic-layer queries before `CallModel` when topic memory is enabled.
-///
-/// Reserved until dedicated TopicMemory kernel events exist; uses step/message
-/// heuristics for v3 live wiring only (replay passes `topic_memory_enabled: false`).
+/// Whether episodic material is present for a pre-`CallModel` query.
+#[must_use]
+pub fn episodic_material_present(
+    projection: &TurnKernelProjection,
+    hints: Option<MemoryPlaneEpisodicHints>,
+) -> bool {
+    if projection.topic_memory_injection_count > 0 {
+        return true;
+    }
+    hints.is_some_and(|h| {
+        h.topic_memory_enabled && projection.step_idx > 1 && projection.model_message_count > 0
+    })
+}
+
+/// Derive episodic-layer queries before `CallModel`.
 #[must_use]
 pub fn episodic_query_effects_before_model_call(
     projection: &TurnKernelProjection,
-    hints: MemoryPlaneEpisodicHints,
+    hints: Option<MemoryPlaneEpisodicHints>,
 ) -> Vec<Effect> {
-    if !hints.topic_memory_enabled || projection.step_idx <= 1 {
-        return Vec::new();
-    }
-    if projection.model_message_count == 0 {
+    if !episodic_material_present(projection, hints) {
         return Vec::new();
     }
     vec![Effect::QueryMemory {
@@ -42,21 +50,62 @@ mod tests {
     use crate::turn::TurnLoopMode;
 
     #[test]
-    fn episodic_query_reserved_until_topic_events() {
+    fn episodic_query_reserved_without_material() {
         let projection = TurnKernelProjection::default();
         assert!(
             episodic_query_effects_before_model_call(
                 &projection,
-                MemoryPlaneEpisodicHints {
+                Some(MemoryPlaneEpisodicHints {
                     topic_memory_enabled: true,
-                }
+                })
             )
             .is_empty()
         );
     }
 
     #[test]
-    fn episodic_query_emits_on_step_two_when_enabled() {
+    fn episodic_query_from_topic_memory_injected_event() {
+        let events = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t1".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: "x".into(),
+                max_steps: 5,
+            },
+            KernelEvent::TopicMemoryInjected {
+                turn_id: "t1".into(),
+                step_idx: 2,
+                block_token_est: 128,
+            },
+            KernelEvent::ModelRequestIssued {
+                turn_id: "t1".into(),
+                step_idx: 2,
+                request_fp: RequestFingerprint {
+                    static_prefix_sha256: "cc".into(),
+                    full_prefix_sha256: "dd".into(),
+                },
+                token_budget: 4096,
+            },
+            KernelEvent::TurnEnded {
+                turn_id: "t1".into(),
+                outcome: TurnOutcome::Completed,
+                total_steps: 2,
+            },
+        ];
+        let projection = TurnKernelProjection::from_events(&events);
+        let effects = episodic_query_effects_before_model_call(&projection, None);
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(
+            &effects[0],
+            Effect::QueryMemory {
+                layer: MemoryPlaneLayer::Episodic,
+                query_key,
+            } if query_key == QUERY_TOPIC_EPISODIC
+        ));
+    }
+
+    #[test]
+    fn episodic_query_emits_on_step_two_when_enabled_via_hints() {
         let events = vec![
             KernelEvent::TurnStarted {
                 turn_id: "t1".into(),
@@ -97,17 +146,10 @@ mod tests {
         let projection = TurnKernelProjection::from_events(&events);
         let effects = episodic_query_effects_before_model_call(
             &projection,
-            MemoryPlaneEpisodicHints {
+            Some(MemoryPlaneEpisodicHints {
                 topic_memory_enabled: true,
-            },
+            }),
         );
         assert_eq!(effects.len(), 1);
-        assert!(matches!(
-            &effects[0],
-            Effect::QueryMemory {
-                layer: MemoryPlaneLayer::Episodic,
-                query_key,
-            } if query_key == QUERY_TOPIC_EPISODIC
-        ));
     }
 }

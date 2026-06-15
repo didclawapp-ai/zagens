@@ -85,6 +85,9 @@ impl<'a> EffectInterpreter<'a> {
         Engine: TurnLoopHost,
     {
         self.engine.clear_v3_approval_outcomes();
+        super::memory_plane_compiler_ops::clear_memory_query_compiler_sources(
+            self.engine.runtime_ext_mut(),
+        );
         let model = self.engine.session_mut().model.clone();
         let token_budget = context_input_budget(&model, TURN_MAX_OUTPUT_TOKENS)
             .map(|b| b.min(u32::MAX as usize) as u32)

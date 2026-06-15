@@ -343,6 +343,9 @@ impl Engine {
             use zagens_core::engine::hosts::TopicMemoryHost;
             TopicMemoryHost::compose_block(&mut *self.topic_memory, query_hint.as_deref())
         };
+        if let Some(ref block) = topic_memory_block {
+            self.record_topic_memory_injected(block);
+        }
         let base = prompts::system_prompt_for_mode_with_context_skills_session_and_approval(
             mode,
             &self.config.workspace,

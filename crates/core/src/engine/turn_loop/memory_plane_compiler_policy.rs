@@ -30,7 +30,7 @@ pub fn query_key_has_projection_material(
         QUERY_SCRATCHPAD_REMINDER => projection.scratchpad_reminder_count > 0,
         QUERY_COMPACTION_SUMMARY => projection.compaction_artifact_count > 0,
         QUERY_WORKING_SET => projection.working_set_path_touch_count > 0,
-        QUERY_TOPIC_EPISODIC => projection.step_idx > 1 && projection.model_message_count > 0,
+        QUERY_TOPIC_EPISODIC => projection.topic_memory_injection_count > 0,
         _ => false,
     }
 }

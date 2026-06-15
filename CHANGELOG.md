@@ -295,6 +295,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `EffectInterpreter::run_v3_turn_step` runs `plan_v3_pre_call_model_effects` before `CallModel` (projection from kernel shadow + TopicMemory config hints).
   - `query_key_has_projection_material` compiler substrate gate; `verify_step_query_memory_anchor` in v3 effect shadow.
 
+- **Runtime (kernel-v2 Phase 3b batch 8g — TopicMemory kernel event + compiler query wiring):**
+  - `KernelEvent::TopicMemoryInjected` double-write from `refresh_system_prompt` when `<topic_memory>` block is composed.
+  - Episodic layer replay from `topic_memory_injection_count`; `kernel_memory_query_sources` per-step compiler trace in `compiler_request_context`.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:
