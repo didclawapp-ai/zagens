@@ -12,6 +12,7 @@ use zagens_core::engine::turn_machine::{
 };
 
 use crate::core::engine::kernel_compaction_artifact_shadow::record_message_compaction_artifact_check;
+use crate::core::engine::kernel_continuation_anchor_shadow::record_continuation_anchor_check;
 use crate::core::engine::kernel_message_compaction_shadow::record_message_compaction_depth_check;
 use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
 use crate::core::engine::kernel_message_memory_plane_shadow::record_message_memory_plane_check;
@@ -370,6 +371,11 @@ pub(crate) fn resume_session_kernel_replay_summary(
             .as_ref()
             .filter(|c| !c.compaction_artifact_ok)
             .and_then(|c| c.summary.clone()),
+        message_continuation_anchor_ok: plane_coverage.as_ref().map(|c| c.continuation_anchor_ok),
+        message_continuation_anchor_summary: plane_coverage
+            .as_ref()
+            .filter(|c| !c.continuation_anchor_ok)
+            .and_then(|c| c.summary.clone()),
     })
 }
 
@@ -404,12 +410,18 @@ pub(crate) fn log_session_message_plane_checks(
     if session_compaction.is_some() {
         record_message_compaction_artifact_check(cov.compaction_artifact_ok);
     }
+    if projection.message_stats.step_limit_continuation_count > 0
+        || projection.message_stats.loop_guard_continuation_count > 0
+    {
+        record_continuation_anchor_check(cov.continuation_anchor_ok);
+    }
     if !cov.timeline_vs_session_ok
         || !cov.plane_depth_ok
         || !cov.role_index_ok
         || !cov.memory_plane_user_ok
         || !cov.compaction_depth_ok
         || !cov.compaction_artifact_ok
+        || !cov.continuation_anchor_ok
     {
         record_timeline_coherence_check(false);
     }

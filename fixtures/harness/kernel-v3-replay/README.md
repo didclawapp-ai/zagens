@@ -16,6 +16,11 @@ array of tagged `KernelEvent` records (same shape as `kernel_events.payload`).
 | `manual_compaction.json` | Manual `/compact` compaction artifact |
 | `deferred_activation.json` | Deferred tool promotion without tool batch |
 
+Resume (`POST /v1/sessions/{id}/resume`) cross-checks session compaction artifacts
+against kernel log `replaced_range` anchors when SQLite compaction rows exist.
+Continuation steps are validated for `InjectSteer` replay effects on threads with
+step-limit / loop-guard continuation events.
+
 Run: `cargo test -p zagens-core golden_replay`
 
 Thread replay API: `GET /v1/runtime/kernel-replay/thread/{thread_id}` returns

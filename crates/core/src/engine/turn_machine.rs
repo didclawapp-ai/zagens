@@ -741,6 +741,9 @@ pub struct ThreadReplayProjection {
     /// Compaction artifact anchors from kernel logs (replaced_range metadata only).
     pub compaction_timeline: Vec<ThreadCompactionReplayEntry>,
     pub compaction_index: ThreadCompactionReplayIndex,
+    /// Continuation steps replay `InjectSteer` in their step effect chain.
+    pub continuation_anchor_ok: bool,
+    pub continuation_anchor_summary: Option<String>,
 }
 
 /// One compaction artifact anchor rebuildable from kernel logs.
@@ -1217,6 +1220,36 @@ pub fn verify_step_continuation_anchor(
     }
 }
 
+/// Verify continuation steps across all turns replay `InjectSteer` in their step effect chain.
+#[must_use]
+pub fn verify_thread_continuation_anchors(
+    turn_events: &[(String, Vec<KernelEvent>)],
+) -> Option<String> {
+    let mut issues = Vec::new();
+    for (_, events) in turn_events {
+        let mut continuation_steps = std::collections::BTreeSet::new();
+        for event in events {
+            match event {
+                KernelEvent::StepLimitContinuation { step_idx, .. }
+                | KernelEvent::LoopGuardContinuation { step_idx, .. } => {
+                    continuation_steps.insert(*step_idx);
+                }
+                _ => {}
+            }
+        }
+        for step_idx in continuation_steps {
+            if let Some(summary) = verify_step_continuation_anchor(events, step_idx) {
+                issues.push(summary);
+            }
+        }
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
 /// Count message-plane events across all turns on a thread.
 #[must_use]
 pub fn replay_thread_message_stats(
@@ -1389,6 +1422,7 @@ pub struct SessionMessageTimelineCoverage {
     pub compaction_peak_session_depth_hint: u32,
     pub compaction_artifact_ok: bool,
     pub session_compaction_artifact_count: Option<u32>,
+    pub continuation_anchor_ok: bool,
     pub overall_ok: bool,
     pub summary: Option<String>,
 }
@@ -1459,6 +1493,7 @@ pub fn build_session_message_timeline_coverage(
                 .is_none()
         })
         .unwrap_or(true);
+    let continuation_anchor_ok = projection.continuation_anchor_ok;
     let overall_ok = coherence_ok
         && coverage_ok
         && timeline_vs_session_ok
@@ -1467,7 +1502,8 @@ pub fn build_session_message_timeline_coverage(
         && role_index_ok
         && memory_plane_user_ok
         && compaction_depth_ok
-        && compaction_artifact_ok;
+        && compaction_artifact_ok
+        && continuation_anchor_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -1506,6 +1542,11 @@ pub fn build_session_message_timeline_coverage(
             summaries.push(s);
         }
     }
+    if !continuation_anchor_ok {
+        if let Some(s) = projection.continuation_anchor_summary.clone() {
+            summaries.push(s);
+        }
+    }
 
     Some(SessionMessageTimelineCoverage {
         session_message_count,
@@ -1532,6 +1573,7 @@ pub fn build_session_message_timeline_coverage(
         compaction_peak_session_depth_hint: compaction_index.peak_session_depth_hint,
         compaction_artifact_ok,
         session_compaction_artifact_count: session_compaction.map(|s| s.len() as u32),
+        continuation_anchor_ok,
         overall_ok,
         summary: if summaries.is_empty() {
             None
@@ -1553,6 +1595,8 @@ pub fn replay_thread_projection(
     let message_plane_index = replay_thread_message_plane_index(&message_stats);
     let compaction_timeline = replay_thread_compaction_timeline(turn_events);
     let compaction_index = replay_thread_compaction_index(&compaction_timeline);
+    let continuation_anchor_summary = verify_thread_continuation_anchors(turn_events);
+    let continuation_anchor_ok = continuation_anchor_summary.is_none();
     let (latest_turn_id, latest_projection) = turn_events
         .iter()
         .rev()
@@ -1573,6 +1617,8 @@ pub fn replay_thread_projection(
         message_plane_index,
         compaction_timeline,
         compaction_index,
+        continuation_anchor_ok,
+        continuation_anchor_summary,
     }
 }
 
@@ -2298,6 +2344,19 @@ mod tests {
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         assert!(verify_step_continuation_anchor(&events, 20).is_none());
         assert!(verify_step_continuation_anchor(&events, 22).is_none());
+    }
+
+    #[test]
+    fn verify_thread_continuation_anchors_on_lht_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/lht_continue.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let turn_events = [("t1".into(), events)];
+        assert!(verify_thread_continuation_anchors(&turn_events).is_none());
+        let projection = replay_thread_projection("t1", &turn_events);
+        assert!(projection.continuation_anchor_ok);
+        assert!(projection.continuation_anchor_summary.is_none());
     }
 
     #[test]

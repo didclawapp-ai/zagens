@@ -162,6 +162,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Session resume loads SQLite compaction artifacts and extends timeline coverage with `compaction_artifact_ok`.
   - `kernel_compaction_artifact_shadow` + resume `kernel_replay` compaction artifact hints; v3 step shadow checks continuation anchors.
 
+- **Runtime (kernel-v2 Phase 3b batch 6r — InjectSteer interpreter + continuation anchor shadow):**
+  - `EffectInterpreter` executes `InjectSteer` via `run_inject_steer_effect()` (session transcript + `SteerInjected` kernel event) instead of `DelegatedLegacy`.
+  - `verify_thread_continuation_anchors()` thread-level continuation replay check; timeline coverage adds `continuation_anchor_ok`.
+  - `kernel_continuation_anchor_shadow` + `GET /v1/runtime/kernel-shadow` `continuation_anchor_shadow`; resume exposes continuation anchor hints.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

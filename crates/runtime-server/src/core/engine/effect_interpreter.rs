@@ -224,6 +224,12 @@ impl<'a> EffectInterpreter<'a> {
                 ctx.execute_batch_ran = true;
                 InterpretOutcome::Executed
             }
+            Effect::InjectSteer { text } => {
+                self.engine
+                    .run_inject_steer_effect(&ctx.turn.id, ctx.turn.step, text)
+                    .await;
+                InterpretOutcome::Executed
+            }
             _ => self.interpret(effect).await,
         }
     }
@@ -304,8 +310,16 @@ impl<'a> EffectInterpreter<'a> {
             }
             Effect::RequestApproval { .. } => InterpretOutcome::NotImplemented,
             Effect::InjectSteer { text } => {
-                let _ = text;
-                InterpretOutcome::DelegatedLegacy
+                let ext = self.engine.runtime_ext();
+                let turn_id = ext
+                    .kernel_active_turn_id
+                    .clone()
+                    .unwrap_or_else(|| "effect-interpreter".to_string());
+                let step_idx = ext.kernel_active_step;
+                self.engine
+                    .run_inject_steer_effect(&turn_id, step_idx, text)
+                    .await;
+                InterpretOutcome::Executed
             }
             Effect::RunCompaction => {
                 self.engine.run_compaction_effect().await;
