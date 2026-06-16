@@ -11,12 +11,14 @@ mod list_dir;
 mod path_input;
 mod read;
 mod refactor_imports;
+mod restore_file;
 mod schemas;
 mod search_replace;
 mod write;
 
 pub use batch_edit::BatchEditTool;
 pub use refactor_imports::RefactorImportsTool;
+pub use restore_file::RestoreFileTool;
 
 pub use edit::EditFileTool;
 pub use list_dir::ListDirTool;

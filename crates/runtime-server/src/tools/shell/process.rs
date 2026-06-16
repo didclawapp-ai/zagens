@@ -184,7 +184,16 @@ impl ShellChild {
             // group; windows: `taskkill /T`) so Start-Process / daemonized
             // grandchildren don't survive as orphans holding ports (C1).
             ShellChild::Process(child) => kill_child_process_group(child),
-            ShellChild::Pty(child) => child.kill(),
+            ShellChild::Pty(child) => {
+                let pid = child.process_id();
+                let result = child.kill();
+                // Windows PTY kill may leave Start-Process grandchildren (C1/T3).
+                #[cfg(windows)]
+                if let Some(pid) = pid {
+                    kill_process_tree(pid);
+                }
+                result
+            }
             #[cfg(windows)]
             ShellChild::WindowsSandbox(child) => {
                 // `ManagedProcess::kill` already walks the tree via `taskkill /T`

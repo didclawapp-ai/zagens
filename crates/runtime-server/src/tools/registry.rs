@@ -448,7 +448,7 @@ impl ToolRegistryBuilder {
     pub fn with_file_tools(self) -> Self {
         use super::file::{
             BatchEditTool, EditFileTool, ListDirTool, ReadFileTool, RefactorImportsTool,
-            WriteFileTool,
+            RestoreFileTool, WriteFileTool,
         };
         use super::file_info::FileInfoTool;
         self.with_tool(Arc::new(ReadFileTool))
@@ -456,6 +456,7 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(EditFileTool))
             .with_tool(Arc::new(BatchEditTool))
             .with_tool(Arc::new(RefactorImportsTool))
+            .with_tool(Arc::new(RestoreFileTool))
             .with_tool(Arc::new(ListDirTool))
             .with_tool(Arc::new(FileInfoTool))
     }

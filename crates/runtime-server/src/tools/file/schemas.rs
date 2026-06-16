@@ -155,6 +155,18 @@ pub fn batch_edit_input_schema() -> Value {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(inline)]
+pub struct RestoreFileInput {
+    #[schemars(description = "Workspace-relative path to the file to restore from git HEAD")]
+    pub path: String,
+}
+
+#[must_use]
+pub fn restore_file_input_schema() -> Value {
+    derived_input_schema::<RestoreFileInput>()
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(inline)]
 pub struct RefactorImportsInput {
     #[schemars(
         description = "Workspace-relative module path imports currently resolve to (e.g. 'shared/old')"

@@ -26,6 +26,7 @@ fn loop_guard_state_mutating_whitelist(name: &str) -> bool {
             | "create_dirs"
             | "batch_edit"
             | "refactor_imports"
+            | "restore_file"
     )
 }
 
@@ -137,6 +138,7 @@ mod tests {
             ("refactor_imports", true),
             ("remember", false),
             ("request_user_input", false),
+            ("restore_file", true),
             ("resume_agent", false),
             ("revert_turn", false),
             ("review", false),

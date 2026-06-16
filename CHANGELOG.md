@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Runtime (tool UX — batch D):**
   - `checklist_update` / `checklist_write` / `update_plan`: append `[SYNC_WARNING]` when checklist is fully done but matching plan phases stay pending; metadata `plan_checklist_sync_warning`; LHT nudge text aligned with checklist-as-SSOT completion rule.
   - Layer-3 completion gate: optional `[long_horizon.completion_gate.min_lines]` frontend/backend line-count floors (default globs `**/*.{ts,tsx,vue,jsx}` / `**/*.{rs,go,py}`); runs even when deliverable manifest is empty.
+- **Runtime (tool UX — batch E partial):**
+  - Windows shell: PTY background kill also walks the process tree via `taskkill /T` (C1/T3 complement to existing sync-path tree kill).
+  - New `restore_file` tool: restore a single tracked file from git `HEAD` (`git restore`); approval required; use `revert_turn` for full-turn snapshot rollback.
 
 ### Removed
 
