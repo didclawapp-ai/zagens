@@ -141,6 +141,24 @@ pub struct CompletionGateConfig {
     /// `observe` records counts; `enforce` blocks until the stubs are gone
     /// (bounded by `max_manifest_rounds`). Zero per-task config.
     pub stub_gate: GenericGateMode,
+    /// Optional minimum line counts per bucket (Layer 3, TS-11).
+    pub min_lines: MinLinesGateConfig,
+}
+
+/// `[long_horizon.completion_gate.min_lines]` — machine line-count floors.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MinLinesGateConfig {
+    pub frontend: Option<u32>,
+    pub backend: Option<u32>,
+    pub frontend_glob: Option<String>,
+    pub backend_glob: Option<String>,
+}
+
+impl MinLinesGateConfig {
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        self.frontend.is_some() || self.backend.is_some()
+    }
 }
 
 impl CompletionGateConfig {
@@ -151,6 +169,7 @@ impl CompletionGateConfig {
             || self.auto_verify_replay.is_on()
             || self.toolchain_gate.is_on()
             || self.stub_gate.is_on()
+            || self.min_lines.is_active()
     }
 
     /// Layer-2 may have entries from the operator manifest **or** a task-agnostic
@@ -163,7 +182,7 @@ impl CompletionGateConfig {
 
     #[must_use]
     pub fn has_layer3(&self) -> bool {
-        !self.deliverable.is_empty()
+        !self.deliverable.is_empty() || self.min_lines.is_active()
     }
 
     /// Downgrade an executable enforce manifest when its source is not trusted
@@ -215,6 +234,20 @@ pub struct CompletionGateConfigToml {
     /// defaults to `observe` ("先量后调") when a `[completion_gate]` table exists.
     #[serde(default)]
     pub stub_gate: Option<String>,
+    #[serde(default)]
+    pub min_lines: Option<MinLinesGateToml>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct MinLinesGateToml {
+    #[serde(default)]
+    pub frontend: Option<u32>,
+    #[serde(default)]
+    pub backend: Option<u32>,
+    #[serde(default)]
+    pub frontend_glob: Option<String>,
+    #[serde(default)]
+    pub backend_glob: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -268,6 +301,15 @@ impl CompletionGateConfigToml {
                 .as_deref()
                 .map(|s| GenericGateMode::from_optional_str(Some(s)))
                 .unwrap_or(GenericGateMode::Observe),
+            min_lines: self
+                .min_lines
+                .map(|m| MinLinesGateConfig {
+                    frontend: m.frontend,
+                    backend: m.backend,
+                    frontend_glob: m.frontend_glob,
+                    backend_glob: m.backend_glob,
+                })
+                .unwrap_or_default(),
         }
     }
 }

@@ -446,11 +446,16 @@ impl ToolRegistryBuilder {
     /// Include file tools (read, write, edit, list).
     #[must_use]
     pub fn with_file_tools(self) -> Self {
-        use super::file::{EditFileTool, ListDirTool, ReadFileTool, WriteFileTool};
+        use super::file::{
+            BatchEditTool, EditFileTool, ListDirTool, ReadFileTool, RefactorImportsTool,
+            WriteFileTool,
+        };
         use super::file_info::FileInfoTool;
         self.with_tool(Arc::new(ReadFileTool))
             .with_tool(Arc::new(WriteFileTool))
             .with_tool(Arc::new(EditFileTool))
+            .with_tool(Arc::new(BatchEditTool))
+            .with_tool(Arc::new(RefactorImportsTool))
             .with_tool(Arc::new(ListDirTool))
             .with_tool(Arc::new(FileInfoTool))
     }
@@ -858,33 +863,53 @@ impl ToolRegistryBuilder {
         plan_state: super::plan::SharedPlanState,
     ) -> Self {
         self.with_agent_tools(allow_shell)
-            .with_todo_tool(todo_list)
-            .with_plan_tool(plan_state)
+            .with_todo_tool(todo_list.clone(), plan_state.clone())
+            .with_plan_tool(plan_state, todo_list)
             .with_review_tool(client.clone(), model.clone())
             .with_rlm_tool(client, model)
             .with_recall_archive_tool()
             .with_subagent_tools(manager, runtime)
     }
 
-    /// Include the todo tool with a shared `TodoList`.
+    /// Include the todo tool with a shared `TodoList` and cross-linked plan state (TS-10).
     #[must_use]
-    pub fn with_todo_tool(self, todo_list: super::todo::SharedTodoList) -> Self {
+    pub fn with_todo_tool(
+        self,
+        todo_list: super::todo::SharedTodoList,
+        plan_state: super::plan::SharedPlanState,
+    ) -> Self {
         use super::todo::{TodoAddTool, TodoListTool, TodoUpdateTool, TodoWriteTool};
-        self.with_tool(Arc::new(TodoWriteTool::checklist(todo_list.clone())))
-            .with_tool(Arc::new(TodoAddTool::checklist(todo_list.clone())))
-            .with_tool(Arc::new(TodoUpdateTool::checklist(todo_list.clone())))
-            .with_tool(Arc::new(TodoListTool::checklist(todo_list.clone())))
-            .with_tool(Arc::new(TodoWriteTool::new(todo_list.clone())))
-            .with_tool(Arc::new(TodoAddTool::new(todo_list.clone())))
-            .with_tool(Arc::new(TodoUpdateTool::new(todo_list.clone())))
-            .with_tool(Arc::new(TodoListTool::new(todo_list)))
+        self.with_tool(Arc::new(TodoWriteTool::checklist(
+            todo_list.clone(),
+            plan_state.clone(),
+        )))
+        .with_tool(Arc::new(TodoAddTool::checklist(todo_list.clone())))
+        .with_tool(Arc::new(TodoUpdateTool::checklist(
+            todo_list.clone(),
+            plan_state.clone(),
+        )))
+        .with_tool(Arc::new(TodoListTool::checklist(todo_list.clone())))
+        .with_tool(Arc::new(TodoWriteTool::new(
+            todo_list.clone(),
+            plan_state.clone(),
+        )))
+        .with_tool(Arc::new(TodoAddTool::new(todo_list.clone())))
+        .with_tool(Arc::new(TodoUpdateTool::new(
+            todo_list.clone(),
+            plan_state.clone(),
+        )))
+        .with_tool(Arc::new(TodoListTool::new(todo_list)))
     }
 
-    /// Include the plan tool with a shared `PlanState`.
+    /// Include the plan tool with a shared `PlanState` and cross-linked checklist (TS-10).
     #[must_use]
-    pub fn with_plan_tool(self, plan_state: super::plan::SharedPlanState) -> Self {
+    pub fn with_plan_tool(
+        self,
+        plan_state: super::plan::SharedPlanState,
+        todo_list: super::todo::SharedTodoList,
+    ) -> Self {
         use super::plan::UpdatePlanTool;
-        self.with_tool(Arc::new(UpdatePlanTool::new(plan_state)))
+        self.with_tool(Arc::new(UpdatePlanTool::new(plan_state, todo_list)))
     }
 
     /// Include sub-agent management tools.
@@ -1495,8 +1520,8 @@ mod tests {
 
         let registry = ToolRegistryBuilder::new()
             .with_agent_tools(true)
-            .with_todo_tool(new_shared_todo_list())
-            .with_plan_tool(new_shared_plan_state())
+            .with_todo_tool(new_shared_todo_list(), new_shared_plan_state())
+            .with_plan_tool(new_shared_plan_state(), new_shared_todo_list())
             .with_review_tool(None, "test-model".into())
             .with_rlm_tool(None, "test-model".into())
             .with_recall_archive_tool()

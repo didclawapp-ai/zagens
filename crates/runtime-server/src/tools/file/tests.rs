@@ -57,6 +57,57 @@ async fn test_read_file_missing_path() {
     );
 }
 
+/// TS-01 — wrong path alias (`file` / `file_path`) must name canonical `path`.
+#[tokio::test]
+async fn write_file_file_alias_hint() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path().to_path_buf());
+    let tool = WriteFileTool;
+
+    let result = tool
+        .execute(json!({"file": "out.txt", "content": "hello"}), &ctx)
+        .await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("'path'"), "must name canonical field: {err}");
+    assert!(err.contains("'file'"), "must name wrong alias: {err}");
+    assert!(
+        !err.contains("missing required field 'path'"),
+        "must not be generic missing-field: {err}"
+    );
+}
+
+#[tokio::test]
+async fn read_file_file_path_alias_hint() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path().to_path_buf());
+    fs::write(tmp.path().join("x.txt"), "body").expect("write");
+
+    let result = ReadFileTool
+        .execute(json!({"file_path": "x.txt"}), &ctx)
+        .await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("'path'") && err.contains("'file_path'"),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn list_dir_file_alias_hint() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path().to_path_buf());
+
+    let result = ListDirTool.execute(json!({"file": "."}), &ctx).await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("'path'") && err.contains("'file'"), "{err}");
+}
+
 #[test]
 fn pdf_detected_by_extension() {
     let tmp = tempdir().expect("tempdir");

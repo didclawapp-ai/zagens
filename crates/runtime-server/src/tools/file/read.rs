@@ -1,10 +1,10 @@
 //! read_file tool and format-specific readers.
 
+use super::path_input::required_path_field;
 use super::schemas::read_file_input_schema;
 use super::{DEFAULT_LIMIT, FILE_SIZE_LINE_COUNT_LIMIT, MAX_FILE_SIZE, MAX_LIMIT};
 use crate::tools::spec::{
     ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str, optional_u64,
-    required_str,
 };
 use async_trait::async_trait;
 use regex::Regex;
@@ -44,7 +44,7 @@ impl ToolSpec for ReadFileTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let path_str = required_str(&input, "path")?;
+        let path_str = required_path_field(&input, "read_file")?;
         let file_path = context.resolve_path(path_str)?;
         let pages = optional_str(&input, "pages");
 

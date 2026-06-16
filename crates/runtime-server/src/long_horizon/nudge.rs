@@ -698,12 +698,14 @@ pub fn build_plan_checklist_drift_nudge(items: &[String], lang: &str) -> String 
     if is_zh(lang) {
         format!(
             "清单已全部勾选，但 plan 与 checklist **不同步** —— 下列 plan 阶段仍为 pending/in_progress，却已有对应 checklist 完成项：\n\n{list}\n\n\
-             请用 `update_plan` 把已完成阶段标为 completed，或撤销 checklist 中过早勾选的项。Plan 与 checklist 必须反映同一真实进度后再结束本轮。"
+             请用 `update_plan` 把已完成阶段标为 completed，或撤销 checklist 中过早勾选的项。Plan 与 checklist 必须反映同一真实进度后再结束本轮。\n\n\
+             SSOT：checklist 非空时，完成度以 checklist 为准（plan 大纲须同步，但 pending plan 不再拉低进度条）。"
         )
     } else {
         format!(
             "The checklist is fully checked, but **plan and checklist are out of sync** — these plan phases are still pending/in_progress while matching checklist items are completed:\n\n{list}\n\n\
-             Use `update_plan` to mark finished phases completed, or revert prematurely checked checklist items. Plan and checklist must reflect the same real progress before ending this turn."
+             Use `update_plan` to mark finished phases `completed`, or revert checklist items. Plan and checklist must reflect the same real progress before ending this turn.\n\n\
+             SSOT: when the checklist is non-empty, harness completion % counts checklist items only — stale pending plan phases do not block progress but must be synced before you stop."
         )
     }
 }

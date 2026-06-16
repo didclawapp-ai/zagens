@@ -1967,6 +1967,7 @@ pub fn save_lht_settings(
         verify: existing_gate.verify,
         deliverable: existing_gate.deliverable,
         mode: existing_gate.mode,
+        min_lines: existing_gate.min_lines,
     };
 
     store.config.long_horizon = Some(LongHorizonConfigToml {

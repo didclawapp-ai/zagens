@@ -545,6 +545,36 @@ async fn test_exec_shell_foreground_respects_cwd() {
 }
 
 #[tokio::test]
+async fn exec_shell_npm_eperm_appends_failure_hint() {
+    let tmp = tempdir().expect("tempdir");
+    let ctx = ToolContext::new(tmp.path());
+    let tool = ExecShellTool;
+
+    #[cfg(windows)]
+    let command = "cmd /C \"echo npm ERR! code EPERM 1>&2 & exit /b 1\"";
+    #[cfg(not(windows))]
+    let command = "sh -c 'echo npm ERR! code EPERM >&2; exit 1'";
+
+    let result = tool
+        .execute(json!({ "command": command }), &ctx)
+        .await
+        .expect("execute");
+
+    assert!(!result.success);
+    assert!(
+        result.content.contains("[HINT:npm_cache_eperm]"),
+        "expected npm cache hint, got: {}",
+        result.content
+    );
+    let meta = result.metadata.expect("metadata");
+    assert!(
+        meta.get("failure_hints")
+            .and_then(Value::as_array)
+            .is_some_and(|a| !a.is_empty())
+    );
+}
+
+#[tokio::test]
 async fn test_exec_shell_foreground_timeout_guides_background_rerun() {
     let tmp = tempdir().expect("tempdir");
     let ctx = ToolContext::new(tmp.path());

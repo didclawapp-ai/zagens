@@ -3,11 +3,20 @@
 //! These tools provide safe file system operations within the workspace,
 //! with path validation to prevent escaping the workspace boundary.
 
+mod batch_edit;
 mod edit;
+mod glob_targets;
+mod import_rewrite;
 mod list_dir;
+mod path_input;
 mod read;
+mod refactor_imports;
 mod schemas;
+mod search_replace;
 mod write;
+
+pub use batch_edit::BatchEditTool;
+pub use refactor_imports::RefactorImportsTool;
 
 pub use edit::EditFileTool;
 pub use list_dir::ListDirTool;
@@ -37,6 +46,10 @@ pub(crate) const MAX_WRITE_SIZE: usize = 100 * 1024 * 1024;
 /// (potentially O(N·D)) unified-diff computation and emit a compact summary
 /// instead — keeps large writes cheap and avoids flooding the model context.
 pub(crate) const DIFF_MAX_INPUT_BYTES: usize = 256 * 1024;
+/// Max files per `batch_edit` call (TS-07).
+pub(crate) const MAX_BATCH_FILES: usize = 32;
+/// Max combined before+after bytes across all planned edits in one batch.
+pub(crate) const MAX_BATCH_DIFF_BYTES: usize = 512 * 1024;
 /// Number of leading lines echoed back as a preview when full diff is skipped.
 pub(crate) const WRITE_PREVIEW_LINES: usize = 20;
 

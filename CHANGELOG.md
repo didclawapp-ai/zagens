@@ -20,6 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Runtime (tool UX — batch A):**
+  - `read_file` / `write_file` / `edit_file` / `list_dir`: when the model passes `file` / `file_path` / `filename` / `target_path` instead of canonical `path`, return a targeted hint naming the correct field (avoids generic missing-field loops).
+  - `edit_file`: reject empty or whitespace-only `search` before apply so `replace_mode: "all"` cannot corrupt the whole file.
+- **Runtime (tool UX — batch B):**
+  - `exec_shell` / `exec_shell_wait`: on failed npm/jest runs, append `[HINT:…]` blocks for common Windows patterns — npm cache EPERM (workspace `.npmrc`), Jest spawn EPERM (`--runInBand`), npm devDependencies omit (`--include=dev`).
+  - Workspace template `fixtures/harness/workspace-templates/nodejs-windows/.npmrc` for local npm cache; `base.md` Windows/Node guidance updated.
+- **Runtime (tool UX — batch C):**
+  - New `batch_edit` tool: same `search`/`replace` across up to 32 glob-matched files; default `dry_run:true` with per-file diff preview; apply with `dry_run:false` (per-file errors, no rollback of prior writes).
+  - New `refactor_imports` tool: remap relative TS/JS/Go imports that resolve to `from_target` → per-file recomputed path to `to_target` (mixed directory depths); same dry-run/limits as `batch_edit`.
+- **Runtime (tool UX — batch D):**
+  - `checklist_update` / `checklist_write` / `update_plan`: append `[SYNC_WARNING]` when checklist is fully done but matching plan phases stay pending; metadata `plan_checklist_sync_warning`; LHT nudge text aligned with checklist-as-SSOT completion rule.
+  - Layer-3 completion gate: optional `[long_horizon.completion_gate.min_lines]` frontend/backend line-count floors (default globs `**/*.{ts,tsx,vue,jsx}` / `**/*.{rs,go,py}`); runs even when deliverable manifest is empty.
+
 ### Removed
 
 - **Runtime (kernel v3 final switch):**

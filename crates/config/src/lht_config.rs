@@ -67,6 +67,20 @@ pub struct CompletionGateConfigToml {
     pub toolchain_gate: Option<String>,
     #[serde(default)]
     pub stub_gate: Option<String>,
+    #[serde(default)]
+    pub min_lines: Option<MinLinesGateToml>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MinLinesGateToml {
+    #[serde(default)]
+    pub frontend: Option<u32>,
+    #[serde(default)]
+    pub backend: Option<u32>,
+    #[serde(default)]
+    pub frontend_glob: Option<String>,
+    #[serde(default)]
+    pub backend_glob: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

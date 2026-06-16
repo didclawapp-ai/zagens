@@ -1,8 +1,9 @@
 //! list_dir tool.
 
+use super::path_input::optional_path_field;
 use super::schemas::list_dir_input_schema;
 use crate::tools::spec::{
-    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_str, optional_u64,
+    ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -37,7 +38,7 @@ impl ToolSpec for ListDirTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let path_str = optional_str(&input, "path").unwrap_or(".");
+        let path_str = optional_path_field(&input, "list_dir")?.unwrap_or(".");
         let dir_path = context.resolve_path(path_str)?;
         let limit = (optional_u64(&input, "limit", DEFAULT_LIST_LIMIT as u64) as usize)
             .clamp(1, MAX_LIST_LIMIT);

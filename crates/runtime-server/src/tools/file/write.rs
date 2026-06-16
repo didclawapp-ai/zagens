@@ -1,5 +1,6 @@
 //! write_file tool and shared edit/write helpers.
 
+use super::path_input::required_path_field;
 use super::read::detect_and_decode;
 use super::schemas::write_file_input_schema;
 use super::{DIFF_MAX_INPUT_BYTES, MAX_WRITE_SIZE, WRITE_PREVIEW_LINES};
@@ -44,7 +45,7 @@ impl ToolSpec for WriteFileTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let path_str = required_str(&input, "path")?;
+        let path_str = required_path_field(&input, "write_file")?;
         let requested_content = required_str(&input, "content")?;
 
         // 3.3: guard against runaway / accidental huge writes (mirror read_file).

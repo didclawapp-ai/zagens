@@ -39,6 +39,7 @@ pub struct CompletionAuditResult {
 pub fn audit_deliverables(
     workspace: &Path,
     entries: &[CompletionGateDeliverableEntry],
+    min_lines: &zagens_core::long_horizon::MinLinesGateConfig,
     layer2_trusted: bool,
     layer2_failing_diag: &[String],
     manifest_round: u32,
@@ -56,6 +57,7 @@ pub fn audit_deliverables(
             missing.push(m);
         }
     }
+    missing.extend(super::min_lines_gate::check_min_lines(workspace, min_lines));
 
     let pass = failing_gates.is_empty() && missing.is_empty();
     CompletionAuditResult {
@@ -71,6 +73,7 @@ pub fn audit_deliverables(
 pub async fn audit_deliverables_async(
     workspace: &Path,
     entries: &[CompletionGateDeliverableEntry],
+    min_lines: &zagens_core::long_horizon::MinLinesGateConfig,
     layer2_trusted: bool,
     layer2_failing_diag: &[String],
     manifest_round: u32,
@@ -79,6 +82,7 @@ pub async fn audit_deliverables_async(
     let mut audit = audit_deliverables(
         workspace,
         entries,
+        min_lines,
         layer2_trusted,
         layer2_failing_diag,
         manifest_round,
@@ -252,7 +256,7 @@ mod tests {
             optional_verify_cmd: None,
             tracked: false,
         };
-        let result = audit_deliverables(&dir, &[entry], true, &[], 1);
+        let result = audit_deliverables(&dir, &[entry], &Default::default(), true, &[], 1);
         assert!(!result.pass);
         assert_eq!(result.missing_deliverables.len(), 1);
         assert_eq!(result.missing_deliverables[0].id, "gzip");
@@ -271,7 +275,7 @@ mod tests {
             optional_verify_cmd: None,
             tracked: false,
         };
-        let result = audit_deliverables(&dir, &[entry], true, &[], 1);
+        let result = audit_deliverables(&dir, &[entry], &Default::default(), true, &[], 1);
         assert!(result.pass);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -292,10 +296,10 @@ mod tests {
             optional_verify_cmd: None,
             tracked: true,
         };
-        let result = audit_deliverables(&dir, &[entry.clone()], true, &[], 1);
+        let result = audit_deliverables(&dir, &[entry.clone()], &Default::default(), true, &[], 1);
         assert!(!result.pass);
         assert!(git(&dir, &["add", "contracts.go"]));
-        let result2 = audit_deliverables(&dir, &[entry], true, &[], 1);
+        let result2 = audit_deliverables(&dir, &[entry], &Default::default(), true, &[], 1);
         assert!(result2.pass);
         let _ = std::fs::remove_dir_all(&dir);
     }

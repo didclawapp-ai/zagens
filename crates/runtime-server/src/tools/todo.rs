@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::scratchpad::checklist_inventory_warning;
+use crate::tools::plan_checklist_sync::append_plan_checklist_sync_warning;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
@@ -182,20 +183,23 @@ pub fn new_shared_todo_list() -> SharedTodoList {
 /// Tool for writing and updating the todo list
 pub struct TodoWriteTool {
     todo_list: SharedTodoList,
+    plan_state: super::plan::SharedPlanState,
     tool_name: &'static str,
 }
 
 impl TodoWriteTool {
-    pub fn new(todo_list: SharedTodoList) -> Self {
+    pub fn new(todo_list: SharedTodoList, plan_state: super::plan::SharedPlanState) -> Self {
         Self {
             todo_list,
+            plan_state,
             tool_name: "todo_write",
         }
     }
 
-    pub fn checklist(todo_list: SharedTodoList) -> Self {
+    pub fn checklist(todo_list: SharedTodoList, plan_state: super::plan::SharedPlanState) -> Self {
         Self {
             todo_list,
+            plan_state,
             tool_name: "checklist_write",
         }
     }
@@ -282,20 +286,23 @@ impl ToolSpec for TodoAddTool {
 /// Tool for updating a todo item's status (legacy compatibility).
 pub struct TodoUpdateTool {
     todo_list: SharedTodoList,
+    plan_state: super::plan::SharedPlanState,
     tool_name: &'static str,
 }
 
 impl TodoUpdateTool {
-    pub fn new(todo_list: SharedTodoList) -> Self {
+    pub fn new(todo_list: SharedTodoList, plan_state: super::plan::SharedPlanState) -> Self {
         Self {
             todo_list,
+            plan_state,
             tool_name: "todo_update",
         }
     }
 
-    pub fn checklist(todo_list: SharedTodoList) -> Self {
+    pub fn checklist(todo_list: SharedTodoList, plan_state: super::plan::SharedPlanState) -> Self {
         Self {
             todo_list,
+            plan_state,
             tool_name: "checklist_update",
         }
     }
@@ -349,17 +356,24 @@ impl ToolSpec for TodoUpdateTool {
         let result = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
 
         match updated {
-            Some(item) => Ok(append_checklist_inventory_warning(
-                ToolResult::success(format!(
-                    "Updated todo #{} to {}\n{}",
-                    item.id,
-                    item.status.as_str(),
-                    result
+            Some(item) => {
+                let plan_snapshot = self.plan_state.lock().await.snapshot();
+                Ok(append_plan_checklist_sync_warning(
+                    append_checklist_inventory_warning(
+                        ToolResult::success(format!(
+                            "Updated todo #{} to {}\n{}",
+                            item.id,
+                            item.status.as_str(),
+                            result
+                        ))
+                        .with_metadata(checklist_metadata(&snapshot, self.tool_name)),
+                        context,
+                        &snapshot,
+                    ),
+                    &plan_snapshot,
+                    &snapshot,
                 ))
-                .with_metadata(checklist_metadata(&snapshot, self.tool_name)),
-                context,
-                &snapshot,
-            )),
+            }
             None => Ok(ToolResult::error(format!("Todo id {id} not found"))),
         }
     }
@@ -489,16 +503,21 @@ impl ToolSpec for TodoWriteTool {
 
         let snapshot = list.snapshot();
         let result = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
+        let plan_snapshot = self.plan_state.lock().await.snapshot();
 
-        Ok(append_checklist_inventory_warning(
-            ToolResult::success(format!(
-                "Todo list updated ({} items, {}% complete)\n{}",
-                snapshot.items.len(),
-                snapshot.completion_pct,
-                result
-            ))
-            .with_metadata(checklist_metadata(&snapshot, self.tool_name)),
-            context,
+        Ok(append_plan_checklist_sync_warning(
+            append_checklist_inventory_warning(
+                ToolResult::success(format!(
+                    "Todo list updated ({} items, {}% complete)\n{}",
+                    snapshot.items.len(),
+                    snapshot.completion_pct,
+                    result
+                ))
+                .with_metadata(checklist_metadata(&snapshot, self.tool_name)),
+                context,
+                &snapshot,
+            ),
+            &plan_snapshot,
             &snapshot,
         ))
     }
@@ -550,10 +569,11 @@ fn checklist_metadata(snapshot: &TodoListSnapshot, tool_name: &str) -> serde_jso
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::plan::new_shared_plan_state;
 
     #[tokio::test]
     async fn checklist_write_returns_task_update_metadata() {
-        let tool = TodoWriteTool::checklist(new_shared_todo_list());
+        let tool = TodoWriteTool::checklist(new_shared_todo_list(), new_shared_plan_state());
         let context = ToolContext::new(std::env::temp_dir());
         let result = tool
             .execute(
@@ -583,7 +603,7 @@ mod tests {
 
     #[tokio::test]
     async fn todo_write_remains_compat_alias() {
-        let tool = TodoWriteTool::new(new_shared_todo_list());
+        let tool = TodoWriteTool::new(new_shared_todo_list(), new_shared_plan_state());
         let context = ToolContext::new(std::env::temp_dir());
         let result = tool
             .execute(

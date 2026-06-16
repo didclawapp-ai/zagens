@@ -10,6 +10,7 @@
 //! - Sandbox support (macOS Seatbelt)
 //! - Streaming output (future)
 
+mod failure_hints;
 mod host;
 mod manager;
 mod process;

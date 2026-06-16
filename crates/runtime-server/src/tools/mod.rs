@@ -30,6 +30,7 @@ pub mod office_write;
 mod office_smoke;
 pub mod parallel;
 pub mod plan;
+pub mod plan_checklist_sync;
 pub mod policy_bridge;
 pub mod project;
 pub mod recall_archive;

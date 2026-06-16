@@ -1,6 +1,7 @@
 //! edit_file tool (search/replace and line operations).
 
 use super::DIFF_MAX_INPUT_BYTES;
+use super::path_input::required_path_field;
 use super::schemas::edit_file_input_schema;
 use super::write::{
     find_match_line_numbers, jsx_balance_warning, make_compact_change, normalize_line_endings,
@@ -77,7 +78,7 @@ impl ToolSpec for EditFileTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let _path_str = required_str(&input, "path")?;
+        let _path_str = required_path_field(&input, "edit_file")?;
         let operation = optional_str(&input, "operation").unwrap_or("search_replace");
         match operation {
             "search_replace" => self.execute_search_replace(&input, context).await,
@@ -99,7 +100,7 @@ impl EditFileTool {
         input: &Value,
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
-        let path_str = required_str(input, "path")?;
+        let path_str = required_path_field(input, "edit_file")?;
         let search = required_str(input, "search")?;
         // Guard: an empty (or whitespace-only) `search` matches at every UTF-8
         // boundary; with replace_mode:"all" this inserts the replacement between
@@ -290,7 +291,7 @@ impl EditFileTool {
         input: &Value,
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
-        let path_str = required_str(input, "path")?;
+        let path_str = required_path_field(input, "edit_file")?;
         let text = required_replacement_field(input, "text")?;
         let after_line = optional_u64(input, "after_line", 0) as usize;
 
@@ -372,7 +373,7 @@ impl EditFileTool {
         input: &Value,
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
-        let path_str = required_str(input, "path")?;
+        let path_str = required_path_field(input, "edit_file")?;
         let start = optional_u64(input, "start_line", 0) as usize;
         let end = optional_u64(input, "end_line", 0) as usize;
 
@@ -481,7 +482,7 @@ impl EditFileTool {
         input: &Value,
         context: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
-        let path_str = required_str(input, "path")?;
+        let path_str = required_path_field(input, "edit_file")?;
         let text = required_replacement_field(input, "text")?;
         let line = optional_u64(input, "line", 0) as usize;
 

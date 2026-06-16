@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use super::super::failure_hints::apply_shell_failure_hints;
 use super::super::types::ShellStatus;
 use super::helpers::{
     build_shell_delta_tool_result, emit_shell_delta_streams, required_task_id,
@@ -80,7 +81,19 @@ impl ToolSpec for ShellWaitTool {
         };
 
         let status = delta.result.status.clone();
+        let stdout = delta.result.stdout.clone();
+        let stderr = delta.result.stderr.clone();
+        let exit_code = delta.result.exit_code;
+        let command = context
+            .shell_manager
+            .lock()
+            .ok()
+            .and_then(|mut manager| manager.inspect_job(task_id).ok())
+            .map(|detail| detail.snapshot.command);
         let mut result = build_shell_delta_tool_result(delta);
+        if let Some(command) = command.as_deref() {
+            apply_shell_failure_hints(&mut result, command, &stdout, &stderr, exit_code, &status);
+        }
         if wait_canceled {
             if matches!(status, ShellStatus::Running) {
                 result.content = format!(

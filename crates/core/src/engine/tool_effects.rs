@@ -20,7 +20,12 @@ pub fn tool_writes_state(name: &str) -> bool {
 fn loop_guard_state_mutating_whitelist(name: &str) -> bool {
     matches!(
         name,
-        "write_file" | "edit_file" | "apply_patch" | "create_dirs"
+        "write_file"
+            | "edit_file"
+            | "apply_patch"
+            | "create_dirs"
+            | "batch_edit"
+            | "refactor_imports"
     )
 }
 
@@ -77,6 +82,7 @@ mod tests {
             ("agent_spawn", false),
             ("agent_wait", false),
             ("apply_patch", true),
+            ("batch_edit", true),
             ("assign_agent", false),
             ("automation_create", false),
             ("automation_list", false),
@@ -128,6 +134,7 @@ mod tests {
             ("read_file", false),
             ("read_office", false),
             ("recall_archive", false),
+            ("refactor_imports", true),
             ("remember", false),
             ("request_user_input", false),
             ("resume_agent", false),

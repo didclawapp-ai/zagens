@@ -6,7 +6,8 @@ use serde::Deserialize;
 
 pub use completion_gate::{
     CompletionGateConfig, CompletionGateConfigToml, CompletionGateDeliverableEntry,
-    CompletionGateMode, CompletionGateVerifyEntry, GenericGateMode, ManifestShell, VerifySource,
+    CompletionGateMode, CompletionGateVerifyEntry, GenericGateMode, ManifestShell,
+    MinLinesGateConfig, VerifySource,
 };
 
 /// §6.7 Adversarial read-only auditor configuration (agent-independent grounding signal).

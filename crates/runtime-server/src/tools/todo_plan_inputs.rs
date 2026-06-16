@@ -120,6 +120,7 @@ mod tests {
     #[ignore = "bootstrap kernel-v2 todo/plan-tool schema snapshot fixtures"]
     fn dump_todo_plan_tool_schemas_for_snapshot_bootstrap() {
         let todo_list = new_shared_todo_list();
+        let plan_state = new_shared_plan_state();
         let tools: [(&str, Box<dyn ToolSpec>); 9] = [
             (
                 "checklist_add",
@@ -128,11 +129,14 @@ mod tests {
             ("todo_add", Box::new(TodoAddTool::new(todo_list.clone()))),
             (
                 "checklist_update",
-                Box::new(TodoUpdateTool::checklist(todo_list.clone())),
+                Box::new(TodoUpdateTool::checklist(
+                    todo_list.clone(),
+                    plan_state.clone(),
+                )),
             ),
             (
                 "todo_update",
-                Box::new(TodoUpdateTool::new(todo_list.clone())),
+                Box::new(TodoUpdateTool::new(todo_list.clone(), plan_state.clone())),
             ),
             (
                 "checklist_list",
@@ -141,15 +145,18 @@ mod tests {
             ("todo_list", Box::new(TodoListTool::new(todo_list.clone()))),
             (
                 "checklist_write",
-                Box::new(TodoWriteTool::checklist(todo_list.clone())),
+                Box::new(TodoWriteTool::checklist(
+                    todo_list.clone(),
+                    plan_state.clone(),
+                )),
             ),
             (
                 "todo_write",
-                Box::new(TodoWriteTool::new(todo_list.clone())),
+                Box::new(TodoWriteTool::new(todo_list.clone(), plan_state.clone())),
             ),
             (
                 "update_plan",
-                Box::new(UpdatePlanTool::new(new_shared_plan_state())),
+                Box::new(UpdatePlanTool::new(plan_state, todo_list)),
             ),
         ];
         for (name, tool) in tools {
@@ -162,6 +169,7 @@ mod tests {
     #[test]
     fn todo_plan_tool_model_visible_schemas_match_snapshots() {
         let todo_list = new_shared_todo_list();
+        let plan_state = new_shared_plan_state();
         let cases: [(&str, Box<dyn ToolSpec>, &str); 9] = [
             (
                 "checklist_add",
@@ -175,12 +183,15 @@ mod tests {
             ),
             (
                 "checklist_update",
-                Box::new(TodoUpdateTool::checklist(todo_list.clone())),
+                Box::new(TodoUpdateTool::checklist(
+                    todo_list.clone(),
+                    plan_state.clone(),
+                )),
                 "checklist_update",
             ),
             (
                 "todo_update",
-                Box::new(TodoUpdateTool::new(todo_list.clone())),
+                Box::new(TodoUpdateTool::new(todo_list.clone(), plan_state.clone())),
                 "checklist_update",
             ),
             (
@@ -195,17 +206,20 @@ mod tests {
             ),
             (
                 "checklist_write",
-                Box::new(TodoWriteTool::checklist(todo_list.clone())),
+                Box::new(TodoWriteTool::checklist(
+                    todo_list.clone(),
+                    plan_state.clone(),
+                )),
                 "checklist_write",
             ),
             (
                 "todo_write",
-                Box::new(TodoWriteTool::new(todo_list.clone())),
+                Box::new(TodoWriteTool::new(todo_list.clone(), plan_state.clone())),
                 "checklist_write",
             ),
             (
                 "update_plan",
-                Box::new(UpdatePlanTool::new(new_shared_plan_state())),
+                Box::new(UpdatePlanTool::new(plan_state, todo_list)),
                 "update_plan",
             ),
         ];

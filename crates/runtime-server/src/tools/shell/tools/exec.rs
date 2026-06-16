@@ -1,5 +1,6 @@
 //! `exec_shell` ToolSpec.
 
+use super::super::failure_hints::apply_shell_failure_hints;
 use super::super::types::{ShellResult, ShellStatus};
 use super::helpers::execute_foreground_via_background;
 use crate::command_safety::{SafetyLevel, analyze_command};
@@ -430,12 +431,21 @@ impl ToolSpec for ExecShellTool {
                     });
                 }
 
-                Ok(ToolResult {
+                let mut tool_result = ToolResult {
                     content: output,
                     success: result.status == ShellStatus::Completed
                         || result.status == ShellStatus::Running,
                     metadata: Some(metadata),
-                })
+                };
+                apply_shell_failure_hints(
+                    &mut tool_result,
+                    command,
+                    &result.stdout,
+                    &result.stderr,
+                    result.exit_code,
+                    &result.status,
+                );
+                Ok(tool_result)
             }
             Err(e) => Ok(ToolResult::error(format!("Shell execution failed: {e}"))),
         }

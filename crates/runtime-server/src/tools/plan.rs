@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::tools::plan_checklist_sync::append_plan_checklist_sync_warning;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
 };
@@ -318,11 +319,15 @@ pub fn new_shared_plan_state() -> SharedPlanState {
 /// Tool for updating the implementation plan
 pub struct UpdatePlanTool {
     plan_state: SharedPlanState,
+    todo_list: super::todo::SharedTodoList,
 }
 
 impl UpdatePlanTool {
-    pub fn new(plan_state: SharedPlanState) -> Self {
-        Self { plan_state }
+    pub fn new(plan_state: SharedPlanState, todo_list: super::todo::SharedTodoList) -> Self {
+        Self {
+            plan_state,
+            todo_list,
+        }
     }
 }
 
@@ -398,12 +403,15 @@ impl ToolSpec for UpdatePlanTool {
 
         let result = serde_json::to_string_pretty(&snapshot).unwrap_or_else(|_| "{}".to_string());
 
+        let checklist_snapshot = self.todo_list.lock().await.snapshot();
         let metadata = plan_metadata(&snapshot);
-        Ok(
+        Ok(append_plan_checklist_sync_warning(
             ToolResult::success(format!(
                 "Plan updated: {pending} pending, {in_progress} in progress, {completed} completed ({progress}% done)\n{result}"
             ))
             .with_metadata(metadata),
-        )
+            &snapshot,
+            &checklist_snapshot,
+        ))
     }
 }

@@ -27,7 +27,7 @@ struct GlobFileEntry {
 
 pub struct GlobFilesTool;
 
-fn build_glob_set(pattern: &str) -> Result<GlobSet, ToolError> {
+pub(crate) fn build_glob_set(pattern: &str) -> Result<GlobSet, ToolError> {
     let normalized = pattern.replace('\\', "/");
     let mut builder = GlobSetBuilder::new();
     builder.add(
@@ -39,7 +39,7 @@ fn build_glob_set(pattern: &str) -> Result<GlobSet, ToolError> {
         .map_err(|e| ToolError::invalid_input(format!("Invalid glob pattern: {e}")))
 }
 
-fn path_matches_glob(glob_set: &GlobSet, relative: &str) -> bool {
+pub(crate) fn path_matches_glob(glob_set: &GlobSet, relative: &str) -> bool {
     let posix = relative.replace('\\', "/");
     glob_set.is_match(&posix)
 }

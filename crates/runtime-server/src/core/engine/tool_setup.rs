@@ -32,13 +32,13 @@ impl Engine {
                 .with_skill_tools()
                 .with_validation_tools()
                 .with_runtime_task_tools()
-                .with_todo_tool(todo_list)
-                .with_plan_tool(plan_state)
+                .with_todo_tool(todo_list.clone(), plan_state.clone())
+                .with_plan_tool(plan_state, todo_list)
         } else {
             ToolRegistryBuilder::new()
                 .with_agent_tools(self.session.allow_shell)
-                .with_todo_tool(todo_list)
-                .with_plan_tool(plan_state)
+                .with_todo_tool(todo_list.clone(), plan_state.clone())
+                .with_plan_tool(plan_state, todo_list)
         };
 
         builder = builder

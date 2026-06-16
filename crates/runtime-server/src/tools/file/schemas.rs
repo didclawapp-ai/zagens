@@ -123,6 +123,60 @@ pub fn edit_file_input_schema() -> Value {
     derived_input_schema::<EditFileInput>()
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(inline)]
+pub struct BatchEditInput {
+    #[schemars(description = "Exact text to find in each matched file")]
+    pub search: String,
+    #[schemars(description = "Replacement text")]
+    pub replace: String,
+    #[schemars(
+        description = "Glob pattern relative to path (e.g. '**/*.ts', 'src/**/*.go'). Max 32 files."
+    )]
+    pub glob: String,
+    #[schemars(description = "Base directory for glob (default: workspace root '.')")]
+    pub path: Option<String>,
+    #[schemars(
+        description = "Preview only — default true. Set false to write changes after reviewing dry-run output."
+    )]
+    pub dry_run: Option<bool>,
+    #[schemars(
+        description = "When multiple matches exist in one file: 'all' (default) or 'first'"
+    )]
+    pub replace_mode: Option<EditReplaceMode>,
+    #[schemars(description = "Skip gitignored paths when walking (default: true)")]
+    pub respect_gitignore: Option<bool>,
+}
+
+#[must_use]
+pub fn batch_edit_input_schema() -> Value {
+    derived_input_schema::<BatchEditInput>()
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(inline)]
+pub struct RefactorImportsInput {
+    #[schemars(
+        description = "Workspace-relative module path imports currently resolve to (e.g. 'shared/old')"
+    )]
+    pub from_target: String,
+    #[schemars(description = "New workspace-relative module path to import instead")]
+    pub to_target: String,
+    #[schemars(description = "Glob for source files (e.g. '**/*.{ts,tsx,go}'). Max 32 files.")]
+    pub glob: String,
+    #[schemars(description = "Base directory for glob (default: workspace root '.')")]
+    pub path: Option<String>,
+    #[schemars(description = "Preview only — default true")]
+    pub dry_run: Option<bool>,
+    #[schemars(description = "Skip gitignored paths when walking (default: true)")]
+    pub respect_gitignore: Option<bool>,
+}
+
+#[must_use]
+pub fn refactor_imports_input_schema() -> Value {
+    derived_input_schema::<RefactorImportsInput>()
+}
+
 #[must_use]
 pub fn list_dir_input_schema() -> Value {
     derived_input_schema::<ListDirInput>()

@@ -23,8 +23,9 @@ mod windows;
 pub use hooks_config::{HookConditionToml, HookEventToml, HookToml, HooksConfigToml};
 pub use lht_config::{
     CompletionGateConfigToml, CompletionGateDeliverableToml, CompletionGateVerifyToml,
-    LongHorizonConfigToml, MacroLoopConfigToml, normalize_gate_mode, normalize_lht_mode,
-    product_defaults as lht_product_defaults, resolve_lht, sync_long_horizon_with_composer_mode,
+    LongHorizonConfigToml, MacroLoopConfigToml, MinLinesGateToml, normalize_gate_mode,
+    normalize_lht_mode, product_defaults as lht_product_defaults, resolve_lht,
+    sync_long_horizon_with_composer_mode,
 };
 pub use lht_presets::{LhtPresetId, apply_lht_preset};
 pub use paths::{

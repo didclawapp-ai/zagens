@@ -275,12 +275,14 @@ async fn evaluate_completion_gate_inner(
         );
     }
 
-    // Layer 3: operator manifest + workspace overlay + auto IPC discovery (P1c).
-    if !runtime_deliverables.is_empty() {
+    // Layer 3: operator manifest + workspace overlay + auto IPC discovery (P1c),
+    // plus optional min_lines gate (TS-11).
+    if !runtime_deliverables.is_empty() || gate.min_lines.is_active() {
         session.audit_rounds = session.audit_rounds.saturating_add(1);
         let audit = audit_deliverables_async(
             workspace,
             runtime_deliverables,
+            &gate.min_lines,
             true,
             &[],
             session.manifest_gate_rounds.max(1),
