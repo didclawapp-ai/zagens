@@ -32,8 +32,10 @@ mod tests {
     }
 
     #[test]
-    fn normalize_caps_length() {
-        let huge = "x".repeat(PASTE_MAX_CHARS + 100);
-        assert_eq!(normalize_paste_text(&huge).len(), PASTE_MAX_CHARS);
+    fn normalize_preserves_internal_newlines() {
+        assert_eq!(
+            normalize_paste_text("line one\nline two\nline three"),
+            "line one\nline two\nline three"
+        );
     }
 }

@@ -395,6 +395,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Unknown `[kernel] machine` config values now default to `v3` (was `legacy`).
   - `log_legacy_turn_loop_deprecation` warns when `[kernel] machine = legacy` kill switch is active.
 
+- **Fix (desktop/sidecar — op-loop dispatch regression):**
+  - Restore disjoint-field platform dispatch in `op_loop.rs` (reverts Phase 3a `ext.take()` regression): `EngineRuntimeExt` stays in `Engine::ext` during `dispatch_op`, so `runtime_ext_mut()` works on the turn/resume path; fixes sidecar panic `tui builder stores EngineRuntimeExt in Engine::ext` and desktop turns with no model response.
+- **Fix (TUI composer — multiline paste):**
+  - Enable bracketed paste in the terminal so clipboard text arrives as `Event::Paste`; accept `\n` in typed char fallback; `Ctrl+V` / `Shift+Insert` paste when composer focused.
+  - `ComposerPasteGuard` treats rapid Enter-after-char bursts as in-composer newlines when the terminal ignores bracketed paste (Windows Terminal “仍然粘贴” path); input events are batched per frame so paste streams coalesce before send.
+- **Fix (runtime thread events — SQLite seq allocation):**
+  - `append_event_sqlite` allocates `events.seq` inside a DB transaction (`COALESCE(MAX(seq),0)+1`) instead of trusting each process's in-memory counter; fixes `UNIQUE constraint failed: events.seq` when TUI and sidecar share `runtime.db`, and migration now seeds `next_seq` from migrated events rather than stale `state.json`.
+
 - **Runtime (kernel-v2 Phase 3b batch 5 closure — legacy turn loop removed):**
   - `KernelMachineMode::Legacy` deleted; `[kernel] machine = "legacy"` maps to v3 with startup warn. Inner step always routes through `run_inner_step_via_machine` / `EffectInterpreter`.
   - Removed `legacy_inner_step.rs`, `InnerStepIoPath`, and pre-inner LSP flush (v3 owns `NotifyLsp` tail).
@@ -528,6 +536,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Runtime (tool progress):** `exec_shell` / `task_shell_start` opening lines no longer panic when truncating commands that contain multibyte UTF-8 (e.g. Chinese in `[verify:]` checklist shells) — preview uses `floor_char_boundary` instead of a raw byte slice. File: `crates/core/src/engine/tool_progress.rs`.
 - **TUI (`zagens-tui`):** Borderless sidebar seam artifacts (Windows) — 1-col black gutters, per-cell pane paint with full-width row backgrounds (selection/highlight extends entire row), column backfill + gutter re-stamp.
 - **TUI (`zagens-tui`):** Right-rail (and all panes) — paint full pane background before text so stale `│` divider glyphs on the left edge are cleared on Windows (fixes Files panel 1-column ghost strip).
 - **TUI (`zagens-tui`):** Sending a prompt no longer exits the whole app when `start_turn` fails — the error is shown in Transcript and the session stays open.

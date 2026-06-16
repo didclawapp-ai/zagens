@@ -1,14 +1,14 @@
 //! Terminal setup and teardown.
 
-use std::io::{Stdout, stdout};
+use std::io::{Stdout, Write, stdout};
 use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::ExecutableCommand;
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
-    KeyModifiers,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
 };
 use crossterm::terminal::{
     self, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -31,6 +31,10 @@ impl TerminalGuard {
         if mouse_capture {
             out.execute(EnableMouseCapture)?;
         }
+        // Multiline clipboard paste arrives as `Event::Paste` instead of per-char keys
+        // (without this, Windows injects `\r` as Enter and only the first line sticks).
+        out.execute(EnableBracketedPaste)?;
+        out.flush()?;
         Ok(Self {
             inline_mode,
             mouse_capture,
@@ -42,6 +46,7 @@ impl TerminalGuard {
         if self.mouse_capture {
             let _ = out.execute(DisableMouseCapture);
         }
+        let _ = out.execute(DisableBracketedPaste);
         if !self.inline_mode {
             let _ = out.execute(LeaveAlternateScreen);
         }

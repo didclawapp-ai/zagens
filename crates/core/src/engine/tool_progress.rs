@@ -6,6 +6,16 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
+const PROGRESS_CMD_PREVIEW_BYTES: usize = 120;
+
+/// Truncate shell command previews without splitting multibyte UTF-8 sequences.
+fn truncate_progress_preview(text: &str, max_bytes: usize) -> &str {
+    if text.len() <= max_bytes {
+        return text;
+    }
+    &text[..text.floor_char_boundary(max_bytes)]
+}
+
 /// Append one JSON line to `DEEPSEEK_TOOL_AUDIT_LOG` when the env var is set.
 pub fn emit_tool_audit(event: Value) {
     let Some(path) = std::env::var_os("DEEPSEEK_TOOL_AUDIT_LOG") else {
@@ -45,12 +55,22 @@ pub fn tool_progress_opening_line(tool_name: &str, input: &Value) -> String {
             }
         }
         "exec_shell" => match input.get("command").and_then(Value::as_str) {
-            Some(cmd) if cmd.len() > 120 => format!("exec_shell: {}…", &cmd[..120]),
+            Some(cmd) if cmd.len() > PROGRESS_CMD_PREVIEW_BYTES => {
+                format!(
+                    "exec_shell: {}…",
+                    truncate_progress_preview(cmd, PROGRESS_CMD_PREVIEW_BYTES)
+                )
+            }
             Some(cmd) if !cmd.is_empty() => format!("exec_shell: {cmd}"),
             _ => "exec_shell …".to_string(),
         },
         "task_shell_start" => match input.get("command").and_then(Value::as_str) {
-            Some(cmd) if cmd.len() > 120 => format!("task_shell_start: {}…", &cmd[..120]),
+            Some(cmd) if cmd.len() > PROGRESS_CMD_PREVIEW_BYTES => {
+                format!(
+                    "task_shell_start: {}…",
+                    truncate_progress_preview(cmd, PROGRESS_CMD_PREVIEW_BYTES)
+                )
+            }
             Some(cmd) if !cmd.is_empty() => format!("task_shell_start: {cmd}"),
             _ => "task_shell_start …".to_string(),
         },
@@ -132,5 +152,42 @@ mod tests {
             std::env::remove_var("DEEPSEEK_TOOL_AUDIT_LOG");
         }
         emit_tool_audit(json!({"event": "noop", "x": 1}));
+    }
+
+    #[test]
+    fn tool_progress_opening_line_exec_shell_truncates_at_char_boundary() {
+        let prefix = "x".repeat(118);
+        let cmd = format!("{prefix}中文");
+        assert!(cmd.len() > PROGRESS_CMD_PREVIEW_BYTES);
+        assert!(!cmd.is_char_boundary(PROGRESS_CMD_PREVIEW_BYTES));
+
+        let line = tool_progress_opening_line("exec_shell", &json!({ "command": cmd }));
+        assert!(line.starts_with("exec_shell: "));
+        assert!(line.ends_with('…'));
+    }
+
+    #[test]
+    fn tool_progress_opening_line_exec_shell_whiteboard_word_count_command() {
+        let cmd = concat!(
+            "node -e \"const s=require('fs').readFileSync('DESIGN.md','utf8');",
+            "const w=s.match(/[\\u4e00-\\u9fff]+/g)||[];",
+            "console.log('中文字符:',w.join('').length,'约',Math.round(w.join('').length/2),'字')\""
+        );
+        assert!(cmd.len() > PROGRESS_CMD_PREVIEW_BYTES);
+
+        let line = tool_progress_opening_line("exec_shell", &json!({ "command": cmd }));
+        assert!(line.starts_with("exec_shell: "));
+        assert!(line.ends_with('…'));
+    }
+
+    #[test]
+    fn tool_progress_opening_line_task_shell_start_truncates_at_char_boundary() {
+        let prefix = "y".repeat(118);
+        let cmd = format!("{prefix}中文");
+        assert!(cmd.len() > PROGRESS_CMD_PREVIEW_BYTES);
+
+        let line = tool_progress_opening_line("task_shell_start", &json!({ "command": cmd }));
+        assert!(line.starts_with("task_shell_start: "));
+        assert!(line.ends_with('…'));
     }
 }

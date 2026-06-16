@@ -20,7 +20,12 @@ Per the MIT license, the copyright and permission notice in that file must be re
 
 **Installed builds:** `bundle:prepare` stages license texts into the desktop bundle under `legal/` (`zagens-LICENSE.txt`, `deepseek-tui-runtime-LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`) next to the application binary.
 
-**Engine divergence (Kernel v3, 2026-06):** From Zagens **v0.7.x** onward, the agent turn engine under `crates/core/src/engine/` (event-sourced `KernelEvent` log, `TurnMachine` / `EffectInterpreter`, `KernelTurnHost` seam) **diverges from upstream CodeWhale / deepseek-tui** for the kernel loop and session resume substrate. Peripheral modules (tools, desktop shell, MCP) may still cherry-pick upstream changes; the turn loop and op-dispatch core are maintained in-tree only. See `doc_Private/docs/tech/AGENT_KERNEL_V3_PHASE3_DESIGN.md`.
+**Engine divergence (Kernel v3, 2026-06):**
+
+- **From Zagens v0.7.x:** The agent turn engine under `crates/core/src/engine/` (event-sourced `KernelEvent` log, `TurnMachine` / `EffectInterpreter`, `KernelTurnHost` seam) **diverges from upstream CodeWhale / deepseek-tui** for the kernel loop and session resume substrate.
+- **From Zagens v0.7.6 (Kernel v3 Phase 3b batch 5 closure):** The legacy turn loop is removed; production uses `LiveTurnMachine` + `EffectInterpreter` + `V3TurnHost`; session resume is log-first (`log_transcript_repair` default on). `TurnLoopHost` remains only as a deprecated adapter shim. Merge with upstream turn-engine code is no longer feasible—only cherry-pick of peripheral modules (tools, desktop shell, MCP).
+
+See `doc_Private/docs/tech/AGENT_KERNEL_V3_PHASE3_DESIGN.md`.
 
 ## Other dependencies
 

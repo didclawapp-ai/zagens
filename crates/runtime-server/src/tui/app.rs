@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use super::composer_editor::{ComposerEditor, PromptHistory};
 use super::composer_paste::{normalize_paste_text, read_clipboard_text};
+use super::composer_paste_guard::ComposerPasteGuard;
 use super::composer_slash::{SlashCommandState, composer_is_slash_command, render_palette};
 use super::display_format::{
     composer_cursor_blink_on, display_width, pad_line_display_width, truncate_display_width,
@@ -28,6 +29,14 @@ use super::session_host::TuiSessionHost;
 use super::task_graph::{TaskGraphSnapshot, title_bar_harness_line_from_graph};
 use super::transcript::{TranscriptItem, TranscriptState, apply_event};
 use crate::core::events::Event;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComposerEnterAction {
+    None,
+    Newline,
+    Slash,
+    Send,
+}
 
 pub struct AppState {
     pub layout: LayoutEngine,
@@ -79,6 +88,8 @@ pub struct AppState {
     pub cursor_blink_since: Instant,
     next_poll: Instant,
     pub slash: SlashCommandState,
+    /// Suppresses send-on-Enter during terminal multiline paste (no bracketed paste).
+    pub composer_paste_guard: ComposerPasteGuard,
     /// Theme saved when the /theme picker opened; restored on Esc.
     pub theme_picker_original: Option<TuiThemeId>,
 }
@@ -141,6 +152,7 @@ impl AppState {
             cursor_blink_since: Instant::now(),
             next_poll: Instant::now(),
             slash: SlashCommandState::default(),
+            composer_paste_guard: ComposerPasteGuard::default(),
             theme_picker_original: None,
         };
         state.sync_thread_meta(host);
@@ -684,7 +696,7 @@ impl AppState {
             let hint_body = if self.transcript.is_live_activity() {
                 " waiting for reply...  Ctrl+C interrupt  Esc scroll  type to queue next message"
             } else {
-                " type prompt...  / commands  Up/Down history  Ctrl+V paste  Enter send"
+                " type prompt...  Ctrl+V paste (recommended)  Shift+Enter newline  Enter send"
             };
             let hint_style = if self.composer_focus {
                 theme::composer_idle()
@@ -788,6 +800,7 @@ impl AppState {
         if text.is_empty() {
             return;
         }
+        self.composer_paste_guard.note_paste_blob();
         self.composer.insert_str(&text);
         self.prompt_history.reset_browse();
         self.sync_slash_palette();
@@ -808,10 +821,18 @@ impl AppState {
         if !self.composer_editable() {
             return;
         }
-        if ch == '\n' || ch == '\r' {
+        if ch == '\r' {
+            return;
+        }
+        if ch == '\n' {
+            self.handle_newline();
+            self.composer_paste_guard.note_manual_newline();
+            self.prompt_history.reset_browse();
+            self.sync_slash_palette();
             return;
         }
         self.composer.insert_char(ch);
+        self.composer_paste_guard.note_char();
         self.prompt_history.reset_browse();
         self.sync_slash_palette();
     }
@@ -821,6 +842,28 @@ impl AppState {
             self.composer.insert_char('\n');
             self.prompt_history.reset_browse();
         }
+    }
+
+    /// Enter in composer: send, slash palette, or newline (Shift / terminal paste).
+    pub fn handle_composer_enter(&mut self, shift: bool) -> ComposerEnterAction {
+        if shift {
+            self.handle_newline();
+            self.composer_paste_guard.note_manual_newline();
+            return ComposerEnterAction::Newline;
+        }
+        if self.slash.open || composer_is_slash_command(self.composer.text()) {
+            return ComposerEnterAction::Slash;
+        }
+        let now = Instant::now();
+        if self.composer_paste_guard.enter_inserts_newline(now) {
+            self.handle_newline();
+            self.composer_paste_guard.note_enter_as_newline(now);
+            return ComposerEnterAction::Newline;
+        }
+        if self.can_send_prompt() {
+            return ComposerEnterAction::Send;
+        }
+        ComposerEnterAction::None
     }
 
     pub fn handle_backspace(&mut self) {
@@ -839,6 +882,7 @@ impl AppState {
             return None;
         }
         self.composer.clear();
+        self.composer_paste_guard.note_send();
         self.prompt_history.reset_browse();
         self.slash.close();
         Some(text)
@@ -991,6 +1035,7 @@ fn test_app_state_for_draw(composer_text: &str) -> AppState {
         cursor_blink_since: Instant::now(),
         next_poll: Instant::now(),
         slash: SlashCommandState::default(),
+        composer_paste_guard: ComposerPasteGuard::default(),
         theme_picker_original: None,
     }
 }

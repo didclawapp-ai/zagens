@@ -481,13 +481,9 @@ impl RuntimeThreadStore {
         event: impl Into<String>,
         payload: Value,
     ) -> Result<RuntimeEventRecord> {
-        let mut state = self.state.lock().await;
-        let seq = state.next_seq;
-        state.next_seq = state.next_seq.saturating_add(1);
-
         let record = RuntimeEventRecord {
             schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
-            seq,
+            seq: 0,
             timestamp: Utc::now(),
             thread_id: thread_id.to_string(),
             turn_id: turn_id.map(ToString::to_string),
@@ -499,19 +495,24 @@ impl RuntimeThreadStore {
         if let Some(ref db) = self.db {
             let db = Arc::clone(db);
             let record_for_db = record.clone();
-            drop(state);
-            tokio::task::spawn_blocking(move || {
-                crate::thread_store_sqlite::append_event_sqlite(
-                    &db.lock().unwrap(),
-                    &record_for_db,
-                    seq,
-                )
+            let allocated_seq = tokio::task::spawn_blocking(move || {
+                crate::thread_store_sqlite::append_event_sqlite(&db.lock().unwrap(), &record_for_db)
             })
             .await
             .map_err(|e| anyhow!("append_event join: {e}"))?
             .map_err(|e| anyhow!("append_event sqlite: {e}"))?;
-            return Ok(record);
+            let mut state = self.state.lock().await;
+            state.next_seq = allocated_seq.saturating_add(1);
+            return Ok(RuntimeEventRecord {
+                seq: allocated_seq,
+                ..record
+            });
         }
+
+        let mut state = self.state.lock().await;
+        let seq = state.next_seq;
+        state.next_seq = state.next_seq.saturating_add(1);
+        let record = RuntimeEventRecord { seq, ..record };
 
         let state_path = self.state_path.clone();
         let state_snapshot = state.clone();

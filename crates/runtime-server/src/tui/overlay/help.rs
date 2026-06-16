@@ -38,7 +38,10 @@ Chat
   Home / End          Line start / end
   Ctrl+W              Delete word backward
   Ctrl+U              Delete to line start
-  Ctrl+V              Paste from clipboard
+  Ctrl+V              Paste from clipboard (multiline; preferred)
+  Shift+Insert        Paste from clipboard (Windows)
+  Shift+Enter         Insert newline
+  Note                Terminal right-click paste may warn/split lines — use Ctrl+V
   /commands           Slash menu - ^v select  Enter run
   /model <id>         Switch text model (alias /m)
   /lht [auto|strict|off]  LHT composer mode (empty cycles)

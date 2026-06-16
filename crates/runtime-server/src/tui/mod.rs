@@ -6,6 +6,7 @@ mod approval_policy;
 mod automation;
 mod composer_editor;
 mod composer_paste;
+mod composer_paste_guard;
 mod composer_slash;
 mod display_format;
 mod draw;
@@ -37,6 +38,7 @@ use anyhow::{Result, bail};
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
 
 use self::app::AppState;
+use self::app::ComposerEnterAction;
 use self::composer_slash::SlashAction;
 use self::focus::FocusRegion;
 use self::input_thread::TerminalInput;
@@ -148,15 +150,26 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
             // 1. Keyboard / mouse input — highest priority.
             maybe_event = input.recv() => {
                 if let Some(event) = maybe_event {
-                    if handle_input_event(
-                        &event,
-                        &mut ctx,
-                        &mut host,
-                        &mut app,
-                        &mut ctrl_c_streak,
-                        &mut ctrl_c_last,
-                        &shell_tx,
-                    ).await? {
+                    let mut batch = vec![event];
+                    while let Some(extra) = input.try_recv() {
+                        batch.push(extra);
+                    }
+                    let mut quit = false;
+                    for event in batch {
+                        if handle_input_event(
+                            &event,
+                            &mut ctx,
+                            &mut host,
+                            &mut app,
+                            &mut ctrl_c_streak,
+                            &mut ctrl_c_last,
+                            &shell_tx,
+                        ).await? {
+                            quit = true;
+                            break;
+                        }
+                    }
+                    if quit {
                         break;
                     }
                     dirty = true;
@@ -301,7 +314,12 @@ async fn handle_input_event(
             app.terminal_resized = true;
         }
         Event::Paste(text) => {
-            app.handle_composer_paste(text);
+            if app.layout.focus == FocusRegion::Chat {
+                if !app.composer_focus {
+                    app.composer_focus = true;
+                }
+                app.handle_composer_paste(text);
+            }
         }
         Event::Mouse(mouse) => match mouse.kind {
             MouseEventKind::ScrollUp => handle_mouse_scroll(app, mouse.column, 3, true),
@@ -463,18 +481,19 @@ async fn handle_input_event(
                 }
                 KeyCode::Enter if app.layout.focus == FocusRegion::Chat => {
                     if app.composer_focus {
-                        if key.modifiers.contains(KeyModifiers::SHIFT) {
-                            app.handle_newline();
-                        } else if app.slash.open
-                            || composer_slash::composer_is_slash_command(app.composer.text())
+                        match app.handle_composer_enter(key.modifiers.contains(KeyModifiers::SHIFT))
                         {
-                            if handle_slash_enter(ctx, host, app, shell_tx).await? {
-                                return Ok(false);
+                            ComposerEnterAction::Slash => {
+                                if handle_slash_enter(ctx, host, app, shell_tx).await? {
+                                    return Ok(false);
+                                }
                             }
-                        } else if app.can_send_prompt()
-                            && let Some(prompt) = app.take_composer_prompt()
-                        {
-                            submit_prompt(host, app, &prompt).await;
+                            ComposerEnterAction::Send => {
+                                if let Some(prompt) = app.take_composer_prompt() {
+                                    submit_prompt(host, app, &prompt).await;
+                                }
+                            }
+                            ComposerEnterAction::Newline | ComposerEnterAction::None => {}
                         }
                     } else {
                         app.transcript.toggle_last_turn_detail();
@@ -574,7 +593,18 @@ async fn handle_input_event(
                     host.cycle_approval_policy().await?;
                     app.sync_thread_meta(host);
                 }
-                KeyCode::Char('v') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                KeyCode::Char('v') | KeyCode::Char('V')
+                    if key.modifiers.contains(KeyModifiers::CONTROL)
+                        && app.layout.focus == FocusRegion::Chat
+                        && app.composer_focus =>
+                {
+                    app.paste_from_clipboard();
+                }
+                KeyCode::Insert
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        && app.layout.focus == FocusRegion::Chat
+                        && app.composer_focus =>
+                {
                     app.paste_from_clipboard();
                 }
                 KeyCode::Backspace => app.handle_backspace(),

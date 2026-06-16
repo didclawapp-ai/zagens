@@ -222,9 +222,11 @@ pub fn open_sqlite_thread_db(
         )?;
         state
     } else {
-        // Load state from DB
+        // Load state from DB (COALESCE: empty events table → seq 1).
         let next_seq: i64 = db
-            .query_row("SELECT MAX(seq) + 1 FROM events", [], |row| row.get(0))
+            .query_row("SELECT COALESCE(MAX(seq), 0) + 1 FROM events", [], |row| {
+                row.get(0)
+            })
             .unwrap_or(1);
         RuntimeStoreState {
             schema_version: 2,
@@ -254,7 +256,6 @@ fn migrate_json_threads(
     let turns_dir = root.join("turns");
     let items_dir = root.join("items");
     let events_dir = root.join("events");
-    let state_path = root.join("state.json");
 
     let tx = db.unchecked_transaction()?;
 
@@ -433,11 +434,11 @@ fn migrate_json_threads(
         }
     }
 
-    // Load original state.json for next_seq
-    let next_seq = std::fs::read_to_string(&state_path)
-        .ok()
-        .and_then(|c| serde_json::from_str::<RuntimeStoreState>(&c).ok())
-        .map(|s| s.next_seq)
+    // Derive next_seq from migrated events (state.json can lag behind jsonl tails).
+    let next_seq: i64 = tx
+        .query_row("SELECT COALESCE(MAX(seq), 0) + 1 FROM events", [], |row| {
+            row.get(0)
+        })
         .unwrap_or(1);
 
     tx.commit()?;
@@ -448,7 +449,7 @@ fn migrate_json_threads(
 
     Ok(RuntimeStoreState {
         schema_version: 2,
-        next_seq,
+        next_seq: next_seq.max(1) as u64,
     })
 }
 
@@ -777,15 +778,20 @@ pub fn list_items_for_turn_sqlite(
 
 // === Event operations ===
 
-pub fn append_event_sqlite(
-    db: &Connection,
-    event: &RuntimeEventRecord,
-    next_seq: u64,
-) -> anyhow::Result<()> {
-    db.execute(
+/// Append one runtime event, allocating `seq` atomically in SQLite.
+///
+/// Multi-process safe (TUI + sidecar sharing `runtime.db`): do not rely on an
+/// in-memory `next_seq` counter across `RuntimeThreadStore` instances.
+pub fn append_event_sqlite(db: &Connection, event: &RuntimeEventRecord) -> anyhow::Result<u64> {
+    let tx = db.unchecked_transaction()?;
+    let next_seq: i64 =
+        tx.query_row("SELECT COALESCE(MAX(seq), 0) + 1 FROM events", [], |row| {
+            row.get(0)
+        })?;
+    tx.execute(
         "INSERT INTO events (seq, timestamp, thread_id, turn_id, item_id, event, payload_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
         params![
-            next_seq as i64,
+            next_seq,
             event.timestamp.to_rfc3339(),
             event.thread_id,
             event.turn_id,
@@ -794,7 +800,8 @@ pub fn append_event_sqlite(
             serde_json::to_string(&event.payload).unwrap_or_default(),
         ],
     )?;
-    Ok(())
+    tx.commit()?;
+    Ok(next_seq as u64)
 }
 
 pub fn events_since_sqlite(
@@ -1104,4 +1111,44 @@ pub fn next_pending_queue_sqlite(
 
 pub fn allocate_session_input_seq_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<u64> {
     next_session_input_seq(db, thread_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_threads::types::RuntimeEventRecord;
+    use chrono::Utc;
+    use serde_json::json;
+
+    fn sample_event(thread_id: &str, label: &str) -> RuntimeEventRecord {
+        RuntimeEventRecord {
+            schema_version: 2,
+            seq: 0,
+            timestamp: Utc::now(),
+            thread_id: thread_id.to_string(),
+            turn_id: Some("turn_test".to_string()),
+            item_id: None,
+            event: label.to_string(),
+            payload: json!({}),
+        }
+    }
+
+    #[test]
+    fn append_event_sqlite_allocates_monotonic_seq_across_connections() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("runtime.db");
+        let threads_dir = dir.path().join("threads");
+        std::fs::create_dir_all(&threads_dir).expect("threads dir");
+        let (conn_a, _) = open_sqlite_thread_db(&db_path, &threads_dir).expect("open sqlite a");
+
+        let seq1 = append_event_sqlite(&conn_a, &sample_event("thr_a", "one")).expect("first");
+        assert_eq!(seq1, 1);
+
+        let conn_b = Connection::open(&db_path).expect("second connection");
+        let seq2 = append_event_sqlite(&conn_b, &sample_event("thr_a", "two")).expect("second");
+        assert_eq!(seq2, 2);
+
+        let seq3 = append_event_sqlite(&conn_a, &sample_event("thr_b", "three")).expect("third");
+        assert_eq!(seq3, 3);
+    }
 }
