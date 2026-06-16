@@ -11,10 +11,11 @@ use crate::turn::{TurnContext, TurnLoopMode};
 use super::control::{TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome};
 use super::host::V3TurnHost;
 use super::inner_step_host::InnerStepHost;
+use super::live_turn_machine::LiveTurnMachine;
 use super::turn_loop_outer_host::TurnLoopOuterHost;
-use super::{streaming_phase, tool_phase};
+use super::{streaming_phase, tool_phase, v3_driver};
 use crate::engine::kernel_turn_host::KernelTurnHost;
-use crate::engine::turn_machine::{events_for_step, notify_lsp_effects_from_step_events};
+use crate::engine::turn_machine::{TurnKernelProjection, events_for_step};
 
 /// Combined outcome of one v3 turn step (model stream + optional tool batch).
 #[derive(Debug)]
@@ -28,7 +29,7 @@ pub fn execute_batch_call_ids(tool_uses: &[ToolUseState]) -> Vec<String> {
     tool_uses.iter().map(|t| t.id.clone()).collect()
 }
 
-/// Core fallback: run CallModel then ExecuteBatch by calling streaming/tool phases directly.
+/// Core fallback: plan via [`LiveTurnMachine::inner_step_live_plan`], then run streaming/tool phases.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_v3_step<H: InnerStepHost + TurnLoopOuterHost>(
     host: &mut H,
@@ -50,6 +51,21 @@ pub async fn run_v3_step<H: InnerStepHost + TurnLoopOuterHost>(
     let token_budget = context_input_budget(&model, TURN_MAX_OUTPUT_TOKENS)
         .map(|b| b.min(u32::MAX as usize) as u32)
         .unwrap_or(TURN_MAX_OUTPUT_TOKENS);
+
+    let machine = LiveTurnMachine::default();
+    let projection = TurnKernelProjection::from_events(&host.kernel_turn_events());
+    let live_plan = machine.inner_step_live_plan(&projection, token_budget, None);
+    v3_driver::log_inner_step_effect_plan(&turn.id, turn.step, &live_plan.baseline);
+
+    for effect in &live_plan.baseline.pre_call_model {
+        tracing::debug!(
+            target: "kernel_v3",
+            turn_id = %turn.id,
+            step = turn.step,
+            ?effect,
+            "v3 step: QueryMemory (core fallback — no runtime interpreter IO)"
+        );
+    }
 
     tracing::info!(
         target: "kernel_v3",
@@ -74,7 +90,7 @@ pub async fn run_v3_step<H: InnerStepHost + TurnLoopOuterHost>(
     )
     .await;
 
-    let tools = if stream.tool_uses.is_empty() {
+    let tools = if stream.tool_uses.is_empty() || !live_plan.baseline.execute_batch_per_call {
         TurnLoopToolPhaseOutcome::default()
     } else {
         let call_ids = execute_batch_call_ids(&stream.tool_uses);
@@ -85,7 +101,6 @@ pub async fn run_v3_step<H: InnerStepHost + TurnLoopOuterHost>(
             call_count = call_ids.len(),
             "v3 step: ExecuteBatch"
         );
-        let _ = call_ids;
         tool_phase::run_tool_execution_phase(
             host,
             turn,
@@ -100,19 +115,21 @@ pub async fn run_v3_step<H: InnerStepHost + TurnLoopOuterHost>(
         .await
     };
 
-    let step_events = events_for_step(&host.kernel_turn_events(), turn.step);
-    let notify_tail = notify_lsp_effects_from_step_events(&step_events);
-    if !notify_tail.is_empty() {
-        tracing::info!(
-            target: "kernel_v3",
-            turn_id = %turn.id,
-            step = turn.step,
-            notify_count = notify_tail.len(),
-            "v3 step: NotifyLsp tail (core fallback)"
-        );
-        for effect in notify_tail {
-            let _ = effect;
-            host.flush_pending_lsp_diagnostics().await;
+    if live_plan.baseline.notify_lsp_tail {
+        let step_events = events_for_step(&host.kernel_turn_events(), turn.step);
+        let notify_tail = machine.inner_step_notify_lsp_effects(&step_events);
+        if !notify_tail.is_empty() {
+            tracing::info!(
+                target: "kernel_v3",
+                turn_id = %turn.id,
+                step = turn.step,
+                notify_count = notify_tail.len(),
+                "v3 step: NotifyLsp tail (core fallback)"
+            );
+            for effect in notify_tail {
+                let _ = effect;
+                host.flush_pending_lsp_diagnostics().await;
+            }
         }
     }
 

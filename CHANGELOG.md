@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Turn-end hooks renamed: `finish_kernel_turn`, `kernel_turn_events`, `reset_kernel_turn_events` on `KernelTurnHost`.
   - Production replay verify retained via `kernel_turn_replay_verify`, `kernel_v3_step_verify`, and CI golden fixtures (`fixtures/harness/kernel-v3-replay/`).
 
+### Changed
+
+- **Runtime (kernel v3 — core fallback step planning):**
+  - `run_v3_step` plans via `LiveTurnMachine::inner_step_live_plan` before streaming/tool phases (non-runtime hosts without `EffectInterpreter`).
+
 ### Added
 
 - **Runtime (kernel-v2 Phase 3a — KernelEvent schema + completeness verification):**
