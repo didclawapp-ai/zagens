@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Desktop (composer):** Starting a new chat no longer resets the task-type chip to **Auto** when the previous session was locked to **Code** or **Office**; the effective mode is carried forward and synced to `settings.toml`.
+- **Runtime (LHT — step-limit continuation regression):** When checklist reached 100% but `update_plan` still had an `InProgress` phase (checklist-driven execution without plan sync), `maybe_continue_at_step_limit` / loop-guard continuations no longer skipped — restores bounded step-budget grants (up to 4× baseline) instead of hard `Reached maximum steps` at 100 tool steps. Abandoned all-pending plans (DEMO5 zombie plan) still do not trigger continuation. `note_incomplete_stop_if_lht` uses the same rule for observability.
 - **Desktop (LHT panel):** Long-horizon task timer now ticks until composer **生成中** (`streaming`) ends — no longer freezes when checklist hits 100% while the turn is still running; accumulated time persists across LHT reinject rounds on the same thread.
 
 ### Changed

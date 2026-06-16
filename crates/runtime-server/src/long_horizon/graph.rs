@@ -103,17 +103,38 @@ impl CodeTaskGraph {
         }
     }
 
-    /// Open items when the graph warrants a bounded LHT continuation nudge.
+    /// Open items when the graph warrants a bounded LHT continuation nudge
+    /// (step-limit / loop-guard grants).
     #[must_use]
     pub fn continuation_open_items(
         plan: &PlanSnapshot,
         checklist: &TodoListSnapshot,
     ) -> Option<u32> {
         let graph = Self::from_snapshots(plan, checklist);
-        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+        if graph.is_empty() || graph.is_trivial() {
             return None;
         }
-        Some(graph.open_items)
+        if graph.incomplete() {
+            return Some(graph.open_items);
+        }
+        // Checklist reads complete but plan still has an InProgress phase — the
+        // model often executes via checklist while `update_plan` lags (Whiteboard-2
+        // regression: 100 tool steps + checklist 100% + plan Phase-1 in_progress).
+        // Do NOT treat all-pending abandoned plans as open work (DEMO5 zombie plan).
+        if plan_has_in_progress_phase(plan) {
+            return Some(plan_open_item_count(plan).max(1));
+        }
+        None
+    }
+
+    /// Whether the task graph still has unfinished work for observability probes
+    /// (`note_incomplete_stop_if_lht`), using the same plan-lag rule as continuations.
+    #[must_use]
+    pub fn task_still_open_for_lht(
+        plan: &PlanSnapshot,
+        checklist: &TodoListSnapshot,
+    ) -> Option<u32> {
+        Self::continuation_open_items(plan, checklist)
     }
 
     /// Graph has no plan steps and no checklist items.
@@ -147,6 +168,21 @@ impl CodeTaskGraph {
                 .any(|p| p.status != StepStatus::Completed)
         }
     }
+}
+
+#[must_use]
+fn plan_has_in_progress_phase(plan: &PlanSnapshot) -> bool {
+    plan.items
+        .iter()
+        .any(|p| p.status == StepStatus::InProgress)
+}
+
+#[must_use]
+fn plan_open_item_count(plan: &PlanSnapshot) -> u32 {
+    plan.items
+        .iter()
+        .filter(|p| p.status != StepStatus::Completed)
+        .count() as u32
 }
 
 /// Plan-only nudge tracker key (§4.3).
@@ -236,6 +272,64 @@ mod tests {
         assert!(!g.incomplete());
         // Must not re-target an abandoned plan InProgress step.
         assert_eq!(g.in_progress_id, None);
+    }
+
+    #[test]
+    fn continuation_open_items_when_checklist_done_but_plan_in_progress() {
+        let plan = PlanSnapshot {
+            explanation: None,
+            items: vec![
+                PlanItemArg {
+                    step: "Phase 1".into(),
+                    status: StepStatus::InProgress,
+                },
+                PlanItemArg {
+                    step: "Phase 2".into(),
+                    status: StepStatus::Pending,
+                },
+            ],
+        };
+        let checklist = TodoListSnapshot {
+            items: vec![TodoItem {
+                id: 1,
+                content: "done".into(),
+                status: TodoStatus::Completed,
+            }],
+            completion_pct: 100,
+            in_progress_id: None,
+        };
+        assert_eq!(
+            CodeTaskGraph::continuation_open_items(&plan, &checklist),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn continuation_open_items_none_when_checklist_done_and_plan_zombie() {
+        let plan = PlanSnapshot {
+            explanation: Some("outline".into()),
+            items: (0..12)
+                .map(|i| PlanItemArg {
+                    step: format!("phase {i}"),
+                    status: StepStatus::Pending,
+                })
+                .collect(),
+        };
+        let checklist = TodoListSnapshot {
+            items: (1..=19)
+                .map(|id| TodoItem {
+                    id,
+                    content: format!("item {id}"),
+                    status: TodoStatus::Completed,
+                })
+                .collect(),
+            completion_pct: 100,
+            in_progress_id: None,
+        };
+        assert_eq!(
+            CodeTaskGraph::continuation_open_items(&plan, &checklist),
+            None
+        );
     }
 
     #[test]

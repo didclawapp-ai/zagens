@@ -1060,11 +1060,11 @@ impl zagens_core::engine::turn_loop::TurnLoopOuterHost for Engine {
         }
         let plan = self.config_ext().plan_state.lock().await.snapshot();
         let checklist = self.config_ext().todos.lock().await.snapshot();
-        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &checklist);
-        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+        let Some(open) =
+            crate::long_horizon::CodeTaskGraph::task_still_open_for_lht(&plan, &checklist)
+        else {
             return;
-        }
-        let open = graph.open_items;
+        };
         let _ = self
             .tx_event
             .send(Event::status(format!(
