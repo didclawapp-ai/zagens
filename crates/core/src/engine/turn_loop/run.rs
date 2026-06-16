@@ -109,7 +109,17 @@ pub async fn handle_deepseek_turn<H: V3TurnHost>(
             OuterPreInnerStepOutcome::ContinueOuterLoop => continue,
             OuterPreInnerStepOutcome::BreakOuterLoop => break,
             OuterPreInnerStepOutcome::Failed => {
-                return (TurnOutcomeStatus::Failed, loop_state.turn_error.clone());
+                let err = loop_state.turn_error.clone();
+                end_turn(
+                    host,
+                    turn,
+                    &loop_state,
+                    KernelTurnOutcome::Failed {
+                        message: err.clone().unwrap_or_else(|| "unknown error".to_string()),
+                    },
+                )
+                .await;
+                return (TurnOutcomeStatus::Failed, err);
             }
             OuterPreInnerStepOutcome::ProceedToInnerStep => {}
         }
@@ -142,6 +152,14 @@ pub async fn handle_deepseek_turn<H: V3TurnHost>(
         let phase = v3.tools;
 
         if let Some((status, err)) = stream_out.return_early {
+            let outcome = match status {
+                TurnOutcomeStatus::Interrupted => KernelTurnOutcome::Interrupted,
+                TurnOutcomeStatus::Failed => KernelTurnOutcome::Failed {
+                    message: err.clone().unwrap_or_else(|| "unknown error".to_string()),
+                },
+                TurnOutcomeStatus::Completed => KernelTurnOutcome::Completed,
+            };
+            end_turn(host, turn, &loop_state, outcome).await;
             return (status, err);
         }
         if stream_out.break_outer_loop {

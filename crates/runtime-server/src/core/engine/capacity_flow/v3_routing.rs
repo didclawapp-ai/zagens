@@ -96,7 +96,7 @@ impl Engine {
                     self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, false);
                     return false;
                 };
-                let _ = self
+                let replay_ok = self
                     .route_capacity_tool_replay(
                         ctx.turn,
                         ctx.mode,
@@ -108,8 +108,8 @@ impl Engine {
                     .await;
                 let interpreted = CapacityCheckpointEffectTail::None;
                 self.verify_v3_capacity_tail_if_enabled(action, false, interpreted);
-                self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, false);
-                false
+                self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, replay_ok);
+                return replay_ok;
             }
             GuardrailAction::NoIntervention => false,
         };

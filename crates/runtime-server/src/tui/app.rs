@@ -844,6 +844,13 @@ impl AppState {
         }
     }
 
+    /// Shift+Enter from transcript scroll: focus composer and start a new line.
+    pub fn focus_composer_newline(&mut self) {
+        self.composer_focus = true;
+        self.handle_newline();
+        self.composer_paste_guard.note_manual_newline();
+    }
+
     /// Enter in composer: send, slash palette, or newline (Shift / terminal paste).
     pub fn handle_composer_enter(&mut self, shift: bool) -> ComposerEnterAction {
         if shift {

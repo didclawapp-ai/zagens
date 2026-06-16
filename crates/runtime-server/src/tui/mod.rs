@@ -45,7 +45,7 @@ use self::focus::FocusRegion;
 use self::input_thread::TerminalInput;
 use self::layout::{InspectorTab, TuiLayoutPrefs};
 use self::session_host::TuiSessionHost;
-use self::terminal::{TuiTerminal, is_ctrl_c, is_key_press};
+use self::terminal::{TuiTerminal, enter_inserts_newline, is_ctrl_c, is_key_press};
 use crate::cli::args::Cli;
 use crate::cli::context::load_cli_context;
 
@@ -502,9 +502,9 @@ async fn handle_input_event(
                     }
                 }
                 KeyCode::Enter if app.layout.focus == FocusRegion::Chat => {
+                    let newline = enter_inserts_newline(key);
                     if app.composer_focus {
-                        match app.handle_composer_enter(key.modifiers.contains(KeyModifiers::SHIFT))
-                        {
+                        match app.handle_composer_enter(newline) {
                             ComposerEnterAction::Slash => {
                                 if handle_slash_enter(ctx, host, app, shell_tx).await? {
                                     return Ok(false);
@@ -517,6 +517,8 @@ async fn handle_input_event(
                             }
                             ComposerEnterAction::Newline | ComposerEnterAction::None => {}
                         }
+                    } else if newline {
+                        app.focus_composer_newline();
                     } else {
                         app.transcript.toggle_last_turn_detail();
                     }

@@ -8,7 +8,7 @@ use crossterm::ExecutableCommand;
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers,
 };
 use crossterm::terminal::{
     self, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -125,4 +125,36 @@ pub fn is_ctrl_c(event: &Event) -> bool {
             if key.code == KeyCode::Char('c')
                 && key.modifiers.contains(KeyModifiers::CONTROL)
     )
+}
+
+/// True when Enter should insert a newline (Shift+Enter) rather than send / activate.
+pub fn enter_inserts_newline(key: &KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::SHIFT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyEventKind};
+
+    fn press(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn shift_enter_inserts_newline() {
+        let key = press(KeyCode::Enter, KeyModifiers::SHIFT);
+        assert!(enter_inserts_newline(&key));
+    }
+
+    #[test]
+    fn plain_enter_sends() {
+        let key = press(KeyCode::Enter, KeyModifiers::NONE);
+        assert!(!enter_inserts_newline(&key));
+    }
 }

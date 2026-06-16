@@ -32,7 +32,7 @@ Chat
   Shift+Tab           Reverse focus order
   Esc                 Toggle input / scroll (cancel slash menu when typing /)
   Enter               Send prompt (input mode)
-  Shift+Enter         Insert newline in prompt
+  Shift+Enter         Insert newline (input or scroll mode — focuses composer)
   Up / Down           Cursor up/down line in prompt (history browse at boundary)
   Left / Right        Move cursor; Ctrl+Left word-jump
   Home / End          Line start / end
@@ -40,13 +40,12 @@ Chat
   Ctrl+U              Delete to line start
   Ctrl+V              Paste from clipboard (multiline; preferred)
   Shift+Insert        Paste from clipboard (Windows)
-  Shift+Enter         Insert newline
   Note                Terminal right-click paste may warn/split lines — use Ctrl+V
   /commands           Slash menu - ^v select  Enter run
   /model <id>         Switch text model (alias /m)
   /lht [auto|strict|off]  LHT composer mode (empty cycles)
   /theme [name]       Switch TUI color theme (empty cycles)
-  j / k / Up / Down   Scroll transcript (auto-enter scroll mode when not in input)
+  j / k / Up / Down   Scroll transcript (Shift+Enter starts multiline input)
   PgUp / PgDn         Scroll transcript (auto-enter scroll mode)
   Ctrl+A              Cycle approval policy (4 modes, saved to config)
   o                   Expand/collapse last tool block

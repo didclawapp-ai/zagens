@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Runtime (Kernel V3 — replay parity):** `verify_step_effect_parity` no longer passes when a step has `ToolCallPlanned` events but no `ModelRequestIssued` anchor in the log.
+- **Runtime (Kernel V3 — turn lifecycle):** Streaming `return_early` and pre-inner failure paths now emit `KernelEvent::TurnEnded` before returning from `handle_deepseek_turn`.
+- **Runtime (Kernel V3 — capacity replay):** `VerifyWithToolReplay` dispatch returns the live tool-replay outcome instead of discarding it and hardcoding `false`.
+- **TUI (composer — Shift+Enter):** Shift+Enter inserts a newline in the prompt; from transcript scroll mode it also focuses the composer so multiline input works without pressing Esc first.
 - **TUI (composer — legacy conhost paste):** cmd.exe / conhost injects clipboard text as rapid Char+Enter key events; coalesce same-frame bursts into one multiline insert, extend paste-session detection for slow injection, and route `[` `]` `Tab` `?` (and `j`/`k` during paste) into the composer so sidebars no longer collapse mid-paste.
 - **Runtime (LHT — macro CRAFT `on_graph_complete`):** When the checklist/plan graph is complete but micro completion gates are still red, `auto_enter_craft = on_graph_complete` (or `user_confirm`) now evaluates the macro loop **before** unverified/mismatch nudges and can spawn CRAFT or prompt for confirm — previously CRAFT only ran after `graph_complete` (all micro gates green).
 - **Runtime (LHT — manifest gate Jest EPERM):** Harness classifies Jest `spawn EPERM` / `spawn EACCES` as infra (not assertion) and appends a `--runInBand` / `.npmrc` cache hint in manifest-failed nudges on Windows-style Node tasks.

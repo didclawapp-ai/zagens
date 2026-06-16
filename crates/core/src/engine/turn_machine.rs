@@ -2826,6 +2826,11 @@ pub fn verify_step_effect_parity(
 ) -> Option<String> {
     let step_events = events_for_step(turn_events, step_idx);
     if step_events.is_empty() {
+        if executed_tool_count > 0 {
+            return Some(format!(
+                "step {step_idx} has no ModelRequestIssued anchor but {executed_tool_count} ToolCallPlanned event(s)"
+            ));
+        }
         return None;
     }
     let counts = replay_effect_counts(&step_events);
@@ -3196,6 +3201,31 @@ mod tests {
         assert_eq!(counts.call_model, 1);
         assert_eq!(counts.execute_batch, 2);
         assert_eq!(counts.notify_lsp, 1);
+    }
+
+    #[test]
+    fn verify_step_effect_parity_fails_when_tools_without_step_anchor() {
+        use crate::engine::kernel_event::PolicyDecision;
+
+        let events = vec![
+            KernelEvent::TurnStarted {
+                turn_id: "t".into(),
+                mode: TurnLoopMode::Agent,
+                input_text: String::new(),
+                max_steps: 8,
+            },
+            KernelEvent::ToolCallPlanned {
+                turn_id: "t".into(),
+                step_idx: 1,
+                call_id: "c1".into(),
+                tool_name: "read_file".into(),
+                input_json: "{}".into(),
+                decision: PolicyDecision::default(),
+            },
+        ];
+        let err = verify_step_effect_parity(&events, 1, 1).expect("parity error");
+        assert!(err.contains("no ModelRequestIssued anchor"));
+        assert!(verify_step_effect_parity(&events, 99, 0).is_none());
     }
 
     #[test]
