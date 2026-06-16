@@ -223,6 +223,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         tx_subagent_completion,
         rx_subagent_completion: rx_subagent_completion.clone(),
         sandbox_init_warning,
+        workspace_preflight_done: false,
         hook_executor,
         session_hooks_started: false,
         tools_policy: api_config.tools_policy_mode(),

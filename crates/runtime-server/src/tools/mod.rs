@@ -72,6 +72,7 @@ pub mod validate_data;
 pub mod web_inputs;
 pub mod web_run;
 pub mod web_search;
+pub mod workspace_preflight;
 pub use zagens_runtime_adapters::tools::workspace_walk;
 
 pub use registry::{ToolRegistry, ToolRegistryBuilder};

@@ -4,11 +4,13 @@
 
 # Zagens
 
+*AI agent platform for the [DeepSeek V4](https://deepseek.com/) ecosystem — desktop · TUI · CLI.*
+
 **[中文](README.zh-CN.md)** · **[日本語](README.ja.md)** · **[Português (BR)](README.pt-BR.md)** | English
 
 Long-horizon agent work tends to **stall or “claim done” too early**. Code and office files often live in **separate tools**. Local agents need **replay, approval, and auditability** — not just another chat window.
 
-**Zagens** is a **desktop agent harness** built for the **[DeepSeek V4](https://deepseek.com/) ecosystem**: tuned for DeepSeek API, reasoning streams, and tool calling out of the box (DeepSeek Pro / Flash by default). Choose **Tauri desktop**, full-screen **`zagens-tui`**, or headless **`zagens` CLI** — all share one **Kernel V3** runtime for Code and Office workspaces, turn-by-turn **session replay**, layered **completion gates** for long tasks, and desktop-native shell features where applicable (tray, notifications, embedded PTY). Other OpenAI-compatible endpoints remain supported as a fallback.
+**Zagens** is an **AI agent platform** for the **[DeepSeek V4](https://deepseek.com/) ecosystem**: tuned for DeepSeek API, reasoning streams, and tool calling out of the box (DeepSeek Pro / Flash by default). **Desktop** (Tauri), **terminal** (`zagens-tui`), and **CLI** (`zagens`) share one **Kernel V3** runtime for Code and Office workspaces, turn-by-turn **session replay**, layered **completion gates** for long tasks, and native shell features where applicable (tray, notifications, embedded PTY). Other OpenAI-compatible endpoints remain supported as a fallback.
 
 > **From the authors:** Don’t believe an AI agent can do anything — it has boundaries. What we can do is expand those boundaries.
 
@@ -28,8 +30,8 @@ Long-horizon agent work tends to **stall or “claim done” too early**. Code a
 
 | Good fit | Less fit |
 |----------|----------|
-| **DeepSeek power users** — daily DeepSeek API / V4 coding and agent workflows who want a desktop harness beyond the official TUI | A hosted SaaS with managed models and billing |
-| Developers who want a **standalone desktop harness** (not locked into one IDE extension) | “Chat only” — no tools, no workspace, no replay |
+| **DeepSeek power users** — daily DeepSeek API / V4 coding and agent workflows who want a local agent platform beyond official tools | A hosted SaaS with managed models and billing |
+| Developers who want a **standalone agent platform** (desktop, TUI, or CLI — not locked into one IDE extension) | “Chat only” — no tools, no workspace, no replay |
 | **Terminal-first users** on macOS / Linux / Windows — full-screen **`zagens-tui`** with the same engine as desktop | Fully autonomous YOLO agents with no guardrails |
 | Teams working on **long code refactors** or **Office deliverables** in the same workflow | Zero-setup mobile or browser-only experience |
 | People who care about **local sidecar architecture**, MCP/skills, and **exec approval** in the UI | Teams that only want a web copilot with no local execution |
@@ -41,7 +43,7 @@ Long-horizon agent work tends to **stall or “claim done” too early**. Code a
 
 **1. Harness, not a chat shell** — Long-horizon code tasks use **composable completion gates** (operator / model / toolchain layers), not “the model said it’s finished.” Spec: [LHT](docs/harness/LONG_HORIZON_CODE_TASKS.md) · fixtures: [`fixtures/harness/`](fixtures/harness/).
 
-**2. Desktop + terminal, one engine** — [Tauri 2](https://tauri.app/) desktop **or** full-screen **`zagens-tui`** (ratatui) **or** headless **`zagens`** CLI — all run **Kernel V3** (`LiveTurnMachine` + `EffectInterpreter`, event-sourced turns, log-first session resume). Desktop adds tray, WebView panels, embedded PTY, and sidecar supervision; TUI adds three-column transcript/composer/inspector + LHT panel in the terminal.
+**2. Multiple surfaces, one engine** — [Tauri 2](https://tauri.app/) desktop **or** full-screen **`zagens-tui`** (ratatui) **or** headless **`zagens`** CLI — all run **Kernel V3** (`LiveTurnMachine` + `EffectInterpreter`, event-sourced turns, log-first session resume). Desktop adds tray, WebView panels, embedded PTY, and sidecar supervision; TUI adds three-column transcript/composer/inspector + LHT panel in the terminal.
 
 **3. Code + Office, one runtime** — **Code** and **Office** task types share tools and config but use different tool surfaces and prompts; switching types starts a **new session** for stable model KV ([architecture](docs/task-type-prompt-architecture.md)). Office: `read_file` / **`write_office`** (xlsx via Rust; docx/pptx/pdf via bundled Python).
 

@@ -2,13 +2,13 @@
   <img src="assets/screenshot.png" alt="Zagens スクリーンショット" width="800" />
 </p>
 
-# Zagens — デスクトップ Agent ハーネス
+# Zagens — DeepSeek V4 向け AI Agent プラットフォーム
 
 **[English](README.md)** · **[中文](README.zh-CN.md)** · **[Português (BR)](README.pt-BR.md)** | 日本語
 
 長時間の Agent 作業は**途中で止まったり、早すぎる「完了」宣言**をしがちです。コードと Office ファイルは**別ツール**に分かれがちです。ローカル Agent には、チャット窓だけでなく**リプレイ・承認・監査可能性**が必要です。
 
-**Zagens** は **[DeepSeek V4](https://deepseek.com/) エコシステム**向けに設計した**デスクトップ Agent ハーネス**です。DeepSeek API・推論ストリーム・ツール呼び出しに最適化され、既定で DeepSeek Pro / Flash を利用できます。**Tauri デスクトップ**、全画面 **`zagens-tui`**、またはヘッドレス **`zagens` CLI** を選択 — いずれも **Kernel V3** runtime を共有し、Code / Office ワークスペース、ターン単位の**セッションリプレイ**、長時間タスク向け**段階的完了ゲート**、およびデスクトップ向けトレイ・通知・PTY などを提供します（OpenAI 互換エンドポイントもフォールバックとして利用可能）。
+**Zagens** は **[DeepSeek V4](https://deepseek.com/) エコシステム**向けの **AI Agent プラットフォーム**です。DeepSeek API・推論ストリーム・ツール呼び出しに最適化され、既定で DeepSeek Pro / Flash を利用できます。**Tauri デスクトップ**、全画面 **`zagens-tui`**、ヘッドレス **`zagens` CLI** の 3 入口が **Kernel V3** runtime を共有し、Code / Office ワークスペース、ターン単位の**セッションリプレイ**、長時間タスク向け**段階的完了ゲート**、およびデスクトップ向けトレイ・通知・PTY などを提供します（OpenAI 互換エンドポイントもフォールバックとして利用可能）。
 
 > **作者より：** AI Agent が何でもできるわけではない — 境界がある。私たちにできるのは、その境界を広げることだ。
 
@@ -28,8 +28,8 @@
 
 | 向いている | 向いていない |
 |------------|--------------|
-| **DeepSeek ヘビーユーザー** — DeepSeek API / V4 で日々コーディング Agent を回し、公式 TUI より強い Harness を求める人 | モデル・課金込みのホスト型 SaaS |
-| **独立したデスクトップ Harness**（特定 IDE 拡張に縛られない）を求める開発者 | ツール・ワークスペース・リプレイのない「チャットのみ」 |
+| **DeepSeek ヘビーユーザー** — DeepSeek API / V4 で日々コーディング Agent を回し、公式ツールを超えるローカル Agent プラットフォームを求める人 | モデル・課金込みのホスト型 SaaS |
+| **独立した Agent プラットフォーム**（デスクトップ / TUI / CLI、特定 IDE 拡張に縛られない）を求める開発者 | ツール・ワークスペース・リプレイのない「チャットのみ」 |
 | **ターミナル優先**ユーザー（macOS / Linux / Windows）— 全画面 **`zagens-tui`**、デスクトップと同一エンジン | ガードレールなしの完全自律 YOLO Agent |
 | **長期コードリファクタ**や **Office 成果物**を同一ワークフローで扱うチーム | セットアップ不要のモバイル / ブラウザのみ |
 | **ローカル sidecar**、MCP/スキル、UI 内**実行承認**を重視する人 | ローカル実行なしの Web コパイロットだけで足りるチーム |
@@ -41,7 +41,7 @@
 
 **1. チャットシェルではなく Harness** — 長時間コードタスクは** composable 完了ゲート**（オペレータ / モデル / ツールチェーン）で判定。「モデルが終わったと言った」だけでは完了にしません。仕様: [LHT](docs/harness/LONG_HORIZON_CODE_TASKS.md) · フィクスチャ: [`fixtures/harness/`](fixtures/harness/)。
 
-**2. デスクトップ + ターミナル、1 エンジン** — [Tauri 2](https://tauri.app/) デスクトップ **または** 全画面 **`zagens-tui`**（ratatui）**または** ヘッドレス **`zagens`** CLI — いずれも **Kernel V3**（`LiveTurnMachine` + `EffectInterpreter`、イベントソーシング turn、log-first セッション再開）。デスクトップはトレイ・WebView・PTY・sidecar 監督；TUI はターミナル内 3 カラム transcript/composer/inspector + LHT パネル。
+**2. 複数入口、1 エンジン** — [Tauri 2](https://tauri.app/) デスクトップ **または** 全画面 **`zagens-tui`**（ratatui）**または** ヘッドレス **`zagens`** CLI — いずれも **Kernel V3**（`LiveTurnMachine` + `EffectInterpreter`、イベントソーシング turn、log-first セッション再開）。デスクトップはトレイ・WebView・PTY・sidecar 監督；TUI はターミナル内 3 カラム transcript/composer/inspector + LHT パネル。
 
 **3. Code + Office、1 つの runtime** — **Code / Office** タスク種別は設定とツールを共有しつつ、プロンプトとツール面は異なります。種別切替は KV 安定のため**新セッション**を開始（[アーキテクチャ](docs/task-type-prompt-architecture.md)）。Office: `read_file` / **`write_office`**（xlsx は Rust、docx/pptx/pdf は同梱 Python）。
 

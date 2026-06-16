@@ -178,7 +178,13 @@ async fn evaluate_completion_gate_inner(
             return LhtGateOutcome::Skip("manifest_gate_no_exec");
         };
         session.manifest_gate_rounds = session.manifest_gate_rounds.saturating_add(1);
-        let result = run_manifest_gate(&cmd_root, &effective, exec).await;
+        let result = run_manifest_gate(
+            &cmd_root,
+            &effective,
+            exec,
+            &session.recent_verification_cmds,
+        )
+        .await;
         let split = classify_failures(&result, &effective, gate);
         record_first_gap(
             session,

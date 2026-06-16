@@ -2,13 +2,13 @@
   <img src="assets/screenshot.png" alt="Captura de tela do Zagens" width="800" />
 </p>
 
-# Zagens — Console de Agent desktop
+# Zagens — Plataforma de Agent de IA para DeepSeek V4
 
 **[English](README.md)** · **[中文](README.zh-CN.md)** · **[日本語](README.ja.md)** | Português (BR)
 
 Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo demais**. Código e arquivos Office costumam ficar em **ferramentas separadas**. Agents locais precisam de **replay, aprovação e auditabilidade** — não só mais uma janela de chat.
 
-**Zagens** é um **console de Agent desktop** feito para o **ecossistema [DeepSeek V4](https://deepseek.com/)**: otimizado para API DeepSeek, fluxos de raciocínio e chamadas de ferramentas (DeepSeek Pro / Flash por padrão). Escolha **desktop Tauri**, **`zagens-tui`** em tela cheia ou **`zagens` CLI** headless — todos compartilham runtime **Kernel V3** para workspaces Code e Office, **replay de sessão** turno a turno, **portões de conclusão** em camadas e recursos nativos de desktop quando aplicável (bandeja, notificações, PTY). Endpoints OpenAI-compatíveis seguem disponíveis como alternativa.
+**Zagens** é uma **plataforma de Agent de IA** para o **ecossistema [DeepSeek V4](https://deepseek.com/)**: otimizada para API DeepSeek, fluxos de raciocínio e chamadas de ferramentas (DeepSeek Pro / Flash por padrão). **Desktop** (Tauri), **terminal** (`zagens-tui`) e **CLI** (`zagens`) compartilham runtime **Kernel V3** para workspaces Code e Office, **replay de sessão** turno a turno, **portões de conclusão** em camadas e recursos nativos quando aplicável (bandeja, notificações, PTY). Endpoints OpenAI-compatíveis seguem disponíveis como alternativa.
 
 > **Nota dos autores:** Não acredite que um Agent de IA pode fazer qualquer coisa — ele tem limites. O que podemos fazer é ampliar esses limites.
 
@@ -28,8 +28,8 @@ Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo
 
 | Combina bem | Combina menos |
 |-------------|---------------|
-| **Usuários avançados de DeepSeek** — fluxos diários com API DeepSeek / V4 que querem um harness além do TUI oficial | SaaS hospedado com modelos e cobrança inclusos |
-| Devs que querem um **harness desktop independente** (sem ficar preso a uma extensão de IDE) | Só chat — sem ferramentas, workspace ou replay |
+| **Usuários avançados de DeepSeek** — fluxos diários com API DeepSeek / V4 que querem uma plataforma local além das ferramentas oficiais | SaaS hospedado com modelos e cobrança inclusos |
+| Devs que querem uma **plataforma de Agent independente** (desktop, TUI ou CLI — sem ficar preso a uma extensão de IDE) | Só chat — sem ferramentas, workspace ou replay |
 | **Terminal-first** — **`zagens-tui`** em tela cheia, mesmo motor do desktop | Agents YOLO totalmente autônomos, sem guardrails |
 | Times em **refactors longos** ou **entregas Office** no mesmo fluxo | Experiência mobile ou só navegador, zero setup |
 | Quem valoriza **sidecar local**, MCP/skills e **aprovação de exec** na UI | Times que só querem copiloto web sem execução local |
@@ -41,7 +41,7 @@ Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo
 
 **1. Harness, não casca de chat** — Tarefas de código longas usam **portões de conclusão composáveis** (operador / modelo / toolchain), não “o modelo disse que terminou”. Spec: [LHT](docs/harness/LONG_HORIZON_CODE_TASKS.md) · fixtures: [`fixtures/harness/`](fixtures/harness/).
 
-**2. Desktop + terminal, um motor** — Desktop [Tauri 2](https://tauri.app/) **ou** **`zagens-tui`** em tela cheia (ratatui) **ou** CLI headless **`zagens`** — todos rodam **Kernel V3** (`LiveTurnMachine` + `EffectInterpreter`, turns event-sourced, resume log-first). O desktop adiciona bandeja, WebView, PTY embutido e supervisão do sidecar; o TUI traz transcript/composer/inspector em 3 colunas + painel LHT no terminal.
+**2. Várias superfícies, um motor** — Desktop [Tauri 2](https://tauri.app/) **ou** **`zagens-tui`** em tela cheia (ratatui) **ou** CLI headless **`zagens`** — todos rodam **Kernel V3** (`LiveTurnMachine` + `EffectInterpreter`, turns event-sourced, resume log-first). O desktop adiciona bandeja, WebView, PTY embutido e supervisão do sidecar; o TUI traz transcript/composer/inspector em 3 colunas + painel LHT no terminal.
 
 **3. Code + Office, um runtime** — Tipos **Code / Office** compartilham ferramentas e config, com superfícies e prompts diferentes; trocar o tipo abre **nova sessão** para KV estável ([arquitetura](docs/task-type-prompt-architecture.md)). Office: `read_file` / **`write_office`** (xlsx em Rust; docx/pptx/pdf via Python embutido).
 

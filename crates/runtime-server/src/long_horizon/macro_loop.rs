@@ -15,8 +15,12 @@ use super::nudge::LongHorizonSessionState;
 /// What caused macro-loop evaluation (micro pass vs graph done but gates red).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MacroTrigger {
+    /// Checklist/plan graph complete; micro gates may still be red.
+    GraphComplete,
     MicroPass,
-    AuditUnmet { reason: &'static str },
+    AuditUnmet {
+        reason: &'static str,
+    },
 }
 
 /// Outcome of macro-loop evaluation after a eligible trigger fires.
@@ -237,7 +241,10 @@ pub fn should_auto_enter_craft(mode: AutoEnterCraft, trigger: MacroTrigger) -> b
     match mode {
         AutoEnterCraft::Off | AutoEnterCraft::UserConfirm => false,
         AutoEnterCraft::OnMicroPass => matches!(trigger, MacroTrigger::MicroPass),
-        AutoEnterCraft::OnGraphComplete => true,
+        AutoEnterCraft::OnGraphComplete => matches!(
+            trigger,
+            MacroTrigger::GraphComplete | MacroTrigger::MicroPass | MacroTrigger::AuditUnmet { .. }
+        ),
         AutoEnterCraft::OnManifestExhausted => {
             matches!(
                 trigger,
@@ -322,6 +329,34 @@ pub fn evaluate_macro_loop(input: MacroLoopInput<'_>, trigger: MacroTrigger) -> 
 #[must_use]
 pub fn evaluate_after_micro_pass(input: MacroLoopInput<'_>) -> MacroLoopOutcome {
     evaluate_macro_loop(input, MacroTrigger::MicroPass)
+}
+
+/// When the checklist/plan graph is complete, offer CRAFT before micro-gate nudges
+/// (`on_graph_complete`) or user confirm (`user_confirm`).
+#[must_use]
+pub fn maybe_evaluate_macro_at_graph_complete(input: MacroLoopInput<'_>) -> Option<LhtGateOutcome> {
+    if !input.config.enabled || !input.effective_mode.is_strict() {
+        return None;
+    }
+    if should_skip_small_task(input.config, input.checklist) {
+        return None;
+    }
+    if !matches!(
+        input.config.auto_enter_craft,
+        AutoEnterCraft::OnGraphComplete | AutoEnterCraft::UserConfirm
+    ) {
+        return None;
+    }
+    if !matches!(input.session.macro_phase, MacroPhase::Implement) {
+        return None;
+    }
+    let outcome = evaluate_macro_loop(input, MacroTrigger::GraphComplete);
+    let gate = macro_outcome_to_gate(outcome);
+    if matches!(gate, LhtGateOutcome::Skip(_)) {
+        None
+    } else {
+        Some(gate)
+    }
 }
 
 /// CRAFT finished but remediation was never injected (turn ended while review ran).
@@ -494,6 +529,10 @@ mod tests {
         ));
         assert!(should_auto_enter_craft(
             AutoEnterCraft::OnGraphComplete,
+            MacroTrigger::GraphComplete
+        ));
+        assert!(should_auto_enter_craft(
+            AutoEnterCraft::OnGraphComplete,
             MacroTrigger::AuditUnmet {
                 reason: "manifest_rounds_exhausted"
             }
@@ -501,6 +540,10 @@ mod tests {
         assert!(should_auto_enter_craft(
             AutoEnterCraft::OnGraphComplete,
             MacroTrigger::MicroPass
+        ));
+        assert!(!should_auto_enter_craft(
+            AutoEnterCraft::OnMicroPass,
+            MacroTrigger::GraphComplete
         ));
         assert!(should_auto_enter_craft(
             AutoEnterCraft::OnManifestExhausted,

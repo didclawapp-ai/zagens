@@ -99,6 +99,25 @@ pub(crate) fn detect_shell_failure_hints(
         });
     }
 
+    if (cmd_lower.contains("tsc") || out_lower.contains("error ts"))
+        && (out_lower.contains("rootdir")
+            || out_lower.contains("root dir")
+            || out_lower.contains("cannot find module")
+            || out_lower.contains("module resolution")
+            || out_lower.contains("file is not under")
+            || out_lower.contains("ts6307")
+            || out_lower.contains("ts6059"))
+    {
+        hints.push(ShellFailureHint {
+            id: "tsconfig_paths",
+            message: "TypeScript project layout issue: check `rootDir` vs `include`/`files`, \
+                      `composite` project references, and whether imports need `.js` extensions \
+                      under `moduleResolution: node16/nodenext`. For cross-folder relative imports \
+                      at different depths, prefer `refactor_imports` (per-file `../` depth) over \
+                      many sequential `edit_file` calls.",
+        });
+    }
+
     hints
 }
 
@@ -177,6 +196,18 @@ mod tests {
             &ShellStatus::Failed,
         );
         assert!(hints.iter().any(|h| h.id == "jest_run_in_band"));
+    }
+
+    #[test]
+    fn tsc_rootdir_emits_tsconfig_hint() {
+        let hints = detect_shell_failure_hints(
+            "npx tsc -p tsconfig.json",
+            "",
+            "error TS6059: File 'src/foo.ts' is not under 'rootDir'",
+            Some(2),
+            &ShellStatus::Failed,
+        );
+        assert!(hints.iter().any(|h| h.id == "tsconfig_paths"));
     }
 
     #[test]

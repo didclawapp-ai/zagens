@@ -1,48 +1,42 @@
 //! Path field parsing for the file tool family (TS-01).
 //!
 //! Models often send `file` / `file_path` (ecosystem habit) while our schema
-//! canonical field is `path`. Detect wrong aliases up front with a targeted
-//! hint — same pattern as `edit_file`'s `replace` vs `replacement`.
+//! canonical field is `path`. Accept known aliases (same keys as
+//! `schedule_bridge`) so one wrong key does not waste a whole turn.
 
-use crate::tools::spec::{ToolError, required_str};
+use crate::tools::spec::ToolError;
 use serde_json::Value;
 
 /// Alternate keys models use for the file path (aligned with `schedule_bridge`).
 const PATH_ALIASES: &[&str] = &["file", "file_path", "filename", "target_path"];
 
-fn path_alias_hint(tool: &str, alias: &str) -> ToolError {
-    ToolError::invalid_input(format!(
-        "{tool} uses 'path' for the file location, not '{alias}'. Re-send with 'path'."
-    ))
-}
-
-/// Required path field: canonical `path`, or a clear hint when a known alias was used.
-pub(crate) fn required_path_field<'a>(input: &'a Value, tool: &str) -> Result<&'a str, ToolError> {
-    if let Some(v) = input.get("path").and_then(Value::as_str) {
-        return Ok(v);
-    }
-    for alias in PATH_ALIASES {
-        if input.get(*alias).is_some() {
-            return Err(path_alias_hint(tool, alias));
+fn path_from_aliases<'a>(input: &'a Value) -> Option<&'a str> {
+    for key in std::iter::once("path").chain(PATH_ALIASES.iter().copied()) {
+        if let Some(v) = input.get(key).and_then(Value::as_str) {
+            let trimmed = v.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed);
+            }
         }
     }
-    required_str(input, "path")
+    None
 }
 
-/// Optional path field (defaults to `.` when absent). Still hints on alias misuse.
+/// Required path field: canonical `path` or accepted alias.
+pub(crate) fn required_path_field<'a>(input: &'a Value, tool: &str) -> Result<&'a str, ToolError> {
+    path_from_aliases(input).ok_or_else(|| {
+        ToolError::invalid_input(format!(
+            "{tool} requires 'path' (aliases accepted: file, file_path, filename, target_path)."
+        ))
+    })
+}
+
+/// Optional path field (defaults to `.` when absent).
 pub(crate) fn optional_path_field<'a>(
     input: &'a Value,
-    tool: &str,
+    _tool: &str,
 ) -> Result<Option<&'a str>, ToolError> {
-    if let Some(v) = input.get("path").and_then(Value::as_str) {
-        return Ok(Some(v));
-    }
-    for alias in PATH_ALIASES {
-        if input.get(*alias).is_some() {
-            return Err(path_alias_hint(tool, alias));
-        }
-    }
-    Ok(None)
+    Ok(path_from_aliases(input))
 }
 
 #[cfg(test)]
@@ -62,22 +56,13 @@ mod tests {
     #[test]
     fn required_path_field_hints_on_file_alias() {
         let input = json!({"file": "x.txt", "content": "hi"});
-        let err = required_path_field(&input, "write_file").unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("'path'"), "{msg}");
-        assert!(msg.contains("'file'"), "{msg}");
-        assert!(!msg.contains("missing required field 'path'"), "{msg}");
+        assert_eq!(required_path_field(&input, "write_file").unwrap(), "x.txt");
     }
 
     #[test]
     fn required_path_field_hints_on_file_path_alias() {
         let input = json!({"file_path": "lib.rs"});
-        let err = required_path_field(&input, "edit_file").unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("'path'") && msg.contains("'file_path'"),
-            "{msg}"
-        );
+        assert_eq!(required_path_field(&input, "edit_file").unwrap(), "lib.rs");
     }
 
     #[test]
@@ -91,7 +76,11 @@ mod tests {
 
     #[test]
     fn optional_path_field_hints_on_alias() {
-        let err = optional_path_field(&json!({"file": "src"}), "list_dir").unwrap_err();
-        assert!(err.to_string().contains("'file'"));
+        assert_eq!(
+            optional_path_field(&json!({"file": "src"}), "list_dir")
+                .unwrap()
+                .as_deref(),
+            Some("src")
+        );
     }
 }

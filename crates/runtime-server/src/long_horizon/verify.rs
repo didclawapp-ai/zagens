@@ -10,6 +10,56 @@ pub fn normalize_cmd(command: &str) -> String {
         .to_ascii_lowercase()
 }
 
+/// Whether a shell command should count as verification for LHT replay / manifest trust.
+#[must_use]
+pub fn is_verification_like_command(command: &str) -> bool {
+    if super::nudge::VERIFICATION_RE.is_match(command) {
+        return true;
+    }
+    let norm = normalize_cmd(command);
+    norm.contains("npm test")
+        || norm.contains("jest")
+        || norm.contains("cargo test")
+        || norm.contains("go test")
+        || norm.contains("tsc ")
+        || norm.contains("npm run build")
+}
+
+/// True when a recent successful exec satisfies a manifest gate command (TS verify dedup).
+#[must_use]
+pub fn manifest_command_trusted(cmd: &str, recent_execs: &[String]) -> bool {
+    if cmd.trim().is_empty() {
+        return false;
+    }
+    if verification_satisfied(cmd, recent_execs) {
+        return true;
+    }
+    let norm = normalize_cmd(cmd);
+    let npm_jest = norm.contains("npm test") || norm.contains("jest");
+    let cargo = norm.contains("cargo test");
+    let go = norm.contains("go test");
+    let tsc = norm.contains("tsc ");
+    if !(npm_jest || cargo || go || tsc) {
+        return false;
+    }
+    recent_execs.iter().any(|ran| {
+        let ran = ran.as_str();
+        if npm_jest {
+            return ran.contains("npm test") || ran.contains("jest");
+        }
+        if cargo {
+            return ran.contains("cargo test");
+        }
+        if go {
+            return ran.contains("go test");
+        }
+        if tsc {
+            return ran.contains("tsc");
+        }
+        false
+    })
+}
+
 /// True when a recent exec command satisfies the checklist `[verify: …]` expectation.
 #[must_use]
 pub fn verification_satisfied(expected: &str, recent_execs: &[String]) -> bool {
@@ -247,6 +297,19 @@ mod tests {
             Some("cargo test -p auth")
         );
         assert_eq!(strip_verify_prefix(s), "Run tests");
+    }
+
+    #[test]
+    fn manifest_command_trusted_after_npm_test_family() {
+        let recent = vec![normalize_cmd("npx jest --passWithNoTests")];
+        assert!(manifest_command_trusted("npm test --silent", &recent));
+        assert!(!manifest_command_trusted("cargo clippy", &recent));
+    }
+
+    #[test]
+    fn is_verification_like_includes_jest() {
+        assert!(is_verification_like_command("npx jest"));
+        assert!(!is_verification_like_command("echo hi"));
     }
 
     #[test]

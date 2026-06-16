@@ -50,6 +50,23 @@ impl Engine {
             .on_new_user_message();
         self.sync_scratchpad_run_id_from_wire();
 
+        if !self.runtime_ext().workspace_preflight_done {
+            let ws = self.config.workspace.clone();
+            let report = tokio::task::spawn_blocking(move || {
+                crate::tools::workspace_preflight::apply_windows_node_preflight(&ws)
+            })
+            .await
+            .ok();
+            if let Some(report) = report {
+                if let Some(status) =
+                    crate::tools::workspace_preflight::format_preflight_status(&report)
+                {
+                    let _ = self.tx_event.send(Event::status(status)).await;
+                }
+            }
+            self.runtime_ext_mut().workspace_preflight_done = true;
+        }
+
         self.maybe_fire_session_start(mode);
         if let Err(blocked) = self.fire_message_submit(mode, &content) {
             let _ = self

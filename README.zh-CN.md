@@ -2,13 +2,13 @@
   <img src="assets/screenshot.png" alt="Zagens 截图" width="800" />
 </p>
 
-# Zagens — 桌面 Agent 控制台
+# Zagens — DeepSeek V4 生态 AI Agent 平台
 
 **[English](README.md)** · **[日本語](README.ja.md)** · **[Português (BR)](README.pt-BR.md)** | 中文
 
 长程 Agent 任务容易**半途停下或过早「声称完成」**；写代码和改 Office 往往**各用一套工具**；本地执行还需要**回放、审批和可审计性**——而不只是多开一个聊天窗口。
 
-**Zagens** 是专为 **[DeepSeek V4](https://deepseek.com/) 生态**打造的**桌面 Agent 控制台**：针对 DeepSeek API、推理链与工具调用深度适配，默认开箱即用 DeepSeek Pro / Flash。可选 **Tauri 桌面**、全屏 **`zagens-tui` 终端**，或无 GUI 的 **`zagens` CLI** — 三者共用 **Kernel V3** runtime，支持 Code / Office 工作区、按轮**会话回放**、长程**分层完成门禁**，以及桌面侧的托盘、通知、嵌入式 PTY 等能力（亦支持其他 OpenAI 兼容端点作为备选）。
+**Zagens** 是面向 **[DeepSeek V4](https://deepseek.com/) 生态**的 **AI Agent 平台**——针对 DeepSeek API、推理链与工具调用深度适配，默认开箱即用 DeepSeek Pro / Flash。提供 **Tauri 桌面**、全屏 **`zagens-tui` 终端**、无 GUI 的 **`zagens` CLI** 三种入口，共用 **Kernel V3** runtime；支持 Code / Office 工作区、按轮**会话回放**、长程**分层完成门禁**，以及桌面侧的托盘、通知、嵌入式 PTY 等能力（亦支持其他 OpenAI 兼容端点作为备选）。
 
 > **作者语：** 不要相信 AI Agent 能做任何事情，它是有边界的；我们能做的，就是拓展这种边界。
 
@@ -28,8 +28,8 @@
 
 | 更适合 | 不太适合 |
 |--------|----------|
-| **DeepSeek 深度用户** — 日常用 DeepSeek API / V4 做编码与 Agent 工作流，想要比官方 TUI 更强的 Harness | 托管 SaaS、包月模型、零配置云端 |
-| 想要**独立桌面 Harness**（不绑死某一 IDE 插件）的开发者 | 纯聊天、无工具、无工作区、无回放 |
+| **DeepSeek 深度用户** — 日常用 DeepSeek API / V4 做编码与 Agent 工作流，想要比官方工具更强的本地 Agent 平台 | 托管 SaaS、包月模型、零配置云端 |
+| 想要**独立 Agent 平台**（桌面 / 终端 / CLI，不绑死某一 IDE 插件）的开发者 | 纯聊天、无工具、无工作区、无回放 |
 | **终端优先**用户（macOS / Linux / Windows）— 全屏 **`zagens-tui`**，与桌面同引擎 | 完全自主、无护栏的 YOLO Agent |
 | 做**长程代码重构**或**Office 交付物**、希望同一工作流的人 | 零安装的移动端 / 纯浏览器体验 |
 | 在意**本地 sidecar**、MCP/技能、UI 内**执行审批**的用户 | 只需网页 Copilot、不需要本地执行能力的团队 |
@@ -41,7 +41,7 @@
 
 **1. Harness，不是聊天壳** — 长程代码任务用**可组合完成门禁**（操作者 / 模型 / 工具链分层），而不是「模型说做完了就算完」。规格：[LHT](docs/harness/LONG_HORIZON_CODE_TASKS.md) · 夹具：[`fixtures/harness/`](fixtures/harness/)。
 
-**2. 桌面 + 终端，一套引擎** — [Tauri 2](https://tauri.app/) 桌面 **或** 全屏 **`zagens-tui`**（ratatui）**或** 无 GUI 的 **`zagens`** CLI — 均运行 **Kernel V3**（`LiveTurnMachine` + `EffectInterpreter`，事件溯源 turn、log-first 会话恢复）。桌面提供托盘、WebView 面板、嵌入式 PTY 与 sidecar 监督；TUI 在终端内提供三栏 transcript/composer/inspector 与 LHT 面板。
+**2. 多入口，一套引擎** — [Tauri 2](https://tauri.app/) 桌面 **或** 全屏 **`zagens-tui`**（ratatui）**或** 无 GUI 的 **`zagens`** CLI — 均运行 **Kernel V3**（`LiveTurnMachine` + `EffectInterpreter`，事件溯源 turn、log-first 会话恢复）。桌面提供托盘、WebView 面板、嵌入式 PTY 与 sidecar 监督；TUI 在终端内提供三栏 transcript/composer/inspector 与 LHT 面板。
 
 **3. Code + Office，一套 runtime** — **Code / Office** 任务类型共享配置与工具面，但提示词与工具集不同；切换类型会**新开会话**以保持 KV 稳定（[架构说明](docs/task-type-prompt-architecture.md)）。Office：`read_file` / **`write_office`**（xlsx 用 Rust；docx/pptx/pdf 用捆绑 Python）。
 

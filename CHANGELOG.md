@@ -22,11 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Runtime (LHT — macro CRAFT `on_graph_complete`):** When the checklist/plan graph is complete but micro completion gates are still red, `auto_enter_craft = on_graph_complete` (or `user_confirm`) now evaluates the macro loop **before** unverified/mismatch nudges and can spawn CRAFT or prompt for confirm — previously CRAFT only ran after `graph_complete` (all micro gates green).
+- **Runtime (LHT — manifest gate Jest EPERM):** Harness classifies Jest `spawn EPERM` / `spawn EACCES` as infra (not assertion) and appends a `--runInBand` / `.npmrc` cache hint in manifest-failed nudges on Windows-style Node tasks.
 - **Runtime (LHT — step-limit continuation regression):** When checklist reached 100% but `update_plan` still had an `InProgress` phase (checklist-driven execution without plan sync), `maybe_continue_at_step_limit` / loop-guard continuations no longer skipped — restores bounded step-budget grants (up to 4× baseline) instead of hard `Reached maximum steps` at 100 tool steps. Abandoned all-pending plans (DEMO5 zombie plan) still do not trigger continuation. `note_incomplete_stop_if_lht` uses the same rule for observability.
 - **Desktop (LHT panel):** Long-horizon task timer now ticks until composer **生成中** (`streaming`) ends — no longer freezes when checklist hits 100% while the turn is still running; accumulated time persists across LHT reinject rounds on the same thread.
 
 ### Changed
 
+- **Runtime (tool UX — batch A–C):** File tools accept `file` / `file_path` aliases for `path` (TS-01). New **`batch_edit`** and **`refactor_imports`** tools for multi-file search/replace and import-depth remaps (TS-07). Windows Node **workspace preflight** auto-writes `.npmrc` + `jest.config.js` on first user message when `package.json` is present (TS-14). Manifest gate **trusts recent successful test/build exec** instead of re-running identical npm/jest/tsc commands. `exec_shell` records npm/jest/tsc-family successes for verify replay; **tsc/tsconfig** failure hints suggest `refactor_imports` and layout fixes.
 - **Runtime (tool UX — batch A):**
   - `read_file` / `write_file` / `edit_file` / `list_dir`: when the model passes `file` / `file_path` / `filename` / `target_path` instead of canonical `path`, return a targeted hint naming the correct field (avoids generic missing-field loops).
   - `edit_file`: reject empty or whitespace-only `search` before apply so `replace_mode: "all"` cannot corrupt the whole file.

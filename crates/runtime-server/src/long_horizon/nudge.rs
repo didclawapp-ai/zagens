@@ -448,17 +448,18 @@ pub fn build_manifest_failed_nudge(
         .collect();
     let list = lines.join("\n");
     let go_tail = go_manifest_failure_appendix(failing, lang);
+    let jest_tail = jest_manifest_failure_appendix(failing, lang);
     if is_zh(lang) {
         format!(
             "任务图已勾选完成，但**规格 manifest 硬验收门未全绿**（harness 主动执行，exit code 为法官）。下列门未通过：\n\n{list}\n\n\
-             请逐项修复并**实际跑通**上述命令（看到 exit 0）后再结束本轮。不要仅凭文字声明完成。{go_tail}"
+             请逐项修复并**实际跑通**上述命令（看到 exit 0）后再结束本轮。不要仅凭文字声明完成。{go_tail}{jest_tail}"
         )
     } else {
         format!(
             "The checklist graph is complete, but **manifest acceptance gates are not all green** \
              (harness actively executed them — exit code is the judge). Failed gates:\n\n{list}\n\n\
              Fix each item and **actually run** these commands to exit 0 before ending this turn. \
-             Do not finish on prose alone.{go_tail}"
+             Do not finish on prose alone.{go_tail}{jest_tail}"
         )
     }
 }
@@ -485,6 +486,36 @@ fn go_manifest_failure_appendix(
         "\n\n**Go coverage note:** the harness uses the **minimum per-package** coverage from \
          `go test -cover ./...`. A `cmd/todo` or `examples/*` package at 0% or `[no test files]` \
          fails the whole run — extract logic into testable packages or add `*_test.go` under `cmd/*`."
+            .to_string()
+    }
+}
+
+fn jest_spawn_eperm(result: &super::manifest_gate::VerifyRunResult) -> bool {
+    let stderr = result.stderr_tail.to_ascii_lowercase();
+    let cmd = result.command_display.to_ascii_lowercase();
+    (cmd.contains("npm test") || cmd.contains("jest") || result.id.contains("npm_test"))
+        && (stderr.contains("spawn eperm")
+            || stderr.contains("spawn eacces")
+            || (stderr.contains("error: spawn")
+                && (stderr.contains("eperm") || stderr.contains("eacces"))))
+}
+
+fn jest_manifest_failure_appendix(
+    failing: &[&super::manifest_gate::VerifyRunResult],
+    lang: &str,
+) -> String {
+    if !failing.iter().any(|r| jest_spawn_eperm(r)) {
+        return String::new();
+    }
+    if is_zh(lang) {
+        "\n\n**Jest / Windows 提示：** parallel worker 在沙箱中可能 `spawn EPERM`。\
+         重试用 `npm test -- --runInBand` 或 `npx jest --runInBand`；\
+         若 npm cache 也 EPERM，可在项目 `.npmrc` 添加 `cache=./.npm-cache` 后重试。"
+            .to_string()
+    } else {
+        "\n\n**Jest / Windows note:** parallel workers may hit `spawn EPERM` under sandbox. \
+         Retry with `npm test -- --runInBand` or `npx jest --runInBand`; \
+         if npm cache also EPERM, add `cache=./.npm-cache` in a project `.npmrc` and retry."
             .to_string()
     }
 }
@@ -932,6 +963,24 @@ mod tests {
         assert!(zh.contains("贴标签"));
         let en = build_verify_mismatch_nudge(&items, "en");
         assert!(en.contains("no matching recent run"));
+    }
+
+    #[test]
+    fn manifest_failed_nudge_includes_jest_run_in_band_hint() {
+        use super::super::manifest_gate::{VerifyExitClass, VerifyRunResult};
+        let run = VerifyRunResult {
+            id: "toolchain_npm_test".into(),
+            command_display: "npm test --silent".into(),
+            exit_code: 1,
+            exit_class: VerifyExitClass::Infra,
+            stdout_tail: String::new(),
+            stderr_tail: "Error: spawn EPERM\n    at ChildProcess.spawn".into(),
+        };
+        let failing = [&run];
+        let zh = build_manifest_failed_nudge(&failing, "zh-Hans");
+        assert!(zh.contains("runInBand"));
+        let en = build_manifest_failed_nudge(&failing, "en");
+        assert!(en.contains("runInBand"));
     }
 
     #[test]

@@ -57,55 +57,47 @@ async fn test_read_file_missing_path() {
     );
 }
 
-/// TS-01 — wrong path alias (`file` / `file_path`) must name canonical `path`.
+/// TS-01 — path aliases (`file` / `file_path`) are accepted.
 #[tokio::test]
-async fn write_file_file_alias_hint() {
+async fn write_file_file_alias_accepted() {
     let tmp = tempdir().expect("tempdir");
     let ctx = ToolContext::new(tmp.path().to_path_buf());
     let tool = WriteFileTool;
 
-    let result = tool
-        .execute(json!({"file": "out.txt", "content": "hello"}), &ctx)
-        .await;
+    tool.execute(json!({"file": "out.txt", "content": "hello"}), &ctx)
+        .await
+        .expect("execute");
 
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(err.contains("'path'"), "must name canonical field: {err}");
-    assert!(err.contains("'file'"), "must name wrong alias: {err}");
-    assert!(
-        !err.contains("missing required field 'path'"),
-        "must not be generic missing-field: {err}"
-    );
+    let written = fs::read_to_string(tmp.path().join("out.txt")).expect("read");
+    assert_eq!(written, "hello");
 }
 
 #[tokio::test]
-async fn read_file_file_path_alias_hint() {
+async fn read_file_file_path_alias_accepted() {
     let tmp = tempdir().expect("tempdir");
     let ctx = ToolContext::new(tmp.path().to_path_buf());
     fs::write(tmp.path().join("x.txt"), "body").expect("write");
 
     let result = ReadFileTool
         .execute(json!({"file_path": "x.txt"}), &ctx)
-        .await;
+        .await
+        .expect("execute");
 
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(
-        err.contains("'path'") && err.contains("'file_path'"),
-        "{err}"
-    );
+    assert_eq!(result.content, "body");
 }
 
 #[tokio::test]
-async fn list_dir_file_alias_hint() {
+async fn list_dir_file_alias_accepted() {
     let tmp = tempdir().expect("tempdir");
     let ctx = ToolContext::new(tmp.path().to_path_buf());
+    fs::write(tmp.path().join("a.txt"), "").expect("write");
 
-    let result = ListDirTool.execute(json!({"file": "."}), &ctx).await;
+    let result = ListDirTool
+        .execute(json!({"file": "."}), &ctx)
+        .await
+        .expect("execute");
 
-    assert!(result.is_err());
-    let err = result.unwrap_err().to_string();
-    assert!(err.contains("'path'") && err.contains("'file'"), "{err}");
+    assert!(result.content.contains("a.txt"));
 }
 
 #[test]

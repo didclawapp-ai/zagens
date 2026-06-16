@@ -35,6 +35,7 @@ pub use cycle_band::{context_pressure_ratio, in_lht_warning_band, should_lht_ear
 pub use cycles::build_cycles_value;
 pub(crate) use nudge::VERIFICATION_RE;
 pub use reinject::{build_objective_reinject_message, should_reinject_this_step};
+pub use verify::is_verification_like_command;
 pub(crate) use verify::{parse_all_req_tags, verify_gate_verdict};
 
 pub use completion_gate_panel::CompletionGatePanelJson;
@@ -294,6 +295,21 @@ pub async fn maybe_continue_incomplete_code_task(
         return LhtGateOutcome::Skip("graph_empty");
     }
     if !graph.incomplete() {
+        let latest_user = latest_user_text(input.messages);
+        if let Some(macro_gate) =
+            macro_loop::maybe_evaluate_macro_at_graph_complete(macro_loop::MacroLoopInput {
+                config: &input.config.macro_loop,
+                effective_mode,
+                workspace: input.workspace,
+                checklist: &checklist,
+                session: input.session,
+                lang: input.lang,
+                thread_id: input.thread_id,
+                latest_user_text: latest_user,
+            })
+        {
+            return macro_gate;
+        }
         // DEMO3 root-cause guard: a "complete" graph can still be a false green
         // when a *completed* checklist item reads like a runnable acceptance
         // (build / tests pass / run examples) yet was never actually verified —
@@ -419,7 +435,6 @@ pub async fn maybe_continue_incomplete_code_task(
             input.gate_exec.as_ref(),
         )
         .await;
-        let latest_user = latest_user_text(input.messages);
         if matches!(&gate_outcome, LhtGateOutcome::Skip("graph_complete")) {
             let macro_outcome = macro_loop::evaluate_macro_loop(
                 macro_loop::MacroLoopInput {

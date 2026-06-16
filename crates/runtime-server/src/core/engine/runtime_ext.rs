@@ -45,6 +45,8 @@ pub struct EngineRuntimeExt {
     pub rx_subagent_completion: Arc<AsyncMutex<mpsc::UnboundedReceiver<SubAgentCompletion>>>,
     /// Emitted once via `Event::status` when the engine first handles user traffic.
     pub sandbox_init_warning: Option<String>,
+    /// TS-14: Windows Node workspace bootstrap (`.npmrc`, jest config) applied once.
+    pub workspace_preflight_done: bool,
     /// Config-driven lifecycle hooks (`[[hooks.hooks]]` in config.toml).
     pub hook_executor: Arc<HookExecutor>,
     /// Whether `SessionStart` has already fired for this engine instance.

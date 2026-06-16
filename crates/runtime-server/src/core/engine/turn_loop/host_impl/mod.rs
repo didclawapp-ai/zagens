@@ -373,24 +373,17 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
         // with no exit-code line (only failures print one), so that extra check
         // made recording NEVER fire on success and left `recent_verification_cmds`
         // permanently empty → every `[verify:]` item false-mismatched (DEMO5 #2).
-        if success
-            && matches!(tool_name, "exec_shell" | "run_tests")
-            && crate::long_horizon::VERIFICATION_RE.is_match(
-                tool_input
-                    .get("command")
-                    .or_else(|| tool_input.get("cmd"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(""),
-            )
-        {
+        if success && matches!(tool_name, "exec_shell" | "run_tests") {
             let cmd = tool_input
                 .get("command")
                 .or_else(|| tool_input.get("cmd"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            self.runtime_ext_mut()
-                .long_horizon_state
-                .record_verification_exec(cmd);
+            if crate::long_horizon::is_verification_like_command(cmd) {
+                self.runtime_ext_mut()
+                    .long_horizon_state
+                    .record_verification_exec(cmd);
+            }
         }
 
         // Verify gate (DEMO5 #2 / DEMO6): fires on any checklist mutation that

@@ -77,11 +77,13 @@ pub struct CompletionGateExec<'a> {
     pub cancel_token: Option<&'a CancellationToken>,
 }
 
-/// Run every manifest verify entry; does not trust model-side history.
+/// Run every manifest verify entry. Entries whose command was already run
+/// successfully in this session (`recent_execs`) are trusted without re-exec.
 pub async fn run_manifest_gate(
     workspace: &Path,
     entries: &[CompletionGateVerifyEntry],
     exec: &CompletionGateExec<'_>,
+    recent_execs: &[String],
 ) -> ManifestGateResult {
     let mut results = Vec::with_capacity(entries.len());
     let mut failing_ids = Vec::new();
@@ -100,6 +102,22 @@ pub async fn run_manifest_gate(
                 stderr_tail: "cancelled".to_string(),
             });
             failing_ids.push(entry.id.clone());
+            continue;
+        }
+
+        if entry
+            .cmd
+            .as_deref()
+            .is_some_and(|cmd| super::verify::manifest_command_trusted(cmd, recent_execs))
+        {
+            results.push(VerifyRunResult {
+                id: entry.id.clone(),
+                command_display: command_display(entry),
+                exit_code: 0,
+                exit_class: VerifyExitClass::Ok,
+                stdout_tail: "(trusted recent exec)".to_string(),
+                stderr_tail: String::new(),
+            });
             continue;
         }
 
@@ -562,6 +580,12 @@ fn classify_exit(code: i32, stderr: &str, timed_out: bool) -> VerifyExitClass {
         return VerifyExitClass::Ok;
     }
     let lower = stderr.to_ascii_lowercase();
+    if lower.contains("spawn eperm")
+        || lower.contains("spawn eacces")
+        || (lower.contains("error: spawn") && (lower.contains("eperm") || lower.contains("eacces")))
+    {
+        return VerifyExitClass::Infra;
+    }
     if lower.contains("not found")
         || lower.contains("not recognized")
         || lower.contains("no such file")
@@ -607,6 +631,14 @@ mod tests {
         );
         assert_eq!(
             classify_exit(1, "'go' is not recognized as ...", false),
+            VerifyExitClass::Infra
+        );
+    }
+
+    #[test]
+    fn classify_jest_spawn_eperm_as_infra() {
+        assert_eq!(
+            classify_exit(1, "Error: spawn EPERM\n    at ChildProcess.spawn", false),
             VerifyExitClass::Infra
         );
     }
