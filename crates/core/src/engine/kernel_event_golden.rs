@@ -8,9 +8,19 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::engine::kernel_event::KernelEvent;
+    use crate::engine::turn_loop::kernel_resume_parity_policy::{
+        ResumeLogSessionParityExpectation, ResumeProjectionCounterExpectation,
+        verify_thread_resume_log_session_parity, verify_thread_resume_projection_counter_parity,
+        verify_turn_log_live_projection_parity,
+    };
+    use crate::engine::turn_loop::message_body_rebuild_policy::{
+        RebuiltMessageRole, rebuild_preview_messages_from_thread_events,
+        verify_log_transcript_rebuild,
+    };
     use crate::engine::turn_machine::{
-        TurnKernelProjection, build_thread_replay_report, replay_turn_projection,
-        verify_effect_replay_chain, verify_guard_projection_chain, verify_memory_projection_chain,
+        LiveTurnSnapshot, SessionMessageRoleIndex, TurnKernelProjection,
+        build_thread_replay_report, replay_turn_projection, verify_effect_replay_chain,
+        verify_guard_projection_chain, verify_memory_projection_chain,
         verify_turn_replay_coherence,
     };
 
@@ -26,6 +36,9 @@ mod tests {
         "manual_compaction.json",
         "deferred_activation.json",
         "memory_plane_query.json",
+        "resume_thread_parity.json",
+        "layered_context_seam.json",
+        "message_body_rebuild.json",
     ];
 
     fn fixture_path(name: &str) -> PathBuf {
@@ -108,10 +121,31 @@ mod tests {
     fn golden_guard_projection_cycle_handoff() {
         let events = load_fixture("cycle_handoff.json");
         let p = TurnKernelProjection::from_events(&events);
-        assert_eq!(p.cycle_handoff_attempts, 2);
+        assert_eq!(p.cycle_handoff_attempts, 1);
+        assert_eq!(p.in_turn_cycle_advances, 1);
         assert!(
             verify_guard_projection_chain(&events).is_none(),
             "guard projection mismatch in cycle_handoff.json"
+        );
+    }
+
+    #[test]
+    fn golden_live_projection_cycle_counter_split() {
+        use crate::engine::turn_machine::compare_projection_to_live;
+
+        let events = load_fixture("cycle_handoff.json");
+        let proj = TurnKernelProjection::from_events(&events);
+        let live = LiveTurnSnapshot {
+            turn_id: "golden-cycle-handoff-001".into(),
+            step_idx: proj.step_idx,
+            max_steps: proj.max_steps,
+            cycle_handoff_attempts: 1,
+            in_turn_cycle_advances: 1,
+            ..Default::default()
+        };
+        assert!(
+            compare_projection_to_live(&live, &proj).is_none(),
+            "cycle_handoff.json live/projection counter split mismatch"
         );
     }
 
@@ -229,6 +263,162 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn golden_layered_context_seam_fixture() {
+        let events = load_fixture("layered_context_seam.json");
+        assert!(
+            crate::engine::turn_loop::layered_context_replay_policy::verify_layered_context_seam_replay_coherence(
+                &events
+            )
+            .is_none()
+        );
+        assert!(
+            crate::engine::turn_loop::layered_context_replay_policy::verify_layered_context_seam_projection_coherence(
+                &events
+            )
+            .is_none()
+        );
+        let counts = crate::engine::turn_machine::replay_effect_counts(&events);
+        assert_eq!(counts.call_model, 1);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| {
+                    matches!(
+                        event,
+                        crate::engine::kernel_event::KernelEvent::LayeredContextSeamInjected { .. }
+                    )
+                })
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn golden_message_body_rebuild_fixture() {
+        let events = load_fixture("message_body_rebuild.json");
+        let expected = [
+            (RebuiltMessageRole::User, "Fix auth module"),
+            (RebuiltMessageRole::User, "check token expiry"),
+            (RebuiltMessageRole::Assistant, "I'll inspect auth/token.rs"),
+            (
+                RebuiltMessageRole::ToolResult,
+                "pub fn validate_token() { ... }",
+            ),
+        ];
+        assert!(
+            verify_log_transcript_rebuild(&events, &expected).is_none(),
+            "message_body_rebuild.json transcript mismatch"
+        );
+        assert!(
+            verify_turn_replay_coherence(&events, None).is_none(),
+            "message_body_rebuild.json replay incoherent"
+        );
+    }
+
+    #[test]
+    fn golden_resume_log_session_parity_fixtures() {
+        let cases: &[(&str, ResumeLogSessionParityExpectation)] = &[(
+            "resume_thread_parity.json",
+            ResumeLogSessionParityExpectation {
+                session_message_count: 4,
+                role_index: Some(SessionMessageRoleIndex {
+                    user_message_count: 2,
+                    assistant_message_count: 1,
+                    tool_result_message_count: 1,
+                    text_user_message_count: 2,
+                    total_message_count: 4,
+                }),
+            },
+        )];
+        for (name, expect) in cases {
+            let events = load_fixture(name);
+            let transcript_expect = [
+                (
+                    RebuiltMessageRole::User,
+                    "List files in src/ then refactor auth",
+                ),
+                (RebuiltMessageRole::User, "Check auth module first"),
+                (RebuiltMessageRole::Assistant, "I'll list src/ first"),
+                (RebuiltMessageRole::ToolResult, "auth.rs\nmain.rs"),
+            ];
+            assert!(
+                verify_log_transcript_rebuild(&events, &transcript_expect).is_none(),
+                "resume transcript rebuild failed for {name}"
+            );
+            let turn_id = events
+                .first()
+                .and_then(|e| e.turn_id())
+                .unwrap_or("unknown")
+                .to_string();
+            let turn_events = [(turn_id.clone(), events.clone())];
+            let preview_messages = rebuild_preview_messages_from_thread_events(&turn_events);
+            assert!(
+                verify_thread_resume_log_session_parity(
+                    &turn_id,
+                    &turn_events,
+                    expect,
+                    Some(&preview_messages),
+                )
+                .is_none(),
+                "resume parity failed for {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn golden_resume_projection_counter_parity_fixtures() {
+        let cases: &[(&str, ResumeProjectionCounterExpectation)] = &[
+            (
+                "lht_continue.json",
+                ResumeProjectionCounterExpectation {
+                    step_limit_continuations: 1,
+                    loop_guard_continuations: 1,
+                    cycle_handoff_attempts: 0,
+                    in_turn_cycle_advances: 0,
+                },
+            ),
+            (
+                "cycle_handoff.json",
+                ResumeProjectionCounterExpectation {
+                    step_limit_continuations: 0,
+                    loop_guard_continuations: 0,
+                    cycle_handoff_attempts: 1,
+                    in_turn_cycle_advances: 1,
+                },
+            ),
+        ];
+        for (name, expect) in cases {
+            let events = load_fixture(name);
+            let turn_id = events
+                .first()
+                .and_then(|e| e.turn_id())
+                .unwrap_or("unknown")
+                .to_string();
+            let turn_events = [(turn_id.clone(), events.clone())];
+            assert!(
+                verify_thread_resume_projection_counter_parity(&turn_id, &turn_events, *expect)
+                    .is_none(),
+                "resume projection counter parity failed for {name}"
+            );
+            let proj = TurnKernelProjection::from_events(&events);
+            let live = LiveTurnSnapshot {
+                turn_id,
+                step_idx: proj.step_idx,
+                max_steps: proj.max_steps,
+                step_limit_continuations: expect.step_limit_continuations,
+                loop_guard_continuations: expect.loop_guard_continuations,
+                cycle_handoff_attempts: expect.cycle_handoff_attempts,
+                in_turn_cycle_advances: expect.in_turn_cycle_advances,
+                ..Default::default()
+            };
+            assert!(
+                verify_turn_log_live_projection_parity(&events, &live).is_none(),
+                "log/live projection parity failed for {name}"
+            );
+        }
     }
 
     #[test]

@@ -5,6 +5,7 @@ use axum::extract::State;
 use serde::Serialize;
 
 use crate::config::{KernelMachineMode, ToolsPolicyMode, ToolsSchedulerMode};
+use crate::core::engine::kernel_capacity_tail_shadow::kernel_capacity_tail_shadow_stats;
 use crate::core::engine::kernel_compaction_artifact_shadow::kernel_compaction_artifact_shadow_stats;
 use crate::core::engine::kernel_compaction_replay_anchor_shadow::kernel_compaction_replay_anchor_shadow_stats;
 use crate::core::engine::kernel_continuation_anchor_shadow::kernel_continuation_anchor_shadow_stats;
@@ -18,6 +19,8 @@ use crate::core::engine::kernel_message_memory_plane_shadow::kernel_message_memo
 use crate::core::engine::kernel_message_role_shadow::kernel_message_role_shadow_stats;
 use crate::core::engine::kernel_message_timeline_shadow::kernel_message_timeline_shadow_stats;
 use crate::core::engine::kernel_notify_lsp_anchor_shadow::kernel_notify_lsp_anchor_shadow_stats;
+use crate::core::engine::kernel_outer_boundary_shadow::kernel_outer_boundary_shadow_stats;
+use crate::core::engine::kernel_pre_inner_step_baseline_shadow::kernel_pre_inner_step_baseline_shadow_stats;
 use crate::core::engine::kernel_projection_shadow::kernel_projection_shadow_stats;
 use crate::core::engine::kernel_replay_shadow::kernel_replay_shadow_stats;
 use crate::core::engine::kernel_request_approval_anchor_shadow::kernel_request_approval_anchor_shadow_stats;
@@ -74,6 +77,15 @@ pub(crate) struct ResumeReplayAnchorShadowBlock {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub(crate) struct PreInnerStepBaselineShadowBlock {
+    mode: String,
+    baseline_steps: u64,
+    slot0_interpreter: u64,
+    slot1_interpreter: u64,
+    slot0_skipped_pre_interpreter: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct KernelShadowResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     policy_shadow: Option<ShadowCounterBlock>,
@@ -117,6 +129,12 @@ pub(crate) struct KernelShadowResponse {
     v3_replay_effect_counts: Option<V3ReplayEffectCountsBlock>,
     #[serde(skip_serializing_if = "Option::is_none")]
     resume_replay_anchor_shadow: Option<ResumeReplayAnchorShadowBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capacity_tail_shadow: Option<ShadowCounterBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pre_inner_step_baseline_shadow: Option<PreInnerStepBaselineShadowBlock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    outer_boundary_shadow: Option<ShadowCounterBlock>,
 }
 
 pub(crate) async fn kernel_shadow_stats(
@@ -147,6 +165,9 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
     let compaction_replay_anchor_shadow = probe_compaction_replay_anchor_shadow(config);
     let v3_replay_effect_counts = probe_v3_replay_effect_counts(config);
     let resume_replay_anchor_shadow = probe_resume_replay_anchor_shadow(config);
+    let capacity_tail_shadow = probe_capacity_tail_shadow(config);
+    let pre_inner_step_baseline_shadow = probe_pre_inner_step_baseline_shadow(config);
+    let outer_boundary_shadow = probe_outer_boundary_shadow(config);
     KernelShadowResponse {
         policy_shadow,
         scheduler_shadow,
@@ -169,6 +190,9 @@ pub(crate) fn collect_kernel_shadow_stats(config: &crate::config::Config) -> Ker
         compaction_replay_anchor_shadow,
         v3_replay_effect_counts,
         resume_replay_anchor_shadow,
+        capacity_tail_shadow,
+        pre_inner_step_baseline_shadow,
+        outer_boundary_shadow,
     }
 }
 
@@ -297,6 +321,61 @@ fn probe_v3_effect_shadow(config: &crate::config::Config) -> Option<ShadowCounte
         return None;
     }
     let (comparisons, diffs) = kernel_v3_effect_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_capacity_tail_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_v3_turn_loop() {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_capacity_tail_shadow_stats();
+    if comparisons == 0 && diffs == 0 {
+        return None;
+    }
+    Some(ShadowCounterBlock {
+        mode: mode.as_str().to_string(),
+        comparisons,
+        diffs,
+        diff_rate_pct: shadow_diff_rate_pct(comparisons, diffs),
+    })
+}
+
+fn probe_pre_inner_step_baseline_shadow(
+    config: &crate::config::Config,
+) -> Option<PreInnerStepBaselineShadowBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_v3_turn_loop() {
+        return None;
+    }
+    let (baseline_steps, slot0_interpreter, slot1_interpreter, slot0_skipped_pre_interpreter) =
+        kernel_pre_inner_step_baseline_shadow_stats();
+    if baseline_steps == 0 {
+        return None;
+    }
+    Some(PreInnerStepBaselineShadowBlock {
+        mode: mode.as_str().to_string(),
+        baseline_steps,
+        slot0_interpreter,
+        slot1_interpreter,
+        slot0_skipped_pre_interpreter,
+    })
+}
+
+fn probe_outer_boundary_shadow(config: &crate::config::Config) -> Option<ShadowCounterBlock> {
+    let mode = config.kernel_machine_mode();
+    if !mode.uses_v3_turn_loop() {
+        return None;
+    }
+    let (comparisons, diffs) = kernel_outer_boundary_shadow_stats();
     if comparisons == 0 && diffs == 0 {
         return None;
     }

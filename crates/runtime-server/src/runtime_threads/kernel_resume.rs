@@ -19,7 +19,9 @@ pub(crate) fn load_kernel_resume_hints(
     if projection.report.turns_with_events == 0 {
         return None;
     }
-    Some(kernel_resume_hints_from_thread_projection(&projection))
+    let mut hints = kernel_resume_hints_from_thread_projection(&projection);
+    hints.runtime_thread_id = Some(thread_id.to_string());
+    Some(hints)
 }
 
 pub(crate) async fn push_kernel_resume_to_engine(

@@ -1,0 +1,43 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-layered-seam-001",
+    "mode": "agent",
+    "input_text": "Continue the long refactor with archived context",
+    "max_steps": 20
+  },
+  {
+    "event_type": "layered_context_seam_injected",
+    "turn_id": "golden-layered-seam-001",
+    "step_idx": 1,
+    "level": 2,
+    "messages_covered": 12,
+    "text_preview": "<archived_context>L2 summary of turns 1-12</archived_context>"
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-layered-seam-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "seam1111",
+      "full_prefix_sha256": "seam2222"
+    },
+    "token_budget": 16384
+  },
+  {
+    "event_type": "model_message",
+    "turn_id": "golden-layered-seam-001",
+    "step_idx": 1,
+    "usage": {
+      "input_tokens": 2400,
+      "output_tokens": 120
+    },
+    "block_count": 1
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-layered-seam-001",
+    "outcome": "completed",
+    "total_steps": 1
+  }
+]

@@ -782,6 +782,7 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
             step_idx: turn.step,
             usage: usage.clone(),
             block_count: content_blocks.len() as u32,
+            text_preview: assistant_content_text_preview(&content_blocks),
         },
     );
 
@@ -888,4 +889,16 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
         pending_steers,
         ..Default::default()
     }
+}
+
+fn assistant_content_text_preview(blocks: &[ContentBlock]) -> String {
+    let mut parts = Vec::new();
+    for block in blocks {
+        if let ContentBlock::Text { text, .. } = block {
+            if !text.is_empty() {
+                parts.push(text.as_str());
+            }
+        }
+    }
+    summarize_text(&parts.join("\n"), 512)
 }

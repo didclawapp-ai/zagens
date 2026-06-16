@@ -154,15 +154,32 @@ pub trait TurnLoopHost: KernelTurnHost<V3ToolRegistry = Self::ToolRegistry> + Se
 
     async fn add_session_message(&mut self, message: Message);
 
+    /// Drain one live steer from the queue into session + kernel log (`v3`: `Effect::InjectSteer`).
+    async fn inject_live_steer(&mut self, turn: &TurnContext, steer: String);
+
     async fn emit_session_updated(&mut self);
 
     async fn run_auto_compaction(&mut self, client: &dyn LlmClient, turn: &TurnContext);
+
+    /// Pre-inner-step auto-compaction (`v3`: planner baseline slot 0 → `RunCompaction`).
+    async fn run_pre_inner_step_auto_compaction(
+        &mut self,
+        client: &dyn LlmClient,
+        turn: &TurnContext,
+    ) {
+        self.run_auto_compaction(client, turn).await;
+    }
 
     fn estimated_input_tokens(&self) -> usize;
 
     async fn flush_pending_lsp_diagnostics(&mut self);
 
     async fn layered_context_checkpoint(&mut self);
+
+    /// Pre-model layered context seam (`v3`: planner baseline slot 1 → `RunLayeredContextCheckpoint`).
+    async fn run_pre_inner_step_layered_context(&mut self) {
+        self.layered_context_checkpoint().await;
+    }
 
     fn decorate_auth_error_message(&self, message: String) -> String;
 

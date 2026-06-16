@@ -127,6 +127,7 @@ mod tests {
                 step_idx: 1,
                 usage: crate::models::Usage::default(),
                 block_count: 1,
+                text_preview: String::new(),
             },
             KernelEvent::ModelRequestIssued {
                 turn_id: "t1".into(),

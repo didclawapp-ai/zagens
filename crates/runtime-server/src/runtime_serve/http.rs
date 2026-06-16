@@ -71,11 +71,22 @@ pub async fn run_http_server(
         Some(options.workers),
     );
     let manager_cfg = RuntimeThreadManagerConfig::from_task_data_dir(task_cfg.data_dir.clone());
+    let sessions_dir = default_sessions_dir()
+        .unwrap_or_else(|_| zagens_config::user_data_path_or_relative("sessions"));
+    let shared_session_manager = Arc::new(
+        SessionManager::new(sessions_dir.clone()).context("Failed to create SessionManager")?,
+    );
     let sb_config = config.clone();
     let sb_workspace = workspace.clone();
+    let session_manager_for_threads = shared_session_manager.clone();
     let runtime_threads = Arc::new(
         tokio::task::spawn_blocking(move || {
-            RuntimeThreadManager::open(sb_config, sb_workspace, manager_cfg)
+            RuntimeThreadManager::open_with_session_manager(
+                sb_config,
+                sb_workspace,
+                manager_cfg,
+                Some(session_manager_for_threads),
+            )
         })
         .await
         .map_err(|e| anyhow!("RuntimeThreadManager::open panicked: {e}"))??,
@@ -101,8 +112,6 @@ pub async fn run_http_server(
         AutomationSchedulerConfig::default(),
     );
 
-    let sessions_dir = default_sessions_dir()
-        .unwrap_or_else(|_| zagens_config::user_data_path_or_relative("sessions"));
     let runtime_token = options
         .auth_token
         .clone()
@@ -121,9 +130,6 @@ pub async fn run_http_server(
         let fp: String = hash[..16].iter().map(|b| format!("{b:02x}")).collect();
         Arc::new(fp)
     };
-    let shared_session_manager = Arc::new(
-        SessionManager::new(sessions_dir.clone()).context("Failed to create SessionManager")?,
-    );
 
     let mut shared_mcp_pool = crate::mcp::McpPool::from_config_path(&config.mcp_config_path())
         .context("Failed to load MCP config for shared pool")?;

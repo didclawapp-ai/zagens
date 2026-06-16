@@ -107,6 +107,7 @@ impl RuntimeThreadManager {
                 search.provider.unwrap_or_default()
             },
             search_api_key: self.config.search_config().api_key,
+            session_manager: self.session_manager.clone(),
         };
 
         Ok(spawn_engine(engine_cfg, &self.config))

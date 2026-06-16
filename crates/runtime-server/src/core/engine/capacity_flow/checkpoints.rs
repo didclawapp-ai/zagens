@@ -6,6 +6,7 @@ use tokio::sync::{Mutex as AsyncMutex, RwLock};
 
 use crate::mcp::McpPool;
 use zagens_core::engine::kernel_event::CapacityCheckpointKind;
+use zagens_core::engine::turn_loop::live_turn_outer_planner::capacity_hold_boundary_for_checkpoint;
 use zagens_core::engine::turn_loop::should_run_capacity_error_escalation;
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
@@ -43,6 +44,9 @@ impl Engine {
             tool_exec_lock: None,
             mcp_pool: None,
             handoff_reason: "capacity_handoff",
+            hold_boundary: capacity_hold_boundary_for_checkpoint(
+                CapacityCheckpointKind::PreRequest,
+            ),
         })
         .await
     }
@@ -82,6 +86,7 @@ impl Engine {
             tool_exec_lock: Some(tool_exec_lock),
             mcp_pool,
             handoff_reason: "high_risk_post_tool",
+            hold_boundary: None,
         })
         .await
     }
@@ -151,6 +156,9 @@ impl Engine {
             tool_exec_lock: None,
             mcp_pool: None,
             handoff_reason: &handoff_reason,
+            hold_boundary: capacity_hold_boundary_for_checkpoint(
+                CapacityCheckpointKind::ErrorEscalation,
+            ),
         })
         .await
     }

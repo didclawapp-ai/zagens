@@ -488,6 +488,10 @@ impl<'a> EffectInterpreter<'a> {
                 self.engine.run_query_memory_effect(layer, &query_key).await;
                 InterpretOutcome::Executed
             }
+            Effect::RunLayeredContextCheckpoint => {
+                self.engine.run_layered_context_checkpoint_effect().await;
+                InterpretOutcome::Executed
+            }
             _ => InterpretOutcome::NotImplemented,
         }
     }

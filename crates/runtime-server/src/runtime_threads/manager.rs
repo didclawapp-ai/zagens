@@ -78,6 +78,7 @@ pub struct RuntimeThreadManager {
     plan_cache: Arc<StdMutex<HashMap<String, String>>>,
     scratchpad_status_cache: Arc<StdMutex<HashMap<String, ScratchpadStatusCacheEntry>>>,
     harness_telemetry_cache: Arc<StdMutex<HashMap<String, HarnessTelemetryCacheEntry>>>,
+    pub(crate) session_manager: Option<Arc<crate::SessionManager>>,
 }
 
 impl Deref for RuntimeThreadManager {
@@ -106,6 +107,15 @@ impl RuntimeThreadManager {
         workspace: PathBuf,
         manager_cfg: RuntimeThreadManagerConfig,
     ) -> Result<Self> {
+        Self::open_with_session_manager(config, workspace, manager_cfg, None)
+    }
+
+    pub fn open_with_session_manager(
+        config: Config,
+        workspace: PathBuf,
+        manager_cfg: RuntimeThreadManagerConfig,
+        session_manager: Option<Arc<crate::SessionManager>>,
+    ) -> Result<Self> {
         let inner = InnerManager::open(workspace.clone(), manager_cfg)?;
         let manager = Self {
             inner,
@@ -115,6 +125,7 @@ impl RuntimeThreadManager {
             plan_cache: Arc::new(StdMutex::new(HashMap::new())),
             scratchpad_status_cache: Arc::new(StdMutex::new(HashMap::new())),
             harness_telemetry_cache: Arc::new(StdMutex::new(HashMap::new())),
+            session_manager,
         };
         let active_ids: Vec<String> = manager
             .store
@@ -146,6 +157,7 @@ impl RuntimeThreadManager {
             plan_cache: Arc::new(StdMutex::new(HashMap::new())),
             scratchpad_status_cache: Arc::new(StdMutex::new(HashMap::new())),
             harness_telemetry_cache: Arc::new(StdMutex::new(HashMap::new())),
+            session_manager: None,
         })
     }
 

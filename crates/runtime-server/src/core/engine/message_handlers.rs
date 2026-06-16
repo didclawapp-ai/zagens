@@ -330,7 +330,7 @@ impl Engine {
                 use zagens_core::engine::hosts::TopicMemoryHost;
                 TopicMemoryHost::on_turn_complete(&mut *self.topic_memory, &user, &assistant);
             }
-            self.maybe_advance_cycle(mode).await;
+            self.maybe_advance_cycle(mode, None).await;
         }
 
         // Update session usage

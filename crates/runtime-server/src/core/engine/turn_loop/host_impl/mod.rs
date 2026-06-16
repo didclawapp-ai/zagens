@@ -18,9 +18,19 @@ use zagens_core::engine::turn_loop::control::TurnLoopControl;
 use zagens_core::engine::turn_loop::exec::{
     ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
 };
-use zagens_core::engine::turn_machine::{KernelEventSink, LiveTurnSnapshot, emit_kernel_event};
+use zagens_core::engine::turn_machine::{
+    Effect, KernelEventSink, LiveTurnSnapshot, emit_kernel_event,
+};
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 use zagens_tools::{ToolError, ToolResult};
+
+use crate::core::engine::effect_interpreter::EffectInterpreter;
+use crate::core::engine::kernel_outer_boundary_shadow::{
+    V3OuterBoundaryTurnGrants, verify_turn_outer_boundary_grants,
+};
+use crate::core::engine::kernel_pre_inner_step_baseline_shadow::{
+    record_pre_inner_step_baseline_step, record_pre_inner_step_slot0_skipped_pre_interpreter,
+};
 
 use super::super::scratchpad_flow;
 use super::super::tool_catalog::execute_code_execution_tool;
@@ -61,8 +71,22 @@ impl KernelTurnHost for Engine {
             .record(event.clone());
     }
 
+    fn record_v3_outer_boundary_grant(
+        &mut self,
+        kind: zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind,
+    ) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            self.runtime_ext_mut()
+                .kernel_v3_outer_boundary_grants
+                .record(kind);
+        }
+    }
+
     fn reset_kernel_projection_shadow(&mut self) {
         self.runtime_ext_mut().kernel_projection_shadow.reset_turn();
+        self.runtime_ext_mut().kernel_v3_outer_boundary_grants =
+            V3OuterBoundaryTurnGrants::default();
+        self.runtime_ext_mut().kernel_active_cycle_boundary = None;
     }
 
     fn kernel_shadow_turn_events(&self) -> Vec<KernelEvent> {
@@ -94,6 +118,8 @@ impl KernelTurnHost for Engine {
             kernel_model_message_count = hints.kernel_model_message_count,
             kernel_model_request_count = hints.kernel_model_request_count,
             kernel_estimated_min_session_messages = hints.kernel_estimated_min_session_messages,
+            kernel_transcript_preview_row_count = hints.kernel_transcript_preview_row_count,
+            kernel_transcript_preview_body_count = hints.kernel_transcript_preview_body_count,
             "restored kernel turn frame from event log"
         );
     }
@@ -106,6 +132,7 @@ impl KernelTurnHost for Engine {
             let do_replay_verify = mode.uses_replay_verification();
             let events = ext.kernel_projection_shadow.turn_events().to_vec();
             let writer = ext.kernel_event_writer.clone();
+            let outer_boundary_grants = ext.kernel_v3_outer_boundary_grants;
             if do_full_shadow {
                 ext.kernel_effect_shadow.verify_turn(&events);
                 ext.kernel_guard_shadow.verify_turn(&events);
@@ -121,6 +148,7 @@ impl KernelTurnHost for Engine {
                     &live.turn_id,
                     counts,
                 );
+                verify_turn_outer_boundary_grants(&events, &outer_boundary_grants);
                 tracing::info!(
                     target: "kernel_v3",
                     turn_id = %live.turn_id,
@@ -206,6 +234,13 @@ impl KernelTurnHost for Engine {
             .await,
         )
     }
+}
+
+fn user_message_text(msg: &Message) -> Option<String> {
+    msg.content.iter().find_map(|block| match block {
+        ContentBlock::Text { text, .. } => Some(text.clone()),
+        _ => None,
+    })
 }
 
 #[async_trait]
@@ -321,11 +356,30 @@ impl TurnLoopHost for Engine {
         Engine::add_session_message(self, message).await;
     }
 
+    async fn inject_live_steer(&mut self, turn: &TurnContext, steer: String) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            let mut interpreter = EffectInterpreter::new(self);
+            let _ = interpreter
+                .interpret(Effect::InjectSteer { text: steer })
+                .await;
+            return;
+        }
+        Engine::run_inject_steer_effect(self, &turn.id, turn.step, steer).await;
+    }
+
     async fn emit_session_updated(&mut self) {
         Engine::emit_session_updated(self).await;
     }
 
     async fn run_auto_compaction(&mut self, client: &dyn LlmClient, turn: &TurnContext) {
+        self.run_pre_inner_step_auto_compaction(client, turn).await;
+    }
+
+    async fn run_pre_inner_step_auto_compaction(
+        &mut self,
+        client: &dyn LlmClient,
+        turn: &TurnContext,
+    ) {
         let compaction_pins = self
             .session
             .working_set
@@ -336,6 +390,24 @@ impl TurnLoopHost for Engine {
             self.scratchpad_run_id.as_deref(),
             &mut compaction_paths,
         );
+
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            record_pre_inner_step_baseline_step();
+            if !self.config.compaction.enabled
+                || !should_compact(
+                    &self.session.messages,
+                    &self.config.compaction,
+                    Some(&self.session.workspace),
+                    Some(&compaction_pins),
+                    Some(&compaction_paths),
+                )
+            {
+                record_pre_inner_step_slot0_skipped_pre_interpreter();
+                return;
+            }
+            Engine::run_v3_planner_auto_compaction(self, client, &turn.id, turn.step).await;
+            return;
+        }
 
         if !self.config.compaction.enabled
             || !should_compact(
@@ -352,6 +424,24 @@ impl TurnLoopHost for Engine {
         Engine::route_auto_compaction(self, client, &turn.id).await;
     }
 
+    async fn run_pre_inner_step_layered_context(&mut self) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            let turn_id = self
+                .runtime_ext()
+                .kernel_active_turn_id
+                .clone()
+                .unwrap_or_default();
+            let step = self.runtime_ext().kernel_active_step;
+            Engine::run_v3_planner_layered_context(self, &turn_id, step).await;
+            return;
+        }
+        Engine::layered_context_checkpoint(self).await;
+    }
+
+    async fn layered_context_checkpoint(&mut self) {
+        self.run_pre_inner_step_layered_context().await;
+    }
+
     fn estimated_input_tokens(&self) -> usize {
         estimate_input_tokens_conservative(
             &self.session.messages,
@@ -361,10 +451,6 @@ impl TurnLoopHost for Engine {
 
     async fn flush_pending_lsp_diagnostics(&mut self) {
         Engine::flush_pending_lsp_diagnostics(self).await;
-    }
-
-    async fn layered_context_checkpoint(&mut self) {
-        Engine::layered_context_checkpoint(self).await;
     }
 
     fn decorate_auth_error_message(&self, message: String) -> String {
@@ -630,6 +716,14 @@ impl TurnLoopHost for Engine {
         ) else {
             return;
         };
+        let Some(text) = user_message_text(&msg) else {
+            return;
+        };
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            let mut interpreter = EffectInterpreter::new(self);
+            let _ = interpreter.interpret(Effect::InjectSteer { text }).await;
+            return;
+        }
         Engine::add_session_message(self, msg).await;
     }
 
@@ -721,7 +815,13 @@ impl TurnLoopHost for Engine {
         // early-advance band) and handoff body. At this call site the streaming
         // phase and tool execution have completed, so `in_flight` is false —
         // a clean per-step boundary with no mid-edit/stream cut.
-        Engine::maybe_advance_cycle(self, turn_loop_to_app_mode(mode)).await
+        use zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
+        Engine::maybe_advance_cycle(
+            self,
+            turn_loop_to_app_mode(mode),
+            Some(OuterBoundaryKind::InTurnCycleAdvance),
+        )
+        .await
     }
 
     async fn note_incomplete_stop_if_lht(&mut self) {

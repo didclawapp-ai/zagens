@@ -100,6 +100,12 @@ pub struct ResumeSessionKernelReplay {
     /// Anchor-class replay effect total (`inject_steer` + `run_compaction` + `notify_lsp`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_anchor_effect_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kernel_transcript_preview_row_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_transcript_preview_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_transcript_preview_body_ok: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

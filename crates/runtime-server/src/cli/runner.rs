@@ -238,6 +238,7 @@ async fn run_exec_agent(
         llm_client_override,
         search_provider: search.provider.unwrap_or_default(),
         search_api_key: search.api_key,
+        session_manager: None,
     };
 
     let engine_handle = spawn_engine(engine_config, config);

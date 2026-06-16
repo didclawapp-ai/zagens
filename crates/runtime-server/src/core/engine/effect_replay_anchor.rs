@@ -70,6 +70,7 @@ impl Engine {
         hints: &KernelResumeHints,
     ) {
         KernelTurnHost::apply_kernel_resume_hints(self, hints);
+        self.maybe_repair_session_from_kernel_log(hints).await;
         let mode = self.runtime_ext().kernel_machine_mode;
         if !mode.uses_replay_verification() && !mode.uses_v3_turn_loop() {
             return;

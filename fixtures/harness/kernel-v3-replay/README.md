@@ -15,6 +15,10 @@ array of tagged `KernelEvent` records (same shape as `kernel_events.payload`).
 | `capacity_checkpoint.json` | Pre/post capacity checkpoints with trim |
 | `manual_compaction.json` | Manual `/compact` compaction artifact |
 | `deferred_activation.json` | Deferred tool promotion without tool batch |
+| `memory_plane_query.json` | WorkingSet + TopicMemory queries + dual `MemoryPlaneQueried` |
+| `resume_thread_parity.json` | Resume log vs session-direct parity gate (steer + read tool turn) |
+| `layered_context_seam.json` | Flash L2 seam + `RunLayeredContextCheckpoint` replay anchor |
+| `message_body_rebuild.json` | Log-driven transcript rebuild from preview fields (5c) |
 
 Resume (`POST /v1/sessions/{id}/resume`) cross-checks session compaction artifacts
 against kernel log `replaced_range` anchors when SQLite compaction rows exist.

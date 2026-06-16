@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use zagens_tools::{ToolError, ToolResult};
 
 use crate::chat::{ContentBlock, Message, Tool};
-use crate::engine::context::compact_tool_result_for_context;
+use crate::engine::context::{compact_tool_result_for_context, summarize_text};
 use crate::engine::dispatch::{
     caller_allowed_for_tool, caller_type_for_tool_use, format_tool_error,
     should_stop_after_plan_tool,
@@ -411,6 +411,12 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                     message: tool_call.error.clone().unwrap_or_default(),
                 }
             };
+            let result_preview = tool_call
+                .result
+                .as_deref()
+                .or(tool_call.error.as_deref())
+                .map(|text| summarize_text(text, 512))
+                .unwrap_or_default();
             emit_kernel_event(
                 host,
                 KernelEvent::ToolCallFinished {
@@ -423,6 +429,7 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                         .map(|d| d.as_millis() as u32)
                         .unwrap_or(0),
                     wrote_state: wrote,
+                    result_preview,
                 },
             );
         }

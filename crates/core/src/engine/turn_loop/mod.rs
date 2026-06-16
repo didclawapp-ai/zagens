@@ -2,11 +2,15 @@
 
 pub mod capacity_policy;
 pub mod capacity_replay_policy;
+pub mod continuation_boundary_policy;
 pub mod control;
 pub mod exec;
 pub mod guard_projection_policy;
 pub mod helpers;
 pub mod host;
+pub mod kernel_resume_parity_policy;
+pub mod layered_context_replay_policy;
+pub mod live_turn_outer_planner;
 pub mod loop_guard_replay_policy;
 pub mod memory_plane_archival_policy;
 pub mod memory_plane_compiler_policy;
@@ -16,6 +20,8 @@ pub mod memory_plane_query_policy;
 pub mod memory_plane_query_replay_policy;
 pub mod memory_plane_working_policy;
 pub mod memory_plane_wrapup_policy;
+pub mod message_body_rebuild_policy;
+pub mod outer_boundary_replay_policy;
 pub mod run;
 pub mod streaming_phase;
 pub mod tool_exec;

@@ -304,6 +304,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `memory_plane_wrapup_policy.rs` batch-4 gate; `kernel_memory_shadow` uses unified coherence check.
   - Compiler force-include + overflow budget overrides for queried `working_set` / `memory.compaction` sources.
 
+- **Runtime (kernel-v2 Phase 3b batch 5a — live steer via InjectSteer effect):**
+  - `TurnLoopHost::inject_live_steer`: v3 mode routes `rx_steer` drain through `EffectInterpreter` + `Effect::InjectSteer` (same IO as legacy path via `run_inject_steer_effect`); legacy/shadow unchanged.
+  - LHT objective re-inject (`maybe_lht_pre_request_hooks`) uses the same v3 `InjectSteer` path when `[kernel] machine = "v3"`.
+  - v3 layered-context checkpoint (`layered_context_checkpoint`) routes through `Effect::RunLayeredContextCheckpoint` + anchor-only replay skip.
+
+- **Runtime (kernel-v2 Phase 3b batch 5a cont. — layered context seam kernel event):**
+  - `KernelEvent::LayeredContextSeamInjected` double-write from successful Flash seam append; `ReplayTurnMachine` derives `RunLayeredContextCheckpoint`.
+  - `layered_context_replay_policy.rs` + golden fixture `layered_context_seam.json`.
+
+  - Closes batch-5 pre-step gaps called out in `AGENT_KERNEL_V3_PHASE3_DESIGN.md` §6.2 migration table.
+
+- **Runtime (kernel-v2 Phase 3b batch 5c — resume log/session parity golden):**
+  - `kernel_resume_parity_policy.rs`: `verify_thread_resume_log_session_parity` (thread replay coherence + anchor alignment + `build_session_message_timeline_coverage`).
+  - Golden fixture `fixtures/harness/kernel-v3-replay/resume_thread_parity.json` + CI test `golden_resume_log_session_parity_fixtures` (counter/timeline level; transcript bytes remain a closure follow-up).
+
+- **Runtime (kernel-v2 Phase 3b batch 5c cont. — message body preview + transcript rebuild):**
+  - `KernelEvent::ModelMessage.text_preview` and `ToolCallFinished.result_preview` double-write from streaming/tool phases.
+  - `message_body_rebuild_policy.rs`: `rebuild_transcript_from_events` / `verify_log_transcript_rebuild` (preview-level transcript rows).
+  - Golden fixture `message_body_rebuild.json` + `golden_message_body_rebuild_fixture`; `resume_thread_parity.json` extended with preview fields + transcript check in `golden_resume_log_session_parity_fixtures`.
+
+- **Runtime (kernel-v2 Phase 3b batch 5c cont. — transcript preview index + resume/API gate):**
+  - `ThreadTranscriptPreviewIndex` + `replay_thread_transcript_preview_index` wired into `replay_thread_projection` and `build_session_message_timeline_coverage` (`transcript_preview_ok` when preview bodies exist).
+  - `KernelResumeHints` carries preview row/body counts; resume session + thread replay API expose `kernel_transcript_preview_row_count` / `message_transcript_preview_ok`.
+
+- **Runtime (kernel-v2 Phase 3b batch 5c cont. — preview body parity vs session):**
+  - `rebuild_preview_messages_from_thread_events` + `verify_session_transcript_preview_bodies` (role + preview text).
+  - `build_session_message_timeline_coverage` accepts optional session rows; `transcript_preview_body_ok` in resume/kernel-replay responses.
+
+- **Runtime (kernel-v2 Phase 3b batch 5c cont. — v3 log transcript repair on resume):**
+  - `[kernel] log_transcript_repair = true` (default off; requires `machine = "v3"`) replaces divergent engine session rows with log-rebuilt preview transcript on `ApplyKernelResume` when preview bodies exist.
+  - `kernel_log_session_repair.rs` + shadow counters; `should_repair_session_from_kernel_log` policy in core.
+  - `[kernel] log_transcript_repair_persist = true` (default off; requires `log_transcript_repair`) writes repaired preview rows to `~/.deepseek/sessions` via `runtime_thread_id` lookup; HTTP sidecar injects `SessionManager` into engines.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b — outer continuation boundary policy):**
+  - `continuation_boundary_policy.rs` centralizes step-limit / loop-guard grant eligibility and budget math from `run.rs`.
+  - v3 logs `kernel_v3` continuation boundary grants aligned with `StepLimitContinuation` / `LoopGuardContinuation` events.
+  - Extended with context-overflow cycle handoff + in-turn cycle advance eligibility, hard-fail message, and overflow strategy helpers.
+  - `live_turn_outer_planner.rs` documents v3 pre-inner-step baseline (`RunCompaction` + `RunLayeredContextCheckpoint`) and capacity checkpoint effect tails; pre-request / error-escalation capacity holds log under `kernel_v3`.
+  - `kernel_capacity_tail_shadow.rs` compares planned vs interpreted capacity tails on v3 dispatch; exposed via `GET /v1/runtime/kernel-shadow` (`capacity_tail_shadow`).
+  - v3 pre-inner-step baseline driven by `TurnLoopHost::run_pre_inner_step_*` + `pre_inner_step_ops.rs` (`EffectInterpreter` for `RunCompaction` / `RunLayeredContextCheckpoint`).
+  - `kernel_pre_inner_step_baseline_shadow.rs` tracks baseline step / slot interpreter counts; exposed via `GET /v1/runtime/kernel-shadow` (`pre_inner_step_baseline_shadow`).
+  - `outer_boundary_replay_policy.rs` + `kernel_outer_boundary_shadow.rs`: outer-boundary cap replay + v3 grant/event alignment; exposed via `kernel-shadow` (`outer_boundary_shadow`).
+  - v3 step-limit / loop-guard continuations routed via `outer_boundary_ops.rs` (replay-aligned empty `InjectSteer` + pending IO), matching `ReplayTurnMachine`.
+  - v3 overflow / in-turn cycle handoffs routed via `outer_boundary_ops` + `CycleAdvanced` kernel event on in-turn advance; grant shadow re-enabled for `InTurnCycleAdvance`.
+  - v3 capacity hold boundaries (`PreRequestCapacityHold` / `ErrorEscalationCapacityHold`) log planned vs interpreted capacity tails via `capacity_hold_ops` + `plan_capacity_hold_boundary_effect` (aligned with `EffectInterpreter` dispatch).
+  - **5c cont.:** `LiveTurnSnapshot.in_turn_cycle_advances` + log projection split (`CycleAdvanced` vs overflow `ContextOverflowRecovered`); golden `golden_live_projection_cycle_counter_split`.
+  - **5c cont.:** `KernelResumeHints` carries outer-loop continuation counters; `verify_thread_resume_projection_counter_parity` + golden `golden_resume_projection_counter_parity_fixtures`.
+
 ### Removed
 
 - **Runtime (kernel-v2 Phase 2 legacy cleanup — G-PR):** Legacy and Shadow context injection paths removed; `ContextCompiler` V2 is now the sole request-assembly path:

@@ -1,0 +1,71 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-message-body-001",
+    "mode": "agent",
+    "input_text": "Fix auth module",
+    "max_steps": 10
+  },
+  {
+    "event_type": "steer_injected",
+    "turn_id": "golden-message-body-001",
+    "step_idx": 1,
+    "text": "check token expiry"
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-message-body-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "mb111111",
+      "full_prefix_sha256": "mb222222"
+    },
+    "token_budget": 8192
+  },
+  {
+    "event_type": "model_message",
+    "turn_id": "golden-message-body-001",
+    "step_idx": 1,
+    "usage": {
+      "input_tokens": 900,
+      "output_tokens": 64
+    },
+    "block_count": 1,
+    "text_preview": "I'll inspect auth/token.rs"
+  },
+  {
+    "event_type": "tool_call_planned",
+    "turn_id": "golden-message-body-001",
+    "step_idx": 1,
+    "call_id": "call-read-auth",
+    "tool_name": "read_file",
+    "input_json": "{\"path\":\"src/auth/token.rs\"}",
+    "decision": {
+      "approval_required": false,
+      "parallel_eligible": true,
+      "read_only": true
+    }
+  },
+  {
+    "event_type": "tool_call_started",
+    "turn_id": "golden-message-body-001",
+    "call_id": "call-read-auth",
+    "wave_idx": 0
+  },
+  {
+    "event_type": "tool_call_finished",
+    "turn_id": "golden-message-body-001",
+    "call_id": "call-read-auth",
+    "tool_name": "read_file",
+    "outcome": "success",
+    "duration_ms": 22,
+    "wrote_state": false,
+    "result_preview": "pub fn validate_token() { ... }"
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-message-body-001",
+    "outcome": "completed",
+    "total_steps": 1
+  }
+]

@@ -95,12 +95,16 @@ pub struct TurnKernelProjection {
     pub memory_plane_query_count: u32,
     /// Count of `TopicMemoryInjected` events logged this turn (episodic layer).
     pub topic_memory_injection_count: u32,
+    /// Count of `LayeredContextSeamInjected` events logged this turn.
+    pub layered_context_seam_count: u32,
 
     // ── Continuation counters ────────────────────────────────────────────────
     pub step_limit_continuations: u32,
     pub loop_guard_continuations: u32,
     pub loop_guard_triggered_count: u32,
     pub cycle_handoff_attempts: u32,
+    /// Clean in-turn cycle advances (`CycleAdvanced` events only).
+    pub in_turn_cycle_advances: u32,
 
     // ── Capacity ─────────────────────────────────────────────────────────────
     pub last_capacity_action: Option<CapacityAction>,
@@ -202,6 +206,10 @@ impl TurnKernelProjection {
                 self.topic_memory_injection_count += 1;
             }
 
+            KernelEvent::LayeredContextSeamInjected { .. } => {
+                self.layered_context_seam_count += 1;
+            }
+
             KernelEvent::SteerInjected { .. } => {
                 self.steer_injection_count += 1;
             }
@@ -224,7 +232,7 @@ impl TurnKernelProjection {
             }
 
             KernelEvent::CycleAdvanced { .. } => {
-                self.cycle_handoff_attempts += 1;
+                self.in_turn_cycle_advances += 1;
             }
 
             KernelEvent::ContextOverflowRecovered {
@@ -283,6 +291,7 @@ pub struct LiveTurnSnapshot {
     pub step_limit_continuations: u32,
     pub loop_guard_continuations: u32,
     pub cycle_handoff_attempts: u32,
+    pub in_turn_cycle_advances: u32,
 }
 
 /// Compare projection rebuilt from events against the live host snapshot.
@@ -336,6 +345,12 @@ pub fn compare_projection_to_live(
             live.cycle_handoff_attempts, proj.cycle_handoff_attempts
         ));
     }
+    if live.in_turn_cycle_advances != proj.in_turn_cycle_advances {
+        diffs.push(format!(
+            "in_turn_cycle_advances live={} proj={}",
+            live.in_turn_cycle_advances, proj.in_turn_cycle_advances
+        ));
+    }
     if diffs.is_empty() {
         None
     } else {
@@ -366,6 +381,8 @@ pub enum Effect {
     InjectSteer { text: String },
     /// Trigger in-turn auto-compaction or capacity trim/handoff (replay anchor).
     RunCompaction,
+    /// Produce layered context seam (`#159`) before model call (v3 pre-step).
+    RunLayeredContextCheckpoint,
     /// Notify LSP after an edit-generating tool.
     NotifyLsp { tool_name: String },
     /// Sleep until a deadline (capacity back-off).
@@ -506,6 +523,9 @@ impl TurnMachine for ReplayTurnMachine {
                     text: String::new(),
                 });
             }
+            KernelEvent::LayeredContextSeamInjected { .. } => {
+                out.effects.push(Effect::RunLayeredContextCheckpoint);
+            }
             _ => {
                 let _ = projection;
             }
@@ -608,9 +628,13 @@ pub fn verify_guard_projection_chain(events: &[KernelEvent]) -> Option<String> {
                 KernelEvent::ContextOverflowRecovered {
                     strategy: crate::engine::kernel_event::OverflowStrategy::CycleHandoff,
                     ..
-                } | KernelEvent::CycleAdvanced { .. }
+                }
             )
         })
+        .count() as u32;
+    let in_turn_cycle_advances = events
+        .iter()
+        .filter(|event| matches!(event, KernelEvent::CycleAdvanced { .. }))
         .count() as u32;
     let capacity_checkpoints = count_capacity_checkpoints(events);
     let last_capacity = last_capacity_checkpoint_action(events);
@@ -638,6 +662,12 @@ pub fn verify_guard_projection_chain(events: &[KernelEvent]) -> Option<String> {
         diffs.push(format!(
             "cycle_handoff_attempts proj={} events={cycle_handoffs}",
             projection.cycle_handoff_attempts
+        ));
+    }
+    if projection.in_turn_cycle_advances != in_turn_cycle_advances {
+        diffs.push(format!(
+            "in_turn_cycle_advances proj={} events={in_turn_cycle_advances}",
+            projection.in_turn_cycle_advances
         ));
     }
     if projection.capacity_checkpoint_count != capacity_checkpoints {
@@ -799,6 +829,16 @@ pub fn verify_turn_replay_coherence(
     if let Some(summary) = verify_guard_projection_chain(events) {
         diffs.push(format!("guard: {summary}"));
     }
+    let projection = TurnKernelProjection::from_events(events);
+    if let Some(mode) = projection.mode {
+        if let Some(summary) =
+            crate::engine::turn_loop::outer_boundary_replay_policy::verify_outer_boundary_event_caps(
+                events, mode,
+            )
+        {
+            diffs.push(format!("outer_boundary_caps: {summary}"));
+        }
+    }
     if let Some(summary) =
         crate::engine::turn_loop::loop_guard_replay_policy::verify_loop_guard_replay_coherence(
             events,
@@ -825,6 +865,13 @@ pub fn verify_turn_replay_coherence(
         )
     {
         diffs.push(format!("memory_plane_query_replay: {summary}"));
+    }
+    if let Some(summary) =
+        crate::engine::turn_loop::layered_context_replay_policy::verify_layered_context_seam_replay_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("layered_context_seam_replay: {summary}"));
     }
     if !events
         .iter()
@@ -915,6 +962,9 @@ pub struct ThreadReplayProjection {
     pub message_timeline: Vec<ThreadMessageTimelineEntry>,
     /// Aggregated message-plane index (counts only; session depth estimates).
     pub message_plane_index: ThreadMessagePlaneIndex,
+    /// Preview-level transcript index (5c; no full message bodies).
+    pub transcript_preview_index:
+        crate::engine::turn_loop::message_body_rebuild_policy::ThreadTranscriptPreviewIndex,
     /// Compaction artifact anchors from kernel logs (replaced_range metadata only).
     pub compaction_timeline: Vec<ThreadCompactionReplayEntry>,
     pub compaction_index: ThreadCompactionReplayIndex,
@@ -1071,6 +1121,7 @@ pub struct ThreadMessageReplayStats {
     pub cycle_briefing_count: u32,
     pub step_limit_continuation_count: u32,
     pub loop_guard_continuation_count: u32,
+    pub layered_context_seam_count: u32,
 }
 
 /// Message-plane index rebuildable from kernel logs (no message bodies).
@@ -1096,7 +1147,8 @@ pub fn replay_thread_message_plane_index(
         steer_injection_count: stats.steer_injection_count,
         estimated_min_session_messages: stats
             .model_message_count
-            .saturating_add(stats.tool_call_planned_count),
+            .saturating_add(stats.tool_call_planned_count)
+            .saturating_add(stats.layered_context_seam_count),
     }
 }
 
@@ -1177,7 +1229,9 @@ pub fn replay_kernel_message_role_estimate(
     stats: &ThreadMessageReplayStats,
 ) -> KernelMessageRoleEstimate {
     KernelMessageRoleEstimate {
-        min_assistant_messages: stats.model_message_count,
+        min_assistant_messages: stats
+            .model_message_count
+            .saturating_add(stats.layered_context_seam_count),
         min_tool_result_messages: stats.tool_call_planned_count,
         min_steer_user_messages: stats.steer_injection_count,
     }
@@ -1791,6 +1845,9 @@ pub fn replay_thread_message_stats(
                 KernelEvent::LoopGuardContinuation { .. } => {
                     stats.loop_guard_continuation_count += 1
                 }
+                KernelEvent::LayeredContextSeamInjected { .. } => {
+                    stats.layered_context_seam_count += 1
+                }
                 _ => {}
             }
         }
@@ -1936,6 +1993,9 @@ pub struct SessionMessageTimelineCoverage {
     pub memory_plane_replay_anchor_ok: bool,
     pub compaction_replay_anchor_ok: bool,
     pub overall_ok: bool,
+    pub kernel_transcript_preview_row_count: u32,
+    pub transcript_preview_ok: bool,
+    pub transcript_preview_body_ok: bool,
     pub summary: Option<String>,
 }
 
@@ -1963,6 +2023,8 @@ pub fn build_session_message_timeline_coverage(
     projection: &ThreadReplayProjection,
     role_index: Option<&SessionMessageRoleIndex>,
     session_compaction: Option<&[SessionCompactionArtifactEntry]>,
+    session_messages: Option<&[Message]>,
+    turn_events: Option<&[(String, Vec<KernelEvent>)]>,
 ) -> Option<SessionMessageTimelineCoverage> {
     let stats = &projection.message_stats;
     let timeline = &projection.message_timeline;
@@ -2010,6 +2072,21 @@ pub fn build_session_message_timeline_coverage(
     let notify_lsp_anchor_ok = projection.notify_lsp_anchor_ok;
     let memory_plane_replay_anchor_ok = projection.memory_plane_replay_anchor_ok;
     let compaction_replay_anchor_ok = projection.compaction_replay_anchor_ok;
+    let transcript_preview_index = &projection.transcript_preview_index;
+    let transcript_preview_ok = crate::engine::turn_loop::message_body_rebuild_policy::verify_session_transcript_preview_count(
+        session_message_count,
+        transcript_preview_index,
+    )
+    .is_none();
+    let transcript_preview_body_ok = match (session_messages, turn_events) {
+        (Some(messages), Some(events)) => {
+            crate::engine::turn_loop::message_body_rebuild_policy::verify_session_transcript_preview_bodies(
+                messages, events,
+            )
+            .is_none()
+        }
+        _ => true,
+    };
     let overall_ok = coherence_ok
         && coverage_ok
         && timeline_vs_session_ok
@@ -2023,7 +2100,9 @@ pub fn build_session_message_timeline_coverage(
         && request_approval_anchor_ok
         && notify_lsp_anchor_ok
         && memory_plane_replay_anchor_ok
-        && compaction_replay_anchor_ok;
+        && compaction_replay_anchor_ok
+        && transcript_preview_ok
+        && transcript_preview_body_ok;
 
     let mut summaries = Vec::new();
     if let Some(s) = verify_message_timeline_coherence(stats, timeline) {
@@ -2087,6 +2166,21 @@ pub fn build_session_message_timeline_coverage(
             summaries.push(s);
         }
     }
+    if let Some(s) = crate::engine::turn_loop::message_body_rebuild_policy::verify_session_transcript_preview_count(
+        session_message_count,
+        transcript_preview_index,
+    ) {
+        summaries.push(s);
+    }
+    if let (Some(messages), Some(events)) = (session_messages, turn_events) {
+        if let Some(s) =
+            crate::engine::turn_loop::message_body_rebuild_policy::verify_session_transcript_preview_bodies(
+                messages, events,
+            )
+        {
+            summaries.push(s);
+        }
+    }
 
     Some(SessionMessageTimelineCoverage {
         session_message_count,
@@ -2119,6 +2213,9 @@ pub fn build_session_message_timeline_coverage(
         memory_plane_replay_anchor_ok,
         compaction_replay_anchor_ok,
         overall_ok,
+        kernel_transcript_preview_row_count: transcript_preview_index.preview_row_count,
+        transcript_preview_ok,
+        transcript_preview_body_ok,
         summary: if summaries.is_empty() {
             None
         } else {
@@ -2137,6 +2234,10 @@ pub fn replay_thread_projection(
     let message_stats = replay_thread_message_stats(turn_events);
     let message_timeline = replay_thread_message_timeline(turn_events);
     let message_plane_index = replay_thread_message_plane_index(&message_stats);
+    let transcript_preview_index =
+        crate::engine::turn_loop::message_body_rebuild_policy::replay_thread_transcript_preview_index(
+            turn_events,
+        );
     let compaction_timeline = replay_thread_compaction_timeline(turn_events);
     let compaction_index = replay_thread_compaction_index(&compaction_timeline);
     let continuation_anchor_summary = verify_thread_continuation_anchors(turn_events);
@@ -2168,6 +2269,7 @@ pub fn replay_thread_projection(
         message_stats,
         message_timeline,
         message_plane_index,
+        transcript_preview_index,
         compaction_timeline,
         compaction_index,
         continuation_anchor_ok,
@@ -2202,6 +2304,17 @@ pub struct KernelResumeHints {
     pub thread_turn_ids_with_events: Vec<String>,
     /// Expected anchor-class replay effect count for the linked thread (`replay_thread_effect_counts`).
     pub expected_anchor_effect_count: u32,
+    /// Rebuilt preview transcript row count (5c; when preview bodies exist).
+    pub kernel_transcript_preview_row_count: u32,
+    /// Events carrying non-empty message-body previews on the linked thread.
+    pub kernel_transcript_preview_body_count: u32,
+    /// Runtime thread id for session-store lookup on repair persist (host-supplied).
+    pub runtime_thread_id: Option<String>,
+    /// Outer-loop continuation counters from latest turn projection (5c cont.).
+    pub step_limit_continuations: u32,
+    pub loop_guard_continuations: u32,
+    pub cycle_handoff_attempts: u32,
+    pub in_turn_cycle_advances: u32,
 }
 
 /// Extract resume hints from the latest turn projection (log-driven resume substrate).
@@ -2222,6 +2335,13 @@ pub fn kernel_resume_hints_from_projection(proj: &TurnKernelProjection) -> Kerne
         kernel_estimated_min_session_messages: 0,
         thread_turn_ids_with_events: Vec::new(),
         expected_anchor_effect_count: 0,
+        kernel_transcript_preview_row_count: 0,
+        kernel_transcript_preview_body_count: 0,
+        runtime_thread_id: None,
+        step_limit_continuations: proj.step_limit_continuations,
+        loop_guard_continuations: proj.loop_guard_continuations,
+        cycle_handoff_attempts: proj.cycle_handoff_attempts,
+        in_turn_cycle_advances: proj.in_turn_cycle_advances,
     }
 }
 
@@ -2244,6 +2364,10 @@ pub fn kernel_resume_hints_from_thread_projection(
         .map(|turn| turn.turn_id.clone())
         .collect();
     hints.expected_anchor_effect_count = projection.effect_counts.anchor_effect_total();
+    hints.kernel_transcript_preview_row_count =
+        projection.transcript_preview_index.preview_row_count;
+    hints.kernel_transcript_preview_body_count =
+        projection.transcript_preview_index.preview_body_event_count;
     hints
 }
 
@@ -2341,6 +2465,7 @@ pub fn replay_effect_counts(events: &[KernelEvent]) -> ReplayEffectCounts {
             Effect::NotifyLsp { .. } => counts.notify_lsp += 1,
             Effect::Sleep { .. } => counts.sleep += 1,
             Effect::QueryMemory { .. } => counts.query_memory += 1,
+            Effect::RunLayeredContextCheckpoint => {}
         }
     }
     counts
@@ -2614,6 +2739,7 @@ impl Effect {
             Effect::NotifyLsp { .. } => "notify_lsp",
             Effect::Sleep { .. } => "sleep",
             Effect::QueryMemory { .. } => "query_memory",
+            Effect::RunLayeredContextCheckpoint => "run_layered_context_checkpoint",
         }
     }
 }
@@ -2685,6 +2811,7 @@ mod tests {
                 outcome: ToolOutcome::Success,
                 duration_ms: 10,
                 wrote_state: false,
+                result_preview: String::new(),
             },
             // Second request resets counters.
             KernelEvent::ModelRequestIssued {
@@ -2803,6 +2930,23 @@ mod tests {
         emit_kernel(Some(&tx), KernelEvent::SchemaVersion { version: 1 });
         let ev = rx.try_recv().expect("event received");
         assert_eq!(ev.kind_str(), "schema_version");
+    }
+
+    #[test]
+    fn compare_projection_detects_in_turn_cycle_mismatch() {
+        let live = LiveTurnSnapshot {
+            turn_id: "t1".into(),
+            in_turn_cycle_advances: 1,
+            ..Default::default()
+        };
+        let proj = TurnKernelProjection {
+            turn_id: "t1".into(),
+            in_turn_cycle_advances: 0,
+            ..Default::default()
+        };
+        let diff = compare_projection_to_live(&live, &proj);
+        assert!(diff.is_some());
+        assert!(diff.unwrap().contains("in_turn_cycle_advances"));
     }
 
     #[test]
@@ -3026,8 +3170,8 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read fixture");
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         let projection = replay_thread_projection("t1", &[("t1".into(), events.clone())]);
-        let cov =
-            build_session_message_timeline_coverage(3, &projection, None, None).expect("coverage");
+        let cov = build_session_message_timeline_coverage(3, &projection, None, None, None, None)
+            .expect("coverage");
         assert!(cov.overall_ok);
         assert!(cov.plane_depth_ok);
         assert_eq!(cov.estimated_min_session_messages, 2);
@@ -3038,6 +3182,58 @@ mod tests {
             2
         );
         assert!(verify_step_model_message_anchor(&events, 1).is_none());
+    }
+
+    #[test]
+    fn build_session_message_timeline_coverage_transcript_preview_on_resume_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/resume_thread_parity.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        let projection = replay_thread_projection(
+            "thread-resume",
+            &[("golden-resume-parity-001".into(), events.clone())],
+        );
+        assert_eq!(projection.transcript_preview_index.preview_row_count, 4);
+        assert_eq!(
+            projection.transcript_preview_index.preview_body_event_count,
+            2
+        );
+        let role_index = SessionMessageRoleIndex {
+            user_message_count: 2,
+            assistant_message_count: 1,
+            tool_result_message_count: 1,
+            text_user_message_count: 2,
+            total_message_count: 4,
+        };
+        let cov = build_session_message_timeline_coverage(
+            4,
+            &projection,
+            Some(&role_index),
+            None,
+            None,
+            None,
+        )
+        .expect("coverage");
+        assert!(cov.transcript_preview_ok);
+        assert!(cov.transcript_preview_body_ok);
+        assert_eq!(cov.kernel_transcript_preview_row_count, 4);
+        assert!(cov.overall_ok);
+
+        let preview_messages =
+            crate::engine::turn_loop::message_body_rebuild_policy::rebuild_preview_messages_from_thread_events(
+                &[("golden-resume-parity-001".into(), events.clone())],
+            );
+        let cov_with_bodies = build_session_message_timeline_coverage(
+            4,
+            &projection,
+            Some(&role_index),
+            None,
+            Some(&preview_messages),
+            Some(&[("golden-resume-parity-001".into(), events)]),
+        )
+        .expect("coverage");
+        assert!(cov_with_bodies.transcript_preview_body_ok);
     }
 
     #[test]
@@ -3074,8 +3270,15 @@ mod tests {
             ..role_index
         };
         assert!(verify_session_role_index(&thin, &kernel).is_some());
-        let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index), None)
-            .expect("coverage");
+        let cov = build_session_message_timeline_coverage(
+            3,
+            &projection,
+            Some(&role_index),
+            None,
+            None,
+            None,
+        )
+        .expect("coverage");
         assert!(cov.role_index_ok);
         assert!(cov.overall_ok);
     }
@@ -3197,8 +3400,15 @@ mod tests {
             ..role_index
         };
         assert!(verify_session_memory_plane_user_depth(&thin, &memory).is_some());
-        let cov = build_session_message_timeline_coverage(3, &projection, Some(&role_index), None)
-            .expect("coverage");
+        let cov = build_session_message_timeline_coverage(
+            3,
+            &projection,
+            Some(&role_index),
+            None,
+            None,
+            None,
+        )
+        .expect("coverage");
         assert!(cov.memory_plane_user_ok);
     }
 

@@ -170,6 +170,8 @@ pub struct EngineConfig {
     pub search_provider: crate::config::SearchProvider,
     /// API key for the active search provider.
     pub search_api_key: Option<String>,
+    /// Optional session store for v3 log transcript repair persist (HTTP sidecar).
+    pub session_manager: Option<std::sync::Arc<crate::SessionManager>>,
 }
 
 impl Default for EngineConfig {
@@ -216,6 +218,7 @@ impl Default for EngineConfig {
             llm_client_override: None,
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
+            session_manager: None,
         }
     }
 }
@@ -379,6 +382,7 @@ impl EngineConfig {
             llm_client_override: ext.llm_client_override,
             search_provider: ext.search_provider,
             search_api_key: ext.search_api_key,
+            session_manager: None,
         }
     }
 }

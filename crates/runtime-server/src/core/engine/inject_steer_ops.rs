@@ -17,6 +17,15 @@ impl Engine {
         if self.try_run_pending_inject_steer_kind().await {
             return;
         }
+        self.apply_inject_steer_text(turn_id, step_idx, text).await;
+    }
+
+    pub(in crate::core::engine) async fn apply_inject_steer_text(
+        &mut self,
+        turn_id: &str,
+        step_idx: u32,
+        text: String,
+    ) {
         if self.effect_replay_anchor_only() {
             tracing::info!(
                 target: "kernel_v3",

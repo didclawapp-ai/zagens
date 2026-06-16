@@ -1,22 +1,34 @@
 //! v3 continuation steer — routes step-limit / loop-guard nudges through [`Effect::InjectSteer`].
 
 use zagens_core::chat::{ContentBlock, Message};
-use zagens_core::engine::turn_machine::Effect;
+use zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
 use zagens_core::turn::TurnContext;
 
-use super::effect_interpreter::EffectInterpreter;
+use super::cycle_briefing_ops::InjectSteerEffectKind;
 use super::*;
-use crate::core::events::Event;
 
 impl Engine {
-    /// Inject a step-limit continuation nudge (v3: `Effect::InjectSteer`; legacy: session write).
+    /// Inject a step-limit continuation nudge (v3: planner `InjectSteer`; legacy: session write).
     pub(in crate::core::engine) async fn inject_step_limit_continuation_steer(
         &mut self,
         turn: &TurnContext,
         text: String,
         open_items: u32,
     ) {
-        self.inject_continuation_steer_message(turn, text).await;
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            self.run_v3_planner_outer_boundary_steer(
+                OuterBoundaryKind::StepLimit,
+                &turn.id,
+                turn.step,
+                InjectSteerEffectKind::StepLimitContinuation {
+                    text: text.clone(),
+                    open_items,
+                },
+            )
+            .await;
+            return;
+        }
+        self.inject_continuation_steer_legacy(&text).await;
         let _ = self
             .tx_event
             .send(Event::status(format!(
@@ -25,14 +37,27 @@ impl Engine {
             .await;
     }
 
-    /// Inject a loop-guard continuation nudge (v3: `Effect::InjectSteer`; legacy: session write).
+    /// Inject a loop-guard continuation nudge (v3: planner `InjectSteer`; legacy: session write).
     pub(in crate::core::engine) async fn inject_loop_guard_continuation_steer(
         &mut self,
         turn: &TurnContext,
         text: String,
         open_items: u32,
     ) {
-        self.inject_continuation_steer_message(turn, text).await;
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            self.run_v3_planner_outer_boundary_steer(
+                OuterBoundaryKind::LoopGuard,
+                &turn.id,
+                turn.step,
+                InjectSteerEffectKind::LoopGuardContinuation {
+                    text: text.clone(),
+                    open_items,
+                },
+            )
+            .await;
+            return;
+        }
+        self.inject_continuation_steer_legacy(&text).await;
         let _ = self
             .tx_event
             .send(Event::status(format!(
@@ -41,20 +66,15 @@ impl Engine {
             .await;
     }
 
-    async fn inject_continuation_steer_message(&mut self, _turn: &TurnContext, text: String) {
-        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
-            let mut interpreter = EffectInterpreter::new(self);
-            let _ = interpreter.interpret(Effect::InjectSteer { text }).await;
-            return;
-        }
+    pub(in crate::core::engine) async fn inject_continuation_steer_legacy(&mut self, text: &str) {
         let workspace = self.session.workspace.clone();
         self.session
             .working_set
-            .observe_user_message(&text, &workspace);
+            .observe_user_message(text, &workspace);
         self.add_session_message(Message {
             role: "user".to_string(),
             content: vec![ContentBlock::Text {
-                text,
+                text: text.to_string(),
                 cache_control: None,
             }],
         })

@@ -7,11 +7,14 @@ use tokio::sync::{Mutex as AsyncMutex, RwLock};
 use crate::mcp::McpPool;
 use crate::tools::ToolRegistry;
 use zagens_core::capacity::{CapacityDecision, CapacitySnapshot, GuardrailAction};
+use zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
+use zagens_core::engine::turn_loop::live_turn_outer_planner::CapacityCheckpointEffectTail;
 use zagens_core::engine::turn_machine::{Effect, capacity_cooldown_backoff_millis};
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::super::compaction_ops::RunCompactionScope;
 use super::super::effect_interpreter::EffectInterpreter;
+use super::super::kernel_capacity_tail_shadow::record_capacity_tail_shadow;
 use super::super::*;
 
 /// Inputs for routing a capacity controller decision to live IO (legacy or v3 effects).
@@ -25,18 +28,36 @@ pub(in crate::core::engine) struct CapacityDispatchContext<'a> {
     pub tool_exec_lock: Option<Arc<RwLock<()>>>,
     pub mcp_pool: Option<Arc<AsyncMutex<McpPool>>>,
     pub handoff_reason: &'a str,
+    /// When set, a successful intervention logs the capacity hold planner effect.
+    pub hold_boundary: Option<OuterBoundaryKind>,
 }
 
 impl Engine {
+    fn record_v3_capacity_tail_if_enabled(
+        &self,
+        action: GuardrailAction,
+        cooldown_blocked: bool,
+        interpreted: CapacityCheckpointEffectTail,
+    ) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            record_capacity_tail_shadow(action, cooldown_blocked, interpreted);
+        }
+    }
+
     /// Route a post-`emit_capacity_decision` intervention (skips when `cooldown_blocked`).
     pub(in crate::core::engine) async fn dispatch_capacity_decision(
         &mut self,
         ctx: CapacityDispatchContext<'_>,
     ) -> bool {
         if ctx.decision.cooldown_blocked {
+            let interpreted = CapacityCheckpointEffectTail::Sleep {
+                millis: capacity_cooldown_backoff_millis(),
+            };
+            self.record_v3_capacity_tail_if_enabled(ctx.decision.action, true, interpreted);
             return false;
         }
-        match ctx.decision.action {
+        let action = ctx.decision.action;
+        let result = match action {
             GuardrailAction::TargetedContextRefresh => {
                 self.route_capacity_trim_refresh(ctx.turn, ctx.client, ctx.mode, ctx.snapshot)
                     .await
@@ -52,9 +73,15 @@ impl Engine {
             }
             GuardrailAction::VerifyWithToolReplay => {
                 let Some(registry) = ctx.tool_registry else {
+                    let interpreted = CapacityCheckpointEffectTail::None;
+                    self.record_v3_capacity_tail_if_enabled(action, false, interpreted);
+                    self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, false);
                     return false;
                 };
                 let Some(lock) = ctx.tool_exec_lock.clone() else {
+                    let interpreted = CapacityCheckpointEffectTail::None;
+                    self.record_v3_capacity_tail_if_enabled(action, false, interpreted);
+                    self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, false);
                     return false;
                 };
                 let _ = self
@@ -67,10 +94,45 @@ impl Engine {
                         ctx.mcp_pool.clone(),
                     )
                     .await;
+                let interpreted = CapacityCheckpointEffectTail::None;
+                self.record_v3_capacity_tail_if_enabled(action, false, interpreted);
+                self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, false);
                 false
             }
             GuardrailAction::NoIntervention => false,
-        }
+        };
+        let interpreted = if matches!(
+            action,
+            GuardrailAction::TargetedContextRefresh | GuardrailAction::VerifyAndReplan
+        ) {
+            CapacityCheckpointEffectTail::RunCompaction
+        } else {
+            CapacityCheckpointEffectTail::None
+        };
+        self.record_v3_capacity_tail_if_enabled(action, false, interpreted);
+        self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, result);
+        result
+    }
+
+    fn log_capacity_hold_planner_if_enabled(
+        &self,
+        ctx: &CapacityDispatchContext<'_>,
+        action: GuardrailAction,
+        interpreted: CapacityCheckpointEffectTail,
+        held: bool,
+    ) {
+        let Some(boundary) = ctx.hold_boundary else {
+            return;
+        };
+        self.log_v3_capacity_hold_planner_effect(
+            boundary,
+            &ctx.turn.id,
+            ctx.turn.step,
+            action,
+            ctx.decision.cooldown_blocked,
+            interpreted,
+            held,
+        );
     }
 
     /// Route capacity targeted refresh (trim) through v3 `RunCompaction` or legacy IO.

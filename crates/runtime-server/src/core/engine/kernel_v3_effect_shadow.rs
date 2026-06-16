@@ -149,6 +149,7 @@ mod tests {
                 step_idx: 1,
                 usage: zagens_core::models::Usage::default(),
                 block_count: 1,
+                text_preview: String::new(),
             },
             KernelEvent::TurnEnded {
                 turn_id: "t1".into(),

@@ -221,6 +221,9 @@ pub enum KernelEvent {
         /// Number of content blocks in the final message (avoids embedding full
         /// message text which belongs in the session store).
         block_count: u32,
+        /// Truncated assistant text for log-driven transcript rebuild (Phase 3b 5c).
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        text_preview: String,
     },
 
     // ── Tool calls ───────────────────────────────────────────────────────────
@@ -251,6 +254,9 @@ pub enum KernelEvent {
         /// `tool_writes_state()` at call time; used to rebuild deferred-tool
         /// activation projection in Phase 3b.
         wrote_state: bool,
+        /// Truncated tool result / error text for log-driven transcript rebuild (Phase 3b 5c).
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        result_preview: String,
     },
     ApprovalResolved {
         turn_id: TurnId,
@@ -314,6 +320,15 @@ pub enum KernelEvent {
         /// ContextCompiler source id resolved for this query (empty when unknown).
         #[serde(default)]
         compiler_source: String,
+    },
+    /// Flash layered-context seam appended as assistant message (v3 `#159` double-write).
+    LayeredContextSeamInjected {
+        turn_id: TurnId,
+        step_idx: u32,
+        level: u32,
+        messages_covered: u32,
+        /// Truncated seam text for observability (full body remains in session store until 5c).
+        text_preview: String,
     },
 
     // ── Guard decisions ──────────────────────────────────────────────────────
@@ -391,6 +406,7 @@ impl KernelEvent {
             | KernelEvent::CycleBriefingInjected { turn_id, .. }
             | KernelEvent::TopicMemoryInjected { turn_id, .. }
             | KernelEvent::MemoryPlaneQueried { turn_id, .. }
+            | KernelEvent::LayeredContextSeamInjected { turn_id, .. }
             | KernelEvent::LoopGuardTriggered { turn_id, .. }
             | KernelEvent::CapacityCheckpoint { turn_id, .. }
             | KernelEvent::CycleAdvanced { turn_id, .. }
@@ -422,6 +438,7 @@ impl KernelEvent {
             KernelEvent::CycleBriefingInjected { .. } => "cycle_briefing_injected",
             KernelEvent::TopicMemoryInjected { .. } => "topic_memory_injected",
             KernelEvent::MemoryPlaneQueried { .. } => "memory_plane_queried",
+            KernelEvent::LayeredContextSeamInjected { .. } => "layered_context_seam_injected",
             KernelEvent::LoopGuardTriggered { .. } => "loop_guard_triggered",
             KernelEvent::CapacityCheckpoint { .. } => "capacity_checkpoint",
             KernelEvent::CycleAdvanced { .. } => "cycle_advanced",
@@ -494,6 +511,7 @@ mod tests {
             outcome: ToolOutcome::Success,
             duration_ms: 120,
             wrote_state: true,
+            result_preview: String::new(),
         };
         let json = serde_json::to_string(&ev).expect("serialize");
         let back: KernelEvent = serde_json::from_str(&json).expect("deserialize");
@@ -685,6 +703,7 @@ mod tests {
                 duration_ms: 50,
                 wrote_state: false,
                 tool_name: "read_file".into(),
+                result_preview: String::new(),
             },
             KernelEvent::ToolCallFinished {
                 turn_id: tid.clone(),
@@ -693,6 +712,7 @@ mod tests {
                 duration_ms: 30,
                 wrote_state: false,
                 tool_name: "shell_exec".into(),
+                result_preview: String::new(),
             },
             // Second model request resets counters.
             KernelEvent::ModelRequestIssued {
@@ -708,6 +728,7 @@ mod tests {
                 duration_ms: 20,
                 wrote_state: true,
                 tool_name: "scratchpad_append".into(),
+                result_preview: String::new(),
             },
         ];
 
@@ -871,6 +892,7 @@ mod tests {
             outcome: ToolOutcome::Success,
             duration_ms: 42,
             wrote_state: false,
+            result_preview: String::new(),
         };
         let json = serde_json::to_string(&ev).expect("serialize");
         assert!(

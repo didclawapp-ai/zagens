@@ -331,6 +331,30 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Find a persisted session id linked to a runtime thread (most recent first).
+    pub fn find_session_id_by_runtime_thread_id(
+        &self,
+        runtime_thread_id: &str,
+    ) -> std::io::Result<Option<String>> {
+        if runtime_thread_id.trim().is_empty() {
+            return Ok(None);
+        }
+        if let Some(ref db) = self.db {
+            return sqlite_to_io(
+                crate::persist::session_store_sqlite::find_session_id_by_runtime_thread_id_sqlite(
+                    &db.lock().unwrap(),
+                    runtime_thread_id,
+                ),
+            );
+        }
+        for meta in self.list_sessions()? {
+            if meta.runtime_thread_id.as_deref() == Some(runtime_thread_id) {
+                return Ok(Some(meta.id));
+            }
+        }
+        Ok(None)
+    }
+
     /// Load a session by ID (SQLite first, then JSON fallback)
     pub fn load_session(&self, id: &str) -> std::io::Result<SavedSession> {
         if let Some(ref db) = self.db {

@@ -145,6 +145,12 @@ pub(crate) struct KernelThreadMessageTimelineCoverage {
     compaction_replay_anchor_ok: bool,
     overall_ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    kernel_transcript_preview_row_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transcript_preview_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transcript_preview_body_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     summary: Option<String>,
 }
 
@@ -250,12 +256,16 @@ fn timeline_coverage_for_projection(
     session_compaction: Option<
         &[zagens_core::engine::turn_machine::SessionCompactionArtifactEntry],
     >,
+    session_messages: Option<&[zagens_core::chat::Message]>,
+    turn_events: Option<&[(String, Vec<zagens_core::engine::kernel_event::KernelEvent>)]>,
 ) -> Option<zagens_core::engine::turn_machine::SessionMessageTimelineCoverage> {
     build_session_message_timeline_coverage(
         session_message_count,
         projection,
         role_index,
         session_compaction,
+        session_messages,
+        turn_events,
     )
 }
 
@@ -327,7 +337,9 @@ pub(crate) fn resume_session_kernel_replay_summary(
     session_messages: Option<&[zagens_core::chat::Message]>,
     session_compaction_artifacts: Option<&[zagens_core::compaction::CompactionArtifact]>,
 ) -> Option<ResumeSessionKernelReplay> {
-    let projection = collect_thread_kernel_replay(manager, thread_id).ok()?;
+    let turn_ids = list_thread_turn_ids(manager, thread_id).ok()?;
+    let turn_events = load_thread_turn_events(&turn_ids)?;
+    let projection = replay_thread_projection(thread_id, &turn_events);
     if projection.report.turns_with_events == 0 {
         return None;
     }
@@ -340,6 +352,8 @@ pub(crate) fn resume_session_kernel_replay_summary(
             &projection,
             role_index.as_ref(),
             session_compaction.as_deref(),
+            Some(messages),
+            Some(&turn_events),
         );
     }
     let plane_coverage = session_messages
@@ -350,6 +364,8 @@ pub(crate) fn resume_session_kernel_replay_summary(
                 &projection,
                 role_index.as_ref(),
                 session_compaction.as_deref(),
+                session_messages,
+                Some(&turn_events),
             )
         });
     let coverage = plane_coverage
@@ -448,6 +464,13 @@ pub(crate) fn resume_session_kernel_replay_summary(
         } else {
             None
         },
+        kernel_transcript_preview_row_count: Some(
+            projection.transcript_preview_index.preview_row_count,
+        ),
+        message_transcript_preview_ok: plane_coverage.as_ref().map(|c| c.transcript_preview_ok),
+        message_transcript_preview_body_ok: plane_coverage
+            .as_ref()
+            .map(|c| c.transcript_preview_body_ok),
     })
 }
 
@@ -459,12 +482,16 @@ pub(crate) fn log_session_message_plane_checks(
     session_compaction: Option<
         &[zagens_core::engine::turn_machine::SessionCompactionArtifactEntry],
     >,
+    session_messages: Option<&[zagens_core::chat::Message]>,
+    turn_events: Option<&[(String, Vec<zagens_core::engine::kernel_event::KernelEvent>)]>,
 ) {
     let Some(cov) = timeline_coverage_for_projection(
         session_message_count,
         projection,
         role_index,
         session_compaction,
+        session_messages,
+        turn_events,
     ) else {
         return;
     };
@@ -538,6 +565,8 @@ pub(crate) fn log_session_message_coverage(
         projection,
         role_index,
         session_compaction,
+        None,
+        None,
     );
 }
 
@@ -577,7 +606,7 @@ pub(crate) async fn get_kernel_thread_replay(
 
     let role_index = role_index_for_replay(None, &query);
     let plane_coverage = query.session_message_count.and_then(|count| {
-        timeline_coverage_for_projection(count, &projection, role_index.as_ref(), None)
+        timeline_coverage_for_projection(count, &projection, role_index.as_ref(), None, None, None)
     });
 
     let report = projection.report;
@@ -716,6 +745,9 @@ pub(crate) async fn get_kernel_thread_replay(
         memory_plane_replay_anchor_ok: cov.memory_plane_replay_anchor_ok,
         compaction_replay_anchor_ok: cov.compaction_replay_anchor_ok,
         overall_ok: cov.overall_ok,
+        kernel_transcript_preview_row_count: Some(cov.kernel_transcript_preview_row_count),
+        transcript_preview_ok: Some(cov.transcript_preview_ok),
+        transcript_preview_body_ok: Some(cov.transcript_preview_body_ok),
         summary: cov.summary,
     });
 

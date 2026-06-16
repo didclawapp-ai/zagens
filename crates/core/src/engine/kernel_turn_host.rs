@@ -31,6 +31,13 @@ pub trait KernelTurnHost {
 
     fn record_kernel_event(&mut self, _event: &KernelEvent) {}
 
+    /// v3 outer-loop boundary grant observability (runtime shadow; default no-op).
+    fn record_v3_outer_boundary_grant(
+        &mut self,
+        _kind: crate::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind,
+    ) {
+    }
+
     fn reset_kernel_projection_shadow(&mut self) {}
 
     fn kernel_shadow_turn_events(&self) -> Vec<KernelEvent> {

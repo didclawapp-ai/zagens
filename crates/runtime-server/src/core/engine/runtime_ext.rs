@@ -82,14 +82,26 @@ pub struct EngineRuntimeExt {
     pub kernel_capacity_turn_mode: Option<TurnLoopMode>,
     pub kernel_capacity_handoff_reason: Option<String>,
     pub kernel_capacity_intervention_ok: Option<bool>,
-    /// Pending IO behind an empty-text v3 `InjectSteer` call (cycle advance).
+    /// Pending IO behind an empty-text v3 `InjectSteer` interpret call.
     pub kernel_pending_inject_steer_kind: Option<super::cycle_briefing_ops::InjectSteerEffectKind>,
+    /// When set, `perform_cycle_advance` may emit `CycleAdvanced` for in-turn grants.
+    pub kernel_active_cycle_boundary:
+        Option<zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind>,
     pub kernel_cycle_advance_ok: Option<bool>,
     /// When true, `RunCompaction` / cycle-advance effects record anchors only (no IO).
     pub kernel_effect_replay_anchor_only: bool,
+    /// v3 resume: replace divergent session rows with log-rebuilt preview transcript.
+    pub kernel_log_transcript_repair: bool,
+    /// v3 resume: persist repaired preview transcript to session store after in-memory repair.
+    pub kernel_log_transcript_repair_persist: bool,
+    /// Session store handle for repair persist (None disables disk write-back).
+    pub session_manager: Option<std::sync::Arc<crate::SessionManager>>,
     /// Per-call v3 approval outcomes stashed before `ExecuteBatch` (cleared each v3 step).
     pub kernel_v3_approval_outcomes:
         std::collections::HashMap<String, super::approval_ops::V3ApprovalStepOutcome>,
     /// Compiler sources explicitly queried via v3 `QueryMemory` this step (batch 8g).
     pub kernel_memory_query_sources: std::collections::BTreeSet<String>,
+    /// v3 outer-boundary grant counts for the active turn (batch 5b cont.).
+    pub kernel_v3_outer_boundary_grants:
+        super::kernel_outer_boundary_shadow::V3OuterBoundaryTurnGrants,
 }

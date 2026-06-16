@@ -353,6 +353,22 @@ pub fn delete_session_sqlite(db: &Connection, id: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Resolve the most recently updated session id linked to a runtime thread.
+pub fn find_session_id_by_runtime_thread_id_sqlite(
+    db: &Connection,
+    runtime_thread_id: &str,
+) -> anyhow::Result<Option<String>> {
+    let mut stmt = db.prepare(
+        "SELECT id FROM sessions WHERE runtime_thread_id = ?1 ORDER BY updated_at DESC LIMIT 1",
+    )?;
+    let result = stmt.query_row(params![runtime_thread_id], |row| row.get(0));
+    match result {
+        Ok(id) => Ok(Some(id)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(anyhow::anyhow!("query error: {e}")),
+    }
+}
+
 pub fn get_latest_session_for_workspace_sqlite(
     db: &Connection,
     workspace: &std::path::Path,
@@ -456,6 +472,47 @@ mod tests {
 
         let listed = list_sessions_sqlite(&db).unwrap();
         assert_eq!(listed[0].runtime_thread_id.as_deref(), Some("thr_abc"));
+    }
+
+    #[test]
+    fn sqlite_find_session_id_by_runtime_thread_id() {
+        let dir = tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let db_path = sessions_dir.join("sessions.db");
+        let db = open_sqlite_session_db(&db_path, &sessions_dir).unwrap();
+
+        let now = Utc::now();
+        for (id, thread_id) in [("sess-a", "thr_1"), ("sess-b", "thr_2")] {
+            let session = SavedSession {
+                schema_version: 1,
+                metadata: SessionMetadata {
+                    id: id.to_string(),
+                    title: id.to_string(),
+                    created_at: now,
+                    updated_at: now,
+                    message_count: 0,
+                    total_tokens: 0,
+                    model: "m".to_string(),
+                    workspace: PathBuf::from("."),
+                    mode: None,
+                    runtime_thread_id: Some(thread_id.to_string()),
+                },
+                messages: vec![],
+                system_prompt: None,
+                context_references: vec![],
+            };
+            save_session_sqlite(&db, &session).unwrap();
+        }
+
+        assert_eq!(
+            find_session_id_by_runtime_thread_id_sqlite(&db, "thr_2").unwrap(),
+            Some("sess-b".to_string())
+        );
+        assert_eq!(
+            find_session_id_by_runtime_thread_id_sqlite(&db, "missing").unwrap(),
+            None
+        );
     }
 
     #[test]

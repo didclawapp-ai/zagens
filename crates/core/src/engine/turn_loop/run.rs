@@ -3,16 +3,16 @@
 use tracing::Instrument;
 
 use crate::chat::{ContentBlock, Message, Tool};
-use crate::engine::context::{
-    MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS, context_input_budget, summarize_text,
-};
-use crate::engine::kernel_event::{
-    KernelEvent, OverflowStrategy, TurnOutcome as KernelTurnOutcome,
-};
+use crate::engine::context::{TURN_MAX_OUTPUT_TOKENS, context_input_budget, summarize_text};
+use crate::engine::kernel_event::{KernelEvent, TurnOutcome as KernelTurnOutcome};
 use crate::engine::loop_guard::LoopGuard;
-use crate::engine::streaming::{
-    MAX_CONTEXT_CYCLE_HANDOFFS, MAX_IN_TURN_CYCLE_ADVANCES, MAX_LOOP_GUARD_CONTINUATIONS,
-    MAX_STEP_LIMIT_CONTINUATIONS,
+use crate::engine::turn_loop::continuation_boundary_policy::{
+    OuterBoundaryCounters, OuterBoundaryKind, context_overflow_budget_recompile_strategy,
+    context_overflow_cycle_handoff_strategy, context_overflow_hard_fail_message,
+    context_recovery_attempts_exhausted, context_recovery_budget_after_cycle_handoff,
+    cycle_handoff_boundary_eligible, in_turn_cycle_advance_boundary_eligible,
+    loop_guard_boundary_eligible, max_loop_guard_grants, max_step_limit_grants,
+    step_limit_boundary_eligible, step_limit_budget_after_grant,
 };
 use crate::engine::turn_machine::{LiveTurnSnapshot, emit_kernel_event};
 use crate::error_taxonomy::ErrorEnvelope;
@@ -67,6 +67,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         end_turn(
             host,
             turn,
+            0,
             0,
             0,
             0,
@@ -125,6 +126,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                 step_limit_continuations,
                 loop_guard_continuations,
                 cycle_handoff_attempts,
+                in_turn_cycle_advances,
                 KernelTurnOutcome::Interrupted,
             )
             .await;
@@ -132,59 +134,30 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         }
 
         while let Ok(steer) = host.rx_steer_mut().try_recv() {
-            let steer = steer.trim().to_string();
-            if steer.is_empty() {
-                continue;
-            }
-            let workspace = host.workspace().to_path_buf();
-            host.session_mut()
-                .working_set
-                .observe_user_message(&steer, &workspace);
-            host.add_session_message(Message {
-                role: "user".to_string(),
-                content: vec![ContentBlock::Text {
-                    text: steer.clone(),
-                    cache_control: None,
-                }],
-            })
-            .await;
-            let _ = host
-                .tx_event()
-                .send(Event::status(format!(
-                    "Steer input accepted: {}",
-                    summarize_text(&steer, 120)
-                )))
-                .await;
-            emit_kernel_event(
-                host,
-                KernelEvent::SteerInjected {
-                    turn_id: turn.id.clone(),
-                    step_idx: turn.step,
-                    text: summarize_text(&steer, 512),
-                },
-            );
+            host.inject_live_steer(turn, steer).await;
         }
 
         host.refresh_system_prompt(mode).await;
         host.maybe_lht_pre_request_hooks(mode).await;
 
         if turn.at_max_steps() {
-            // Step-exhaustion early-stop: before terminating at the cap, give a
-            // long-horizon host one bounded chance to keep going on an
-            // incomplete task graph (it injects a continue nudge). Each grant
-            // extends the budget by the original `max_steps`; capped so a
-            // runaway task can't loop forever. Plan mode never continues here.
-            if !mode.is_plan()
-                && step_limit_continuations < MAX_STEP_LIMIT_CONTINUATIONS
+            let boundary_counters = OuterBoundaryCounters {
+                step_limit_continuations,
+                loop_guard_continuations,
+                cycle_handoff_attempts,
+                in_turn_cycle_advances,
+            };
+            if step_limit_boundary_eligible(mode, boundary_counters)
                 && host.maybe_continue_at_step_limit(turn).await
             {
                 step_limit_continuations = step_limit_continuations.saturating_add(1);
-                turn.max_steps = turn.max_steps.saturating_add(step_budget_increment);
+                turn.max_steps = step_limit_budget_after_grant(turn, step_budget_increment);
                 let _ = host
                     .tx_event()
                     .send(Event::status(format!(
                         "Step budget reached; continuing long-horizon task ({}/{})",
-                        step_limit_continuations, MAX_STEP_LIMIT_CONTINUATIONS
+                        step_limit_continuations,
+                        max_step_limit_grants()
                     )))
                     .await;
                 emit_kernel_event(
@@ -195,6 +168,13 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                         lht_objective_injected: true,
                     },
                 );
+                super::v3_driver::log_v3_outer_boundary(
+                    host,
+                    OuterBoundaryKind::StepLimit,
+                    &turn.id,
+                    turn.step,
+                    step_limit_continuations,
+                );
                 continue;
             }
             let _ = host
@@ -204,12 +184,24 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             break;
         }
 
-        host.run_auto_compaction(client.as_ref(), turn).await;
+        if host.kernel_machine_mode().uses_v3_turn_loop() {
+            super::v3_driver::log_v3_pre_inner_step_plan(host, &turn.id, turn.step);
+        }
+
+        host.run_pre_inner_step_auto_compaction(client.as_ref(), turn)
+            .await;
 
         if host
             .run_capacity_pre_request_checkpoint(turn, Some(client.as_ref()), mode)
             .await
         {
+            super::v3_driver::log_v3_outer_boundary(
+                host,
+                OuterBoundaryKind::PreRequestCapacityHold,
+                &turn.id,
+                turn.step,
+                turn.step,
+            );
             continue;
         }
 
@@ -217,15 +209,14 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         if let Some(input_budget) = context_input_budget(&model, TURN_MAX_OUTPUT_TOKENS) {
             let estimated_input = host.estimated_input_tokens();
             if estimated_input > input_budget {
-                if context_recovery_attempts >= MAX_CONTEXT_RECOVERY_ATTEMPTS {
-                    // Emergency compaction couldn't get the request back under
-                    // the model limit. Before hard-failing the turn (and asking
-                    // the user to run /compact), give a long-horizon host a
-                    // bounded chance to roll a cycle handoff: swap the bloated
-                    // buffer for a small briefing seed + preserved task state
-                    // and keep going in the same thread. Plan mode never does.
-                    if !mode.is_plan()
-                        && cycle_handoff_attempts < MAX_CONTEXT_CYCLE_HANDOFFS
+                if context_recovery_attempts_exhausted(context_recovery_attempts) {
+                    let overflow_counters = OuterBoundaryCounters {
+                        step_limit_continuations,
+                        loop_guard_continuations,
+                        cycle_handoff_attempts,
+                        in_turn_cycle_advances,
+                    };
+                    if cycle_handoff_boundary_eligible(mode, overflow_counters)
                         && host
                             .maybe_cycle_handoff_on_context_overflow(turn, mode)
                             .await
@@ -236,21 +227,21 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                             KernelEvent::ContextOverflowRecovered {
                                 turn_id: turn.id.clone(),
                                 step_idx: turn.step,
-                                strategy: OverflowStrategy::CycleHandoff,
+                                strategy: context_overflow_cycle_handoff_strategy(),
                                 source_budget_cap: Some(input_budget.min(u32::MAX as usize) as u32),
                             },
                         );
-                        // The fresh cycle starts small, so grant it its own
-                        // emergency-recovery budget rather than carrying over
-                        // the spent attempts from the overflowing buffer.
-                        context_recovery_attempts = 0;
+                        context_recovery_attempts = context_recovery_budget_after_cycle_handoff();
+                        super::v3_driver::log_v3_outer_boundary(
+                            host,
+                            OuterBoundaryKind::ContextOverflowCycleHandoff,
+                            &turn.id,
+                            turn.step,
+                            cycle_handoff_attempts,
+                        );
                         continue;
                     }
-                    let message = format!(
-                        "Context remains above model limit after {} recovery attempts \
-                         (~{} token estimate, ~{} budget). Please run /compact or /clear.",
-                        MAX_CONTEXT_RECOVERY_ATTEMPTS, estimated_input, input_budget
-                    );
+                    let message = context_overflow_hard_fail_message(estimated_input, input_budget);
                     turn_error = Some(message.clone());
                     let _ = host
                         .tx_event()
@@ -273,7 +264,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                         KernelEvent::ContextOverflowRecovered {
                             turn_id: turn.id.clone(),
                             step_idx: turn.step,
-                            strategy: OverflowStrategy::BudgetRecompile,
+                            strategy: context_overflow_budget_recompile_strategy(),
                             source_budget_cap: Some(input_budget.min(u32::MAX as usize) as u32),
                         },
                     );
@@ -287,7 +278,8 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         if !host.kernel_machine_mode().uses_v3_turn_loop() {
             host.flush_pending_lsp_diagnostics().await;
         }
-        host.layered_context_checkpoint().await;
+        // v3 routes Flash seam checkpoint through planner baseline slot 1 (batch 5b).
+        host.run_pre_inner_step_layered_context().await;
 
         let stream_span = tracing::info_span!(
             "turn_streaming",
@@ -389,25 +381,23 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         let mut pending_steers = stream_out.pending_steers;
 
         if phase.break_outer_loop {
-            // A loop-guard halt (model stuck repeating a failing tool) would
-            // otherwise fall through to the `Completed` outcome below, bypassing
-            // the no-tool-uses LHT continue gate entirely. Offer a bounded
-            // "change approach" continuation for incomplete long-horizon tasks.
-            if phase.loop_guard_halted
-                && !mode.is_plan()
-                && loop_guard_continuations < MAX_LOOP_GUARD_CONTINUATIONS
+            let boundary_counters = OuterBoundaryCounters {
+                step_limit_continuations,
+                loop_guard_continuations,
+                cycle_handoff_attempts,
+                in_turn_cycle_advances,
+            };
+            if loop_guard_boundary_eligible(mode, phase.loop_guard_halted, boundary_counters)
                 && host.maybe_continue_after_loop_guard_halt(turn).await
             {
                 loop_guard_continuations = loop_guard_continuations.saturating_add(1);
-                // Clear consecutive-failure counters so the next step doesn't
-                // immediately re-halt on the same tool; the injected nudge asks
-                // the model to switch strategy rather than repeat the call.
                 loop_guard.reset_failures();
                 let _ = host
                     .tx_event()
                     .send(Event::status(format!(
                         "Loop-guard halt; nudging long-horizon task to change approach ({}/{})",
-                        loop_guard_continuations, MAX_LOOP_GUARD_CONTINUATIONS
+                        loop_guard_continuations,
+                        max_loop_guard_grants()
                     )))
                     .await;
                 emit_kernel_event(
@@ -416,6 +406,13 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
                         turn_id: turn.id.clone(),
                         step_idx: turn.step,
                     },
+                );
+                super::v3_driver::log_v3_outer_boundary(
+                    host,
+                    OuterBoundaryKind::LoopGuard,
+                    &turn.id,
+                    turn.step,
+                    loop_guard_continuations,
                 );
                 turn.next_step();
                 continue;
@@ -466,6 +463,13 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             )
             .await
         {
+            super::v3_driver::log_v3_outer_boundary(
+                host,
+                OuterBoundaryKind::ErrorEscalationCapacityHold,
+                &turn.id,
+                turn.step,
+                turn.step,
+            );
             turn.next_step();
             continue;
         }
@@ -478,11 +482,23 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         // gate here (stream + tools already finished → no in-flight cut). On a
         // handoff the buffer becomes a small briefing seed, so re-loop to
         // re-request with the fresh context. Bounded against pathological seeds.
-        if !mode.is_plan()
-            && in_turn_cycle_advances < MAX_IN_TURN_CYCLE_ADVANCES
+        let cycle_counters = OuterBoundaryCounters {
+            step_limit_continuations,
+            loop_guard_continuations,
+            cycle_handoff_attempts,
+            in_turn_cycle_advances,
+        };
+        if in_turn_cycle_advance_boundary_eligible(mode, cycle_counters)
             && host.maybe_advance_cycle_at_checkpoint(mode, turn).await
         {
             in_turn_cycle_advances = in_turn_cycle_advances.saturating_add(1);
+            super::v3_driver::log_v3_outer_boundary(
+                host,
+                OuterBoundaryKind::InTurnCycleAdvance,
+                &turn.id,
+                turn.step,
+                in_turn_cycle_advances,
+            );
             turn.next_step();
             continue;
         }
@@ -497,6 +513,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             step_limit_continuations,
             loop_guard_continuations,
             cycle_handoff_attempts,
+            in_turn_cycle_advances,
             KernelTurnOutcome::Interrupted,
         )
         .await;
@@ -509,6 +526,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
             step_limit_continuations,
             loop_guard_continuations,
             cycle_handoff_attempts,
+            in_turn_cycle_advances,
             KernelTurnOutcome::Failed {
                 message: err.clone(),
             },
@@ -526,6 +544,7 @@ pub async fn handle_deepseek_turn<H: TurnLoopHost>(
         step_limit_continuations,
         loop_guard_continuations,
         cycle_handoff_attempts,
+        in_turn_cycle_advances,
         KernelTurnOutcome::Completed,
     )
     .await;
@@ -538,6 +557,7 @@ fn live_turn_snapshot(
     step_limit_continuations: u32,
     loop_guard_continuations: u32,
     cycle_handoff_attempts: u32,
+    in_turn_cycle_advances: u32,
 ) -> LiveTurnSnapshot {
     LiveTurnSnapshot {
         turn_id: turn.id.clone(),
@@ -547,6 +567,7 @@ fn live_turn_snapshot(
         step_limit_continuations,
         loop_guard_continuations,
         cycle_handoff_attempts,
+        in_turn_cycle_advances,
     }
 }
 
@@ -556,6 +577,7 @@ async fn end_turn<H: TurnLoopHost>(
     step_limit_continuations: u32,
     loop_guard_continuations: u32,
     cycle_handoff_attempts: u32,
+    in_turn_cycle_advances: u32,
     outcome: KernelTurnOutcome,
 ) {
     let scratchpad_summary_injected = *host.scratchpad_summary_injected_mut();
@@ -573,6 +595,7 @@ async fn end_turn<H: TurnLoopHost>(
         step_limit_continuations,
         loop_guard_continuations,
         cycle_handoff_attempts,
+        in_turn_cycle_advances,
     ))
     .await;
 }

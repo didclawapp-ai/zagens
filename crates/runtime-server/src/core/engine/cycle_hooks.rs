@@ -30,7 +30,13 @@ impl Engine {
     /// boundary inside the turn loop (#5 — `maybe_advance_cycle_at_checkpoint`),
     /// so a turn that loops many tool steps still gets a clean refresh instead
     /// of only the hard-overflow fallback.
-    pub(super) async fn maybe_advance_cycle(&mut self, mode: AppMode) -> bool {
+    pub(super) async fn maybe_advance_cycle(
+        &mut self,
+        mode: AppMode,
+        boundary: Option<
+            zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind,
+        >,
+    ) -> bool {
         let active = self.estimated_input_tokens() as u64;
         let headroom = turn_response_headroom_tokens();
         let model = self.session.model.clone();
@@ -55,7 +61,7 @@ impl Engine {
         } else {
             "context threshold"
         };
-        self.route_cycle_advance(mode, reason).await
+        self.route_cycle_advance(mode, reason, boundary).await
     }
 
     /// Force a cycle handoff regardless of the threshold gate. Used as a
@@ -72,7 +78,13 @@ impl Engine {
     /// calling `perform_cycle_advance`.  Wired via `context_recovery.rs`;
     /// this comment tracks the call site for P2-Switch migration.
     pub(super) async fn force_cycle_handoff_for_overflow(&mut self, mode: AppMode) -> bool {
-        self.route_cycle_advance(mode, "context overflow").await
+        use zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
+        self.route_cycle_advance(
+            mode,
+            "context overflow",
+            Some(OuterBoundaryKind::ContextOverflowCycleHandoff),
+        )
+        .await
     }
 
     /// Body of a cycle advance: produce the model-curated briefing, archive
@@ -272,11 +284,29 @@ impl Engine {
             emit_kernel_event(
                 self,
                 KernelEvent::CycleBriefingInjected {
-                    turn_id,
+                    turn_id: turn_id.clone(),
                     cycle: to,
                     step_idx,
                 },
             );
+            if self
+                .runtime_ext_mut()
+                .kernel_active_cycle_boundary
+                .take()
+                == Some(
+                    zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind::InTurnCycleAdvance,
+                )
+            {
+                emit_kernel_event(
+                    self,
+                    KernelEvent::CycleAdvanced {
+                        turn_id,
+                        from_cycle: from,
+                        to_cycle: to,
+                        reason: reason.to_string(),
+                    },
+                );
+            }
         }
 
         let _ = self

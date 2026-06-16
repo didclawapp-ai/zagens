@@ -1,9 +1,43 @@
 //! Pre-request layered context (Flash seam) checkpoint (#159).
 
+use super::effect_interpreter::EffectInterpreter;
 use super::*;
+use zagens_core::engine::context::summarize_text;
 use zagens_core::engine::hosts::SeamHost;
+use zagens_core::engine::kernel_event::KernelEvent;
+use zagens_core::engine::turn_machine::{Effect, emit_kernel_event};
 
 impl Engine {
+    /// Route layered-context checkpoint through v3 effect plan or legacy direct IO.
+    pub(super) async fn layered_context_checkpoint(&mut self) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            tracing::info!(
+                target: "kernel_v3",
+                turn_id = ?self.runtime_ext().kernel_active_turn_id,
+                step = self.runtime_ext().kernel_active_step,
+                "v3 layered context: RunLayeredContextCheckpoint (effect plan)"
+            );
+            let mut interpreter = EffectInterpreter::new(self);
+            let _ = interpreter
+                .interpret(Effect::RunLayeredContextCheckpoint)
+                .await;
+            return;
+        }
+        self.execute_layered_context_checkpoint().await;
+    }
+
+    /// Live IO for [`Effect::RunLayeredContextCheckpoint`].
+    pub(in crate::core::engine) async fn run_layered_context_checkpoint_effect(&mut self) {
+        if self.effect_replay_anchor_only() {
+            tracing::info!(
+                target: "kernel_v3",
+                "replay anchor-only: skipping RunLayeredContextCheckpoint IO"
+            );
+            return;
+        }
+        self.execute_layered_context_checkpoint().await;
+    }
+
     /// Run the pre-request layered-context checkpoint (#159). Checks whether
     /// the active input estimate has crossed a soft-seam threshold and, if so,
     /// produces an `<archived_context>` block via Flash and appends it as an
@@ -13,7 +47,7 @@ impl Engine {
     /// M5: all calls dispatch through the `SeamHost` trait (the
     /// `seam_manager` field type stays `Option<SeamManager>` until M7
     /// swaps it to `Option<Box<dyn SeamHost>>`).
-    pub(super) async fn layered_context_checkpoint(&mut self) {
+    async fn execute_layered_context_checkpoint(&mut self) {
         let Some(ref seam_mgr) = self.seam else {
             return;
         };
@@ -105,11 +139,28 @@ impl Engine {
         self.add_session_message(Message {
             role: "assistant".to_string(),
             content: vec![ContentBlock::Text {
-                text: seam_text,
+                text: seam_text.clone(),
                 cache_control: None,
             }],
         })
         .await;
+
+        let turn_id = self
+            .runtime_ext()
+            .kernel_active_turn_id
+            .clone()
+            .unwrap_or_else(|| "layered-context".to_string());
+        let step_idx = self.runtime_ext().kernel_active_step;
+        emit_kernel_event(
+            self,
+            KernelEvent::LayeredContextSeamInjected {
+                turn_id,
+                step_idx,
+                level: u32::from(level),
+                messages_covered: msg_range_end as u32,
+                text_preview: summarize_text(&seam_text, 512),
+            },
+        );
 
         let _ = self
             .tx_event

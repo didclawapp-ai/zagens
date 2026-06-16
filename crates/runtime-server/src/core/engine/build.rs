@@ -355,9 +355,14 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         kernel_capacity_intervention_ok: None,
         kernel_pending_inject_steer_kind: None,
         kernel_cycle_advance_ok: None,
+        kernel_active_cycle_boundary: None,
         kernel_effect_replay_anchor_only: false,
+        kernel_log_transcript_repair: api_config.kernel_log_transcript_repair(),
+        kernel_log_transcript_repair_persist: api_config.kernel_log_transcript_repair_persist(),
+        session_manager: config.session_manager.clone(),
         kernel_v3_approval_outcomes: std::collections::HashMap::new(),
         kernel_memory_query_sources: std::collections::BTreeSet::new(),
+        kernel_v3_outer_boundary_grants: Default::default(),
     };
 
     let hosts = EngineHostBundle {

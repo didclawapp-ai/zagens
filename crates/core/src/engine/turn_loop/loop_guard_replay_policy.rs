@@ -210,6 +210,7 @@ mod tests {
                 },
                 duration_ms: 1,
                 wrote_state: false,
+                result_preview: String::new(),
             });
         }
         events.push(KernelEvent::LoopGuardTriggered {
