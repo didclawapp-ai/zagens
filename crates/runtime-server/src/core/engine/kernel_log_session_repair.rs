@@ -1,8 +1,8 @@
 //! v3 resume — repair engine session transcript from kernel log previews (Phase 3b 5c).
 
 use zagens_core::engine::turn_loop::message_body_rebuild_policy::{
-    rebuild_preview_messages_from_thread_events, should_repair_session_from_kernel_log,
-    verify_session_transcript_preview_bodies,
+    rebuild_session_messages_from_thread_events, should_repair_session_from_kernel_log,
+    verify_session_messages_structural_parity,
 };
 use zagens_core::engine::turn_machine::KernelResumeHints;
 
@@ -143,7 +143,7 @@ impl Engine {
             record_log_session_repair_skipped_aligned();
             return;
         }
-        let repaired = rebuild_preview_messages_from_thread_events(&turn_events);
+        let repaired = rebuild_session_messages_from_thread_events(&turn_events);
         if repaired.is_empty() {
             return;
         }
@@ -157,9 +157,17 @@ impl Engine {
             before_rows = before,
             after_rows = self.session.messages.len(),
             preview_body_events = hints.kernel_transcript_preview_body_count,
-            "repaired engine session transcript from kernel log previews"
+            "repaired engine session transcript from kernel log"
         );
-        if verify_session_transcript_preview_bodies(&self.session.messages, &turn_events).is_some()
+        if verify_session_messages_structural_parity(
+            &self.session.messages,
+            &turn_events
+                .iter()
+                .flat_map(|(_, events)| events.iter())
+                .cloned()
+                .collect::<Vec<_>>(),
+        )
+        .is_some()
         {
             tracing::warn!(
                 target: "kernel_resume",

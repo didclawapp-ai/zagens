@@ -3,7 +3,6 @@
 use std::collections::HashSet;
 
 use zagens_core::chat::{LlmClient, Tool};
-use zagens_core::engine::TurnLoopHost;
 use zagens_core::engine::kernel_event::KernelEvent;
 use zagens_core::engine::loop_guard::LoopGuard;
 use zagens_core::engine::turn_loop::v3_step::V3StepOutcome;

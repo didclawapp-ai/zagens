@@ -337,6 +337,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `kernel_log_session_repair.rs` + shadow counters; `should_repair_session_from_kernel_log` policy in core.
   - `[kernel] log_transcript_repair_persist = true` (default off; requires `log_transcript_repair`) writes repaired preview rows to `~/.deepseek/sessions` via `runtime_thread_id` lookup; HTTP sidecar injects `SessionManager` into engines.
 
+- **Runtime (kernel-v2 Phase 3b batch 5c closure — full session JSON byte parity):**
+  - `KernelEvent::ModelMessage.assistant_text` and `ToolCallFinished.session_content` double-write from streaming/tool phases (exact session bodies; previews remain for legacy logs).
+  - `message_body_rebuild_policy.rs`: `rebuild_session_messages_from_events`, `verify_session_messages_byte_parity`, `verify_session_messages_structural_parity`; preview rebuild delegates to full rebuild when closure fields exist.
+  - Golden session fixtures `message_body_rebuild.session.json` / `resume_thread_parity.session.json` + `golden_session_messages_byte_parity_fixtures`; resume parity golden extended with byte check.
+  - v3 log transcript repair (`kernel_log_session_repair.rs`) now applies full session rebuild instead of preview-only rows.
+
+- **Runtime (kernel-v2 Phase 3b batch 5d — default v3 turn machine):**
+  - `[kernel] machine` default is now `v3` (`KernelMachineMode::parse(None)` / `Default`); explicit `legacy` and `shadow` remain kill switches; unknown config values still resolve to `legacy`.
+  - `TurnLoopHost` trait surface baseline test tracks **60** methods during host strangler migration.
+
+- **Runtime (kernel-v2 Phase 3b batch 5d cont. — TurnLoopHost strangler split):**
+  - `TurnLoopHost` composes `TurnLoopSessionHost` (16) + `LegacyInnerStepHost` (26) + `TurnLoopOuterHost` (18); streaming/tool phases bound on `LegacyInnerStepHost` only.
+  - Baseline inventory tests per seam; delete `LegacyInnerStepHost` when `[kernel] machine = legacy` kill switch is removed.
+
+- **Runtime (kernel-v2 Phase 3b batch 5d cont. — outer loop policy + legacy path isolation):**
+  - `live_outer_loop_policy.rs`: pure step-limit / overflow / loop-guard / cycle-advance decisions + `inner_step_io_path` (v3 vs legacy kill switch).
+  - `legacy_inner_step.rs`: legacy/shadow streaming+tool path extracted from `run.rs`; default v3 uses `run_v3_turn_step_unified` only.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — live outer-loop driver):**
+  - `live_turn_outer_driver.rs`: gate enums + `OuterBoundaryGrant` records (counter/event/status updates after host confirms LHT continuation); aligned with `ReplayTurnMachine` continuation effects.
+  - `run.rs` delegates step-limit / overflow / loop-guard / in-turn cycle grants to the driver; host IO remains on `TurnLoopOuterHost` until `TurnMachine::step` absorbs outer decisions.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — pre-inner baseline via EffectInterpreter):**
+  - `KernelTurnHost::try_run_pre_inner_step_baseline` + `run_pre_inner_step_baseline` in core driver; v3 runs `plan_v3_pre_inner_step_baseline()` through `EffectInterpreter` (`RunCompaction` slot 0 + `RunLayeredContextCheckpoint` slot 1).
+  - `pre_inner_step_ops.rs`: unified `run_v3_pre_inner_step_baseline`; `run.rs` single entry replaces separate host compaction/layered calls.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — capacity hold driver):**
+  - `live_turn_outer_driver`: `post_inner_error_escalation_gate`, `run_capacity_pre_request_hold`, `run_capacity_error_escalation_hold` (policy gate + checkpoint IO + v3 hold boundary logging).
+  - `run.rs` routes pre-request and error-escalation capacity holds through the driver; v3 trim/handoff IO remains in `capacity_flow/v3_routing` via `EffectInterpreter`.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — LiveTurnMachine drives `run.rs`):**
+  - `live_turn_machine.rs`: `LiveOuterLoopState` (continuation counters + per-turn scratch) and `LiveTurnMachine` (`TurnMachine` planning facade delegating replay to `ReplayTurnMachine`).
+  - `run.rs` outer-loop gates/grants and `apply_outer_boundary_grant` routed through `LiveTurnMachine`; `end_turn` reads `LiveOuterLoopState` snapshot.
+
+- **Runtime (kernel-v2 Phase 3b batch 5d cont. — outer-loop host seam):**
+  - `OuterLoopHost` (`TurnLoopOuterHost` + `KernelTurnHost`) bounds outer-loop IO helpers (`apply_outer_boundary_grant`, capacity holds, pre-inner baseline, `end_turn`); `handle_deepseek_turn` still requires full `TurnLoopHost` for inner-step IO.
+  - `v3_driver` logging tightened to `KernelTurnHost` / `OuterLoopHost` instead of monolith trait.
+
+- **Runtime (kernel-v2 Phase 3b batch 5d cont. — shadow routes v3 turn loop):**
+  - `KernelMachineMode::uses_v3_turn_loop()` now includes `shadow`; `uses_legacy_turn_loop()` is `legacy` only.
+  - `legacy_inner_step` / direct streaming+tool phases are the sole legacy kill switch; shadow bake runs v3 IO plus effect/guard/memory shadow checks.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — outer boundary grant replay coherence):**
+  - `verify_outer_boundary_grant_replay_coherence` + `LiveTurnMachine::verify_boundary_grant` validate grant records against `ReplayTurnMachine` effect plans at apply time.
+  - `apply_outer_boundary_grant` logs replay plan (debug) and warns on v3 coherence diffs.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — LiveTurnMachine outer pre-inner segment):**
+  - `plan_v3_outer_pre_inner_step_effects` documents host refresh seam + baseline effect slots; `run_outer_pre_inner_step_via_machine` drives refresh/LHT/baseline/capacity/overflow before inner step.
+  - `run.rs` delegates outer pre-inner IO to `LiveTurnMachine`; `OuterPreInnerStepOutcome` controls continue/break/fail/proceed.
+  - `drain_live_steers_via_machine`: `rx_steer` batch → `InjectSteer` (v3 via `EffectInterpreter`); `plan_live_steer_inject_effects` + v3 drain logging.
+  - `system_prompt_refresh_policy`: `QueryMemory` plan for user memory + topic episodic; `refresh_system_prompt_via_machine` logs v3 plan then runs host IO (compiler effect migration pending).
+  - `system_prompt_refresh_ops.rs`: v3 runs planned `QueryMemory` chain via `EffectInterpreter` before host `refresh_system_prompt`; `KernelTurnHost::try_run_system_prompt_refresh_queries`.
+  - `try_run_system_prompt_refresh` consolidates QueryMemory + assembly in runtime ops; v3 skips direct `TurnLoopOuterHost::refresh_system_prompt`.
+  - `Effect::RefreshSystemPrompt` + `plan_system_prompt_refresh_effects` (QueryMemory ×2 + assembly tail); `host_io_required = false` on v3 plan.
+  - `system_prompt_refresh_replay_policy`: `ReplayTurnMachine` emits `RefreshSystemPrompt` when refresh `topic_episodic` follows `user_memory` at the same step; wired into `verify_turn_replay_coherence`.
+  - Unknown `[kernel] machine` config values now default to `v3` (was `legacy`).
+  - `log_legacy_turn_loop_deprecation` warns when `[kernel] machine = legacy` kill switch is active.
+
+- **Runtime (kernel-v2 Phase 3b batch 5 closure — legacy turn loop removed):**
+  - `KernelMachineMode::Legacy` deleted; `[kernel] machine = "legacy"` maps to v3 with startup warn. Inner step always routes through `run_inner_step_via_machine` / `EffectInterpreter`.
+  - Removed `legacy_inner_step.rs`, `InnerStepIoPath`, and pre-inner LSP flush (v3 owns `NotifyLsp` tail).
+  - `system_prompt_refresh.json` golden fixture + replay coherence in `verify_turn_replay_coherence`.
+  - Session log-first (resume): `[kernel] log_transcript_repair` defaults to `true` (persist still opt-in via `log_transcript_repair_persist`).
+  - `ReplayTurnMachine`: log-order-aware `QueryMemory` replay (pre-`ModelRequestIssued` from `MemoryPlaneQueried`; post-request from projection with key dedup).
+  - `LegacyInnerStepHost` renamed to `InnerStepHost` (`inner_step_host.rs`); legacy kill switch removed.
+  - `live_turn_inner_driver`: inner-step live IO follows `LiveTurnMachine::inner_step_live_plan` through `EffectInterpreter` (replaces inline `plan_v3_*` sequencing in runtime).
+  - `V3TurnHost` replaces monolithic `TurnLoopHost` for turn-loop bounds; `TurnLoopHost` retained as deprecated adapter shim only.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — LiveTurnMachine outer step-frame segment):**
+  - `plan_v3_outer_step_frame_effects`: documents scratchpad reset + kernel turn-frame sync + cancel gate before pre-inner work.
+  - `run_outer_step_frame_via_machine` drives per-iteration frame IO; `run.rs` delegates reset/sync/cancel to `LiveTurnMachine`.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — LiveTurnMachine inner step segment):**
+  - `live_turn_inner_planner`: `InnerStepEffectPlan` + `plan_v3_inner_step_baseline` (`QueryMemory` → `CallModel` → dynamic `ExecuteBatch` / `NotifyLsp` tail).
+  - `run_inner_step_via_machine` logs baseline plan, verifies `TurnMachine::step` coherence on `ModelRequestIssued`, then runs `EffectInterpreter` IO.
+  - `run.rs` v3 inner step delegates to `LiveTurnMachine` (legacy path unchanged).
+  - `inner_step_replay_policy`: post-IO `ModelRequestIssued` from turn log drives `ReplayTurnMachine::step` (replaces synthetic pre-IO baseline verify).
+  - `replay_step_effects` / `replay_step_effects_from_turn_log`: prefix-projection-aware step replay (multi-step safe); post-IO slice parity via `verify_inner_step_slice_replay_coherence`.
+
+- **Runtime (kernel-v2 Phase 3b batch 5b cont. — LiveTurnMachine outer post-inner segment):**
+  - `plan_v3_outer_post_inner_step_effects` documents conditional loop-guard / error-escalation hold / in-turn cycle advance slots.
+  - `run_outer_post_inner_step_via_machine` drives post-tool loop-guard, capacity escalation hold, scratchpad reminder, and cycle advance; `OuterPostInnerStepOutcome` controls continue/break/advance.
+
 - **Runtime (kernel-v2 Phase 3b batch 5b — outer continuation boundary policy):**
   - `continuation_boundary_policy.rs` centralizes step-limit / loop-guard grant eligibility and budget math from `run.rs`.
   - v3 logs `kernel_v3` continuation boundary grants aligned with `StepLimitContinuation` / `LoopGuardContinuation` events.

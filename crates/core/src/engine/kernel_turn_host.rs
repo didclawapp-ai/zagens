@@ -1,7 +1,8 @@
-//! Kernel-v3 turn hooks extracted from [`TurnLoopHost`](super::turn_loop::host::TurnLoopHost).
+//! Kernel-v3 turn hooks extracted from the v3 turn-loop host surface.
 //!
-//! Phase 3b batch 6: long-term seam — `TurnLoopHost` shrinks to runtime IO;
-//! kernel projection/replay lives here until `EffectInterpreter` owns the loop.
+//! Phase 3b batch 6: kernel projection/replay lives here; runtime IO on
+//! [`InnerStepHost`](super::turn_loop::inner_step_host::InnerStepHost) +
+//! [`TurnLoopOuterHost`](super::turn_loop::turn_loop_outer_host::TurnLoopOuterHost).
 
 use std::collections::HashSet;
 
@@ -22,7 +23,7 @@ pub trait KernelTurnHost {
     type V3ToolRegistry: Sync + ?Sized;
 
     fn kernel_machine_mode(&self) -> KernelMachineMode {
-        KernelMachineMode::Legacy
+        KernelMachineMode::default()
     }
 
     fn kernel_event_sink(&self) -> Option<&KernelEventSink> {
@@ -79,5 +80,33 @@ pub trait KernelTurnHost {
         _tool_registry: Option<&Self::V3ToolRegistry>,
     ) -> Option<V3StepOutcome> {
         None
+    }
+
+    /// Optional v3 pre-inner-step baseline via runtime [`EffectInterpreter`]
+    /// (`RunCompaction` + `RunLayeredContextCheckpoint` plan). Default: `false` →
+    /// [`super::turn_loop::TurnLoopOuterHost::run_pre_inner_step_auto_compaction`] +
+    /// [`super::turn_loop::TurnLoopOuterHost::run_pre_inner_step_layered_context`].
+    async fn try_run_pre_inner_step_baseline(
+        &mut self,
+        _client: &dyn LlmClient,
+        _turn: &TurnContext,
+    ) -> bool {
+        false
+    }
+
+    /// Optional v3 system-prompt refresh queries via runtime [`EffectInterpreter`]
+    /// (`QueryMemory` plan from [`system_prompt_refresh_policy`]). Default: `false`.
+    async fn try_run_system_prompt_refresh_queries(&mut self, _turn: &TurnContext) -> bool {
+        false
+    }
+
+    /// Optional v3 system-prompt refresh (QueryMemory chain + assembly via runtime ops).
+    /// When `true`, [`super::turn_loop::TurnLoopOuterHost::refresh_system_prompt`] is skipped.
+    async fn try_run_system_prompt_refresh(
+        &mut self,
+        _turn: &TurnContext,
+        _mode: TurnLoopMode,
+    ) -> bool {
+        false
     }
 }

@@ -18,7 +18,10 @@ array of tagged `KernelEvent` records (same shape as `kernel_events.payload`).
 | `memory_plane_query.json` | WorkingSet + TopicMemory queries + dual `MemoryPlaneQueried` |
 | `resume_thread_parity.json` | Resume log vs session-direct parity gate (steer + read tool turn) |
 | `layered_context_seam.json` | Flash L2 seam + `RunLayeredContextCheckpoint` replay anchor |
+| `system_prompt_refresh.json` | v3 refresh chain (`user_memory` + `topic_episodic` + `RefreshSystemPrompt` replay) |
 | `message_body_rebuild.json` | Log-driven transcript rebuild from preview fields (5c) |
+| `message_body_rebuild.session.json` | Canonical session JSON for 5c byte-parity gate |
+| `resume_thread_parity.session.json` | Canonical session JSON paired with `resume_thread_parity.json` |
 
 Resume (`POST /v1/sessions/{id}/resume`) cross-checks session compaction artifacts
 against kernel log `replaced_range` anchors when SQLite compaction rows exist.

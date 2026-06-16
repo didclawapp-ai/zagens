@@ -1,4 +1,4 @@
-//! `TurnLoopHost` implementation for the TUI `Engine` (P2 PR4 step 2).
+//! `V3TurnHost` / inner-step implementation for the TUI `Engine` (P2 PR4 step 2).
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -8,7 +8,6 @@ use serde_json::Value;
 use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 use zagens_core::chat::{ContentBlock, LlmClient, Message, Tool};
 use zagens_core::engine::KernelTurnHost;
-use zagens_core::engine::TurnLoopHost;
 use zagens_core::engine::context::estimate_input_tokens_conservative;
 use zagens_core::engine::hosts::McpHost;
 use zagens_core::engine::kernel_event::{KernelEvent, MessageRange};
@@ -18,6 +17,7 @@ use zagens_core::engine::turn_loop::control::TurnLoopControl;
 use zagens_core::engine::turn_loop::exec::{
     ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta,
 };
+use zagens_core::engine::turn_loop::{InnerStepHost, TurnLoopOuterHost, TurnLoopSessionHost};
 use zagens_core::engine::turn_machine::{
     Effect, KernelEventSink, LiveTurnSnapshot, emit_kernel_event,
 };
@@ -27,9 +27,6 @@ use zagens_tools::{ToolError, ToolResult};
 use crate::core::engine::effect_interpreter::EffectInterpreter;
 use crate::core::engine::kernel_outer_boundary_shadow::{
     V3OuterBoundaryTurnGrants, verify_turn_outer_boundary_grants,
-};
-use crate::core::engine::kernel_pre_inner_step_baseline_shadow::{
-    record_pre_inner_step_baseline_step, record_pre_inner_step_slot0_skipped_pre_interpreter,
 };
 
 use super::super::scratchpad_flow;
@@ -198,6 +195,38 @@ impl KernelTurnHost for Engine {
         let _ = do_full_shadow;
     }
 
+    async fn try_run_pre_inner_step_baseline(
+        &mut self,
+        client: &dyn LlmClient,
+        turn: &TurnContext,
+    ) -> bool {
+        if !self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            return false;
+        }
+        Engine::run_v3_pre_inner_step_baseline(self, client, &turn.id, turn.step).await;
+        true
+    }
+
+    async fn try_run_system_prompt_refresh_queries(&mut self, turn: &TurnContext) -> bool {
+        if !self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            return false;
+        }
+        Engine::run_v3_system_prompt_refresh_queries(self, &turn.id, turn.step).await;
+        true
+    }
+
+    async fn try_run_system_prompt_refresh(
+        &mut self,
+        turn: &TurnContext,
+        mode: TurnLoopMode,
+    ) -> bool {
+        if !self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            return false;
+        }
+        Engine::run_v3_system_prompt_refresh(self, &turn.id, turn.step, mode).await;
+        true
+    }
+
     async fn try_run_v3_turn_step(
         &mut self,
         turn: &mut TurnContext,
@@ -244,66 +273,67 @@ fn user_message_text(msg: &Message) -> Option<String> {
 }
 
 #[async_trait]
-impl TurnLoopHost for Engine {
-    type ToolRegistry = ToolRegistry;
-    type McpPool = McpPool;
-
+impl zagens_core::engine::turn_loop::TurnLoopSessionHost for Engine {
     fn session_mut(&mut self) -> &mut zagens_core::session::Session {
         &mut self.session
     }
-
     fn compaction_config(&self) -> &zagens_core::compaction::CompactionConfig {
         &self.config.compaction
     }
-
     fn workspace(&self) -> &std::path::Path {
         &self.config.workspace
     }
-
     fn strict_tool_mode(&self) -> bool {
         self.config.strict_tool_mode
     }
-
     fn scratchpad_config(&self) -> &zagens_core::scratchpad::ScratchpadConfig {
         &self.config.scratchpad
     }
-
     fn scratchpad_run_id(&self) -> Option<&str> {
         self.scratchpad_run_id.as_deref()
     }
-
     fn scratchpad_summary_injected_mut(&mut self) -> &mut bool {
         &mut self.scratchpad_summary_injected_this_turn
     }
-
     fn cancel_token(&self) -> &tokio_util::sync::CancellationToken {
         &self.cancel_token
     }
-
     fn tx_event(&self) -> &mpsc::Sender<Event> {
         &self.tx_event
     }
-
     fn rx_steer_mut(&mut self) -> &mut mpsc::Receiver<String> {
         &mut self.rx_steer
     }
-
     fn tool_exec_lock(&self) -> Arc<RwLock<()>> {
         self.tool_exec_lock.clone()
     }
-
     fn llm_client(&self) -> Option<Arc<dyn LlmClient>> {
         self.deepseek_client.clone()
     }
+    async fn add_session_message(&mut self, message: Message) {
+        Engine::add_session_message(self, message).await;
+    }
+    async fn emit_session_updated(&mut self) {
+        Engine::emit_session_updated(self).await;
+    }
+    fn estimated_input_tokens(&self) -> usize {
+        estimate_input_tokens_conservative(
+            &self.session.messages,
+            self.session.system_prompt.as_ref(),
+        )
+    }
+}
 
+#[async_trait]
+impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
+    type ToolRegistry = ToolRegistry;
+    type McpPool = McpPool;
     fn prepare_tool_catalog(&self, catalog: &mut Vec<Tool>) {
         ensure_advanced_tooling(catalog);
     }
-
     fn initial_active_tool_names(&self, catalog: &[Tool]) -> HashSet<String> {
         initial_active_tools(catalog)
     }
-
     fn active_tools_for_step(
         &self,
         catalog: &[Tool],
@@ -312,11 +342,9 @@ impl TurnLoopHost for Engine {
     ) -> Vec<Tool> {
         active_tools_for_step(catalog, active, force_update_plan_first)
     }
-
     fn is_mcp_tool_name(&self, name: &str) -> bool {
         McpPool::is_mcp_tool(name)
     }
-
     fn maybe_activate_deferred_tool(
         &self,
         tool_name: &str,
@@ -325,7 +353,6 @@ impl TurnLoopHost for Engine {
     ) -> bool {
         maybe_activate_requested_deferred_tool(tool_name, catalog, active)
     }
-
     async fn execute_code_execution_tool(
         &self,
         input: &Value,
@@ -333,7 +360,6 @@ impl TurnLoopHost for Engine {
     ) -> Result<ToolResult, ToolError> {
         execute_code_execution_tool(input, workspace).await
     }
-
     fn execute_tool_search(
         &self,
         tool_name: &str,
@@ -343,165 +369,18 @@ impl TurnLoopHost for Engine {
     ) -> Result<ToolResult, ToolError> {
         execute_tool_search(tool_name, input, catalog, active)
     }
-
-    fn reset_scratchpad_step(&mut self) {
-        self.scratchpad_step.reset();
-    }
-
-    async fn refresh_system_prompt(&mut self, mode: TurnLoopMode) {
-        Engine::refresh_system_prompt(self, turn_loop_to_app_mode(mode));
-    }
-
-    async fn add_session_message(&mut self, message: Message) {
-        Engine::add_session_message(self, message).await;
-    }
-
-    async fn inject_live_steer(&mut self, turn: &TurnContext, steer: String) {
-        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
-            let mut interpreter = EffectInterpreter::new(self);
-            let _ = interpreter
-                .interpret(Effect::InjectSteer { text: steer })
-                .await;
-            return;
-        }
-        Engine::run_inject_steer_effect(self, &turn.id, turn.step, steer).await;
-    }
-
-    async fn emit_session_updated(&mut self) {
-        Engine::emit_session_updated(self).await;
-    }
-
-    async fn run_auto_compaction(&mut self, client: &dyn LlmClient, turn: &TurnContext) {
-        self.run_pre_inner_step_auto_compaction(client, turn).await;
-    }
-
-    async fn run_pre_inner_step_auto_compaction(
-        &mut self,
-        client: &dyn LlmClient,
-        turn: &TurnContext,
-    ) {
-        let compaction_pins = self
-            .session
-            .working_set
-            .pinned_message_indices(&self.session.messages, &self.session.workspace);
-        let mut compaction_paths = self.session.working_set.top_paths(24);
-        scratchpad_flow::extend_compaction_paths(
-            &self.session.workspace,
-            self.scratchpad_run_id.as_deref(),
-            &mut compaction_paths,
-        );
-
-        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
-            record_pre_inner_step_baseline_step();
-            if !self.config.compaction.enabled
-                || !should_compact(
-                    &self.session.messages,
-                    &self.config.compaction,
-                    Some(&self.session.workspace),
-                    Some(&compaction_pins),
-                    Some(&compaction_paths),
-                )
-            {
-                record_pre_inner_step_slot0_skipped_pre_interpreter();
-                return;
-            }
-            Engine::run_v3_planner_auto_compaction(self, client, &turn.id, turn.step).await;
-            return;
-        }
-
-        if !self.config.compaction.enabled
-            || !should_compact(
-                &self.session.messages,
-                &self.config.compaction,
-                Some(&self.session.workspace),
-                Some(&compaction_pins),
-                Some(&compaction_paths),
-            )
-        {
-            return;
-        }
-
-        Engine::route_auto_compaction(self, client, &turn.id).await;
-    }
-
-    async fn run_pre_inner_step_layered_context(&mut self) {
-        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
-            let turn_id = self
-                .runtime_ext()
-                .kernel_active_turn_id
-                .clone()
-                .unwrap_or_default();
-            let step = self.runtime_ext().kernel_active_step;
-            Engine::run_v3_planner_layered_context(self, &turn_id, step).await;
-            return;
-        }
-        Engine::layered_context_checkpoint(self).await;
-    }
-
-    async fn layered_context_checkpoint(&mut self) {
-        self.run_pre_inner_step_layered_context().await;
-    }
-
-    fn estimated_input_tokens(&self) -> usize {
-        estimate_input_tokens_conservative(
-            &self.session.messages,
-            self.session.system_prompt.as_ref(),
-        )
-    }
-
     async fn flush_pending_lsp_diagnostics(&mut self) {
         Engine::flush_pending_lsp_diagnostics(self).await;
     }
-
     fn decorate_auth_error_message(&self, message: String) -> String {
         Engine::decorate_auth_error_message(self, message)
     }
-
-    async fn recover_context_overflow(
-        &mut self,
-        client: &dyn LlmClient,
-        reason: &str,
-        max_output_tokens: u32,
-    ) -> bool {
-        Engine::recover_context_overflow(self, client, reason, max_output_tokens).await
-    }
-
-    async fn run_capacity_pre_request_checkpoint(
-        &mut self,
-        turn: &TurnContext,
-        client: Option<&dyn LlmClient>,
-        mode: TurnLoopMode,
-    ) -> bool {
-        self.turn_loop_capacity_pre_request(turn, client, mode)
-            .await
-    }
-
-    async fn run_capacity_error_escalation_checkpoint(
-        &mut self,
-        turn: &mut TurnContext,
-        mode: TurnLoopMode,
-        step_error_count: usize,
-        consecutive_tool_error_steps: u32,
-        error_categories: &[zagens_core::error_taxonomy::ErrorCategory],
-    ) -> bool {
-        self.turn_loop_capacity_error_escalation(
-            turn,
-            mode,
-            step_error_count,
-            consecutive_tool_error_steps,
-            error_categories,
-        )
-        .await
-    }
-
     async fn run_post_edit_lsp_hook(&mut self, tool_name: &str, tool_input: &Value) {
         Engine::run_post_edit_lsp_hook(self, tool_name, tool_input).await;
     }
-
     fn record_scratchpad_tool_outcome(&mut self, tool_name: &str, success: bool) {
         scratchpad_flow::record_tool_outcome(&mut self.scratchpad_step, tool_name, success);
     }
-
     async fn record_long_horizon_tool_outcome(
         &mut self,
         tool_name: &str,
@@ -665,189 +544,11 @@ impl TurnLoopHost for Engine {
             self.long_horizon_continue_injected_this_turn = false;
         }
     }
-
     fn take_long_horizon_tool_suffix(&mut self) -> Option<String> {
         self.runtime_ext_mut()
             .long_horizon_state
             .take_tool_result_suffix()
     }
-
-    async fn maybe_lht_pre_request_hooks(&mut self, _mode: TurnLoopMode) {
-        if !self.config.long_horizon.enabled {
-            return;
-        }
-        let active = self.estimated_input_tokens() as u64;
-        let headroom = crate::core::engine::context::turn_response_headroom_tokens();
-        let model = self.session.model.clone();
-        let in_band = crate::long_horizon::in_lht_warning_band(active, headroom, &model);
-        let emit_warning = {
-            let lh = &self.runtime_ext().long_horizon_state;
-            in_band && !lh.last_warning_band_emitted
-        };
-        if emit_warning {
-            let pct = crate::long_horizon::context_pressure_ratio(active, headroom, &model)
-                .map(|r| (r * 100.0).round() as u8)
-                .unwrap_or(0);
-            let _ = self
-                .tx_event
-                .send(crate::core::events::Event::status(format!(
-                    "long_horizon.context_warning: {{\"pressure_pct\":{pct}}}"
-                )))
-                .await;
-        }
-        let lh_cfg = self.config.long_horizon.clone();
-        let reinject = {
-            let lh = &mut self.runtime_ext_mut().long_horizon_state;
-            lh.last_warning_band_emitted = in_band;
-            lh.assistant_steps = lh.assistant_steps.saturating_add(1);
-            crate::long_horizon::should_reinject_this_step(&lh_cfg, lh.assistant_steps)
-        };
-        if !reinject {
-            return;
-        }
-        let plan = self.config_ext().plan_state.lock().await.snapshot();
-        let checklist = self.config_ext().todos.lock().await.snapshot();
-        let lang = self.config.locale_tag.as_str();
-        let Some(msg) = crate::long_horizon::build_objective_reinject_message(
-            &plan,
-            &checklist,
-            &self.session.messages,
-            lang,
-        ) else {
-            return;
-        };
-        let Some(text) = user_message_text(&msg) else {
-            return;
-        };
-        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
-            let mut interpreter = EffectInterpreter::new(self);
-            let _ = interpreter.interpret(Effect::InjectSteer { text }).await;
-            return;
-        }
-        Engine::add_session_message(self, msg).await;
-    }
-
-    async fn maybe_continue_at_step_limit(&mut self, turn: &TurnContext) -> bool {
-        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
-            return false;
-        }
-        let plan = self.config_ext().plan_state.lock().await.snapshot();
-        let checklist = self.config_ext().todos.lock().await.snapshot();
-        let Some(open) =
-            crate::long_horizon::CodeTaskGraph::continuation_open_items(&plan, &checklist)
-        else {
-            return false;
-        };
-        let text = crate::long_horizon::build_step_limit_continue_nudge(
-            open,
-            self.config.locale_tag.as_str(),
-        );
-        self.inject_step_limit_continuation_steer(turn, text, open)
-            .await;
-        true
-    }
-
-    async fn maybe_continue_after_loop_guard_halt(&mut self, turn: &TurnContext) -> bool {
-        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
-            return false;
-        }
-        let plan = self.config_ext().plan_state.lock().await.snapshot();
-        let checklist = self.config_ext().todos.lock().await.snapshot();
-        let Some(open) =
-            crate::long_horizon::CodeTaskGraph::continuation_open_items(&plan, &checklist)
-        else {
-            return false;
-        };
-        let text = crate::long_horizon::build_loop_guard_continue_nudge(
-            open,
-            self.config.locale_tag.as_str(),
-        );
-        self.inject_loop_guard_continuation_steer(turn, text, open)
-            .await;
-        true
-    }
-
-    async fn maybe_cycle_handoff_on_context_overflow(
-        &mut self,
-        _turn: &TurnContext,
-        mode: TurnLoopMode,
-    ) -> bool {
-        // Only roll a handoff when the cycle mechanism is actually enabled;
-        // otherwise there's no briefing/seed machinery to fall back to and the
-        // turn fails as before. The handoff itself preserves LHT state
-        // (plan / todos / handoff.md) when long-horizon is on.
-        if !self.config.cycle.enabled {
-            return false;
-        }
-        Engine::force_cycle_handoff_for_overflow(self, turn_loop_to_app_mode(mode)).await
-    }
-
-    async fn maybe_advance_cycle_at_checkpoint(
-        &mut self,
-        mode: TurnLoopMode,
-        _turn: &TurnContext,
-    ) -> bool {
-        // Only long-horizon code tasks evaluate the cycle gate mid-turn; the
-        // between-turns boundary still covers everything else. Plan mode never
-        // rolls a cycle, and there's no point without the cycle machinery.
-        if mode.is_plan()
-            || !self.config.cycle.enabled
-            || !self.config.long_horizon.enabled
-            || !self.config.task_type.uses_code_tool_surface()
-        {
-            return false;
-        }
-        // Push a live context-usage snapshot off the (mid-turn starved) op loop:
-        // the monitor forwards this as `panel.context`, so the Context tab /
-        // cycle-pressure bar update every step instead of freezing until turn
-        // end (where the op-loop `QueryContext` finally drains). Same channel as
-        // `checklist_persist`. Cheap relative to the per-step token estimate the
-        // cycle gate already computes below.
-        if let Ok(json) = serde_json::to_string(&self.engine_context_snapshot()) {
-            let _ = self
-                .tx_event
-                .send(Event::status(format!(
-                    "long_horizon.context_snapshot:{json}"
-                )))
-                .await;
-        }
-        // Reuse the exact between-turns gate (threshold + long-horizon
-        // early-advance band) and handoff body. At this call site the streaming
-        // phase and tool execution have completed, so `in_flight` is false —
-        // a clean per-step boundary with no mid-edit/stream cut.
-        use zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
-        Engine::maybe_advance_cycle(
-            self,
-            turn_loop_to_app_mode(mode),
-            Some(OuterBoundaryKind::InTurnCycleAdvance),
-        )
-        .await
-    }
-
-    async fn note_incomplete_stop_if_lht(&mut self) {
-        // The turn loop is about to end as `Completed`. If a long-horizon task
-        // graph is still incomplete, this is a give-up (nudge budget exhausted,
-        // loop-guard continuations spent, REPL/no-tool break, etc.), not a real
-        // completion — emit a probe so the UI / sidecar.log don't read a false
-        // green. Purely observational; the outcome itself is unchanged.
-        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
-            return;
-        }
-        let plan = self.config_ext().plan_state.lock().await.snapshot();
-        let checklist = self.config_ext().todos.lock().await.snapshot();
-        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &checklist);
-        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
-            return;
-        }
-        let open = graph.open_items;
-        let _ = self
-            .tx_event
-            .send(Event::status(format!(
-                "long_horizon.incomplete_stop: {{\"open_items\":{open}}}"
-            )))
-            .await;
-    }
-
     fn on_audit_scratchpad_bind_success(
         &mut self,
         mode: TurnLoopMode,
@@ -869,51 +570,6 @@ impl TurnLoopHost for Engine {
             active,
         );
     }
-
-    async fn maybe_inject_scratchpad_summary(&mut self, turn: &TurnContext) -> bool {
-        if self.scratchpad_summary_injected_this_turn {
-            return false;
-        }
-        let Some(summary_msg) = scratchpad_flow::maybe_summary_before_final_answer(
-            &self.session.workspace,
-            self.scratchpad_run_id.as_deref(),
-            &self.config.scratchpad,
-        ) else {
-            return false;
-        };
-        let text = crate::core::engine::memory_plane_ops::user_message_plain_text(&summary_msg);
-        self.inject_memory_plane_steer_message(text).await;
-        self.scratchpad_summary_injected_this_turn = true;
-        emit_kernel_event(
-            self,
-            KernelEvent::ScratchpadSummaryInjected {
-                turn_id: turn.id.clone(),
-                at_step: turn.step,
-            },
-        );
-        true
-    }
-
-    async fn maybe_inject_scratchpad_reminder(&mut self, turn: &TurnContext) {
-        if let Some((reminder, area_path)) = scratchpad_flow::build_readonly_reminder_message(
-            &self.session.workspace,
-            self.scratchpad_run_id.as_deref(),
-            &self.config.scratchpad,
-            &self.scratchpad_step,
-        ) {
-            let text = crate::core::engine::memory_plane_ops::user_message_plain_text(&reminder);
-            self.inject_memory_plane_steer_message(text).await;
-            emit_kernel_event(
-                self,
-                KernelEvent::ScratchpadReminderInjected {
-                    turn_id: turn.id.clone(),
-                    step_idx: turn.step,
-                    area_path,
-                },
-            );
-        }
-    }
-
     async fn handle_no_tool_uses(
         &mut self,
         turn: &mut TurnContext,
@@ -929,11 +585,9 @@ impl TurnLoopHost for Engine {
         )
         .await
     }
-
     fn pre_tool_snapshot(&self, workspace: &std::path::Path, tool_id: &str) {
         pre_tool_snapshot(workspace, tool_id, self.config.snapshots_max_workspace_gb);
     }
-
     fn effective_reasoning_effort_for_request(&mut self) -> Option<String> {
         zagens_core::engine::turn_loop::resolve_auto_effort(
             self.session.reasoning_effort.as_deref(),
@@ -945,15 +599,12 @@ impl TurnLoopHost for Engine {
             },
         )
     }
-
     fn parse_streaming_tool_input(&self, buffer: &str) -> Option<Value> {
         super::super::dispatch::parse_tool_input(buffer)
     }
-
     fn final_streaming_tool_input(&self, state: &ToolUseState) -> Value {
         super::super::dispatch::final_tool_input(state)
     }
-
     async fn ensure_mcp_pool_for_tools(
         &mut self,
         tool_uses: &[ToolUseState],
@@ -972,7 +623,6 @@ impl TurnLoopHost for Engine {
             }
         }
     }
-
     fn resolve_hallucinated_tool_name(
         &self,
         name: &str,
@@ -987,7 +637,6 @@ impl TurnLoopHost for Engine {
             None
         }
     }
-
     fn tool_plan_approval_meta(
         &self,
         tool_name: &str,
@@ -1008,7 +657,6 @@ impl TurnLoopHost for Engine {
             registry,
         )
     }
-
     fn model_request_fingerprint(
         &self,
         request: &zagens_core::chat::MessageRequest,
@@ -1016,7 +664,6 @@ impl TurnLoopHost for Engine {
         let fp = crate::request_fingerprint::fingerprint_message_request(request);
         Some(fp)
     }
-
     fn compiler_request_context(
         &mut self,
         active_tools: Option<&[zagens_core::chat::Tool]>,
@@ -1123,7 +770,6 @@ impl TurnLoopHost for Engine {
             turn_meta_text,
         })
     }
-
     async fn execute_tool_plans(
         &mut self,
         mode: TurnLoopMode,
@@ -1146,7 +792,6 @@ impl TurnLoopHost for Engine {
         )
         .await
     }
-
     async fn run_capacity_post_tool_checkpoint(
         &mut self,
         turn: &mut TurnContext,
@@ -1170,6 +815,325 @@ impl TurnLoopHost for Engine {
     }
 }
 
+#[async_trait]
+impl zagens_core::engine::turn_loop::TurnLoopOuterHost for Engine {
+    fn reset_scratchpad_step(&mut self) {
+        self.scratchpad_step.reset();
+    }
+    async fn refresh_system_prompt(&mut self, mode: TurnLoopMode) {
+        Engine::refresh_system_prompt(self, turn_loop_to_app_mode(mode));
+    }
+    async fn inject_live_steer(&mut self, turn: &TurnContext, steer: String) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            let mut interpreter = EffectInterpreter::new(self);
+            let _ = interpreter
+                .interpret(Effect::InjectSteer { text: steer })
+                .await;
+            return;
+        }
+        Engine::run_inject_steer_effect(self, &turn.id, turn.step, steer).await;
+    }
+    async fn run_auto_compaction(&mut self, client: &dyn LlmClient, turn: &TurnContext) {
+        self.run_pre_inner_step_auto_compaction(client, turn).await;
+    }
+    async fn run_pre_inner_step_auto_compaction(
+        &mut self,
+        client: &dyn LlmClient,
+        turn: &TurnContext,
+    ) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            Engine::run_v3_planner_auto_compaction(self, client, &turn.id, turn.step).await;
+            return;
+        }
+
+        let compaction_pins = self
+            .session
+            .working_set
+            .pinned_message_indices(&self.session.messages, &self.session.workspace);
+        let mut compaction_paths = self.session.working_set.top_paths(24);
+        scratchpad_flow::extend_compaction_paths(
+            &self.session.workspace,
+            self.scratchpad_run_id.as_deref(),
+            &mut compaction_paths,
+        );
+
+        if !self.config.compaction.enabled
+            || !should_compact(
+                &self.session.messages,
+                &self.config.compaction,
+                Some(&self.session.workspace),
+                Some(&compaction_pins),
+                Some(&compaction_paths),
+            )
+        {
+            return;
+        }
+
+        Engine::route_auto_compaction(self, client, &turn.id).await;
+    }
+    async fn run_pre_inner_step_layered_context(&mut self) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            let turn_id = self
+                .runtime_ext()
+                .kernel_active_turn_id
+                .clone()
+                .unwrap_or_default();
+            let step = self.runtime_ext().kernel_active_step;
+            Engine::run_v3_planner_layered_context(self, &turn_id, step).await;
+            return;
+        }
+        Engine::layered_context_checkpoint(self).await;
+    }
+    async fn layered_context_checkpoint(&mut self) {
+        self.run_pre_inner_step_layered_context().await;
+    }
+    async fn recover_context_overflow(
+        &mut self,
+        client: &dyn LlmClient,
+        reason: &str,
+        max_output_tokens: u32,
+    ) -> bool {
+        Engine::recover_context_overflow(self, client, reason, max_output_tokens).await
+    }
+    async fn run_capacity_pre_request_checkpoint(
+        &mut self,
+        turn: &TurnContext,
+        client: Option<&dyn LlmClient>,
+        mode: TurnLoopMode,
+    ) -> bool {
+        self.turn_loop_capacity_pre_request(turn, client, mode)
+            .await
+    }
+    async fn run_capacity_error_escalation_checkpoint(
+        &mut self,
+        turn: &mut TurnContext,
+        mode: TurnLoopMode,
+        step_error_count: usize,
+        consecutive_tool_error_steps: u32,
+        error_categories: &[zagens_core::error_taxonomy::ErrorCategory],
+    ) -> bool {
+        self.turn_loop_capacity_error_escalation(
+            turn,
+            mode,
+            step_error_count,
+            consecutive_tool_error_steps,
+            error_categories,
+        )
+        .await
+    }
+    async fn maybe_lht_pre_request_hooks(&mut self, _mode: TurnLoopMode) {
+        if !self.config.long_horizon.enabled {
+            return;
+        }
+        let active = self.estimated_input_tokens() as u64;
+        let headroom = crate::core::engine::context::turn_response_headroom_tokens();
+        let model = self.session.model.clone();
+        let in_band = crate::long_horizon::in_lht_warning_band(active, headroom, &model);
+        let emit_warning = {
+            let lh = &self.runtime_ext().long_horizon_state;
+            in_band && !lh.last_warning_band_emitted
+        };
+        if emit_warning {
+            let pct = crate::long_horizon::context_pressure_ratio(active, headroom, &model)
+                .map(|r| (r * 100.0).round() as u8)
+                .unwrap_or(0);
+            let _ = self
+                .tx_event
+                .send(crate::core::events::Event::status(format!(
+                    "long_horizon.context_warning: {{\"pressure_pct\":{pct}}}"
+                )))
+                .await;
+        }
+        let lh_cfg = self.config.long_horizon.clone();
+        let reinject = {
+            let lh = &mut self.runtime_ext_mut().long_horizon_state;
+            lh.last_warning_band_emitted = in_band;
+            lh.assistant_steps = lh.assistant_steps.saturating_add(1);
+            crate::long_horizon::should_reinject_this_step(&lh_cfg, lh.assistant_steps)
+        };
+        if !reinject {
+            return;
+        }
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let lang = self.config.locale_tag.as_str();
+        let Some(msg) = crate::long_horizon::build_objective_reinject_message(
+            &plan,
+            &checklist,
+            &self.session.messages,
+            lang,
+        ) else {
+            return;
+        };
+        let Some(text) = user_message_text(&msg) else {
+            return;
+        };
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            let mut interpreter = EffectInterpreter::new(self);
+            let _ = interpreter.interpret(Effect::InjectSteer { text }).await;
+            return;
+        }
+        Engine::add_session_message(self, msg).await;
+    }
+    async fn maybe_continue_at_step_limit(&mut self, turn: &TurnContext) -> bool {
+        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
+            return false;
+        }
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let Some(open) =
+            crate::long_horizon::CodeTaskGraph::continuation_open_items(&plan, &checklist)
+        else {
+            return false;
+        };
+        let text = crate::long_horizon::build_step_limit_continue_nudge(
+            open,
+            self.config.locale_tag.as_str(),
+        );
+        self.inject_step_limit_continuation_steer(turn, text, open)
+            .await;
+        true
+    }
+    async fn maybe_continue_after_loop_guard_halt(&mut self, turn: &TurnContext) -> bool {
+        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
+            return false;
+        }
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let Some(open) =
+            crate::long_horizon::CodeTaskGraph::continuation_open_items(&plan, &checklist)
+        else {
+            return false;
+        };
+        let text = crate::long_horizon::build_loop_guard_continue_nudge(
+            open,
+            self.config.locale_tag.as_str(),
+        );
+        self.inject_loop_guard_continuation_steer(turn, text, open)
+            .await;
+        true
+    }
+    async fn maybe_cycle_handoff_on_context_overflow(
+        &mut self,
+        _turn: &TurnContext,
+        mode: TurnLoopMode,
+    ) -> bool {
+        // Only roll a handoff when the cycle mechanism is actually enabled;
+        // otherwise there's no briefing/seed machinery to fall back to and the
+        // turn fails as before. The handoff itself preserves LHT state
+        // (plan / todos / handoff.md) when long-horizon is on.
+        if !self.config.cycle.enabled {
+            return false;
+        }
+        Engine::force_cycle_handoff_for_overflow(self, turn_loop_to_app_mode(mode)).await
+    }
+    async fn maybe_advance_cycle_at_checkpoint(
+        &mut self,
+        mode: TurnLoopMode,
+        _turn: &TurnContext,
+    ) -> bool {
+        // Only long-horizon code tasks evaluate the cycle gate mid-turn; the
+        // between-turns boundary still covers everything else. Plan mode never
+        // rolls a cycle, and there's no point without the cycle machinery.
+        if mode.is_plan()
+            || !self.config.cycle.enabled
+            || !self.config.long_horizon.enabled
+            || !self.config.task_type.uses_code_tool_surface()
+        {
+            return false;
+        }
+        // Push a live context-usage snapshot off the (mid-turn starved) op loop:
+        // the monitor forwards this as `panel.context`, so the Context tab /
+        // cycle-pressure bar update every step instead of freezing until turn
+        // end (where the op-loop `QueryContext` finally drains). Same channel as
+        // `checklist_persist`. Cheap relative to the per-step token estimate the
+        // cycle gate already computes below.
+        if let Ok(json) = serde_json::to_string(&self.engine_context_snapshot()) {
+            let _ = self
+                .tx_event
+                .send(Event::status(format!(
+                    "long_horizon.context_snapshot:{json}"
+                )))
+                .await;
+        }
+        // Reuse the exact between-turns gate (threshold + long-horizon
+        // early-advance band) and handoff body. At this call site the streaming
+        // phase and tool execution have completed, so `in_flight` is false —
+        // a clean per-step boundary with no mid-edit/stream cut.
+        use zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
+        Engine::maybe_advance_cycle(
+            self,
+            turn_loop_to_app_mode(mode),
+            Some(OuterBoundaryKind::InTurnCycleAdvance),
+        )
+        .await
+    }
+    async fn note_incomplete_stop_if_lht(&mut self) {
+        // The turn loop is about to end as `Completed`. If a long-horizon task
+        // graph is still incomplete, this is a give-up (nudge budget exhausted,
+        // loop-guard continuations spent, REPL/no-tool break, etc.), not a real
+        // completion — emit a probe so the UI / sidecar.log don't read a false
+        // green. Purely observational; the outcome itself is unchanged.
+        if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
+            return;
+        }
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let graph = crate::long_horizon::CodeTaskGraph::from_snapshots(&plan, &checklist);
+        if graph.is_empty() || !graph.incomplete() || graph.is_trivial() {
+            return;
+        }
+        let open = graph.open_items;
+        let _ = self
+            .tx_event
+            .send(Event::status(format!(
+                "long_horizon.incomplete_stop: {{\"open_items\":{open}}}"
+            )))
+            .await;
+    }
+    async fn maybe_inject_scratchpad_summary(&mut self, turn: &TurnContext) -> bool {
+        if self.scratchpad_summary_injected_this_turn {
+            return false;
+        }
+        let Some(summary_msg) = scratchpad_flow::maybe_summary_before_final_answer(
+            &self.session.workspace,
+            self.scratchpad_run_id.as_deref(),
+            &self.config.scratchpad,
+        ) else {
+            return false;
+        };
+        let text = crate::core::engine::memory_plane_ops::user_message_plain_text(&summary_msg);
+        self.inject_memory_plane_steer_message(text).await;
+        self.scratchpad_summary_injected_this_turn = true;
+        emit_kernel_event(
+            self,
+            KernelEvent::ScratchpadSummaryInjected {
+                turn_id: turn.id.clone(),
+                at_step: turn.step,
+            },
+        );
+        true
+    }
+    async fn maybe_inject_scratchpad_reminder(&mut self, turn: &TurnContext) {
+        if let Some((reminder, area_path)) = scratchpad_flow::build_readonly_reminder_message(
+            &self.session.workspace,
+            self.scratchpad_run_id.as_deref(),
+            &self.config.scratchpad,
+            &self.scratchpad_step,
+        ) {
+            let text = crate::core::engine::memory_plane_ops::user_message_plain_text(&reminder);
+            self.inject_memory_plane_steer_message(text).await;
+            emit_kernel_event(
+                self,
+                KernelEvent::ScratchpadReminderInjected {
+                    turn_id: turn.id.clone(),
+                    step_idx: turn.step,
+                    area_path,
+                },
+            );
+        }
+    }
+}
 #[must_use]
 pub(crate) fn app_mode_to_turn_loop(mode: AppMode) -> TurnLoopMode {
     match mode {

@@ -113,12 +113,14 @@ pub use tool_catalog::{
 pub use tool_dispatch::EngineToolDispatch;
 pub use tool_effects::tool_writes_state;
 pub use tool_progress::{emit_tool_audit, tool_progress_opening_line, tool_progress_phase_line};
+#[allow(deprecated)]
+pub use turn_loop::TurnLoopHost;
 pub use turn_loop::{
-    McpPoolPort, ToolExecOutcome, ToolExecutionPlan, ToolPlanApprovalMeta, TurnLoopConfigView,
-    TurnLoopControl, TurnLoopHost, TurnLoopStreamingPhaseOutcome, TurnLoopToolExec,
-    TurnLoopToolExecutor, TurnLoopToolPhaseOutcome, TurnLoopToolRegistry,
-    build_edit_file_approval_desc, handle_deepseek_turn, messages_with_turn_metadata,
-    resolve_auto_effort,
+    LiveOuterLoopState, LiveTurnMachine, McpPoolPort, OuterLoopHost, ToolExecOutcome,
+    ToolExecutionPlan, ToolPlanApprovalMeta, TurnLoopConfigView, TurnLoopControl,
+    TurnLoopStreamingPhaseOutcome, TurnLoopToolExec, TurnLoopToolExecutor,
+    TurnLoopToolPhaseOutcome, TurnLoopToolRegistry, V3TurnHost, build_edit_file_approval_desc,
+    handle_deepseek_turn, messages_with_turn_metadata, resolve_auto_effort,
 };
 pub use turn_machine::{
     Effect, KernelEventSink, KernelMemoryPlaneUserEstimate, KernelMessageRoleEstimate,

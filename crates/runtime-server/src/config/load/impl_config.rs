@@ -774,21 +774,26 @@ impl Config {
         )
     }
 
-    /// Resolved kernel-v3 turn machine mode (`[kernel] machine`, default `legacy`).
+    /// Resolved kernel-v3 turn machine mode (`[kernel] machine`, default `v3`).
     #[must_use]
     pub fn kernel_machine_mode(&self) -> crate::config::KernelMachineMode {
-        crate::config::KernelMachineMode::parse(
-            self.kernel.as_ref().and_then(|k| k.machine.as_deref()),
-        )
+        let raw = self.kernel.as_ref().and_then(|k| k.machine.as_deref());
+        if crate::config::KernelMachineMode::config_used_deprecated_legacy(raw) {
+            tracing::warn!(
+                target: "kernel_v3",
+                "[kernel] machine = \"legacy\" is deprecated and runs v3; remove the setting or use \"v3\" / \"shadow\""
+            );
+        }
+        crate::config::KernelMachineMode::parse(raw)
     }
 
-    /// v3 resume log transcript repair (`[kernel] log_transcript_repair`, default off).
+    /// v3 resume log transcript repair (`[kernel] log_transcript_repair`, default on).
     #[must_use]
     pub fn kernel_log_transcript_repair(&self) -> bool {
         self.kernel
             .as_ref()
             .and_then(|k| k.log_transcript_repair)
-            .unwrap_or(false)
+            .unwrap_or(true)
     }
 
     /// v3 resume: write repaired transcript back to session store (`[kernel] log_transcript_repair_persist`, default off).

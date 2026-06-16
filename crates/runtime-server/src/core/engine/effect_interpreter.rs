@@ -12,12 +12,12 @@ use zagens_core::engine::streaming::ToolUseState;
 use zagens_core::engine::turn_loop::control::{
     TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome,
 };
+use zagens_core::engine::turn_loop::live_turn_machine::LiveTurnMachine;
 use zagens_core::engine::turn_loop::v3_step::{V3StepOutcome, execute_batch_call_ids};
-use zagens_core::engine::turn_loop::{TurnLoopHost, streaming_phase, tool_phase};
-use zagens_core::engine::turn_machine::{
-    Effect, TurnKernelProjection, events_for_step, notify_lsp_effects_from_step_events,
-    plan_v3_pre_call_model_effects, plan_v3_step_effects,
+use zagens_core::engine::turn_loop::{
+    InnerStepHost, TurnLoopSessionHost, V3TurnHost, streaming_phase, tool_phase,
 };
+use zagens_core::engine::turn_machine::{Effect, TurnKernelProjection, events_for_step};
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::Engine;
@@ -47,7 +47,7 @@ struct V3StepInterpretContext<'a> {
     turn_error: &'a mut Option<String>,
     loop_guard: &'a mut LoopGuard,
     consecutive_tool_error_steps: u32,
-    tool_registry: Option<&'a <Engine as TurnLoopHost>::ToolRegistry>,
+    tool_registry: Option<&'a <Engine as InnerStepHost>::ToolRegistry>,
     stream: Option<TurnLoopStreamingPhaseOutcome>,
     tools: Option<TurnLoopToolPhaseOutcome>,
     execute_batch_ran: bool,
@@ -79,10 +79,10 @@ impl<'a> EffectInterpreter<'a> {
         turn_error: &mut Option<String>,
         loop_guard: &mut LoopGuard,
         consecutive_tool_error_steps: u32,
-        tool_registry: Option<&<Engine as TurnLoopHost>::ToolRegistry>,
+        tool_registry: Option<&<Engine as InnerStepHost>::ToolRegistry>,
     ) -> V3StepOutcome
     where
-        Engine: TurnLoopHost,
+        Engine: V3TurnHost,
     {
         self.engine.clear_v3_approval_outcomes();
         super::memory_plane_compiler_ops::clear_memory_query_compiler_sources(
@@ -128,14 +128,17 @@ impl<'a> EffectInterpreter<'a> {
                     .topic_memory
                     .enabled,
             };
-        let pre_call = plan_v3_pre_call_model_effects(&projection, Some(episodic_hints));
+        let machine = LiveTurnMachine::default();
+        let inner_plan =
+            machine.inner_step_live_plan(&projection, token_budget, Some(episodic_hints));
+        let pre_call = inner_plan.baseline.pre_call_model.clone();
         if !pre_call.is_empty() {
             tracing::info!(
                 target: "kernel_v3",
                 turn_id = %ctx.turn.id,
                 step = ctx.turn.step,
                 query_count = pre_call.len(),
-                "v3 step: QueryMemory (pre-CallModel)"
+                "v3 step: QueryMemory (LiveTurnMachine pre-CallModel plan)"
             );
             for effect in pre_call {
                 let outcome = self.interpret_v3_step_effect(effect, &mut ctx).await;
@@ -148,7 +151,7 @@ impl<'a> EffectInterpreter<'a> {
         }
 
         let call_outcomes = self
-            .interpret_all(vec![Effect::CallModel { token_budget }], Some(&mut ctx))
+            .interpret_all(vec![inner_plan.baseline.call_model.clone()], Some(&mut ctx))
             .await;
         debug_assert_eq!(
             call_outcomes.first(),
@@ -212,16 +215,9 @@ impl<'a> EffectInterpreter<'a> {
             );
         }
 
-        let plan = plan_v3_step_effects(token_budget, &call_ids);
-        debug_assert!(
-            matches!(plan.first(), Some(Effect::CallModel { .. })),
-            "v3 step plan must begin with CallModel"
-        );
-
-        if plan.len() > 1 {
-            let execute_outcomes = self
-                .interpret_all(plan.into_iter().skip(1).collect(), Some(&mut ctx))
-                .await;
+        let plan = machine.inner_step_execute_batch_effects(token_budget, &call_ids);
+        if !plan.is_empty() {
+            let execute_outcomes = self.interpret_all(plan, Some(&mut ctx)).await;
             if !call_ids.is_empty() {
                 debug_assert!(
                     execute_outcomes
@@ -239,14 +235,14 @@ impl<'a> EffectInterpreter<'a> {
                 .kernel_projection_shadow
                 .turn_events();
             let step_events = events_for_step(turn_events, ctx.turn.step);
-            let notify_tail = notify_lsp_effects_from_step_events(&step_events);
+            let notify_tail = machine.inner_step_notify_lsp_effects(&step_events);
             if !notify_tail.is_empty() {
                 tracing::info!(
                     target: "kernel_v3",
                     turn_id = %ctx.turn.id,
                     step = ctx.turn.step,
                     notify_count = notify_tail.len(),
-                    "v3 step: NotifyLsp tail (effect plan)"
+                    "v3 step: NotifyLsp tail (LiveTurnMachine plan)"
                 );
                 let notify_outcomes = self.interpret_all(notify_tail, Some(&mut ctx)).await;
                 debug_assert!(
@@ -273,7 +269,7 @@ impl<'a> EffectInterpreter<'a> {
         ctx: &mut V3StepInterpretContext<'_>,
     ) -> InterpretOutcome
     where
-        Engine: TurnLoopHost,
+        Engine: V3TurnHost,
     {
         match effect {
             Effect::CallModel { token_budget } => {
@@ -395,7 +391,7 @@ impl<'a> EffectInterpreter<'a> {
         token_budget: u32,
     ) -> TurnLoopStreamingPhaseOutcome
     where
-        Engine: TurnLoopHost,
+        Engine: V3TurnHost,
     {
         let _ = token_budget;
         streaming_phase::run_streaming_phase(
@@ -425,11 +421,11 @@ impl<'a> EffectInterpreter<'a> {
         active_tool_names: &mut HashSet<String>,
         loop_guard: &mut LoopGuard,
         consecutive_tool_error_steps: u32,
-        tool_registry: Option<&<Engine as TurnLoopHost>::ToolRegistry>,
+        tool_registry: Option<&<Engine as InnerStepHost>::ToolRegistry>,
         call_ids: Vec<String>,
     ) -> TurnLoopToolPhaseOutcome
     where
-        Engine: TurnLoopHost,
+        Engine: V3TurnHost,
     {
         let _ = call_ids;
         tool_phase::run_tool_execution_phase(
@@ -492,6 +488,7 @@ impl<'a> EffectInterpreter<'a> {
                 self.engine.run_layered_context_checkpoint_effect().await;
                 InterpretOutcome::Executed
             }
+            Effect::RefreshSystemPrompt => InterpretOutcome::NotImplemented,
             _ => InterpretOutcome::NotImplemented,
         }
     }

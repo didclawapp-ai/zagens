@@ -9,7 +9,9 @@ use crate::engine::streaming::ToolUseState;
 use crate::turn::{TurnContext, TurnLoopMode};
 
 use super::control::{TurnLoopStreamingPhaseOutcome, TurnLoopToolPhaseOutcome};
-use super::host::TurnLoopHost;
+use super::host::V3TurnHost;
+use super::inner_step_host::InnerStepHost;
+use super::turn_loop_outer_host::TurnLoopOuterHost;
 use super::{streaming_phase, tool_phase};
 use crate::engine::kernel_turn_host::KernelTurnHost;
 use crate::engine::turn_machine::{events_for_step, notify_lsp_effects_from_step_events};
@@ -28,7 +30,7 @@ pub fn execute_batch_call_ids(tool_uses: &[ToolUseState]) -> Vec<String> {
 
 /// Core fallback: run CallModel then ExecuteBatch by calling streaming/tool phases directly.
 #[allow(clippy::too_many_arguments)]
-pub async fn run_v3_step<H: TurnLoopHost>(
+pub async fn run_v3_step<H: InnerStepHost + TurnLoopOuterHost>(
     host: &mut H,
     turn: &mut TurnContext,
     client: &dyn LlmClient,
@@ -119,7 +121,7 @@ pub async fn run_v3_step<H: TurnLoopHost>(
 
 /// v3 turn step entry: runtime [`EffectInterpreter`] when provided, else core fallback.
 #[allow(clippy::too_many_arguments)]
-pub async fn run_v3_turn_step_unified<H: TurnLoopHost>(
+pub async fn run_v3_turn_step_unified<H: V3TurnHost>(
     host: &mut H,
     turn: &mut TurnContext,
     client: &dyn LlmClient,

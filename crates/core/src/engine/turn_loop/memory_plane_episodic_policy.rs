@@ -128,6 +128,7 @@ mod tests {
                 usage: crate::models::Usage::default(),
                 block_count: 1,
                 text_preview: String::new(),
+                assistant_text: String::new(),
             },
             KernelEvent::ModelRequestIssued {
                 turn_id: "t1".into(),

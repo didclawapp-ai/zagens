@@ -17,6 +17,8 @@ pub const QUERY_SCRATCHPAD_REMINDER: &str = "scratchpad_reminder";
 pub const QUERY_COMPACTION_SUMMARY: &str = "compaction_summary";
 /// Symbolic query key for working-set path substrate reads.
 pub const QUERY_WORKING_SET: &str = "working_set";
+/// Symbolic query key for user-memory block reads during system prompt refresh.
+pub const QUERY_USER_MEMORY: &str = "user_memory";
 
 /// Derive pre-`CallModel` memory queries from the current projection (pure, no IO).
 #[must_use]
@@ -163,6 +165,7 @@ mod tests {
                 duration_ms: 1,
                 wrote_state: false,
                 result_preview: String::new(),
+                session_content: String::new(),
             },
             KernelEvent::ModelRequestIssued {
                 turn_id: "t1".into(),

@@ -84,6 +84,7 @@ mod sleep_ops;
 mod startup_warnings;
 mod streaming;
 mod subagent_spawn;
+mod system_prompt_refresh_ops;
 mod tool_catalog;
 mod tool_context;
 mod tool_dispatch_port;

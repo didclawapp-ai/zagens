@@ -199,6 +199,7 @@ mod tests {
                 duration_ms: 1,
                 wrote_state: false,
                 result_preview: String::new(),
+                session_content: String::new(),
             },
             KernelEvent::ModelRequestIssued {
                 turn_id: "t1".into(),

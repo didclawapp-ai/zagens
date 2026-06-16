@@ -15,7 +15,8 @@ mod tests {
     };
     use crate::engine::turn_loop::message_body_rebuild_policy::{
         RebuiltMessageRole, rebuild_preview_messages_from_thread_events,
-        verify_log_transcript_rebuild,
+        rebuild_session_messages_from_events, verify_log_transcript_rebuild,
+        verify_session_messages_byte_parity,
     };
     use crate::engine::turn_machine::{
         LiveTurnSnapshot, SessionMessageRoleIndex, TurnKernelProjection,
@@ -39,6 +40,7 @@ mod tests {
         "resume_thread_parity.json",
         "layered_context_seam.json",
         "message_body_rebuild.json",
+        "system_prompt_refresh.json",
     ];
 
     fn fixture_path(name: &str) -> PathBuf {
@@ -53,6 +55,37 @@ mod tests {
             .unwrap_or_else(|e| panic!("read fixture {}: {e}", path.display()));
         serde_json::from_str(&raw)
             .unwrap_or_else(|e| panic!("parse fixture {}: {e}", path.display()))
+    }
+
+    fn load_session_fixture(name: &str) -> Vec<crate::chat::Message> {
+        let path = fixture_path(name);
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read session fixture {}: {e}", path.display()));
+        serde_json::from_str(&raw)
+            .unwrap_or_else(|e| panic!("parse session fixture {}: {e}", path.display()))
+    }
+
+    #[test]
+    fn golden_session_messages_byte_parity_fixtures() {
+        let cases = [
+            (
+                "message_body_rebuild.json",
+                "message_body_rebuild.session.json",
+            ),
+            (
+                "resume_thread_parity.json",
+                "resume_thread_parity.session.json",
+            ),
+        ];
+        for (events_name, session_name) in cases {
+            let events = load_fixture(events_name);
+            let expected = load_session_fixture(session_name);
+            let rebuilt = rebuild_session_messages_from_events(&events);
+            assert!(
+                verify_session_messages_byte_parity(&rebuilt, &expected).is_none(),
+                "session byte parity failed for {events_name}"
+            );
+        }
     }
 
     #[test]
@@ -297,6 +330,27 @@ mod tests {
     }
 
     #[test]
+    fn golden_system_prompt_refresh_fixture() {
+        let events = load_fixture("system_prompt_refresh.json");
+        assert!(
+            crate::engine::turn_loop::system_prompt_refresh_replay_policy::verify_system_prompt_refresh_replay_coherence(
+                &events
+            )
+            .is_none(),
+            "system_prompt_refresh.json replay coherence failed"
+        );
+        let effects = crate::engine::turn_machine::replay_turn_effects(&events);
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            crate::engine::turn_machine::Effect::RefreshSystemPrompt
+        )));
+        assert_eq!(
+            crate::engine::turn_machine::replay_effect_counts(&events).call_model,
+            1
+        );
+    }
+
+    #[test]
     fn golden_message_body_rebuild_fixture() {
         let events = load_fixture("message_body_rebuild.json");
         let expected = [
@@ -364,6 +418,13 @@ mod tests {
                 )
                 .is_none(),
                 "resume parity failed for {name}"
+            );
+            let session_name = name.replace(".json", ".session.json");
+            let expected_session = load_session_fixture(&session_name);
+            let rebuilt = rebuild_session_messages_from_events(&events);
+            assert!(
+                verify_session_messages_byte_parity(&rebuilt, &expected_session).is_none(),
+                "resume session byte parity failed for {name}"
             );
         }
     }

@@ -31,7 +31,8 @@
       "output_tokens": 80
     },
     "block_count": 2,
-    "text_preview": "I'll list src/ first"
+    "text_preview": "I'll list src/ first",
+    "assistant_text": "I'll list src/ first"
   },
   {
     "event_type": "tool_call_planned",
@@ -60,7 +61,8 @@
     "outcome": "success",
     "duration_ms": 45,
     "wrote_state": false,
-    "result_preview": "auth.rs\nmain.rs"
+    "result_preview": "auth.rs\nmain.rs",
+    "session_content": "auth.rs\nmain.rs"
   },
   {
     "event_type": "turn_ended",

@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 
 use super::control::{TurnLoopControl, TurnLoopStreamingPhaseOutcome};
 use super::helpers::{messages_with_turn_metadata, messages_with_turn_metadata_compiled};
-use super::host::TurnLoopHost;
+use super::inner_step_host::InnerStepHost;
+use super::turn_loop_outer_host::TurnLoopOuterHost;
 use crate::chat::{ContentBlock, LlmClient, Message, Tool};
 use crate::engine::context::{
     MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS, effective_max_output_tokens,
@@ -30,7 +31,7 @@ use crate::chat::{ContentBlockStart, Delta, MessageRequest, StreamEvent};
 use crate::models::Usage;
 
 #[allow(clippy::too_many_arguments)]
-pub async fn run_streaming_phase<H: TurnLoopHost>(
+pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
     host: &mut H,
     turn: &mut TurnContext,
     client: &dyn LlmClient,
@@ -783,6 +784,7 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
             usage: usage.clone(),
             block_count: content_blocks.len() as u32,
             text_preview: assistant_content_text_preview(&content_blocks),
+            assistant_text: assistant_content_full_text(&content_blocks),
         },
     );
 
@@ -892,6 +894,10 @@ pub async fn run_streaming_phase<H: TurnLoopHost>(
 }
 
 fn assistant_content_text_preview(blocks: &[ContentBlock]) -> String {
+    summarize_text(&assistant_content_full_text(blocks), 512)
+}
+
+fn assistant_content_full_text(blocks: &[ContentBlock]) -> String {
     let mut parts = Vec::new();
     for block in blocks {
         if let ContentBlock::Text { text, .. } = block {
@@ -900,5 +906,5 @@ fn assistant_content_text_preview(blocks: &[ContentBlock]) -> String {
             }
         }
     }
-    summarize_text(&parts.join("\n"), 512)
+    parts.join("\n")
 }

@@ -224,6 +224,9 @@ pub enum KernelEvent {
         /// Truncated assistant text for log-driven transcript rebuild (Phase 3b 5c).
         #[serde(default, skip_serializing_if = "String::is_empty")]
         text_preview: String,
+        /// Full assistant text written to session JSON (Phase 3b 5c closure).
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        assistant_text: String,
     },
 
     // ── Tool calls ───────────────────────────────────────────────────────────
@@ -257,6 +260,9 @@ pub enum KernelEvent {
         /// Truncated tool result / error text for log-driven transcript rebuild (Phase 3b 5c).
         #[serde(default, skip_serializing_if = "String::is_empty")]
         result_preview: String,
+        /// Exact tool-result body written to session JSON (Phase 3b 5c closure).
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        session_content: String,
     },
     ApprovalResolved {
         turn_id: TurnId,
@@ -512,6 +518,7 @@ mod tests {
             duration_ms: 120,
             wrote_state: true,
             result_preview: String::new(),
+            session_content: String::new(),
         };
         let json = serde_json::to_string(&ev).expect("serialize");
         let back: KernelEvent = serde_json::from_str(&json).expect("deserialize");
@@ -704,6 +711,7 @@ mod tests {
                 wrote_state: false,
                 tool_name: "read_file".into(),
                 result_preview: String::new(),
+                session_content: String::new(),
             },
             KernelEvent::ToolCallFinished {
                 turn_id: tid.clone(),
@@ -713,6 +721,7 @@ mod tests {
                 wrote_state: false,
                 tool_name: "shell_exec".into(),
                 result_preview: String::new(),
+                session_content: String::new(),
             },
             // Second model request resets counters.
             KernelEvent::ModelRequestIssued {
@@ -729,6 +738,7 @@ mod tests {
                 wrote_state: true,
                 tool_name: "scratchpad_append".into(),
                 result_preview: String::new(),
+                session_content: String::new(),
             },
         ];
 
@@ -893,6 +903,7 @@ mod tests {
             duration_ms: 42,
             wrote_state: false,
             result_preview: String::new(),
+            session_content: String::new(),
         };
         let json = serde_json::to_string(&ev).expect("serialize");
         assert!(

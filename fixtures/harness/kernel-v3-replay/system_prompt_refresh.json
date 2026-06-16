@@ -1,0 +1,57 @@
+[
+  {
+    "event_type": "turn_started",
+    "turn_id": "golden-system-prompt-refresh-001",
+    "mode": "agent",
+    "input_text": "Continue with refreshed system prompt",
+    "max_steps": 8
+  },
+  {
+    "event_type": "memory_plane_queried",
+    "turn_id": "golden-system-prompt-refresh-001",
+    "step_idx": 1,
+    "layer": "episodic",
+    "query_key": "user_memory",
+    "compiler_source": "memory.user"
+  },
+  {
+    "event_type": "memory_plane_queried",
+    "turn_id": "golden-system-prompt-refresh-001",
+    "step_idx": 1,
+    "layer": "episodic",
+    "query_key": "topic_episodic",
+    "compiler_source": "topic_memory"
+  },
+  {
+    "event_type": "topic_memory_injected",
+    "turn_id": "golden-system-prompt-refresh-001",
+    "step_idx": 1,
+    "block_token_est": 88
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-system-prompt-refresh-001",
+    "step_idx": 1,
+    "request_fp": {
+      "static_prefix_sha256": "spr11111",
+      "full_prefix_sha256": "spr22222"
+    },
+    "token_budget": 8192
+  },
+  {
+    "event_type": "model_message",
+    "turn_id": "golden-system-prompt-refresh-001",
+    "step_idx": 1,
+    "usage": {
+      "input_tokens": 1200,
+      "output_tokens": 32
+    },
+    "block_count": 1
+  },
+  {
+    "event_type": "turn_ended",
+    "turn_id": "golden-system-prompt-refresh-001",
+    "outcome": "completed",
+    "total_steps": 1
+  }
+]

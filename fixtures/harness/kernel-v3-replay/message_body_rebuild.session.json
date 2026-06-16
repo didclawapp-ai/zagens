@@ -1,0 +1,47 @@
+[
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Fix auth module"
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "check token expiry"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll inspect auth/token.rs"
+      },
+      {
+        "type": "tool_use",
+        "id": "call-read-auth",
+        "name": "read_file",
+        "input": {
+          "path": "src/auth/token.rs"
+        }
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "call-read-auth",
+        "content": "pub fn validate_token() { ... }"
+      }
+    ]
+  }
+]

@@ -93,6 +93,12 @@ pub struct TurnKernelProjection {
     pub working_set_path_touch_count: u32,
     /// Count of `MemoryPlaneQueried` events logged this turn.
     pub memory_plane_query_count: u32,
+    /// Step index of the latest refresh `user_memory` query (0 = none this turn).
+    pub refresh_user_memory_query_step: u32,
+    /// Query keys already logged at the current step (cleared at `ModelRequestIssued`).
+    pub memory_plane_queried_keys_this_step: HashSet<String>,
+    /// Whether `ModelRequestIssued` was applied for the current step (log order anchor).
+    pub model_request_seen_this_step: bool,
     /// Count of `TopicMemoryInjected` events logged this turn (episodic layer).
     pub topic_memory_injection_count: u32,
     /// Count of `LayeredContextSeamInjected` events logged this turn.
@@ -143,6 +149,9 @@ impl TurnKernelProjection {
                 self.readonly_tool_successes = 0;
                 self.scratchpad_writes_this_step = 0;
                 self.pending_call_ids.clear();
+                self.refresh_user_memory_query_step = 0;
+                self.memory_plane_queried_keys_this_step.clear();
+                self.model_request_seen_this_step = true;
             }
 
             KernelEvent::ModelMessage { usage, .. } => {
@@ -198,8 +207,19 @@ impl TurnKernelProjection {
                 self.cycle_briefing_count += 1;
             }
 
-            KernelEvent::MemoryPlaneQueried { .. } => {
+            KernelEvent::MemoryPlaneQueried {
+                query_key,
+                step_idx,
+                ..
+            } => {
                 self.memory_plane_query_count += 1;
+                self.memory_plane_queried_keys_this_step
+                    .insert(query_key.clone());
+                if query_key
+                    == crate::engine::turn_loop::memory_plane_query_policy::QUERY_USER_MEMORY
+                {
+                    self.refresh_user_memory_query_step = *step_idx;
+                }
             }
 
             KernelEvent::TopicMemoryInjected { .. } => {
@@ -365,7 +385,7 @@ pub fn compare_projection_to_live(
 /// The host's `EffectInterpreter` matches on this and performs the actual IO.
 /// In Phase 3b batch 2 the interpreter replaces `run_streaming_phase` /
 /// `run_tool_execution_phase` calls.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Effect {
     /// Issue an LLM request and stream the response.
@@ -392,6 +412,8 @@ pub enum Effect {
         layer: crate::engine::turn_loop::memory_plane_query_policy::MemoryPlaneQueryLayer,
         query_key: String,
     },
+    /// Rebuild session system prompt from memory-plane reads (v3 refresh tail).
+    RefreshSystemPrompt,
 }
 
 // ── StepOutput ────────────────────────────────────────────────────────────────
@@ -455,6 +477,14 @@ impl TurnMachine for ReplayTurnMachine {
                         None,
                     )
                 {
+                    if let Effect::QueryMemory { query_key, .. } = &effect {
+                        if projection
+                            .memory_plane_queried_keys_this_step
+                            .contains(query_key)
+                        {
+                            continue;
+                        }
+                    }
                     out.effects.push(effect);
                 }
                 out.effects.push(Effect::CallModel {
@@ -525,6 +555,28 @@ impl TurnMachine for ReplayTurnMachine {
             }
             KernelEvent::LayeredContextSeamInjected { .. } => {
                 out.effects.push(Effect::RunLayeredContextCheckpoint);
+            }
+            KernelEvent::MemoryPlaneQueried {
+                layer,
+                query_key,
+                step_idx,
+                ..
+            } if !projection.model_request_seen_this_step => {
+                let layer =
+                    crate::engine::turn_loop::memory_plane_projection_policy::MemoryPlaneLayer::from_log_layer(
+                        layer,
+                    );
+                out.effects.push(Effect::QueryMemory {
+                    layer,
+                    query_key: query_key.clone(),
+                });
+                if query_key
+                    == crate::engine::turn_loop::memory_plane_episodic_policy::QUERY_TOPIC_EPISODIC
+                    && *step_idx == projection.refresh_user_memory_query_step
+                    && projection.refresh_user_memory_query_step > 0
+                {
+                    out.effects.push(Effect::RefreshSystemPrompt);
+                }
             }
             _ => {
                 let _ = projection;
@@ -872,6 +924,13 @@ pub fn verify_turn_replay_coherence(
         )
     {
         diffs.push(format!("layered_context_seam_replay: {summary}"));
+    }
+    if let Some(summary) =
+        crate::engine::turn_loop::system_prompt_refresh_replay_policy::verify_system_prompt_refresh_replay_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("system_prompt_refresh_replay: {summary}"));
     }
     if !events
         .iter()
@@ -2371,11 +2430,13 @@ pub fn kernel_resume_hints_from_thread_projection(
     hints
 }
 
-/// Replay all IO effects implied by a turn's event log via [`ReplayTurnMachine`].
+/// Replay IO effects for a slice with an initial projection (turn-log prefix aware).
 #[must_use]
-pub fn replay_turn_effects(events: &[KernelEvent]) -> Vec<Effect> {
+pub fn replay_events_with_projection(
+    mut projection: TurnKernelProjection,
+    events: &[KernelEvent],
+) -> Vec<Effect> {
     let mut machine = ReplayTurnMachine;
-    let mut projection = TurnKernelProjection::default();
     let mut planned: std::collections::HashMap<String, (String, String)> =
         std::collections::HashMap::new();
     let mut effects = Vec::new();
@@ -2385,13 +2446,13 @@ pub fn replay_turn_effects(events: &[KernelEvent]) -> Vec<Effect> {
             tool_name,
             input_json,
             ..
-        } = &event
+        } = event
         {
             planned.insert(call_id.clone(), (tool_name.clone(), input_json.clone()));
         }
         if let KernelEvent::ToolCallFinished {
             call_id, outcome, ..
-        } = &event
+        } = event
         {
             crate::engine::turn_loop::memory_plane_working_policy::record_working_set_path_touch(
                 &mut projection,
@@ -2402,10 +2463,16 @@ pub fn replay_turn_effects(events: &[KernelEvent]) -> Vec<Effect> {
             planned.remove(call_id);
         }
         let out = machine.step(&projection, event.clone());
-        projection.apply(&event);
+        projection.apply(event);
         effects.extend(out.effects);
     }
     effects
+}
+
+/// Replay all IO effects implied by a turn's event log via [`ReplayTurnMachine`].
+#[must_use]
+pub fn replay_turn_effects(events: &[KernelEvent]) -> Vec<Effect> {
+    replay_events_with_projection(TurnKernelProjection::default(), events)
 }
 
 /// Aggregated replay effect counts for v3 observability at turn end.
@@ -2465,7 +2532,7 @@ pub fn replay_effect_counts(events: &[KernelEvent]) -> ReplayEffectCounts {
             Effect::NotifyLsp { .. } => counts.notify_lsp += 1,
             Effect::Sleep { .. } => counts.sleep += 1,
             Effect::QueryMemory { .. } => counts.query_memory += 1,
-            Effect::RunLayeredContextCheckpoint => {}
+            Effect::RunLayeredContextCheckpoint | Effect::RefreshSystemPrompt => {}
         }
     }
     counts
@@ -2511,10 +2578,43 @@ pub fn events_for_step(events: &[KernelEvent], step_idx: u32) -> Vec<KernelEvent
     out
 }
 
+/// Projection rebuilt from all turn events strictly before this step's `ModelRequestIssued`.
+#[must_use]
+pub fn projection_before_step_model_request(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> TurnKernelProjection {
+    let mut prior = Vec::new();
+    for event in turn_events {
+        if matches!(
+            event,
+            KernelEvent::ModelRequestIssued { step_idx: s, .. } if *s == step_idx
+        ) {
+            break;
+        }
+        prior.push(event.clone());
+    }
+    TurnKernelProjection::from_events(&prior)
+}
+
+/// Replay step effects with turn-log prefix projection (multi-step safe).
+#[must_use]
+pub fn replay_step_effects_from_turn_log(
+    turn_events: &[KernelEvent],
+    step_idx: u32,
+) -> Vec<Effect> {
+    let step_events = events_for_step(turn_events, step_idx);
+    if step_events.is_empty() {
+        return Vec::new();
+    }
+    let projection = projection_before_step_model_request(turn_events, step_idx);
+    replay_events_with_projection(projection, &step_events)
+}
+
 /// Replay IO effects for a single step slice.
 #[must_use]
 pub fn replay_step_effects(events: &[KernelEvent], step_idx: u32) -> Vec<Effect> {
-    replay_turn_effects(&events_for_step(events, step_idx))
+    replay_step_effects_from_turn_log(events, step_idx)
 }
 
 /// Planned v3 step effects before tool outcomes are known (`ExecuteBatch` when tools planned).
@@ -2740,6 +2840,7 @@ impl Effect {
             Effect::Sleep { .. } => "sleep",
             Effect::QueryMemory { .. } => "query_memory",
             Effect::RunLayeredContextCheckpoint => "run_layered_context_checkpoint",
+            Effect::RefreshSystemPrompt => "refresh_system_prompt",
         }
     }
 }
@@ -2812,6 +2913,7 @@ mod tests {
                 duration_ms: 10,
                 wrote_state: false,
                 result_preview: String::new(),
+                session_content: String::new(),
             },
             // Second request resets counters.
             KernelEvent::ModelRequestIssued {

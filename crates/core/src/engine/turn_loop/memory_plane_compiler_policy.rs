@@ -7,7 +7,7 @@ use crate::engine::context_compiler::{BudgetOverride, BudgetPolicy, SourceId};
 use super::memory_plane_episodic_policy::QUERY_TOPIC_EPISODIC;
 use super::memory_plane_query_policy::{
     QUERY_COMPACTION_SUMMARY, QUERY_SCRATCHPAD_REMINDER, QUERY_SCRATCHPAD_SUMMARY,
-    QUERY_WORKING_SET,
+    QUERY_USER_MEMORY, QUERY_WORKING_SET,
 };
 
 /// Map a symbolic memory query key to a ContextCompiler source id.
@@ -18,6 +18,7 @@ pub fn compiler_source_for_query_key(query_key: &str) -> &'static str {
         QUERY_SCRATCHPAD_REMINDER => "memory.scratchpad_reminder",
         QUERY_COMPACTION_SUMMARY => "memory.compaction",
         QUERY_WORKING_SET => "working_set",
+        QUERY_USER_MEMORY => "memory.user",
         QUERY_TOPIC_EPISODIC => "topic_memory",
         _ => "memory.unknown",
     }
@@ -35,6 +36,7 @@ pub fn query_key_has_projection_material(
         QUERY_COMPACTION_SUMMARY => projection.compaction_artifact_count > 0,
         QUERY_WORKING_SET => projection.working_set_path_touch_count > 0,
         QUERY_TOPIC_EPISODIC => projection.topic_memory_injection_count > 0,
+        QUERY_USER_MEMORY => false,
         _ => false,
     }
 }
@@ -95,6 +97,10 @@ mod tests {
         assert_eq!(
             compiler_source_for_query_key(QUERY_WORKING_SET),
             "working_set"
+        );
+        assert_eq!(
+            compiler_source_for_query_key(QUERY_USER_MEMORY),
+            "memory.user"
         );
         assert_eq!(
             compiler_source_for_query_key(QUERY_TOPIC_EPISODIC),

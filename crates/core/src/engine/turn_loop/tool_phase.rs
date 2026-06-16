@@ -21,13 +21,13 @@ use crate::engine::tool_catalog::{
 use crate::engine::tool_effects::tool_writes_state;
 use crate::engine::turn_loop::control::TurnLoopToolPhaseOutcome;
 use crate::engine::turn_loop::exec::ToolExecutionPlan;
-use crate::engine::turn_loop::host::TurnLoopHost;
+use crate::engine::turn_loop::inner_step_host::InnerStepHost;
 use crate::engine::turn_machine::emit_kernel_event;
 use crate::error_taxonomy::ErrorEnvelope;
 use crate::turn::{TurnContext, TurnLoopMode, TurnToolCall};
 
 #[allow(clippy::too_many_arguments)]
-pub async fn run_tool_execution_phase<H: TurnLoopHost>(
+pub async fn run_tool_execution_phase<H: InnerStepHost>(
     host: &mut H,
     turn: &mut TurnContext,
     mode: TurnLoopMode,
@@ -253,6 +253,7 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
             TurnToolCall::new(outcome.id.clone(), outcome.name.clone(), outcome.input);
         let should_stop_this_turn =
             should_stop_after_plan_tool(mode == TurnLoopMode::Plan, &outcome.name, &outcome.result);
+        let session_content_for_log;
 
         match outcome.result {
             Ok(output) => {
@@ -334,11 +335,12 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                         .await;
                 }
 
+                session_content_for_log = output_for_context.clone();
                 host.add_session_message(Message {
                     role: "user".to_string(),
                     content: vec![ContentBlock::ToolResult {
-                        tool_use_id: outcome.id,
-                        content: output_for_context,
+                        tool_use_id: outcome.id.clone(),
+                        content: output_for_context.clone(),
                         is_error: None,
                         content_blocks: None,
                     }],
@@ -381,6 +383,7 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                 step_error_categories.push(envelope.category);
                 let error = format_tool_error(&e, &outcome.name);
                 tool_call.set_error(error.clone(), duration);
+                let session_error_content = format!("Error: {error}");
                 let workspace = host.workspace().to_path_buf();
                 host.session_mut().working_set.observe_tool_call(
                     &tool_name_for_ws,
@@ -388,11 +391,12 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                     Some(&error),
                     &workspace,
                 );
+                session_content_for_log = session_error_content.clone();
                 host.add_session_message(Message {
                     role: "user".to_string(),
                     content: vec![ContentBlock::ToolResult {
-                        tool_use_id: outcome.id,
-                        content: format!("Error: {error}"),
+                        tool_use_id: outcome.id.clone(),
+                        content: session_error_content,
                         is_error: Some(true),
                         content_blocks: None,
                     }],
@@ -430,6 +434,7 @@ pub async fn run_tool_execution_phase<H: TurnLoopHost>(
                         .unwrap_or(0),
                     wrote_state: wrote,
                     result_preview,
+                    session_content: session_content_for_log,
                 },
             );
         }

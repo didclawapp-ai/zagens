@@ -1,18 +1,100 @@
 //! Phase 3b batch 5b — live outer-step effect planner skeleton.
 //!
 //! Describes the canonical v3 pre-inner-step effect chain. Live IO still runs
-//! through `TurnLoopHost` + `EffectInterpreter`; this module is the pure plan
+//! through `V3TurnHost` + `EffectInterpreter`; this module is the pure plan
 //! surface that will eventually drive `TurnMachine::step` + interpreter.
 
 use crate::capacity::GuardrailAction;
 use crate::engine::kernel_event::CapacityCheckpointKind;
 use crate::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
+use crate::engine::turn_loop::system_prompt_refresh_policy::{
+    SystemPromptRefreshPlan, plan_system_prompt_refresh,
+};
 use crate::engine::turn_machine::{Effect, capacity_cooldown_backoff_millis};
 
 /// Baseline v3 effects attempted before each inner step (model request).
 #[derive(Debug, Clone)]
 pub struct PreInnerStepEffectPlan {
     pub baseline: Vec<Effect>,
+}
+
+/// Per-outer-loop-iteration frame reset before pre-inner work (batch 5b cont.).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OuterStepFrameEffectPlan {
+    /// Per-step scratchpad accumulator reset (host IO until `TurnMachine::step`).
+    pub scratchpad_step_reset: bool,
+    /// Sync active turn id + step for out-of-loop memory / projection events.
+    pub kernel_turn_frame_sync: bool,
+    /// Cooperative cancel check before pre-inner segment (host token; no replay effect).
+    pub cancel_check: bool,
+}
+
+/// Canonical v3 outer step-frame seam (scratchpad reset + kernel frame sync + cancel gate).
+#[must_use]
+pub fn plan_v3_outer_step_frame_effects() -> OuterStepFrameEffectPlan {
+    OuterStepFrameEffectPlan {
+        scratchpad_step_reset: true,
+        kernel_turn_frame_sync: true,
+        cancel_check: true,
+    }
+}
+
+/// Full v3 outer pre-inner-step effect plan (batch 5b cont. — TurnMachine substrate).
+#[derive(Debug, Clone)]
+pub struct OuterPreInnerEffectPlan {
+    /// Each drained `rx_steer` message maps to `Effect::InjectSteer` (v3/shadow).
+    pub live_steer_inject_per_message: bool,
+    /// Host refresh IO + parallel `QueryMemory` plan (compiler source graph target).
+    pub system_prompt_refresh: SystemPromptRefreshPlan,
+    pub baseline: Vec<Effect>,
+}
+
+/// Conditional v3 outer post-inner-step effect slots (after streaming/tool IO).
+#[derive(Debug, Clone)]
+pub struct OuterPostInnerEffectPlan {
+    /// Fired when loop-guard halts and LHT continuation is granted.
+    pub loop_guard_continuation: Option<Effect>,
+    /// Capacity hold boundary may fire after tool errors (no replay effect).
+    pub error_escalation_capacity_hold: bool,
+    /// Fired when in-turn cycle advance gate opens mid-turn.
+    pub in_turn_cycle_advance: Option<Effect>,
+}
+
+/// Canonical v3 slots before inner step IO (baseline + documented host refresh seam).
+#[must_use]
+pub fn plan_v3_outer_pre_inner_step_effects() -> OuterPreInnerEffectPlan {
+    OuterPreInnerEffectPlan {
+        live_steer_inject_per_message: true,
+        system_prompt_refresh: plan_system_prompt_refresh(),
+        baseline: plan_v3_pre_inner_step_baseline().baseline,
+    }
+}
+
+/// Replay-aligned effect for one live steer drain (`rx_steer` → `inject_live_steer`).
+#[must_use]
+pub fn plan_live_steer_inject_effect(text: String) -> Effect {
+    Effect::InjectSteer { text }
+}
+
+/// Planned inject-steer chain for a drained steer batch (observability / replay substrate).
+#[must_use]
+pub fn plan_live_steer_inject_effects(texts: impl IntoIterator<Item = String>) -> Vec<Effect> {
+    texts
+        .into_iter()
+        .map(plan_live_steer_inject_effect)
+        .collect()
+}
+
+/// Template for conditional post-inner outer boundaries (eligibility still host-gated).
+#[must_use]
+pub fn plan_v3_outer_post_inner_step_effects() -> OuterPostInnerEffectPlan {
+    OuterPostInnerEffectPlan {
+        loop_guard_continuation: plan_outer_boundary_replay_effect(OuterBoundaryKind::LoopGuard),
+        error_escalation_capacity_hold: true,
+        in_turn_cycle_advance: plan_outer_boundary_replay_effect(
+            OuterBoundaryKind::InTurnCycleAdvance,
+        ),
+    }
 }
 
 /// Capacity checkpoint tail aligned with [`ReplayTurnMachine`] on `CapacityCheckpoint`.
@@ -180,6 +262,44 @@ mod tests {
         assert!(matches!(
             plan.baseline[1],
             Effect::RunLayeredContextCheckpoint
+        ));
+    }
+
+    #[test]
+    fn outer_step_frame_plan_documents_reset_sync_cancel() {
+        let plan = plan_v3_outer_step_frame_effects();
+        assert!(plan.scratchpad_step_reset);
+        assert!(plan.kernel_turn_frame_sync);
+        assert!(plan.cancel_check);
+    }
+
+    #[test]
+    fn outer_pre_inner_plan_documents_host_refresh_seam() {
+        let plan = plan_v3_outer_pre_inner_step_effects();
+        assert!(plan.live_steer_inject_per_message);
+        assert_eq!(plan.system_prompt_refresh.effects.len(), 3);
+        assert!(!plan.system_prompt_refresh.host_io_required);
+        assert_eq!(plan.baseline.len(), 2);
+    }
+
+    #[test]
+    fn live_steer_inject_effect_is_replay_aligned() {
+        let effects = plan_live_steer_inject_effects(["steer-a".to_string()]);
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(effects[0], Effect::InjectSteer { .. }));
+    }
+
+    #[test]
+    fn outer_post_inner_plan_documents_conditional_boundaries() {
+        let plan = plan_v3_outer_post_inner_step_effects();
+        assert!(plan.error_escalation_capacity_hold);
+        assert!(matches!(
+            plan.loop_guard_continuation,
+            Some(Effect::InjectSteer { .. })
+        ));
+        assert!(matches!(
+            plan.in_turn_cycle_advance,
+            Some(Effect::InjectSteer { .. })
         ));
     }
 

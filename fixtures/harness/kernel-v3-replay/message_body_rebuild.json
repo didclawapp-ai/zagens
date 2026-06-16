@@ -30,8 +30,9 @@
       "input_tokens": 900,
       "output_tokens": 64
     },
-    "block_count": 1,
-    "text_preview": "I'll inspect auth/token.rs"
+    "block_count": 2,
+    "text_preview": "I'll inspect auth/token.rs",
+    "assistant_text": "I'll inspect auth/token.rs"
   },
   {
     "event_type": "tool_call_planned",
@@ -60,7 +61,8 @@
     "outcome": "success",
     "duration_ms": 22,
     "wrote_state": false,
-    "result_preview": "pub fn validate_token() { ... }"
+    "result_preview": "pub fn validate_token() { ... }",
+    "session_content": "pub fn validate_token() { ... }"
   },
   {
     "event_type": "turn_ended",

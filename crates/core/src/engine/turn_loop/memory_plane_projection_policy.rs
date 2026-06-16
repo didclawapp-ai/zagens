@@ -23,6 +23,15 @@ impl MemoryPlaneLayer {
             Self::Archival => "archival",
         }
     }
+
+    #[must_use]
+    pub fn from_log_layer(layer: &str) -> Self {
+        match layer.trim().to_ascii_lowercase().as_str() {
+            "episodic" => Self::Episodic,
+            "archival" => Self::Archival,
+            _ => Self::Working,
+        }
+    }
 }
 
 /// Per-layer event counts derived from a turn log or projection.

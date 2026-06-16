@@ -1,0 +1,47 @@
+[
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "List files in src/ then refactor auth"
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Check auth module first"
+      }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll list src/ first"
+      },
+      {
+        "type": "tool_use",
+        "id": "call-read-1",
+        "name": "list_dir",
+        "input": {
+          "path": "src/"
+        }
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "tool_result",
+        "tool_use_id": "call-read-1",
+        "content": "auth.rs\nmain.rs"
+      }
+    ]
+  }
+]

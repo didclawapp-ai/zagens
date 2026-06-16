@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use zagens_core::chat::{ContentBlock, Message};
-use zagens_core::engine::TurnLoopHost;
 use zagens_core::engine::context::summarize_text;
+use zagens_core::engine::turn_loop::TurnLoopOuterHost;
 use zagens_core::engine::turn_loop::control::TurnLoopControl;
 use zagens_core::turn::{TurnContext, TurnOutcomeStatus};
 
