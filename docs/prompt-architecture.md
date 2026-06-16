@@ -4,7 +4,7 @@ This document describes the complete prompt system architecture for **Zagens des
 
 **Source root (after D6 Phase B):** `crates/runtime-server/src/` — main entry `prompts.rs`, layered Markdown in `prompts/`, sub-agents in `tools/subagent/mod.rs`. Historical path `crates/tui/src/prompts/` has been removed.
 
-**Last aligned:** 2026-05-26 (`DEEPSEEK_CLIENT_SURFACE=zagens` + legacy `ds-pick`).
+**Last aligned:** 2026-06-16 (`DEEPSEEK_CLIENT_SURFACE=zagens`; Kernel V3 + ContextCompiler V2 request assembly).
 
 ---
 
@@ -111,14 +111,14 @@ flowchart TD
 
     subgraph TURN["Turn Loop"]
         T0["start of each turn"]
-        T1["refresh_system_prompt()<br/>turn_loop/host_impl · capacity_flow"]
+        T1["refresh_system_prompt()<br/>Effect::RefreshSystemPrompt · V3TurnHost"]
         T2{"compaction.enabled<br/>&& should_compact()?"}
-        T3["compact_messages_safe()<br/>compaction/ · compress old messages"]
+        T3["compact via RunCompaction effect<br/>or legacy compaction_ops"]
         T4["merge_compaction_summary()<br/>summary merged into system prompt"]
-        T5["messages_with_turn_metadata()<br/>core/engine/turn_loop/mod.rs"]
+        T5["ContextCompiler V2 + messages_with_turn_metadata()<br/>turn_loop · compiler_request_context"]
         T6["<turn_meta> injected into latest user msg<br/>working set + today date"]
-        T7["MessageRequest assembly<br/>model + messages + system + tools"]
-        T8["build_chat_messages_for_request()<br/>client/chat.rs"]
+        T7["MessageRequest assembly<br/>ContextCompiler · model + messages + system + tools"]
+        T8["build_chat_messages_for_request()<br/>client/chat.rs · EffectInterpreter CallModel"]
         T9["build_chat_messages_with_reasoning()<br/>system → role: system JSON"]
         T10["POST /v1/chat/completions<br/>DeepSeek API"]
         T11["parse SSE stream → ContentBlock"]
@@ -320,10 +320,11 @@ flowchart LR
         C4b["topic_memory.rs<br/>topic graph block"]
     end
 
-    subgraph ENGINE["core/engine/"]
+    subgraph ENGINE["core/engine/ (Kernel V3)"]
         E1["build.rs · cycle_hooks.rs<br/>refresh / merge / hash"]
-        E2["turn_loop/<br/>turn_meta · API request"]
-        E3["compaction/ + compaction_ops<br/>compact / merge / should"]
+        E2["turn_loop/ LiveTurnMachine<br/>turn_meta · API request · V3TurnHost hooks"]
+        E3["turn_machine.rs · effect_interpreter<br/>Effect plan · CallModel / memory effects"]
+        E4["compaction/ + compaction_ops<br/>compact / merge / should"]
     end
 
     subgraph API["API serialization"]
@@ -367,3 +368,4 @@ flowchart LR
 6. **Client identity env-driven** — `DEEPSEEK_CLIENT_SURFACE` (Zagens: `zagens`; legacy alias `ds-pick`) controls terminal vs desktop identity and `ui_shell` without recompile
 7. **Sub-agent independent session** — Sub-agents get fresh Engine sessions with independent system prompts and tool sets; report via `<deepseek:subagent.done>` sentinel
 8. **RLM fully independent** — RLM has its own prompt (REPL mode), does not use parent system prompt
+9. **Kernel V3 request path** — Production turns plan effects via `LiveTurnMachine` and assemble wire requests through **ContextCompiler V2** (`compiler_request_context`); prefix fingerprints are recorded in the `KernelEvent` log — see [AGENT_KERNEL_V3.md](./tech/AGENT_KERNEL_V3.md)

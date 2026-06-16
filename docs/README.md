@@ -17,6 +17,7 @@ Harness **fixtures** (TOML, demo data, oracle scripts) live under [`fixtures/har
 | Doc | Description |
 |-----|-------------|
 | [tech/RUNTIME_ARCHITECTURE.md](./tech/RUNTIME_ARCHITECTURE.md) | Runtime + desktop boundaries |
+| [tech/AGENT_KERNEL_V3.md](./tech/AGENT_KERNEL_V3.md) | Event-sourced turn engine (Kernel V3 — sole production path) |
 | [tech/API_DESIGN.md](./tech/API_DESIGN.md) | HTTP/SSE API design |
 | [tech/openapi/zagens-runtime-v1.openapi.json](./tech/openapi/zagens-runtime-v1.openapi.json) | OpenAPI contract (CI drift check) |
 | [prompt-architecture-diagram.svg](./prompt-architecture-diagram.svg) | Prompt stack diagram |

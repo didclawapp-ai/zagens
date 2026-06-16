@@ -56,14 +56,15 @@ Maintainer paused mid D16 E1 deep split; assessment found **continuing full pack
     (Thread/Turn orchestration)       (MCP · persist · tool host ports)
                └──────────────┬───────────────┘
                               ▼
-                    zagens-core (Engine · turn_loop · hosts)
+                    zagens-core (Engine · LiveTurnMachine · V3TurnHost)
 
 Persistence SSOT (defaults; override via `DEEPSEEK_RUNTIME_DIR` / `DEEPSEEK_TASKS_DIR` etc., see orchestrator/task code):
   ~/.deepseek/tasks/runtime/runtime.db  ← Thread / Turn / Event
   ~/.deepseek/sessions/sessions.db      ← Session projection (runtime_thread_id)
+                                      + kernel_events (Kernel V3 append-only log)
 ```
 
-**Turn sole production path (immutable):**
+**Turn sole production path (immutable shell; Kernel V3 in-core, 2026-06-16):**
 
 ```text
 HTTP handler
@@ -71,10 +72,11 @@ HTTP handler
   → runtime-orchestrator::turn_lifecycle::start_turn
   → TurnEnginePort::start_turn (zagens-core: `EngineHandle` → Op::SendMessage)
   → runtime-server: EnginePlatformExt::dispatch_op → handle_send_message (host glue)
-  → zagens-core::handle_deepseek_turn (turn / streaming / tool planning and results)
+  → zagens-core::handle_deepseek_turn
+       → LiveTurnMachine + EffectInterpreter (see AGENT_KERNEL_V3.md)
 ```
 
-In other words: **orchestration entry** always at `RuntimeThreadManager::start_turn`; **host L2 (sidecar `Engine`) cannot be bypassed** before entering core's `handle_deepseek_turn`. No second production path "direct to core turn".
+In other words: **orchestration entry** always at `RuntimeThreadManager::start_turn`; **host L2 (sidecar `Engine`) cannot be bypassed** before entering core's turn loop. No second production path "direct to core turn". Kernel V3 replaced the imperative inner loop **inside** `zagens-core` without reopening the D17 crate split.
 
 ---
 

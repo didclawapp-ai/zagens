@@ -28,6 +28,20 @@ When `DEEPSEEK_RUNTIME_DIR` is set, it becomes the runtime store root; otherwise
 
 `SessionMetadata.runtime_thread_id` (SQLite column `runtime_thread_id`, D7 C1) points to `ThreadRecord.id`. Desktop **replay tool cards / thinking** depend on this link; missing link causes resume to seed a new thread.
 
+## Kernel event log (Kernel V3)
+
+Since **2026-06-16**, turn semantics are also recorded in an **append-only** table inside `sessions.db`:
+
+| Table | Writer | Reader | Notes |
+|-------|--------|--------|-------|
+| **`kernel_events`** | `KernelEventWriter` during live turns (via `V3TurnHost`) | `ReplayTurnMachine`, resume repair, thread replay API | JSON `KernelEvent` payloads; monotone `seq` |
+
+Schema and projection rules: [AGENT_KERNEL_V3.md](./AGENT_KERNEL_V3.md) §2. Code: [`kernel_event_log.rs`](../../crates/runtime-adapters/src/persist/kernel_event_log.rs).
+
+**Resume:** `[kernel] log_transcript_repair` defaults to **true** — transcript rebuild prefers the kernel log over session JSON snapshots. Session files remain a desktop projection/export format (D7/D15 unchanged at the HTTP boundary).
+
+Golden parity fixtures: [`fixtures/harness/kernel-v3-replay/`](../../fixtures/harness/kernel-v3-replay/).
+
 ## Non-SSOT / removed
 
 - **`crates/app-server`** — removed in D7; production HTTP is only `runtime_api` / `deepseek-runtime`

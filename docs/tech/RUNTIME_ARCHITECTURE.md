@@ -1,15 +1,16 @@
 # Runtime Architecture (SSOT Diagrams)
 
 > **HTTP / IPC contract:** [API_DESIGN.md](./API_DESIGN.md)  
-> **Architecture freeze (execution deadline):** [adr/D17_ARCHITECTURE_FREEZE.md](./adr/D17_ARCHITECTURE_FREEZE.md) — **Architecture Freeze v1** (2026-05-27)  
+> **Agent turn engine (Kernel V3):** [AGENT_KERNEL_V3.md](./AGENT_KERNEL_V3.md) — event-sourced turn loop (2026-06-16)  
+> **Architecture freeze (execution deadline):** [adr/D17_ARCHITECTURE_FREEZE.md](./adr/D17_ARCHITECTURE_FREEZE.md) — **Architecture Freeze v1** (2026-05-27); Kernel V3 is in-core evolution, not a crate-split reopen  
 > **OpenAPI / TS types:** [openapi/zagens-runtime-v1.openapi.json](./openapi/zagens-runtime-v1.openapi.json) · [adr/D8_OPENAPI_TS_GENERATION.md](./adr/D8_OPENAPI_TS_GENERATION.md)  
 > **Sandbox matrix:** [SANDBOX_CAPABILITY_MATRIX.md](./SANDBOX_CAPABILITY_MATRIX.md) — Windows native sandbox (`zagens-windows-sandbox`)  
 > **D6 Phase B:** [adr/D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) — production binary is **`deepseek-runtime`**; CLI + ratatui TUI removed  
 > **D16 maintainability split:** [adr/D16_PHASE_E_MAINTAINABILITY.md](./adr/D16_PHASE_E_MAINTAINABILITY.md) — **Closed (Checkpoint)**  
 > **Maintainer-only narrative / assessment:** `doc_Private/docs/tech/` (`RUNTIME_EVOLUTION_ROADMAP.md`, `ARCHITECTURE_BOUNDARY_ANALYSIS.md`, `adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md`, etc.)  
-> **Last updated:** 2026-06-12 (aligned with workspace **0.7.5**: `runtime-api` / `runtime-orchestrator` / `runtime-adapters` + `runtime-server` HTTP host; desktop adds Windows sandbox IPC)
+> **Last updated:** 2026-06-16 (aligned with workspace **0.7.5** + Kernel V3 final switch: `runtime-api` / `runtime-orchestrator` / `runtime-adapters` + `runtime-server` HTTP host; desktop adds Windows sandbox IPC)
 
-> **How to read this document:** §1 is the **top-level system overview** (§1.1 conceptual diagram + §1.2 code-path detail diagram); §2 is **Sidecar internal data flow** (HTTP → Manager → Engine → turn_loop, including orchestrator core); §5 is **L2 dual-channel** (Tauri IPC vs Runtime HTTP/SSE); §8 is a **typical send-message sequence diagram**. Remaining sections are side notes (crate deps, persistence, supervision, module index). All source file paths on diagram nodes can be verified directly against the code.
+> **How to read this document:** §1 is the **top-level system overview** (§1.1 conceptual diagram + §1.2 code-path detail diagram); §2 is **Sidecar internal data flow** (HTTP → Manager → Engine → Kernel V3 turn loop, including orchestrator core); §2.1 covers the event-sourced engine; §5 is **L2 dual-channel** (Tauri IPC vs Runtime HTTP/SSE); §8 is a **typical send-message sequence diagram**. Remaining sections are side notes (crate deps, persistence, supervision, module index). All source file paths on diagram nodes can be verified directly against the code.
 
 ---
 
@@ -60,7 +61,7 @@ flowchart TB
         HOST["Sidecar host runtime-server<br/>HTTP handlers · Tool impl · Engine wiring"]
         ORCH["Orchestration runtime-orchestrator<br/>Thread mgmt · Turn lifecycle · Event monitor & persist"]
         ADPT["Adapters runtime-adapters<br/>MCP pool · Session persist · Tool host ports"]
-        CORE["Engine zagens-core<br/>Engine message loop · Turn logic · Tool planning"]
+        CORE["Engine zagens-core<br/>Engine · LiveTurnMachine · Effect plan · Tool planning"]
     end
 
     subgraph external["External Services"]
@@ -152,7 +153,8 @@ flowchart TB
         RTAD["runtime-adapters<br/>MCP · session_manager<br/>tool host ports"]
         ENG_SHIM["core/engine.rs<br/>~130 LOC shim<br/>platform_dispatch · build_engine"]
         ENG_C["zagens-core/engine<br/>Engine struct + op_loop<br/>EngineHandle · Op channel"]
-        TURN["core/engine/turn_loop<br/>handle_deepseek_turn · TurnEnginePort"]
+        TURN["core/engine/turn_loop<br/>handle_deepseek_turn · LiveTurnMachine"]
+        EFX["runtime-server/effect_interpreter<br/>Effect IO · V3TurnHost"]
         LLM_C["client/ · llm_client/<br/>HTTP/SSE → LLM"]
         TOOLS_R["tools/* · shell · subagent<br/>todo · plan · lsp"]
         TASKS["task_manager.rs<br/>automation_manager.rs"]
@@ -190,9 +192,10 @@ flowchart TB
     MGR_W --> ENG_SHIM
     ENG_SHIM --> ENG_C
     ENG_C --> TURN
-    TURN --> LLM_C
+    TURN --> EFX
+    EFX --> LLM_C
+    EFX --> TOOLS_R
     ENG_SHIM --> RTAD
-    ENG_SHIM --> TOOLS_R
     MGR_W --> TASKS
 
     LLM_C --> LLM
@@ -207,7 +210,7 @@ flowchart TB
     classDef ext fill:#3a1e3a,stroke:#f472b6,color:#fff
     classDef store fill:#1e3a2f,stroke:#34d399,color:#fff
     class WEB,TAURI,CMDS,PROXY,SUP,TERM,BIN product
-    class MAIN,HTTP,ROUTER,AUTH,STREAM,MGR_W,RTO,RTAD,ENG_C,ENG_SHIM,TURN,LLM_C,TOOLS_R,TASKS sidecar
+    class MAIN,HTTP,ROUTER,AUTH,STREAM,MGR_W,RTO,RTAD,ENG_C,ENG_SHIM,TURN,EFX,LLM_C,TOOLS_R,TASKS sidecar
     class LLM,MCP_SRV ext
     class SESS,RT_DIR,LOGS,KEYS store
 ```
@@ -264,7 +267,9 @@ flowchart LR
     ENG["core/engine/runtime.rs<br/>Engine + op_loop · EngineHandle"]
     ENG_SHIM["runtime-server/core/engine.rs<br/>platform_dispatch · build_engine"]
     OP_EXT["EnginePlatformExt<br/>(platform_dispatch)"]
-    TURN["core/engine/turn_loop<br/>handle_deepseek_turn"]
+    TURN["core/engine/turn_loop<br/>handle_deepseek_turn · LiveTurnMachine"]
+    EFX["effect_interpreter.rs<br/>Effect IO · V3TurnHost"]
+    KLOG["kernel_event_writer<br/>→ sessions.db kernel_events"]
     LLM_C["client.rs (DeepSeekClient)<br/>llm_client/ SSE"]
     TOOL_REG["tools/* + tool_registry<br/>shell · plan · todo · subagent<br/>lsp · sandbox · skills"]
     MCP_POOL["mcp.rs::McpPool<br/>(adapters, re-export)"]
@@ -291,8 +296,10 @@ flowchart LR
     ENG --> ENG_SHIM
     ENG_SHIM --> OP_EXT
     OP_EXT --> TURN
-    TURN --> LLM_C
-    TURN --> TOOL_REG
+    TURN --> EFX
+    EFX --> LLM_C
+    EFX --> TOOL_REG
+    EFX --> KLOG
     TOOL_REG --> MCP_POOL
 
     MONITOR --> BCAST
@@ -301,7 +308,7 @@ flowchart LR
     SESS_M -. "sessions.db<br/>~/.deepseek/sessions/" .- THREADS
 ```
 
-**Sole production turn path (D17 freeze, non-bypassable):**
+**Sole production turn path (D17 freeze + Kernel V3, non-bypassable):**
 
 ```text
 HTTP handler
@@ -309,17 +316,38 @@ HTTP handler
   → runtime-orchestrator::turn_lifecycle::start_turn
   → TurnEnginePort::start_turn (zagens-core: EngineHandle → Op::SendMessage)
   → runtime-server: EnginePlatformExt::dispatch_op → handle_send_message (host glue)
-  → zagens-core::handle_deepseek_turn (turn / streaming / tool planning & results)
+  → zagens-core::handle_deepseek_turn
+       → LiveTurnMachine (outer + inner planning)
+       → EffectInterpreter (CallModel · ExecuteBatch · memory/guard effects)
+       → V3TurnHost IO (streaming · tools · LSP · kernel event sink)
+  → turn end: finish_kernel_turn (replay verify; golden fixtures in CI)
 ```
 
-**Path summary:** HTTP request → sidecar `RuntimeThreadManager::start_turn` delegates to orchestrator → `TurnEnginePort` (core) validates → sends `Op::SendMessage` to `EngineHandle` (same-process mpsc) → `Engine::run()` (core `op_loop`) dispatches platform ops via `EnginePlatformExt` → runtime `platform_dispatch` wiring → `handle_deepseek_turn` (core) → events via `broadcast` feed both SSE and orchestrator `monitor.rs` persistence.
+**Path summary:** HTTP request → orchestrator `start_turn` → `Op::SendMessage` (mpsc) → `handle_deepseek_turn` plans via **`LiveTurnMachine`**, executes via **`EffectInterpreter`** bound on **`V3TurnHost`** → runtime events broadcast to SSE and `monitor.rs` persistence; kernel semantics also append to **`kernel_events`** in `sessions.db` (see [AGENT_KERNEL_V3.md](./AGENT_KERNEL_V3.md)).
+
+### 2.1 Kernel V3 turn engine (2026-06-16)
+
+Full specification: **[AGENT_KERNEL_V3.md](./AGENT_KERNEL_V3.md)**.
+
+| Piece | Location | Notes |
+|-------|----------|-------|
+| `LiveTurnMachine` | [`live_turn_machine.rs`](../../crates/core/src/engine/turn_loop/live_turn_machine.rs) | Production planner (outer + inner segments) |
+| `ReplayTurnMachine` | [`turn_machine.rs`](../../crates/core/src/engine/turn_machine.rs) | Log replay + CI golden coherence |
+| `EffectInterpreter` | [`effect_interpreter.rs`](../../crates/runtime-server/src/core/engine/effect_interpreter.rs) | Effect → host IO |
+| `V3TurnHost` | [`host.rs`](../../crates/core/src/engine/turn_loop/host.rs) + [`host_impl/`](../../crates/runtime-server/src/core/engine/turn_loop/host_impl/) | Runtime host bound |
+| `KernelEvent` log | [`kernel_event.rs`](../../crates/core/src/engine/kernel_event.rs) + [`kernel_event_log.rs`](../../crates/runtime-adapters/src/persist/kernel_event_log.rs) | Append-only in `sessions.db` |
+| Config | [`kernel_mode.rs`](../../crates/core/src/engine/kernel_mode.rs) | `[kernel]` — default `v3` only |
+| Golden fixtures | [`fixtures/harness/kernel-v3-replay/`](../../fixtures/harness/kernel-v3-replay/) | 17 replay/resume parity tests |
+
+**Removed:** legacy inner step, `TurnLoopHost` alias, shadow bake modules, `GET /v1/runtime/kernel-shadow`.
 
 **Post-finalization split status (D16 Checkpoint + D17 Freeze, 2026-05-27):**
 
 | Component | Location | Notes |
 |-----------|----------|-------|
 | `Engine` struct, `Engine::run()` op loop, `EngineHandle`, `Op` channel | [`crates/core/src/engine/`](../../crates/core/src/engine/) | M-series M7/M8 ✅ |
-| `handle_deepseek_turn`, Session types, `TurnEnginePort` | [`crates/core/src/engine/turn_loop/`](../../crates/core/src/engine/turn_loop/) | core library layer |
+| `handle_deepseek_turn`, `LiveTurnMachine`, Session types, `TurnEnginePort` | [`crates/core/src/engine/turn_loop/`](../../crates/core/src/engine/turn_loop/) | Kernel V3 sole turn path — [AGENT_KERNEL_V3.md](./AGENT_KERNEL_V3.md) |
+| `EffectInterpreter`, `V3TurnHost` impl | [`crates/runtime-server/src/core/engine/`](../../crates/runtime-server/src/core/engine/) | Effect IO + turn-end replay verify |
 | Runtime newtype shim + `build_engine` + `platform_dispatch` | [`crates/runtime-server/src/core/engine.rs`](../../crates/runtime-server/src/core/engine.rs) + submodules | ~130 LOC entry + engine-flow orchestration |
 | Production sidecar binary + lib | [`crates/runtime-server/`](../../crates/runtime-server/) | **`deepseek-runtime`** bin + **`zagens_runtime`** lib — handlers, tools, Engine host |
 | Thread/Turn orchestration core | [`crates/runtime-orchestrator/src/runtime_threads/`](../../crates/runtime-orchestrator/src/runtime_threads/) | manager, turn_lifecycle, monitor, persist, thread_store_sqlite |
@@ -523,9 +551,11 @@ sequenceDiagram
     participant Port as TurnEnginePort (core)
     participant Eng as Engine (core)
     participant Plat as platform_dispatch (runtime)
-    participant Turn as handle_deepseek_turn (core)
+    participant Turn as LiveTurnMachine + run.rs
+    participant Efx as EffectInterpreter
     participant LLM as DeepSeek API
     participant Pers as persist + SQLite (orchestrator)
+    participant KLog as kernel_events (sessions.db)
 
     User->>UI: Type + Send
     UI->>Cli: streamTurn(req)
@@ -538,11 +568,14 @@ sequenceDiagram
     Eng->>Plat: EnginePlatformExt::dispatch_op
     Plat->>Turn: handle_deepseek_turn(ctx)
     loop SSE chunks
-        Turn->>LLM: chat (SSE)
-        LLM-->>Turn: delta / tool_use / finish
+        Turn->>Efx: planned CallModel / ExecuteBatch
+        Efx->>LLM: chat (SSE)
+        LLM-->>Efx: delta / tool_use / finish
+        Efx-->>Turn: step outcome
         Turn-->>Eng: Event (thinking/message/tool)
         Eng-->>MgrW: broadcast RuntimeEventRecord
         MgrW->>Pers: append event / turn / item
+        Turn->>KLog: KernelEvent double-write
         MgrW-->>Http: tail broadcast
         Http-->>Proxy: SSE frame
         Proxy-->>Cli: emit runtime://stream-chunk
@@ -551,6 +584,7 @@ sequenceDiagram
     Turn-->>Eng: turn.completed (usage)
     Eng-->>MgrW: terminal event
     MgrW->>Pers: persist turn end state
+    Turn->>Efx: finish_kernel_turn (replay verify)
     Proxy-->>Cli: runtime://stream-done
 ```
 
@@ -586,7 +620,10 @@ sequenceDiagram
 | Tool host ports / pure tool helpers | [`crates/runtime-adapters/src/tools/`](../../crates/runtime-adapters/src/tools/) |
 | Engine struct + op loop (core) | [`crates/core/src/engine/runtime.rs`](../../crates/core/src/engine/runtime.rs) · [`op_loop.rs`](../../crates/core/src/engine/op_loop.rs) |
 | Runtime Engine shim + platform dispatch | [`crates/runtime-server/src/core/engine.rs`](../../crates/runtime-server/src/core/engine.rs) · [`platform_dispatch.rs`](../../crates/runtime-server/src/core/engine/platform_dispatch.rs) |
-| Turn loop / Port / Session (core) | [`crates/core/src/engine/`](../../crates/core/src/engine/) |
+| Turn loop / LiveTurnMachine / V3TurnHost (core) | [`crates/core/src/engine/turn_loop/`](../../crates/core/src/engine/turn_loop/) · [AGENT_KERNEL_V3.md](./AGENT_KERNEL_V3.md) |
+| Effect interpreter + host impl | [`crates/runtime-server/src/core/engine/effect_interpreter.rs`](../../crates/runtime-server/src/core/engine/effect_interpreter.rs) · [`turn_loop/host_impl/`](../../crates/runtime-server/src/core/engine/turn_loop/host_impl/) |
+| Kernel event log (sessions.db) | [`crates/runtime-adapters/src/persist/kernel_event_log.rs`](../../crates/runtime-adapters/src/persist/kernel_event_log.rs) · [`kernel_event_writer.rs`](../../crates/runtime-adapters/src/persist/kernel_event_writer.rs) |
+| Kernel V3 golden fixtures | [`fixtures/harness/kernel-v3-replay/`](../../fixtures/harness/kernel-v3-replay/) |
 | Web client | [`crates/desktop/web-ui/src/api/client.ts`](../../crates/desktop/web-ui/src/api/client.ts) · [`turnControl.ts`](../../crates/desktop/web-ui/src/api/turnControl.ts) |
 | OpenAPI / TS types | [`docs/tech/openapi/zagens-runtime-v1.openapi.json`](./openapi/zagens-runtime-v1.openapi.json) · `export-runtime-openapi` · CI / `./scripts/check-openapi-contract.{sh,ps1}` |
 | Architecture freeze local check (D17 F2) | [`scripts/check-architecture-freeze.{sh,ps1}`](../../scripts/check-architecture-freeze.sh) |
@@ -610,5 +647,6 @@ Since **2026-05-24** strategic sign-off (maintainer notes, not published):
 - **D15 architecture finale (2026-05-26):** deleted `deepseek-state` and `core::Runtime`; sidecar is only `deepseek-runtime` — [D15_FINAL_ARCHITECTURE_CONVERGENCE.md](./adr/D15_FINAL_ARCHITECTURE_CONVERGENCE.md).
 - **D16 maintainability split (Closed Checkpoint, 2026-05-27):** E2/E3/E5 + E1 phase 1 Landed; E1 phase 2 (full tools package migrate to adapters) / E4 **will not execute** — [D16_PHASE_E_MAINTAINABILITY.md](./adr/D16_PHASE_E_MAINTAINABILITY.md).
 - **D17 Architecture Freeze v1 (2026-05-27):** refactor mainline closed; turn path frozen; `architecture_boundary` + `check-architecture-freeze` — [D17_ARCHITECTURE_FREEZE.md](./adr/D17_ARCHITECTURE_FREEZE.md).
+- **Kernel V3 (2026-06-16):** event-sourced turn engine landed inside `zagens-core` — `LiveTurnMachine` + `EffectInterpreter` + `V3TurnHost`; shadow bake removed; log-first resume default. Does **not** reopen D17 HTTP/desktop split — see [AGENT_KERNEL_V3.md](./AGENT_KERNEL_V3.md).
 
-**Remaining non-blocking debt (post-finalization; requires separate ADR to start):** §6 cold-start profiling; P2 enhancements (D11–D14); Harness vision ([docs/harness/](../../harness/README.md)).
+**Remaining non-blocking debt (post-finalization; requires separate ADR to start):** §6 cold-start profiling; P2 enhancements (D11–D14); Harness vision ([docs/harness/](../../harness/README.md)); optional compaction → `Effect::EmitArtifact`.

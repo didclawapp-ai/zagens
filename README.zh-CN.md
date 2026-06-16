@@ -8,16 +8,16 @@
 
 长程 Agent 任务容易**半途停下或过早「声称完成」**；写代码和改 Office 往往**各用一套工具**；本地执行还需要**回放、审批和可审计性**——而不只是多开一个聊天窗口。
 
-**Zagens** 是专为 **[DeepSeek V4](https://deepseek.com/) 生态**打造的**桌面 Agent 控制台**：针对 DeepSeek API、推理链与工具调用深度适配，默认开箱即用 DeepSeek Pro / Flash。Code 与 Office 工作区共用本地 **runtime sidecar**，支持按轮 **会话回放**、长程任务的**分层完成门禁**，以及托盘、通知、嵌入式终端等桌面原生能力（亦支持其他 OpenAI 兼容端点作为备选）。
+**Zagens** 是专为 **[DeepSeek V4](https://deepseek.com/) 生态**打造的**桌面 Agent 控制台**：针对 DeepSeek API、推理链与工具调用深度适配，默认开箱即用 DeepSeek Pro / Flash。可选 **Tauri 桌面**、全屏 **`zagens-tui` 终端**，或无 GUI 的 **`zagens` CLI** — 三者共用 **Kernel V3** runtime，支持 Code / Office 工作区、按轮**会话回放**、长程**分层完成门禁**，以及桌面侧的托盘、通知、嵌入式 PTY 等能力（亦支持其他 OpenAI 兼容端点作为备选）。
 
 > **作者语：** 不要相信 AI Agent 能做任何事情，它是有边界的；我们能做的，就是拓展这种边界。
 
-> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.7.4** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
+> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.7.5** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.4`**）· [zagens.com/download](https://zagens.com/download) |
+| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.5`**）· [zagens.com/download](https://zagens.com/download) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
@@ -28,11 +28,12 @@
 
 | 更适合 | 不太适合 |
 |--------|----------|
-| **DeepSeek 深度用户** — 日常用 DeepSeek API / V4 做编码与 Agent 工作流，想要比官方 TUI 更强的桌面 Harness | 托管 SaaS、包月模型、零配置云端 |
+| **DeepSeek 深度用户** — 日常用 DeepSeek API / V4 做编码与 Agent 工作流，想要比官方 TUI 更强的 Harness | 托管 SaaS、包月模型、零配置云端 |
 | 想要**独立桌面 Harness**（不绑死某一 IDE 插件）的开发者 | 纯聊天、无工具、无工作区、无回放 |
-| 做**长程代码重构**或**Office 交付物**、希望同一工作流的人 | 完全自主、无护栏的 YOLO Agent |
-| 在意**本地 sidecar**、MCP/技能、UI 内**执行审批**的用户 | 零安装的移动端 / 纯浏览器体验 |
-| 当前 **Windows 桌面**用户；macOS/Linux 可用 **CLI** 或源码构建 | 只需网页 Copilot、不需要本地执行能力的团队 |
+| **终端优先**用户（macOS / Linux / Windows）— 全屏 **`zagens-tui`**，与桌面同引擎 | 完全自主、无护栏的 YOLO Agent |
+| 做**长程代码重构**或**Office 交付物**、希望同一工作流的人 | 零安装的移动端 / 纯浏览器体验 |
+| 在意**本地 sidecar**、MCP/技能、UI 内**执行审批**的用户 | 只需网页 Copilot、不需要本地执行能力的团队 |
+| 当前 **Windows 桌面**用户；macOS/Linux 可用 **TUI**、**CLI** 或源码构建 | |
 
 ---
 
@@ -40,11 +41,11 @@
 
 **1. Harness，不是聊天壳** — 长程代码任务用**可组合完成门禁**（操作者 / 模型 / 工具链分层），而不是「模型说做完了就算完」。规格：[LHT](docs/harness/LONG_HORIZON_CODE_TASKS.md) · 夹具：[`fixtures/harness/`](fixtures/harness/)。
 
-**2. 桌面原生控制面** — [Tauri 2](https://tauri.app/) UI + 本机 loopback **sidecar**（`zagens-runtime`）：托盘、通知、diff、**会话回放**、Code 工作区 **PTY**、HTTP 工具审批。与无 GUI 的 **`zagens`** CLI 同一引擎。
+**2. 桌面 + 终端，一套引擎** — [Tauri 2](https://tauri.app/) 桌面 **或** 全屏 **`zagens-tui`**（ratatui）**或** 无 GUI 的 **`zagens`** CLI — 均运行 **Kernel V3**（`LiveTurnMachine` + `EffectInterpreter`，事件溯源 turn、log-first 会话恢复）。桌面提供托盘、WebView 面板、嵌入式 PTY 与 sidecar 监督；TUI 在终端内提供三栏 transcript/composer/inspector 与 LHT 面板。
 
 **3. Code + Office，一套 runtime** — **Code / Office** 任务类型共享配置与工具面，但提示词与工具集不同；切换类型会**新开会话**以保持 KV 稳定（[架构说明](docs/task-type-prompt-architecture.md)）。Office：`read_file` / **`write_office`**（xlsx 用 Rust；docx/pptx/pdf 用捆绑 Python）。
 
-另有：**CRAFT 多代理**（子代理、fix-loop 裁决、P1 黑板 — [说明](docs/craft-v2-improvements.md)）、懒加载**符号索引**（`.zagens/symbols.json`）、MCP、技能、Hooks、定时任务。
+另有：**CRAFT 多代理**（子代理、fix-loop 裁决、P1 黑板 — [说明](docs/craft-v2-improvements.md)）、懒加载**符号索引**（`.zagens/symbols.json`）、MCP、技能、Hooks、定时任务、**`batch_edit`** / **`refactor_imports`** 批量代码工具。
 
 ---
 
@@ -59,13 +60,17 @@
 
 ---
 
-## 当前已具备（v0.7.4）
+## 当前已具备（v0.7.5）
 
-**桌面：** 多会话聊天（流式/停止/思考流）、文件树与预览与 diff、PTY 终端（Code）、子代理面板、任务/技能 UI、MCP 与路由规则、用量图表、keyring 存 Key、中/英/日/葡 UI。
+**Kernel V3 引擎：** 事件溯源 turn 循环 — `sessions.db` 中的 `KernelEvent` 日志、`LiveTurnMachine` 规划、`EffectInterpreter` IO、golden 重放夹具。规格：[AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md)。
 
-**Runtime：** 线程、MCP、技能（`~/.zagens/skills`）、生命周期 Hooks、多提供商路由、视觉（`describe_image`）。
+**桌面（Tauri）：** 多会话聊天（流式/停止/思考流）、文件树与预览与 diff、PTY 终端（Code）、子代理面板、任务/技能 UI、MCP 与路由规则、用量图表、keyring 存 Key、中/英/日/葡 UI。
 
-**工具（代表）：** 文件（`read_file`、`write_file`、`edit_file` …）、git、`exec_shell`、`write_office`、可选 `web_search` / `fetch_url`、记忆工具。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+**终端 TUI（`zagens-tui`）：** 全屏三栏 — 会话侧栏、流式 transcript（思考/工具）、composer（`/model`、`/lht`）、审批弹窗、inspector（文件 / diff / checklist / agents / MCP）、可折叠 LHT 下 pane、主题预设、会话恢复（`--fresh` 新建）。与桌面共用 runtime 线程与 Kernel V3 路径。
+
+**Runtime：** 线程、MCP、技能（`~/.zagens/skills`）、生命周期 Hooks、多提供商路由、视觉（`describe_image`）、ContextCompiler V2 请求组装。
+
+**工具（代表）：** 文件（`read_file`、`write_file`、`edit_file`、`batch_edit`、`refactor_imports` …）、git、`exec_shell`、`write_office`、可选 `web_search` / `fetch_url`、记忆工具。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -75,7 +80,7 @@
 
 | 主题 | 现状 |
 |------|------|
-| **桌面安装包** | **Windows** 安装包见 [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux 桌面包** — 规划中。三平台 **CLI** 已发。 |
+| **桌面安装包** | **Windows** 安装包见 [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux 桌面包** — 规划中。三平台 **`zagens` CLI** 与 **`zagens-tui`** 已发。 |
 | **OS 级沙箱** | **macOS Seatbelt** — 在 `sandbox-exec` 可用时强制执行。**Windows** — 原生沙箱已实现（`elevated` 推荐：`zagens sandbox setup` 后强制隔离；`unelevated` 为工作区写隔离）。设置 → **Sandbox** 首次引导。**Linux** — 策略已声明，**尚未 OS 级强制**（degraded）。详见 [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
 | **模型与 Key** | 面向 **DeepSeek V4**（Pro / Flash）深度优化；需自备 API Key。亦支持其他 OpenAI 兼容端点 — **我们不托管模型**。 |
 | **长程与多代理** | 门禁与 CRAFT **可用且在持续演进**，边界场景与新门禁类型在活跃开发中。 |
@@ -98,15 +103,15 @@
 
 ## 快速开始
 
-**预编译（Windows）：** [GitHub Releases `zagens-v0.7.3`](https://github.com/didclawapp-ai/zagens/releases) — 安装 zip + CLI。SmartScreen：[SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
+**预编译（Windows）：** [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) — 桌面安装 zip + `zagens` / `zagens-tui` CLI。SmartScreen：[SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
 
-**从源码构建：**
+**从源码 — 桌面：**
 
 ```bash
 git clone https://github.com/didclawapp-ai/zagens.git
 cd zagens
 
-cargo build -p zagens-cli          # sidecar 复制到 crates/desktop/binaries/
+cargo build -p zagens-cli          # 将 zagens-runtime 复制到 crates/desktop/binaries/
 
 cd crates/desktop/web-ui && npm install
 cd .. && cargo tauri dev
@@ -114,10 +119,17 @@ cd .. && cargo tauri dev
 # API Key：Zagens 设置，或 ~/.zagens/config.toml
 ```
 
-**无 GUI CLI**（与桌面同引擎）：
+**从源码 — 终端 TUI**（同一 Kernel V3 引擎，进程内 runtime）：
 
 ```bash
-cargo install zagens-cli --version 0.7.3 --bin zagens --locked
+cargo build -p zagens-cli --features tui --bin zagens-tui
+./target/debug/zagens-tui          # 恢复上次会话；--fresh 新建会话
+```
+
+**无 GUI CLI**（自动化 / HTTP sidecar）：
+
+```bash
+cargo install zagens-cli --version 0.7.5 --bin zagens --locked
 
 zagens doctor
 zagens exec '总结 src/ 变更' --json
@@ -132,26 +144,22 @@ zagens serve --http --port 7878
 ## 架构
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                     Zagens (Tauri 2)                         │
-│  ┌─────────────────┐  ┌───────────────────────────────────┐  │
-│  │   WebView UI    │  │         Rust 外壳                 │  │
-│  │   React / TS    │◄─┤  commands、sidecar 监督器、托盘     │  │
-│  └────────┬────────┘  └───────────────┬───────────────────┘  │
-│           │ HTTP + SSE                │                       │
-│           ▼                           ▼                       │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │     Runtime API（嵌入式 sidecar，loopback HTTP/SSE）      │  │
-│  │  /v1/threads、/v1/skills、/v1/symbol-index 等           │  │
-│  └───────────────────────┬─────────────────────────────────┘  │
-│                          ▼                                    │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  共享 crates：agent、core、config、state、tools、mcp     │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  Zagens 桌面     │  │   zagens-tui     │  │  zagens CLI      │
+│  Tauri + WebView │  │  ratatui 终端    │  │  exec / serve    │
+└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+         │ HTTP+SSE（loopback）│ 进程内              │ 进程内 / HTTP
+         ▼                     ▼                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  zagens-runtime sidecar  ·  Kernel V3 turn 引擎                 │
+│  LiveTurnMachine → EffectInterpreter → V3TurnHost               │
+│  /v1/threads · MCP · 技能 · 工具 · kernel_events 日志            │
+└───────────────────────────────┬─────────────────────────────────┘
+                                ▼
+         zagens-core · runtime-orchestrator · runtime-adapters
 ```
 
-完整边界：[`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md) · HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。
+完整边界：[`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md) · Kernel V3：[`docs/tech/AGENT_KERNEL_V3.md`](docs/tech/AGENT_KERNEL_V3.md) · HTTP 契约：[`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。
 
 ### 安全模式（`sandbox_mode`）
 
@@ -183,10 +191,11 @@ Windows：`pwsh -File scripts/ci/verify-lint.ps1`
 
 ```
 zagens/
-├── crates/desktop/       # Tauri 应用
-├── crates/runtime-server/ # Sidecar HTTP/SSE
-├── docs/                 # 公开设计规格
-├── fixtures/harness/     # LHT / Office 夹具
+├── crates/desktop/        # Tauri 桌面应用
+├── crates/runtime-server/ # zagens-runtime sidecar · zagens CLI · zagens-tui（feature `tui`）
+├── crates/core/           # Kernel V3 引擎（LiveTurnMachine、kernel events）
+├── docs/                  # 公开设计规格
+├── fixtures/harness/      # LHT / kernel 重放夹具
 └── config.example.toml
 ```
 

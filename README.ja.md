@@ -8,16 +8,16 @@
 
 長時間の Agent 作業は**途中で止まったり、早すぎる「完了」宣言**をしがちです。コードと Office ファイルは**別ツール**に分かれがちです。ローカル Agent には、チャット窓だけでなく**リプレイ・承認・監査可能性**が必要です。
 
-**Zagens** は **[DeepSeek V4](https://deepseek.com/) エコシステム**向けに設計した**デスクトップ Agent ハーネス**です。DeepSeek API・推論ストリーム・ツール呼び出しに最適化され、既定で DeepSeek Pro / Flash を利用できます。Code / Office ワークスペースで共通のローカル **runtime sidecar**、ターン単位の**セッションリプレイ**、長時間タスク向けの**段階的完了ゲート**、トレイ・通知・組み込みターミナルなどのデスクトップネイティブ機能を備えます（OpenAI 互換エンドポイントもフォールバックとして利用可能）。
+**Zagens** は **[DeepSeek V4](https://deepseek.com/) エコシステム**向けに設計した**デスクトップ Agent ハーネス**です。DeepSeek API・推論ストリーム・ツール呼び出しに最適化され、既定で DeepSeek Pro / Flash を利用できます。**Tauri デスクトップ**、全画面 **`zagens-tui`**、またはヘッドレス **`zagens` CLI** を選択 — いずれも **Kernel V3** runtime を共有し、Code / Office ワークスペース、ターン単位の**セッションリプレイ**、長時間タスク向け**段階的完了ゲート**、およびデスクトップ向けトレイ・通知・PTY などを提供します（OpenAI 互換エンドポイントもフォールバックとして利用可能）。
 
 > **作者より：** AI Agent が何でもできるわけではない — 境界がある。私たちにできるのは、その境界を広げることだ。
 
-> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.7.4** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
+> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.7.5** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
 
 | リソース | リンク |
 |----------|--------|
 | ユーザーガイド | [zagens.com/docs](https://zagens.com/docs) |
-| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.4`**）· [zagens.com/download](https://zagens.com/download) |
+| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.5`**）· [zagens.com/download](https://zagens.com/download) |
 | 設計仕様 | [`docs/README.md`](docs/README.md) |
 | コントリビューション | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | セキュリティ | [`SECURITY.md`](SECURITY.md) |
@@ -28,11 +28,12 @@
 
 | 向いている | 向いていない |
 |------------|--------------|
-| **DeepSeek ヘビーユーザー** — DeepSeek API / V4 で日々コーディング Agent を回し、公式 TUI より強いデスクトップ Harness を求める人 | モデル・課金込みのホスト型 SaaS |
+| **DeepSeek ヘビーユーザー** — DeepSeek API / V4 で日々コーディング Agent を回し、公式 TUI より強い Harness を求める人 | モデル・課金込みのホスト型 SaaS |
 | **独立したデスクトップ Harness**（特定 IDE 拡張に縛られない）を求める開発者 | ツール・ワークスペース・リプレイのない「チャットのみ」 |
-| **長期コードリファクタ**や **Office 成果物**を同一ワークフローで扱うチーム | ガードレールなしの完全自律 YOLO Agent |
-| **ローカル sidecar**、MCP/スキル、UI 内**実行承認**を重視する人 | セットアップ不要のモバイル / ブラウザのみ |
-| 現時点では **Windows デスクトップ**；macOS/Linux は **CLI** またはソースビルド | ローカル実行なしの Web コパイロットだけで足りるチーム |
+| **ターミナル優先**ユーザー（macOS / Linux / Windows）— 全画面 **`zagens-tui`**、デスクトップと同一エンジン | ガードレールなしの完全自律 YOLO Agent |
+| **長期コードリファクタ**や **Office 成果物**を同一ワークフローで扱うチーム | セットアップ不要のモバイル / ブラウザのみ |
+| **ローカル sidecar**、MCP/スキル、UI 内**実行承認**を重視する人 | ローカル実行なしの Web コパイロットだけで足りるチーム |
+| 現時点では **Windows デスクトップ**；macOS/Linux は **TUI**、**CLI** またはソースビルド | |
 
 ---
 
@@ -40,11 +41,11 @@
 
 **1. チャットシェルではなく Harness** — 長時間コードタスクは** composable 完了ゲート**（オペレータ / モデル / ツールチェーン）で判定。「モデルが終わったと言った」だけでは完了にしません。仕様: [LHT](docs/harness/LONG_HORIZON_CODE_TASKS.md) · フィクスチャ: [`fixtures/harness/`](fixtures/harness/)。
 
-**2. デスクトップネイティブな制御面** — [Tauri 2](https://tauri.app/) UI + loopback **sidecar**（`zagens-runtime`）：トレイ、通知、diff、**セッションリプレイ**、Code ワークスペース **PTY**、HTTP ツール承認。ヘッドレス **`zagens`** CLI と同一エンジン。
+**2. デスクトップ + ターミナル、1 エンジン** — [Tauri 2](https://tauri.app/) デスクトップ **または** 全画面 **`zagens-tui`**（ratatui）**または** ヘッドレス **`zagens`** CLI — いずれも **Kernel V3**（`LiveTurnMachine` + `EffectInterpreter`、イベントソーシング turn、log-first セッション再開）。デスクトップはトレイ・WebView・PTY・sidecar 監督；TUI はターミナル内 3 カラム transcript/composer/inspector + LHT パネル。
 
 **3. Code + Office、1 つの runtime** — **Code / Office** タスク種別は設定とツールを共有しつつ、プロンプトとツール面は異なります。種別切替は KV 安定のため**新セッション**を開始（[アーキテクチャ](docs/task-type-prompt-architecture.md)）。Office: `read_file` / **`write_office`**（xlsx は Rust、docx/pptx/pdf は同梱 Python）。
 
-その他: **CRAFT マルチエージェント**（サブエージェント、fix-loop 判定、P1 ブラックボード — [メモ](docs/craft-v2-improvements.md)）、遅延**シンボル索引**（`.zagens/symbols.json`）、MCP、スキル、Hooks、スケジュールタスク。
+その他: **CRAFT マルチエージェント**（サブエージェント、fix-loop 判定、P1 ブラックボード — [メモ](docs/craft-v2-improvements.md)）、遅延**シンボル索引**（`.zagens/symbols.json`）、MCP、スキル、Hooks、スケジュールタスク、**`batch_edit`** / **`refactor_imports`** 一括コードツール。
 
 ---
 
@@ -59,13 +60,17 @@
 
 ---
 
-## 現時点で提供（v0.7.4）
+## 現時点で提供（v0.7.5）
 
-**デスクトップ:** マルチセッションチャット（ストリーム/停止/思考）、ファイルツリー・プレビュー・diff、PTY ターミナル（Code）、サブエージェントパネル、タスク/スキル UI、MCP + ルーティング、使用量チャート、keyring API キー、UI: 簡体中文 / en / ja / pt-BR。
+**Kernel V3 エンジン:** イベントソーシング turn — `sessions.db` の `KernelEvent` ログ、`LiveTurnMachine` 計画、`EffectInterpreter` IO、golden リプレイフィクスチャ。仕様: [AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md)。
 
-**Runtime:** スレッド、MCP、スキル（`~/.zagens/skills`）、ライフサイクル Hooks、マルチプロバイダルーティング、ビジョン（`describe_image`）。
+**デスクトップ（Tauri）:** マルチセッションチャット（ストリーム/停止/思考）、ファイルツリー・プレビュー・diff、PTY ターミナル（Code）、サブエージェントパネル、タスク/スキル UI、MCP + ルーティング、使用量チャート、keyring API キー、UI: 簡体中文 / en / ja / pt-BR。
 
-**ツール（代表）:** ファイル（`read_file`、`write_file`、`edit_file` …）、git、`exec_shell`、`write_office`、任意で `web_search` / `fetch_url`、メモリツール。一覧: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+**ターミナル TUI（`zagens-tui`）:** 全画面 3 カラム — セッション rail、ストリーミング transcript（思考/ツール）、composer（`/model`、`/lht`）、承認モーダル、inspector（files / diff / checklist / agents / MCP）、折りたたみ LHT 下ペイン、テーマ、セッション復元（`--fresh` で新規）。デスクトップと同一 runtime スレッドと Kernel V3 パス。
+
+**Runtime:** スレッド、MCP、スキル（`~/.zagens/skills`）、ライフサイクル Hooks、マルチプロバイダルーティング、ビジョン（`describe_image`）、ContextCompiler V2 リクエスト組み立て。
+
+**ツール（代表）:** ファイル（`read_file`、`write_file`、`edit_file`、`batch_edit`、`refactor_imports` …）、git、`exec_shell`、`write_office`、任意で `web_search` / `fetch_url`、メモリツール。一覧: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -75,7 +80,7 @@
 
 | 項目 | 状態 |
 |------|------|
-| **デスクトップインストーラ** | **Windows** は [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux デスクトップパッケージ** — 計画中。3 プラットフォーム **CLI** は提供済み。 |
+| **デスクトップインストーラ** | **Windows** は [Releases](https://github.com/didclawapp-ai/zagens/releases)。**macOS / Linux デスクトップパッケージ** — 計画中。3 プラットフォーム **`zagens` CLI** と **`zagens-tui`** 提供済み。 |
 | **OS サンドボックス強制** | **macOS Seatbelt** — `sandbox-exec` 利用時に強制。**Windows** — ネイティブサンドボックス実装済み（`elevated` 推奨：`zagens sandbox setup` 後に強制；`unelevated` は workspace 書き込み隔離のみ）。設定 → **Sandbox** 初回ウィザード。**Linux** — ポリシー宣言のみ、**OS 未強制**（degraded）。詳細: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
 | **プロバイダ** | **DeepSeek V4**（Pro / Flash）向けに最適化。API キーはユーザー提供。OpenAI 互換エンドポイントも利用可 — **モデルはホストしません**。 |
 | **長時間 & マルチエージェント** | ゲートと CRAFT は**利用可能だが進化中**；エッジケースと新ゲート種別を開発中。 |
@@ -98,15 +103,15 @@
 
 ## クイックスタート
 
-**ビルド済み（Windows）:** [GitHub Releases `zagens-v0.7.3`](https://github.com/didclawapp-ai/zagens/releases) — インストーラ zip + CLI。SmartScreen: [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
+**ビルド済み（Windows）:** [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) — デスクトップ zip + `zagens` / `zagens-tui` CLI。SmartScreen: [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
 
-**ソースから:**
+**ソースから — デスクトップ:**
 
 ```bash
 git clone https://github.com/didclawapp-ai/zagens.git
 cd zagens
 
-cargo build -p zagens-cli          # sidecar を crates/desktop/binaries/ にコピー
+cargo build -p zagens-cli          # zagens-runtime を crates/desktop/binaries/ にコピー
 
 cd crates/desktop/web-ui && npm install
 cd .. && cargo tauri dev
@@ -114,10 +119,17 @@ cd .. && cargo tauri dev
 # API キー: Zagens 設定、または ~/.zagens/config.toml
 ```
 
-**ヘッドレス CLI**（デスクトップと同一 runtime）:
+**ソースから — ターミナル TUI**（同一 Kernel V3、プロセス内 runtime）:
 
 ```bash
-cargo install zagens-cli --version 0.7.3 --bin zagens --locked
+cargo build -p zagens-cli --features tui --bin zagens-tui
+./target/debug/zagens-tui          # 前回セッション復元；--fresh で新規
+```
+
+**ヘッドレス CLI**（自動化 / HTTP sidecar）:
+
+```bash
+cargo install zagens-cli --version 0.7.5 --bin zagens --locked
 
 zagens doctor
 zagens exec 'summarize src/' --json
@@ -132,26 +144,22 @@ zagens serve --http --port 7878
 ## アーキテクチャ
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                     Zagens (Tauri 2)                         │
-│  ┌─────────────────┐  ┌───────────────────────────────────┐  │
-│  │   WebView UI    │  │         Rust Shell                │  │
-│  │   React / TS    │◄─┤  commands, sidecar supervisor,    │  │
-│  └────────┬────────┘  └───────────────┬───────────────────┘  │
-│           │ HTTP + SSE                │                       │
-│           ▼                           ▼                       │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │     Runtime API (embedded sidecar, loopback HTTP/SSE)    │  │
-│  │  /v1/threads, /v1/skills, /v1/symbol-index, ...         │  │
-│  └───────────────────────┬─────────────────────────────────┘  │
-│                          ▼                                    │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │  Shared crates: agent, core, config, state, tools, mcp   │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  Zagens Desktop  │  │   zagens-tui     │  │  zagens CLI      │
+│  Tauri + WebView │  │  ratatui TUI     │  │  exec / serve    │
+└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+         │ HTTP+SSE (loopback) │ in-process          │ in-process / HTTP
+         ▼                     ▼                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  zagens-runtime sidecar  ·  Kernel V3 turn エンジン             │
+│  LiveTurnMachine → EffectInterpreter → V3TurnHost               │
+│  /v1/threads · MCP · skills · tools · kernel_events log         │
+└───────────────────────────────┬─────────────────────────────────┘
+                                ▼
+         zagens-core · runtime-orchestrator · runtime-adapters
 ```
 
-境界: [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md) · HTTP: [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。
+境界: [`docs/tech/RUNTIME_ARCHITECTURE.md`](docs/tech/RUNTIME_ARCHITECTURE.md) · Kernel V3: [`docs/tech/AGENT_KERNEL_V3.md`](docs/tech/AGENT_KERNEL_V3.md) · HTTP: [`docs/tech/API_DESIGN.md`](docs/tech/API_DESIGN.md)。
 
 ### セキュリティモード（`sandbox_mode`）
 
@@ -183,10 +191,11 @@ Windows: `pwsh -File scripts/ci/verify-lint.ps1`
 
 ```
 zagens/
-├── crates/desktop/       # Tauri アプリ
-├── crates/runtime-server/ # Sidecar HTTP/SSE
-├── docs/                 # 公開設計仕様
-├── fixtures/harness/     # LHT / Office フィクスチャ
+├── crates/desktop/        # Tauri デスクトップ
+├── crates/runtime-server/ # zagens-runtime sidecar · zagens CLI · zagens-tui（feature `tui`）
+├── crates/core/           # Kernel V3 エンジン
+├── docs/                  # 公開設計仕様
+├── fixtures/harness/      # LHT / kernel リプレイ
 └── config.example.toml
 ```
 
