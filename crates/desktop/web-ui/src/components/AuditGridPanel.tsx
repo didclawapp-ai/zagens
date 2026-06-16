@@ -188,7 +188,7 @@ export default function AuditGridPanel({
             />
           </GridCell>
           <GridCell title={t('auditGrid.longHorizon')}>
-            <LongHorizonPanel threadId={resumedThreadId} pollFast={streaming} />
+            <LongHorizonPanel threadId={resumedThreadId} streaming={streaming} pollFast={streaming} />
           </GridCell>
           <GridCell title={t('sidebar.agents')}>
             <AgentPanel

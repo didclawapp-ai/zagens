@@ -110,10 +110,20 @@ export async function hydrateDesktopShellPrefs(): Promise<{
         onboarding_complete: boolean;
         task_type_preference: string;
       }>('get_desktop_shell_prefs');
-      const taskType =
-        parseDesktopTaskTypePreference(prefs.task_type_preference) ?? localTaskType;
+      const diskTaskType = parseDesktopTaskTypePreference(prefs.task_type_preference);
+      const taskType = localComplete ? localTaskType : (diskTaskType ?? 'auto');
       cachedOnboardingComplete = prefs.onboarding_complete || localComplete;
       persistTaskTypePreference(taskType);
+      if (localComplete && diskTaskType != null && diskTaskType !== localTaskType) {
+        try {
+          await invoke('save_desktop_shell_prefs', {
+            onboarding_complete: cachedOnboardingComplete,
+            task_type_preference: localTaskType,
+          });
+        } catch {
+          /* localStorage fallback */
+        }
+      }
       if (localComplete && !prefs.onboarding_complete) {
         try {
           await invoke('save_desktop_shell_prefs', {
@@ -201,6 +211,24 @@ export function persistTaskTypePreference(value: DesktopTaskTypePreference): voi
     localStorage.setItem(TASK_TYPE_STORAGE_KEY, value);
   } catch {
     /* ignore */
+  }
+}
+
+/** Persist task type to localStorage and mirror to `settings.toml` on desktop. */
+export async function syncTaskTypePreferencePersist(
+  value: DesktopTaskTypePreference,
+): Promise<void> {
+  persistTaskTypePreference(value);
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('save_desktop_shell_prefs', {
+        onboarding_complete: cachedOnboardingComplete || hasTaskTypePreferenceStored(),
+        task_type_preference: value,
+      });
+    } catch {
+      /* localStorage fallback */
+    }
   }
 }
 

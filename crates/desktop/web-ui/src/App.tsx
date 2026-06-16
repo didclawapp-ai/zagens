@@ -63,7 +63,7 @@ import {
   loadStoredInspector,
   loadStoredRightPanelCollapsed,
   loadTaskTypePreference,
-  persistTaskTypePreference,
+  syncTaskTypePreferencePersist,
   loadTheme,
   RIGHT_PANEL_COLLAPSED_STORAGE_KEY,
   ROUTE_INTENT_STORAGE_KEY,
@@ -96,6 +96,7 @@ export default function App() {
   const [lockedThreadTaskType, setLockedThreadTaskType] = useState<DesktopTaskTypeResolved | null>(
     null,
   );
+  const lockedThreadTaskTypeRef = useRef<DesktopTaskTypeResolved | null>(null);
   const [routeIntent, setRouteIntent] = useState<DesktopRouteIntentOption>(() => loadRouteIntentPreference());
   const [startupOverlayOpen, setStartupOverlayOpen] = useState(false);
 
@@ -432,7 +433,16 @@ export default function App() {
   });
 
   handleSelectSessionRef.current = handleSelectSession;
-  handleNewSessionRef.current = handleNewSession;
+
+  const handleNewSessionPreserveMode = useCallback(() => {
+    const locked = lockedThreadTaskTypeRef.current;
+    if (locked != null) {
+      setTaskTypePreference(locked);
+    }
+    handleNewSession();
+  }, [handleNewSession]);
+
+  handleNewSessionRef.current = handleNewSessionPreserveMode;
 
   const {
     editDraft,
@@ -483,7 +493,7 @@ export default function App() {
   }, [desktopHost]);
 
   useKeyboardShortcuts([
-    { key: 'k', ctrl: true, description: t('keyboard.newSession'), handler: () => handleNewSession() },
+    { key: 'k', ctrl: true, description: t('keyboard.newSession'), handler: () => handleNewSessionPreserveMode() },
     {
       key: 'n',
       ctrl: true,
@@ -609,8 +619,12 @@ export default function App() {
       taskTypePersistReadyRef.current = true;
       return;
     }
-    persistTaskTypePreference(taskTypePreference);
+    void syncTaskTypePreferencePersist(taskTypePreference);
   }, [taskTypePreference]);
+
+  useEffect(() => {
+    lockedThreadTaskTypeRef.current = lockedThreadTaskType;
+  }, [lockedThreadTaskType]);
 
   const officeSession = isOfficeSession(
     taskTypePreference,
@@ -720,7 +734,7 @@ export default function App() {
             '切换任务类型将新建会话，当前对话不会带入。是否继续？',
           );
           if (!ok) return;
-          handleNewSession();
+          handleNewSessionPreserveMode();
         }
         setTaskTypePreference(next);
         if (next === 'office') {
@@ -730,7 +744,7 @@ export default function App() {
         }
       })();
     },
-    [resumedThreadId, handleNewSession],
+    [resumedThreadId, handleNewSessionPreserveMode],
   );
 
   const handleOpenRouting = useCallback(() => {
@@ -855,7 +869,7 @@ export default function App() {
       showAllSessions={showAllSessions}
       onToggleShowAllSessions={() => setShowAllSessions((v) => !v)}
       activeSessionId={activeSessionId}
-      onNewSession={handleNewSession}
+      onNewSession={handleNewSessionPreserveMode}
       onSelectSession={handleSelectSession}
       onDeleteSession={handleDeleteSession}
       runtimeConn={runtimeConn}

@@ -28,6 +28,8 @@ import type {
 
 interface Props {
   threadId: string;
+  /** Composer turn active (生成中) — timer ticks until this is false. */
+  streaming?: boolean;
   pollFast?: boolean;
 }
 
@@ -715,7 +717,7 @@ function NodesView({
   );
 }
 
-export default function LongHorizonPanel({ threadId, pollFast = false }: Props) {
+export default function LongHorizonPanel({ threadId, streaming = false, pollFast = false }: Props) {
   const { t } = useT();
   const [tab, setTab] = useState<LongHorizonPanelTab>('task');
   const [graph, setGraph] = useState<HarnessTaskGraph | null>(null);
@@ -731,8 +733,8 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     !!graph && (graph.phases.length > 0 || graph.checklist.length > 0);
   const taskCompleted = !!graph && graph.completion_pct >= 100;
   const conditionalComplete = !!graph && isConditionalComplete(graph);
-  /** Incomplete LHT task — stopwatch ticks (includes tool exec between model chunks). */
-  const sessionInProgress = taskActive && !taskCompleted;
+  /** Timer ticks while composer turn is active (生成中), not when checklist hits 100%. */
+  const sessionInProgress = streaming && taskActive;
 
   const fetchGraph = useCallback(async () => {
     if (!threadId) {
@@ -788,10 +790,9 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     setElapsedMs(0);
   }, [threadId]);
 
-  // Client-side stopwatch: ticks while the task graph is present and completion < 100%.
-  // Includes tool execution (e.g. cargo clippy) between streaming chunks — not only
-  // composer streaming time. Freezes on 100%; accumulates across LHT reinject rounds
-  // without resetting at 100%. Only resets when `threadId` changes.
+  // Client-side stopwatch: ticks while the composer turn is active (streaming / 生成中).
+  // Includes tool execution between model chunks. Freezes when streaming ends; accumulates
+  // across LHT reinject rounds without resetting at 100% checklist. Only resets on threadId change.
   useEffect(() => {
     const freezeSegment = () => {
       if (segmentStartRef.current !== null) {
@@ -801,13 +802,17 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
       }
     };
 
-    if (!taskActive) {
+    if (!threadId) {
       freezeSegment();
       return;
     }
 
-    if (taskCompleted) {
+    if (!streaming) {
       freezeSegment();
+      return;
+    }
+
+    if (!taskActive) {
       return;
     }
 
@@ -823,7 +828,7 @@ export default function LongHorizonPanel({ threadId, pollFast = false }: Props) 
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [taskActive, taskCompleted, threadId]);
+  }, [streaming, taskActive, threadId]);
 
   useEffect(() => {
     const onPush = (ev: Event) => {

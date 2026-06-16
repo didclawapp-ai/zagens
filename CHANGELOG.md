@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop (composer):** Starting a new chat no longer resets the task-type chip to **Auto** when the previous session was locked to **Code** or **Office**; the effective mode is carried forward and synced to `settings.toml`.
+- **Desktop (LHT panel):** Long-horizon task timer now ticks until composer **生成中** (`streaming`) ends — no longer freezes when checklist hits 100% while the turn is still running; accumulated time persists across LHT reinject rounds on the same thread.
+
 ### Changed
 
 - **Runtime (tool UX — batch A):**
