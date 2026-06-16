@@ -19,11 +19,10 @@ use zagens_core::turn::TurnLoopMode;
 
 use crate::long_horizon::LongHorizonSessionState;
 
-use super::kernel_effect_shadow::KernelEffectShadow;
-use super::kernel_guard_shadow::KernelGuardShadow;
-use super::kernel_memory_shadow::KernelMemoryShadow;
-use super::kernel_projection_shadow::KernelProjectionShadow;
-use super::kernel_replay_shadow::KernelReplayShadow;
+use super::kernel_outer_boundary::V3OuterBoundaryTurnGrants;
+use super::kernel_turn_event_buffer::KernelTurnEventBuffer;
+use super::kernel_turn_replay_verify::KernelTurnReplayVerify;
+use super::kernel_v3_step_verify::KernelV3StepVerify;
 
 use super::types::EngineConfigExt;
 
@@ -58,19 +57,13 @@ pub struct EngineRuntimeExt {
     pub resource_lock_registry: Arc<crate::tools::resource_locks::ResourceLockRegistry>,
     /// Phase 3a/3b: append-only KernelEvent double-write (None = disabled).
     pub kernel_event_writer: Option<std::sync::Arc<KernelEventWriter>>,
-    /// Phase 3b: live vs projection shadow compare (enabled when writer is Some).
-    pub kernel_projection_shadow: KernelProjectionShadow,
-    /// Phase 3b: ReplayTurnMachine effect-chain sanity (`[kernel] machine = "shadow"`).
-    pub kernel_effect_shadow: KernelEffectShadow,
-    /// Phase 3b: guard/continuation projection sanity (`[kernel] machine = "shadow"`).
-    pub kernel_guard_shadow: KernelGuardShadow,
-    /// Phase 3b: memory-plane projection sanity (`[kernel] machine = "shadow"`).
-    pub kernel_memory_shadow: KernelMemoryShadow,
-    /// Phase 3b: unified replay coherence (`[kernel] machine = "shadow"`).
-    pub kernel_replay_shadow: KernelReplayShadow,
-    /// Phase 3b: per-step v3 effect replay parity (`[kernel] machine = "v3"`).
-    pub kernel_v3_effect_shadow: super::kernel_v3_effect_shadow::KernelV3EffectShadow,
-    /// Resolved `[kernel] machine` kill switch.
+    /// Phase 3b: per-turn kernel event accumulator + projection compare.
+    pub kernel_turn_events: KernelTurnEventBuffer,
+    /// Phase 3b: turn-end replay coherence + SQLite persist verify.
+    pub kernel_turn_replay: KernelTurnReplayVerify,
+    /// Phase 3b: per-step v3 effect replay parity.
+    pub kernel_v3_step_verify: KernelV3StepVerify,
+    /// Resolved `[kernel] machine` (v3 only).
     pub kernel_machine_mode: crate::config::KernelMachineMode,
     /// Active turn frame for kernel events emitted outside `run.rs`.
     pub kernel_active_turn_id: Option<String>,
@@ -102,6 +95,5 @@ pub struct EngineRuntimeExt {
     /// Compiler sources explicitly queried via v3 `QueryMemory` this step (batch 8g).
     pub kernel_memory_query_sources: std::collections::BTreeSet<String>,
     /// v3 outer-boundary grant counts for the active turn (batch 5b cont.).
-    pub kernel_v3_outer_boundary_grants:
-        super::kernel_outer_boundary_shadow::V3OuterBoundaryTurnGrants,
+    pub kernel_v3_outer_boundary_grants: V3OuterBoundaryTurnGrants,
 }

@@ -28,7 +28,7 @@ pub async fn handle_deepseek_turn<H: V3TurnHost>(
 ) -> (TurnOutcomeStatus, Option<String>) {
     tracing::info!(turn_id = %turn.id, "turn loop start");
 
-    host.reset_kernel_projection_shadow();
+    host.reset_kernel_turn_events();
     super::v3_driver::log_v3_turn_start(host, &turn.id);
 
     // Phase 3a double-write: emit TurnStarted.
@@ -212,6 +212,6 @@ async fn end_turn<H: OuterLoopHost>(
             total_steps: turn.step,
         },
     );
-    host.finish_kernel_turn_shadow(&loop_state.live_snapshot(turn, scratchpad_summary_injected))
+    host.finish_kernel_turn(&loop_state.live_snapshot(turn, scratchpad_summary_injected))
         .await;
 }

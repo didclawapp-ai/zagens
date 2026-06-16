@@ -8,13 +8,15 @@ use crate::mcp::McpPool;
 use crate::tools::ToolRegistry;
 use zagens_core::capacity::{CapacityDecision, CapacitySnapshot, GuardrailAction};
 use zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
-use zagens_core::engine::turn_loop::live_turn_outer_planner::CapacityCheckpointEffectTail;
+use zagens_core::engine::turn_loop::live_turn_outer_planner::{
+    CapacityCheckpointEffectTail, plan_capacity_checkpoint_effect_tail,
+    verify_capacity_tail_alignment,
+};
 use zagens_core::engine::turn_machine::{Effect, capacity_cooldown_backoff_millis};
 use zagens_core::turn::{TurnContext, TurnLoopMode};
 
 use super::super::compaction_ops::RunCompactionScope;
 use super::super::effect_interpreter::EffectInterpreter;
-use super::super::kernel_capacity_tail_shadow::record_capacity_tail_shadow;
 use super::super::*;
 
 /// Inputs for routing a capacity controller decision to live IO (legacy or v3 effects).
@@ -33,14 +35,24 @@ pub(in crate::core::engine) struct CapacityDispatchContext<'a> {
 }
 
 impl Engine {
-    fn record_v3_capacity_tail_if_enabled(
+    fn verify_v3_capacity_tail_if_enabled(
         &self,
         action: GuardrailAction,
         cooldown_blocked: bool,
         interpreted: CapacityCheckpointEffectTail,
     ) {
-        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
-            record_capacity_tail_shadow(action, cooldown_blocked, interpreted);
+        if !self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            return;
+        }
+        let planned = plan_capacity_checkpoint_effect_tail(action, cooldown_blocked);
+        if let Some(summary) = verify_capacity_tail_alignment(planned, interpreted) {
+            tracing::warn!(
+                target: "kernel_v3",
+                %summary,
+                ?action,
+                cooldown_blocked,
+                "capacity tail replay diff"
+            );
         }
     }
 
@@ -53,7 +65,7 @@ impl Engine {
             let interpreted = CapacityCheckpointEffectTail::Sleep {
                 millis: capacity_cooldown_backoff_millis(),
             };
-            self.record_v3_capacity_tail_if_enabled(ctx.decision.action, true, interpreted);
+            self.verify_v3_capacity_tail_if_enabled(ctx.decision.action, true, interpreted);
             return false;
         }
         let action = ctx.decision.action;
@@ -74,13 +86,13 @@ impl Engine {
             GuardrailAction::VerifyWithToolReplay => {
                 let Some(registry) = ctx.tool_registry else {
                     let interpreted = CapacityCheckpointEffectTail::None;
-                    self.record_v3_capacity_tail_if_enabled(action, false, interpreted);
+                    self.verify_v3_capacity_tail_if_enabled(action, false, interpreted);
                     self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, false);
                     return false;
                 };
                 let Some(lock) = ctx.tool_exec_lock.clone() else {
                     let interpreted = CapacityCheckpointEffectTail::None;
-                    self.record_v3_capacity_tail_if_enabled(action, false, interpreted);
+                    self.verify_v3_capacity_tail_if_enabled(action, false, interpreted);
                     self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, false);
                     return false;
                 };
@@ -95,7 +107,7 @@ impl Engine {
                     )
                     .await;
                 let interpreted = CapacityCheckpointEffectTail::None;
-                self.record_v3_capacity_tail_if_enabled(action, false, interpreted);
+                self.verify_v3_capacity_tail_if_enabled(action, false, interpreted);
                 self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, false);
                 false
             }
@@ -109,7 +121,7 @@ impl Engine {
         } else {
             CapacityCheckpointEffectTail::None
         };
-        self.record_v3_capacity_tail_if_enabled(action, false, interpreted);
+        self.verify_v3_capacity_tail_if_enabled(action, false, interpreted);
         self.log_capacity_hold_planner_if_enabled(&ctx, action, interpreted, result);
         result
     }

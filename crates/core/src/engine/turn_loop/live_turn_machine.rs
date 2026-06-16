@@ -427,7 +427,7 @@ pub async fn run_inner_step_via_machine<H: V3TurnHost>(
         let token_budget = context_input_budget(&model, TURN_MAX_OUTPUT_TOKENS)
             .map(|b| b.min(u32::MAX as usize) as u32)
             .unwrap_or(TURN_MAX_OUTPUT_TOKENS);
-        let projection = TurnKernelProjection::from_events(&host.kernel_shadow_turn_events());
+        let projection = TurnKernelProjection::from_events(&host.kernel_turn_events());
         let plan = machine.inner_step_baseline_plan(&projection, token_budget);
         super::v3_driver::log_inner_step_effect_plan(&turn.id, turn.step, &plan);
     }
@@ -451,7 +451,7 @@ pub async fn run_inner_step_via_machine<H: V3TurnHost>(
     .await;
 
     if host.kernel_machine_mode().uses_v3_turn_loop() {
-        let turn_events = host.kernel_shadow_turn_events();
+        let turn_events = host.kernel_turn_events();
         if model_request_issued_for_step(&turn_events, turn.step).is_some() {
             if let Some(warn) = machine.verify_inner_step_from_turn_log(&turn_events, turn.step) {
                 tracing::warn!(

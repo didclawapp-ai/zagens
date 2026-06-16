@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Runtime (kernel v3 final switch):**
+  - Deprecated `TurnLoopHost` trait alias removed; production bounds use `V3TurnHost` only.
+  - `KernelMachineMode::Shadow` and `[kernel] machine = "shadow"` shadow bake removed (config still accepted with deprecation warn; behaviour is v3).
+  - Runtime shadow observation layer removed (~24 `kernel_*_shadow` modules, global diff stats, `GET /v1/runtime/kernel-shadow`).
+  - Turn-end hooks renamed: `finish_kernel_turn`, `kernel_turn_events`, `reset_kernel_turn_events` on `KernelTurnHost`.
+  - Production replay verify retained via `kernel_turn_replay_verify`, `kernel_v3_step_verify`, and CI golden fixtures (`fixtures/harness/kernel-v3-replay/`).
+
 ### Added
 
 - **Runtime (kernel-v2 Phase 3a — KernelEvent schema + completeness verification):**

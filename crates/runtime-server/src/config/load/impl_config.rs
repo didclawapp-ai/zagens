@@ -781,7 +781,13 @@ impl Config {
         if crate::config::KernelMachineMode::config_used_deprecated_legacy(raw) {
             tracing::warn!(
                 target: "kernel_v3",
-                "[kernel] machine = \"legacy\" is deprecated and runs v3; remove the setting or use \"v3\" / \"shadow\""
+                "[kernel] machine = \"legacy\" is deprecated and runs v3; remove the setting or omit the key"
+            );
+        }
+        if crate::config::KernelMachineMode::config_used_deprecated_shadow(raw) {
+            tracing::warn!(
+                target: "kernel_v3",
+                "[kernel] machine = \"shadow\" is deprecated; v3 is the only mode — shadow bake removed"
             );
         }
         crate::config::KernelMachineMode::parse(raw)

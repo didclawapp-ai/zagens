@@ -25,7 +25,7 @@ use zagens_core::turn::{TurnContext, TurnLoopMode};
 use zagens_tools::{ToolError, ToolResult};
 
 use crate::core::engine::effect_interpreter::EffectInterpreter;
-use crate::core::engine::kernel_outer_boundary_shadow::{
+use crate::core::engine::kernel_outer_boundary::{
     V3OuterBoundaryTurnGrants, verify_turn_outer_boundary_grants,
 };
 
@@ -64,7 +64,7 @@ impl KernelTurnHost for Engine {
 
     fn record_kernel_event(&mut self, event: &KernelEvent) {
         self.runtime_ext_mut()
-            .kernel_projection_shadow
+            .kernel_turn_events
             .record(event.clone());
     }
 
@@ -79,18 +79,15 @@ impl KernelTurnHost for Engine {
         }
     }
 
-    fn reset_kernel_projection_shadow(&mut self) {
-        self.runtime_ext_mut().kernel_projection_shadow.reset_turn();
+    fn reset_kernel_turn_events(&mut self) {
+        self.runtime_ext_mut().kernel_turn_events.reset_turn();
         self.runtime_ext_mut().kernel_v3_outer_boundary_grants =
             V3OuterBoundaryTurnGrants::default();
         self.runtime_ext_mut().kernel_active_cycle_boundary = None;
     }
 
-    fn kernel_shadow_turn_events(&self) -> Vec<KernelEvent> {
-        self.runtime_ext()
-            .kernel_projection_shadow
-            .turn_events()
-            .to_vec()
+    fn kernel_turn_events(&self) -> Vec<KernelEvent> {
+        self.runtime_ext().kernel_turn_events.turn_events().to_vec()
     }
 
     fn sync_kernel_turn_frame(&mut self, turn: &TurnContext) {
@@ -121,78 +118,57 @@ impl KernelTurnHost for Engine {
         );
     }
 
-    async fn finish_kernel_turn_shadow(&mut self, live: &LiveTurnSnapshot) {
-        let (events, writer, do_full_shadow, do_replay_verify) = {
+    async fn finish_kernel_turn(&mut self, live: &LiveTurnSnapshot) {
+        let (events, writer, do_replay_verify) = {
             let ext = self.runtime_ext_mut();
-            let mode = ext.kernel_machine_mode;
-            let do_full_shadow = mode.uses_effect_replay_shadow();
-            let do_replay_verify = mode.uses_replay_verification();
-            let events = ext.kernel_projection_shadow.turn_events().to_vec();
+            let do_replay_verify = ext.kernel_machine_mode.uses_replay_verification();
+            let events = ext.kernel_turn_events.turn_events().to_vec();
             let writer = ext.kernel_event_writer.clone();
             let outer_boundary_grants = ext.kernel_v3_outer_boundary_grants;
-            if do_full_shadow {
-                ext.kernel_effect_shadow.verify_turn(&events);
-                ext.kernel_guard_shadow.verify_turn(&events);
-                ext.kernel_memory_shadow.verify_turn(&events);
-            }
             if do_replay_verify {
-                ext.kernel_replay_shadow
-                    .verify_turn_in_memory(&events, live);
+                ext.kernel_turn_replay.verify_turn_in_memory(&events, live);
             }
-            if mode.uses_v3_turn_loop() {
-                let counts = zagens_core::engine::replay_effect_counts(&events);
-                super::super::kernel_v3_replay_counts::record_v3_turn_replay_effect_counts(
-                    &live.turn_id,
-                    counts,
-                );
-                verify_turn_outer_boundary_grants(&events, &outer_boundary_grants);
-                tracing::info!(
-                    target: "kernel_v3",
-                    turn_id = %live.turn_id,
-                    call_model = counts.call_model,
-                    execute_batch = counts.execute_batch,
-                    inject_steer = counts.inject_steer,
-                    run_compaction = counts.run_compaction,
-                    notify_lsp = counts.notify_lsp,
-                    request_approval = counts.request_approval,
-                    sleep = counts.sleep,
-                    query_memory = counts.query_memory,
-                    "v3 turn effect replay counts"
-                );
-            }
-            if mode.uses_replay_verification() {
+            let counts = zagens_core::engine::replay_effect_counts(&events);
+            verify_turn_outer_boundary_grants(&events, &outer_boundary_grants);
+            tracing::info!(
+                target: "kernel_v3",
+                turn_id = %live.turn_id,
+                call_model = counts.call_model,
+                execute_batch = counts.execute_batch,
+                inject_steer = counts.inject_steer,
+                run_compaction = counts.run_compaction,
+                notify_lsp = counts.notify_lsp,
+                request_approval = counts.request_approval,
+                sleep = counts.sleep,
+                query_memory = counts.query_memory,
+                "v3 turn effect replay counts"
+            );
+            if do_replay_verify {
                 let pair = [(live.turn_id.clone(), events.clone())];
                 let stats = zagens_core::engine::replay_thread_message_stats(&pair);
                 let timeline = zagens_core::engine::replay_thread_message_timeline(&pair);
-                let coherence_ok =
-                    zagens_core::engine::verify_message_timeline_coherence(&stats, &timeline)
-                        .is_none();
-                super::super::kernel_message_timeline_shadow::record_timeline_coherence_check(
-                    coherence_ok,
-                );
                 if let Some(summary) =
                     zagens_core::engine::verify_message_timeline_coherence(&stats, &timeline)
                 {
                     tracing::warn!(
-                        target: "kernel_timeline_shadow",
+                        target: "kernel_turn_replay",
                         turn_id = %live.turn_id,
                         summary,
                         "message timeline coherence diff at turn end"
                     );
                 }
             }
-            ext.kernel_projection_shadow.finish_turn(live);
-            (events, writer, do_full_shadow, do_replay_verify)
+            ext.kernel_turn_events.finish_turn(live);
+            (events, writer, do_replay_verify)
         };
         if do_replay_verify {
             if let Some(writer) = writer {
                 self.runtime_ext()
-                    .kernel_replay_shadow
+                    .kernel_turn_replay
                     .verify_turn_persisted(writer.as_ref(), &live.turn_id, &events)
                     .await;
             }
         }
-        let _ = do_full_shadow;
     }
 
     async fn try_run_pre_inner_step_baseline(

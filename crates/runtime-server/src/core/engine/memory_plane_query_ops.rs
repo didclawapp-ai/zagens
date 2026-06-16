@@ -24,9 +24,8 @@ impl Engine {
             .unwrap_or_else(|| "effect-interpreter".to_string());
         let step_idx = ext.kernel_active_step;
         let compiler_source = compiler_source_for_query_key(query_key);
-        let projection = TurnKernelProjection::from_events(
-            self.runtime_ext().kernel_projection_shadow.turn_events(),
-        );
+        let projection =
+            TurnKernelProjection::from_events(self.runtime_ext().kernel_turn_events.turn_events());
         let material_present = query_key_has_projection_material(&projection, query_key);
 
         if self.effect_replay_anchor_only() {

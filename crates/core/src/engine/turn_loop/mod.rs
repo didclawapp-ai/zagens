@@ -47,8 +47,6 @@ pub use helpers::{
     build_edit_file_approval_desc, messages_with_turn_metadata, resolve_auto_effort,
 };
 #[allow(deprecated)]
-pub use host::TurnLoopHost;
-#[allow(deprecated)]
 pub use host::TurnLoopMcpPool;
 pub use host::TurnLoopToolRegistry;
 pub use host::{CompilerRequestContext, TurnLoopConfigView, V3TurnHost};

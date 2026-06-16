@@ -1,14 +1,12 @@
-//! `[kernel] machine` kill switch — shared between core turn loop and runtime config.
+//! `[kernel] machine` — shared between core turn loop and runtime config.
 
-/// Resolved turn-machine mode (Phase 3b).
+/// Resolved turn-machine mode (Phase 3b closure).
 ///
 /// Configured via `[kernel] machine` in `config.toml` (default `v3`).
 /// `"legacy"` is accepted for parse compatibility but maps to `V3` (removed in batch 5 closure).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum KernelMachineMode {
-    /// v3 turn loop + extra effect/guard/memory shadow bake at turn end.
-    Shadow,
-    /// Turn machine + effect interpreter control IO (default).
+    /// Turn machine + effect interpreter control IO (default and only production mode).
     #[default]
     V3,
 }
@@ -17,8 +15,7 @@ impl KernelMachineMode {
     #[must_use]
     pub fn parse(value: Option<&str>) -> Self {
         match value.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
-            Some("legacy") | Some("v3") | None => Self::V3,
-            Some("shadow") => Self::Shadow,
+            Some("legacy") | Some("v3") | Some("shadow") | None => Self::V3,
             Some(_) => Self::V3,
         }
     }
@@ -32,29 +29,30 @@ impl KernelMachineMode {
         )
     }
 
+    /// Whether `"shadow"` was supplied (deprecated; behaviour is v3 without shadow bake).
+    #[must_use]
+    pub fn config_used_deprecated_shadow(value: Option<&str>) -> bool {
+        matches!(
+            value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+            Some("shadow")
+        )
+    }
+
     #[must_use]
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Shadow => "shadow",
-            Self::V3 => "v3",
-        }
+        "v3"
     }
 
-    #[must_use]
-    pub fn uses_effect_replay_shadow(self) -> bool {
-        matches!(self, Self::Shadow)
-    }
-
-    /// Unified replay coherence + SQLite persist checks (shadow bake and v3 observability).
+    /// Unified replay coherence + SQLite persist checks at turn end.
     #[must_use]
     pub fn uses_replay_verification(self) -> bool {
-        matches!(self, Self::Shadow | Self::V3)
+        matches!(self, Self::V3)
     }
 
-    /// v3 effect-interpreter turn loop (production default and shadow bake).
+    /// v3 effect-interpreter turn loop (production default).
     #[must_use]
     pub fn uses_v3_turn_loop(self) -> bool {
-        matches!(self, Self::V3 | Self::Shadow)
+        matches!(self, Self::V3)
     }
 }
 
@@ -75,16 +73,17 @@ mod tests {
         )));
         assert_eq!(
             KernelMachineMode::parse(Some("SHADOW")),
-            KernelMachineMode::Shadow
+            KernelMachineMode::V3
         );
+        assert!(KernelMachineMode::config_used_deprecated_shadow(Some(
+            "shadow"
+        )));
         assert_eq!(KernelMachineMode::parse(Some("v3")), KernelMachineMode::V3);
         assert_eq!(
             KernelMachineMode::parse(Some("unknown")),
             KernelMachineMode::V3
         );
-        assert!(KernelMachineMode::Shadow.uses_replay_verification());
         assert!(KernelMachineMode::V3.uses_replay_verification());
         assert!(KernelMachineMode::V3.uses_v3_turn_loop());
-        assert!(KernelMachineMode::Shadow.uses_v3_turn_loop());
     }
 }

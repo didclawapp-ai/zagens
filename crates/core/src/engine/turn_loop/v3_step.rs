@@ -100,7 +100,7 @@ pub async fn run_v3_step<H: InnerStepHost + TurnLoopOuterHost>(
         .await
     };
 
-    let step_events = events_for_step(&host.kernel_shadow_turn_events(), turn.step);
+    let step_events = events_for_step(&host.kernel_turn_events(), turn.step);
     let notify_tail = notify_lsp_effects_from_step_events(&step_events);
     if !notify_tail.is_empty() {
         tracing::info!(

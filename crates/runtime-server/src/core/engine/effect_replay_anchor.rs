@@ -6,9 +6,6 @@ use zagens_core::engine::turn_machine::{
 };
 
 use super::effect_interpreter::EffectInterpreter;
-use super::kernel_resume_replay_anchor_shadow::{
-    record_resume_replay_anchor_alignment, record_resume_replay_anchor_run,
-};
 use super::*;
 
 fn is_anchor_effect(effect: &Effect) -> bool {
@@ -71,10 +68,6 @@ impl Engine {
     ) {
         KernelTurnHost::apply_kernel_resume_hints(self, hints);
         self.maybe_repair_session_from_kernel_log(hints).await;
-        let mode = self.runtime_ext().kernel_machine_mode;
-        if !mode.uses_replay_verification() && !mode.uses_v3_turn_loop() {
-            return;
-        }
         let turn_ids: Vec<String> = if !hints.thread_turn_ids_with_events.is_empty() {
             hints.thread_turn_ids_with_events.clone()
         } else if let Some(turn_id) = hints.latest_turn_id.clone() {
@@ -126,11 +119,7 @@ impl Engine {
                 "replay anchor-only effects interpreted on resume"
             );
         }
-        if turns_interpreted > 0 || turns_skipped > 0 {
-            record_resume_replay_anchor_run(turns_interpreted, turns_skipped, anchors_interpreted);
-        }
         let expected = u64::from(hints.expected_anchor_effect_count);
-        record_resume_replay_anchor_alignment(anchors_interpreted, expected);
         if let Some(summary) = verify_resume_anchor_effect_alignment(
             hints.expected_anchor_effect_count,
             anchors_interpreted,
@@ -141,6 +130,7 @@ impl Engine {
                 anchors_interpreted,
                 expected,
                 turns_skipped,
+                turns_interpreted,
                 "resume anchor effect alignment diff"
             );
         }

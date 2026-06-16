@@ -597,8 +597,7 @@ pub fn is_lsp_notify_tool(name: &str) -> bool {
 
 /// Verify that [`ReplayTurnMachine`] effect counts match observed event counts.
 ///
-/// Returns `None` when the replay chain is internally consistent; used by
-/// Phase 3b effect shadow bake (`[kernel] machine = "shadow"`).
+/// Returns `None` when the replay chain is internally consistent; used by CI golden replay.
 #[must_use]
 pub fn verify_effect_replay_chain(events: &[KernelEvent]) -> Option<String> {
     let mut machine = ReplayTurnMachine;

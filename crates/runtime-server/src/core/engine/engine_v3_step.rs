@@ -50,7 +50,7 @@ pub(super) async fn run_v3_turn_step(
 
     let turn_events = engine
         .runtime_ext()
-        .kernel_projection_shadow
+        .kernel_turn_events
         .turn_events()
         .to_vec();
     let executed_tool_count = turn_events
@@ -62,7 +62,7 @@ pub(super) async fn run_v3_turn_step(
             )
         })
         .count() as u32;
-    engine.runtime_ext().kernel_v3_effect_shadow.verify_step(
+    engine.runtime_ext().kernel_v3_step_verify.verify_step(
         &turn_events,
         turn.step,
         executed_tool_count,

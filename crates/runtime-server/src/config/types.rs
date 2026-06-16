@@ -706,7 +706,7 @@ pub use zagens_core::engine::KernelMachineMode;
 /// `[kernel]` table — Phase 3b turn-machine kill switch.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct KernelConfigToml {
-    /// Turn machine mode: `"v3"` (default) or `"shadow"` (v3 + shadow bake). `"legacy"` accepted but maps to `v3`.
+    /// Turn machine mode: `"v3"` (default). `"legacy"` / `"shadow"` accepted but map to `v3`.
     #[serde(default)]
     pub machine: Option<String>,
     /// v3 resume: repair engine session from kernel log previews when parity fails (default on).

@@ -14,7 +14,6 @@ pub mod openapi;
 mod automations;
 mod blackboards;
 pub(crate) mod kernel_replay;
-mod kernel_shadow;
 mod mcp;
 mod office;
 mod router;
@@ -34,7 +33,6 @@ pub(crate) use automations::{
 };
 pub(crate) use blackboards::{get_blackboard, list_blackboards};
 pub(crate) use kernel_replay::{get_kernel_thread_replay, get_kernel_turn_replay};
-pub(crate) use kernel_shadow::kernel_shadow_stats;
 pub(crate) use mcp::{
     add_mcp_server, delete_mcp_server, discover_mcp, get_mcp_server, list_mcp_calls,
     list_mcp_servers, list_mcp_tools, merge_mcp_config_json, reload_mcp_config, update_mcp_server,

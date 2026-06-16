@@ -58,16 +58,6 @@ pub trait V3TurnHost: InnerStepHost + TurnLoopOuterHost + Send {}
 
 impl<T: InnerStepHost + TurnLoopOuterHost + Send> V3TurnHost for T {}
 
-/// Deprecated monolith alias — single adapter shim; prefer [`V3TurnHost`].
-#[deprecated(
-    since = "0.7.6",
-    note = "use `V3TurnHost` (InnerStepHost + TurnLoopOuterHost + kernel seam)"
-)]
-pub trait TurnLoopHost: V3TurnHost {}
-
-#[allow(deprecated)]
-impl<T: V3TurnHost> TurnLoopHost for T {}
-
 #[cfg(test)]
 mod tests {
     use super::V3TurnHost;

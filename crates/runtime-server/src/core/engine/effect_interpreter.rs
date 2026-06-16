@@ -115,7 +115,7 @@ impl<'a> EffectInterpreter<'a> {
         let turn_events = self
             .engine
             .runtime_ext()
-            .kernel_projection_shadow
+            .kernel_turn_events
             .turn_events()
             .to_vec();
         let projection = TurnKernelProjection::from_events(&turn_events);
@@ -229,11 +229,7 @@ impl<'a> EffectInterpreter<'a> {
         }
 
         if ctx.execute_batch_ran {
-            let turn_events = self
-                .engine
-                .runtime_ext()
-                .kernel_projection_shadow
-                .turn_events();
+            let turn_events = self.engine.runtime_ext().kernel_turn_events.turn_events();
             let step_events = events_for_step(turn_events, ctx.turn.step);
             let notify_tail = machine.inner_step_notify_lsp_effects(&step_events);
             if !notify_tail.is_empty() {

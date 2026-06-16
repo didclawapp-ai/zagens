@@ -2,7 +2,7 @@
 
 use crate::engine::kernel_event::KernelEvent;
 
-/// Unified batch-4 memory-plane replay gate for golden fixtures and kernel_memory_shadow.
+/// Unified batch-4 memory-plane replay gate for golden fixtures and CI replay verify.
 #[must_use]
 pub fn verify_memory_plane_batch4_coherence(events: &[KernelEvent]) -> Option<String> {
     let mut diffs = Vec::new();

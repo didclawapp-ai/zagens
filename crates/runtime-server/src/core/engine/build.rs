@@ -21,51 +21,12 @@ use crate::tools::subagent::{new_shared_subagent_manager, spawn_subagent_mainten
 use super::Engine;
 use super::cycle_hooks;
 use super::handle::EngineHandle;
-use super::kernel_effect_shadow::KernelEffectShadow;
-use super::kernel_guard_shadow::KernelGuardShadow;
-use super::kernel_memory_shadow::KernelMemoryShadow;
-use super::kernel_projection_shadow::KernelProjectionShadow;
-use super::kernel_replay_shadow::KernelReplayShadow;
+use super::kernel_turn_event_buffer::KernelTurnEventBuffer;
+use super::kernel_turn_replay_verify::KernelTurnReplayVerify;
+use super::kernel_v3_step_verify::KernelV3StepVerify;
 use super::runtime_ext::EngineRuntimeExt;
 use super::types::EngineConfig;
 use crate::core::capacity::CapacityController;
-use crate::core::engine::kernel_compaction_artifact_shadow::{
-    KernelCompactionArtifactShadowStats, register_global_compaction_artifact_shadow_stats,
-};
-use crate::core::engine::kernel_compaction_replay_anchor_shadow::{
-    KernelCompactionReplayAnchorShadowStats, register_global_compaction_replay_anchor_shadow_stats,
-};
-use crate::core::engine::kernel_continuation_anchor_shadow::{
-    KernelContinuationAnchorShadowStats, register_global_continuation_anchor_shadow_stats,
-};
-use crate::core::engine::kernel_memory_plane_replay_anchor_shadow::{
-    KernelMemoryPlaneReplayAnchorShadowStats,
-    register_global_memory_plane_replay_anchor_shadow_stats,
-};
-use crate::core::engine::kernel_message_compaction_shadow::{
-    KernelMessageCompactionShadowStats, register_global_message_compaction_shadow_stats,
-};
-use crate::core::engine::kernel_message_coverage_shadow::{
-    KernelMessageCoverageShadowStats, register_global_message_coverage_shadow_stats,
-};
-use crate::core::engine::kernel_message_memory_plane_shadow::{
-    KernelMessageMemoryPlaneShadowStats, register_global_message_memory_plane_shadow_stats,
-};
-use crate::core::engine::kernel_message_role_shadow::{
-    KernelMessageRoleShadowStats, register_global_message_role_shadow_stats,
-};
-use crate::core::engine::kernel_message_timeline_shadow::{
-    KernelMessageTimelineShadowStats, register_global_message_timeline_shadow_stats,
-};
-use crate::core::engine::kernel_notify_lsp_anchor_shadow::{
-    KernelNotifyLspAnchorShadowStats, register_global_notify_lsp_anchor_shadow_stats,
-};
-use crate::core::engine::kernel_request_approval_anchor_shadow::{
-    KernelRequestApprovalAnchorShadowStats, register_global_request_approval_anchor_shadow_stats,
-};
-use crate::core::engine::kernel_resume_replay_anchor_shadow::{
-    KernelResumeReplayAnchorShadowStats, register_global_resume_replay_anchor_shadow_stats,
-};
 use crate::core::session::Session;
 use crate::hooks::HookExecutor;
 use crate::long_horizon::LongHorizonSessionState;
@@ -240,84 +201,13 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         zagens_runtime_adapters::persist::KernelEventWriter::try_open_default()
             .map(std::sync::Arc::new);
     let kernel_machine_mode = api_config.kernel_machine_mode();
-    let kernel_projection_shadow = KernelProjectionShadow::new(kernel_event_writer.is_some());
-    let kernel_effect_shadow = KernelEffectShadow::new(
-        kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
-    );
-    let kernel_guard_shadow = KernelGuardShadow::new(
-        kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
-    );
-    let kernel_memory_shadow = KernelMemoryShadow::new(
-        kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow(),
-    );
-    let kernel_replay_shadow = KernelReplayShadow::new(
+    let kernel_turn_events = KernelTurnEventBuffer::new(kernel_event_writer.is_some());
+    let kernel_turn_replay = KernelTurnReplayVerify::new(
         kernel_event_writer.is_some() && kernel_machine_mode.uses_replay_verification(),
     );
-    let kernel_v3_effect_shadow = super::kernel_v3_effect_shadow::KernelV3EffectShadow::new(
+    let kernel_v3_step_verify = KernelV3StepVerify::new(
         kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop(),
     );
-    if kernel_event_writer.is_some() {
-        super::kernel_projection_shadow::register_global_projection_shadow_stats(
-            kernel_projection_shadow.stats.clone(),
-        );
-    }
-    if kernel_event_writer.is_some() && kernel_machine_mode.uses_effect_replay_shadow() {
-        super::kernel_effect_shadow::register_global_effect_shadow_stats(
-            kernel_effect_shadow.stats.clone(),
-        );
-        super::kernel_guard_shadow::register_global_guard_shadow_stats(
-            kernel_guard_shadow.stats.clone(),
-        );
-        super::kernel_memory_shadow::register_global_memory_shadow_stats(
-            kernel_memory_shadow.stats.clone(),
-        );
-    }
-    if kernel_event_writer.is_some() && kernel_machine_mode.uses_replay_verification() {
-        super::kernel_replay_shadow::register_global_replay_shadow_stats(
-            kernel_replay_shadow.stats.clone(),
-        );
-        register_global_message_coverage_shadow_stats(std::sync::Arc::new(
-            KernelMessageCoverageShadowStats::default(),
-        ));
-        register_global_message_timeline_shadow_stats(std::sync::Arc::new(
-            KernelMessageTimelineShadowStats::default(),
-        ));
-        register_global_message_role_shadow_stats(std::sync::Arc::new(
-            KernelMessageRoleShadowStats::default(),
-        ));
-        register_global_message_memory_plane_shadow_stats(std::sync::Arc::new(
-            KernelMessageMemoryPlaneShadowStats::default(),
-        ));
-        register_global_memory_plane_replay_anchor_shadow_stats(std::sync::Arc::new(
-            KernelMemoryPlaneReplayAnchorShadowStats::default(),
-        ));
-        register_global_message_compaction_shadow_stats(std::sync::Arc::new(
-            KernelMessageCompactionShadowStats::default(),
-        ));
-        register_global_compaction_artifact_shadow_stats(std::sync::Arc::new(
-            KernelCompactionArtifactShadowStats::default(),
-        ));
-        register_global_compaction_replay_anchor_shadow_stats(std::sync::Arc::new(
-            KernelCompactionReplayAnchorShadowStats::default(),
-        ));
-        register_global_continuation_anchor_shadow_stats(std::sync::Arc::new(
-            KernelContinuationAnchorShadowStats::default(),
-        ));
-        register_global_notify_lsp_anchor_shadow_stats(std::sync::Arc::new(
-            KernelNotifyLspAnchorShadowStats::default(),
-        ));
-        register_global_request_approval_anchor_shadow_stats(std::sync::Arc::new(
-            KernelRequestApprovalAnchorShadowStats::default(),
-        ));
-        register_global_resume_replay_anchor_shadow_stats(std::sync::Arc::new(
-            KernelResumeReplayAnchorShadowStats::default(),
-        ));
-    }
-    if kernel_event_writer.is_some() && kernel_machine_mode.uses_v3_turn_loop() {
-        super::kernel_v3_effect_shadow::register_global_v3_effect_shadow_stats(
-            kernel_v3_effect_shadow.stats.clone(),
-        );
-    }
 
     let runtime_ext = EngineRuntimeExt {
         config_ext,
@@ -339,12 +229,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         tools_scheduler: api_config.tools_scheduler_mode(),
         resource_lock_registry: Arc::new(crate::tools::resource_locks::ResourceLockRegistry::new()),
         kernel_event_writer,
-        kernel_projection_shadow,
-        kernel_effect_shadow,
-        kernel_guard_shadow,
-        kernel_memory_shadow,
-        kernel_replay_shadow,
-        kernel_v3_effect_shadow,
+        kernel_turn_events,
+        kernel_turn_replay,
+        kernel_v3_step_verify,
         kernel_machine_mode,
         kernel_active_turn_id: None,
         kernel_active_step: 0,

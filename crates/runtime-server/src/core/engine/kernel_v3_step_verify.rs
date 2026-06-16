@@ -1,6 +1,4 @@
-//! Phase 3b v3 step effect shadow — per-step replay parity (`[kernel] machine = "v3"`).
-
-use std::sync::atomic::{AtomicU64, Ordering};
+//! v3 per-step effect replay parity checks.
 
 use tracing::warn;
 use zagens_core::engine::kernel_event::KernelEvent;
@@ -11,40 +9,13 @@ use zagens_core::engine::turn_machine::{
     verify_step_notify_lsp_anchor, verify_step_request_approval_anchor,
 };
 
-#[derive(Debug, Default)]
-pub struct KernelV3EffectShadowStats {
-    pub comparisons: AtomicU64,
-    pub diffs: AtomicU64,
-}
-
-impl KernelV3EffectShadowStats {
-    pub fn record_comparison(&self) {
-        self.comparisons.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn record_diff(&self) {
-        self.diffs.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn snapshot(&self) -> (u64, u64) {
-        (
-            self.comparisons.load(Ordering::Relaxed),
-            self.diffs.load(Ordering::Relaxed),
-        )
-    }
-}
-
-pub struct KernelV3EffectShadow {
-    pub stats: std::sync::Arc<KernelV3EffectShadowStats>,
+pub struct KernelV3StepVerify {
     enabled: bool,
 }
 
-impl KernelV3EffectShadow {
+impl KernelV3StepVerify {
     pub fn new(enabled: bool) -> Self {
-        Self {
-            stats: std::sync::Arc::new(KernelV3EffectShadowStats::default()),
-            enabled,
-        }
+        Self { enabled }
     }
 
     pub fn verify_step(
@@ -56,7 +27,6 @@ impl KernelV3EffectShadow {
         if !self.enabled {
             return;
         }
-        self.stats.record_comparison();
         let mut diffs = Vec::new();
         if let Some(summary) = verify_step_effect_parity(turn_events, step_idx, executed_tool_count)
         {
@@ -94,30 +64,14 @@ impl KernelV3EffectShadow {
         if diffs.is_empty() {
             return;
         }
-        self.stats.record_diff();
         warn!(
-            target: "kernel_v3_effect_shadow",
+            target: "kernel_v3_step_verify",
             step_idx,
             executed_tool_count,
             summary = diffs.join("; "),
-            "v3 step shadow diff"
+            "v3 step replay diff"
         );
     }
-}
-
-static GLOBAL_V3_EFFECT_SHADOW: std::sync::OnceLock<std::sync::Arc<KernelV3EffectShadowStats>> =
-    std::sync::OnceLock::new();
-
-pub fn register_global_v3_effect_shadow_stats(stats: std::sync::Arc<KernelV3EffectShadowStats>) {
-    let _ = GLOBAL_V3_EFFECT_SHADOW.set(stats);
-}
-
-#[must_use]
-pub fn kernel_v3_effect_shadow_stats() -> (u64, u64) {
-    GLOBAL_V3_EFFECT_SHADOW
-        .get()
-        .map(|s| s.snapshot())
-        .unwrap_or((0, 0))
 }
 
 #[cfg(test)]
@@ -158,8 +112,7 @@ mod tests {
                 total_steps: 1,
             },
         ];
-        let shadow = KernelV3EffectShadow::new(true);
-        shadow.verify_step(&events, 1, 0);
-        assert_eq!(shadow.stats.snapshot(), (1, 0));
+        let verify = KernelV3StepVerify::new(true);
+        verify.verify_step(&events, 1, 0);
     }
 }

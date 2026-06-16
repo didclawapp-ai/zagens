@@ -1,13 +1,8 @@
-//! v3 outer-loop boundary grant shadow (Phase 3b batch 5b cont.).
-
-use std::sync::atomic::{AtomicU64, Ordering};
+//! v3 outer-loop boundary grant tracking + turn-end verify.
 
 use tracing::warn;
 use zagens_core::engine::kernel_event::KernelEvent;
 use zagens_core::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind;
-
-static COMPARISONS: AtomicU64 = AtomicU64::new(0);
-static DIFFS: AtomicU64 = AtomicU64::new(0);
 
 /// Per-turn v3 outer-boundary grant counts (reset at turn start).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +79,6 @@ pub fn verify_turn_outer_boundary_grants(
     events: &[KernelEvent],
     logged: &V3OuterBoundaryTurnGrants,
 ) {
-    COMPARISONS.fetch_add(1, Ordering::Relaxed);
     let kinds = [
         OuterBoundaryKind::StepLimit,
         OuterBoundaryKind::LoopGuard,
@@ -102,20 +96,11 @@ pub fn verify_turn_outer_boundary_grants(
     if summaries.is_empty() {
         return;
     }
-    DIFFS.fetch_add(1, Ordering::Relaxed);
     warn!(
-        target: "kernel_outer_boundary_shadow",
+        target: "kernel_outer_boundary",
         summary = summaries.join("; "),
-        "outer boundary grant shadow diff"
+        "outer boundary grant diff"
     );
-}
-
-#[must_use]
-pub fn kernel_outer_boundary_shadow_stats() -> (u64, u64) {
-    (
-        COMPARISONS.load(Ordering::Relaxed),
-        DIFFS.load(Ordering::Relaxed),
-    )
 }
 
 #[cfg(test)]

@@ -9,11 +9,6 @@ use zagens_core::engine::turn_machine::KernelResumeHints;
 use crate::session_manager::{SessionManager, update_session};
 
 use super::Engine;
-use super::kernel_log_session_repair_shadow::{
-    record_log_session_repair_persist_failed, record_log_session_repair_persist_ok,
-    record_log_session_repair_persist_skipped_no_session, record_log_session_repair_run,
-    record_log_session_repair_skipped_aligned,
-};
 
 impl Engine {
     fn load_thread_turn_events_for_hints(
@@ -77,7 +72,6 @@ impl Engine {
         .await;
         match result {
             Ok(Ok(session_id)) => {
-                record_log_session_repair_persist_ok();
                 tracing::info!(
                     target: "kernel_resume",
                     session_id = %session_id,
@@ -88,7 +82,6 @@ impl Engine {
             }
             Ok(Err(reason)) => match reason {
                 PersistRepairedSessionError::NoLinkedSession => {
-                    record_log_session_repair_persist_skipped_no_session();
                     tracing::debug!(
                         target: "kernel_resume",
                         thread_id = %thread_id_for_log,
@@ -96,7 +89,6 @@ impl Engine {
                     );
                 }
                 PersistRepairedSessionError::Io(err) => {
-                    record_log_session_repair_persist_failed();
                     tracing::warn!(
                         target: "kernel_resume",
                         thread_id = %thread_id_for_log,
@@ -106,7 +98,6 @@ impl Engine {
                 }
             },
             Err(err) => {
-                record_log_session_repair_persist_failed();
                 tracing::warn!(
                     target: "kernel_resume",
                     thread_id = %thread_id_for_log,
@@ -140,7 +131,6 @@ impl Engine {
             return;
         };
         if !should_repair_session_from_kernel_log(&self.session.messages, &turn_events) {
-            record_log_session_repair_skipped_aligned();
             return;
         }
         let repaired = rebuild_session_messages_from_thread_events(&turn_events);
@@ -151,7 +141,6 @@ impl Engine {
         self.session.messages = repaired;
         self.rehydrate_latest_canonical_state();
         self.emit_session_updated().await;
-        record_log_session_repair_run(self.session.messages.len() as u64);
         tracing::info!(
             target: "kernel_resume",
             before_rows = before,

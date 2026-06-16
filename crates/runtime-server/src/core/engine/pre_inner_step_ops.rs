@@ -8,10 +8,6 @@ use zagens_core::engine::turn_machine::Effect;
 
 use super::compaction_ops::RunCompactionScope;
 use super::effect_interpreter::EffectInterpreter;
-use super::kernel_pre_inner_step_baseline_shadow::{
-    record_pre_inner_step_baseline_step, record_pre_inner_step_slot0_interpreter,
-    record_pre_inner_step_slot0_skipped_pre_interpreter, record_pre_inner_step_slot1_interpreter,
-};
 use super::scratchpad_flow;
 use super::*;
 use crate::compaction::should_compact;
@@ -56,13 +52,11 @@ impl Engine {
         turn_id: &str,
         step: u32,
     ) {
-        record_pre_inner_step_baseline_step();
         let plan = plan_v3_pre_inner_step_baseline();
         let should_compact = self.should_run_in_turn_auto_compaction();
 
         for (slot, effect) in plan.baseline.iter().enumerate() {
             if slot == 0 && matches!(effect, Effect::RunCompaction) && !should_compact {
-                record_pre_inner_step_slot0_skipped_pre_interpreter();
                 continue;
             }
             if let Some(label) = pre_inner_step_baseline_effect_label(slot) {
@@ -70,13 +64,10 @@ impl Engine {
             }
             match effect {
                 Effect::RunCompaction => {
-                    record_pre_inner_step_slot0_interpreter();
                     self.runtime_ext_mut().kernel_run_compaction_scope =
                         Some(RunCompactionScope::InTurnAuto);
                 }
-                Effect::RunLayeredContextCheckpoint => {
-                    record_pre_inner_step_slot1_interpreter();
-                }
+                Effect::RunLayeredContextCheckpoint => {}
                 _ => {}
             }
             let mut interpreter = EffectInterpreter::new(self);
@@ -92,11 +83,9 @@ impl Engine {
         step: u32,
     ) {
         if !self.should_run_in_turn_auto_compaction() {
-            record_pre_inner_step_slot0_skipped_pre_interpreter();
             return;
         }
         Self::log_v3_planner_baseline_slot(turn_id, step, 0, "RunCompaction");
-        record_pre_inner_step_slot0_interpreter();
         self.runtime_ext_mut().kernel_run_compaction_scope = Some(RunCompactionScope::InTurnAuto);
         let mut interpreter = EffectInterpreter::new(self);
         let _ = interpreter.interpret(Effect::RunCompaction).await;
@@ -109,7 +98,6 @@ impl Engine {
         step: u32,
     ) {
         Self::log_v3_planner_baseline_slot(turn_id, step, 1, "RunLayeredContextCheckpoint");
-        record_pre_inner_step_slot1_interpreter();
         let mut interpreter = EffectInterpreter::new(self);
         let _ = interpreter
             .interpret(Effect::RunLayeredContextCheckpoint)

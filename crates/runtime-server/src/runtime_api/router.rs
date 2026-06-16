@@ -17,14 +17,13 @@ use super::{
     get_thread_checklist, get_thread_context, get_thread_harness_cycles,
     get_thread_harness_task_graph, get_thread_scratchpad_status, get_topic_memory, get_usage,
     import_skill_local, init_thread_scratchpad, install_skill_remote, interrupt_thread_turn,
-    kernel_shadow_stats, list_automation_runs, list_automations, list_blackboards, list_mcp_calls,
-    list_mcp_servers, list_mcp_tools, list_sessions, list_skills, list_tasks,
-    list_thread_snapshots, list_threads, list_threads_summary, merge_mcp_config_json,
-    pause_automation, persist_thread_session, read_thread_workspace_file,
-    read_workspace_file_by_root, rebuild_symbol_index, reload_mcp_config, resolve_approval,
-    restore_thread_snapshot, resume_automation, resume_session_thread, resume_thread,
-    run_automation, set_routing_rules, start_thread_turn, steer_thread_turn, update_automation,
-    update_mcp_server, update_thread, workspace_status,
+    list_automation_runs, list_automations, list_blackboards, list_mcp_calls, list_mcp_servers,
+    list_mcp_tools, list_sessions, list_skills, list_tasks, list_thread_snapshots, list_threads,
+    list_threads_summary, merge_mcp_config_json, pause_automation, persist_thread_session,
+    read_thread_workspace_file, read_workspace_file_by_root, rebuild_symbol_index,
+    reload_mcp_config, resolve_approval, restore_thread_snapshot, resume_automation,
+    resume_session_thread, resume_thread, run_automation, set_routing_rules, start_thread_turn,
+    steer_thread_turn, update_automation, update_mcp_server, update_thread, workspace_status,
 };
 
 pub fn build_router(state: RuntimeApiState) -> Router {
@@ -38,7 +37,6 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         )
         .route("/v1/resume-tasks/{thread_id}", get(get_resume_task))
         .route("/v1/workspace/status", get(workspace_status))
-        .route("/v1/runtime/kernel-shadow", get(kernel_shadow_stats))
         .route(
             "/v1/runtime/kernel-replay/thread/{thread_id}",
             get(get_kernel_thread_replay),

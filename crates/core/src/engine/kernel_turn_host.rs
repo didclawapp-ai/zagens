@@ -16,7 +16,7 @@ use crate::engine::turn_loop::v3_step::V3StepOutcome;
 use crate::engine::turn_machine::{KernelEventSink, LiveTurnSnapshot};
 use crate::turn::{TurnContext, TurnLoopMode};
 
-/// Kernel event double-write + shadow/replay hooks (Phase 3a–3b).
+/// Kernel event double-write + replay hooks (Phase 3a–3b).
 #[async_trait]
 pub trait KernelTurnHost {
     /// Tool registry type for runtime v3 interpreter step.
@@ -32,25 +32,21 @@ pub trait KernelTurnHost {
 
     fn record_kernel_event(&mut self, _event: &KernelEvent) {}
 
-    /// v3 outer-loop boundary grant observability (runtime shadow; default no-op).
+    /// v3 outer-loop boundary grant observability (default no-op).
     fn record_v3_outer_boundary_grant(
         &mut self,
         _kind: crate::engine::turn_loop::continuation_boundary_policy::OuterBoundaryKind,
     ) {
     }
 
-    fn reset_kernel_projection_shadow(&mut self) {}
+    fn reset_kernel_turn_events(&mut self) {}
 
-    fn kernel_shadow_turn_events(&self) -> Vec<KernelEvent> {
+    fn kernel_turn_events(&self) -> Vec<KernelEvent> {
         Vec::new()
     }
 
-    fn finish_kernel_projection_shadow(&mut self, _live: &LiveTurnSnapshot) {}
-
-    /// Turn-end kernel shadow pipeline (projection + replay shadows; runtime overrides).
-    async fn finish_kernel_turn_shadow(&mut self, live: &LiveTurnSnapshot) {
-        self.finish_kernel_projection_shadow(live);
-    }
+    /// Turn-end kernel pipeline (projection compare + replay verify; runtime overrides).
+    async fn finish_kernel_turn(&mut self, _live: &LiveTurnSnapshot) {}
 
     fn sync_kernel_turn_frame(&mut self, _turn: &TurnContext) {}
 

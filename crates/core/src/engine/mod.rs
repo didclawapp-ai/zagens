@@ -114,7 +114,6 @@ pub use tool_dispatch::EngineToolDispatch;
 pub use tool_effects::tool_writes_state;
 pub use tool_progress::{emit_tool_audit, tool_progress_opening_line, tool_progress_phase_line};
 #[allow(deprecated)]
-pub use turn_loop::TurnLoopHost;
 pub use turn_loop::{
     LiveOuterLoopState, LiveTurnMachine, McpPoolPort, OuterLoopHost, ToolExecOutcome,
     ToolExecutionPlan, ToolPlanApprovalMeta, TurnLoopConfigView, TurnLoopControl,

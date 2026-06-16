@@ -12,17 +12,6 @@ use zagens_core::engine::turn_machine::{
     verify_turn_replay_coherence,
 };
 
-use crate::core::engine::kernel_compaction_artifact_shadow::record_message_compaction_artifact_check;
-use crate::core::engine::kernel_compaction_replay_anchor_shadow::record_compaction_replay_anchor_check;
-use crate::core::engine::kernel_continuation_anchor_shadow::record_continuation_anchor_check;
-use crate::core::engine::kernel_memory_plane_replay_anchor_shadow::record_memory_plane_replay_anchor_check;
-use crate::core::engine::kernel_message_compaction_shadow::record_message_compaction_depth_check;
-use crate::core::engine::kernel_message_coverage_shadow::record_message_coverage_check;
-use crate::core::engine::kernel_message_memory_plane_shadow::record_message_memory_plane_check;
-use crate::core::engine::kernel_message_role_shadow::record_message_role_index_check;
-use crate::core::engine::kernel_message_timeline_shadow::record_timeline_coherence_check;
-use crate::core::engine::kernel_notify_lsp_anchor_shadow::record_notify_lsp_anchor_check;
-use crate::core::engine::kernel_request_approval_anchor_shadow::record_request_approval_anchor_check;
 use zagens_runtime_adapters::persist::KernelEventWriter;
 use zagens_runtime_api::ResumeSessionKernelReplay;
 
@@ -495,54 +484,6 @@ pub(crate) fn log_session_message_plane_checks(
     ) else {
         return;
     };
-    record_timeline_coherence_check(cov.coherence_ok && cov.timeline_vs_requests_ok);
-    record_message_coverage_check(cov.coverage_ok);
-    if let Some(role_ok) = role_index.map(|_| cov.role_index_ok) {
-        record_message_role_index_check(role_ok);
-    }
-    if role_index.is_some() {
-        record_message_memory_plane_check(cov.memory_plane_user_ok);
-    }
-    if projection.compaction_index.artifact_count > 0 {
-        record_message_compaction_depth_check(cov.compaction_depth_ok);
-    }
-    if session_compaction.is_some() {
-        record_message_compaction_artifact_check(cov.compaction_artifact_ok);
-    }
-    if projection.message_stats.step_limit_continuation_count > 0
-        || projection.message_stats.loop_guard_continuation_count > 0
-    {
-        record_continuation_anchor_check(cov.continuation_anchor_ok);
-    }
-    if projection.message_stats.tool_call_planned_count > 0 {
-        record_request_approval_anchor_check(cov.request_approval_anchor_ok);
-        record_notify_lsp_anchor_check(cov.notify_lsp_anchor_ok);
-    }
-    let has_memory_plane_injection = projection.message_stats.scratchpad_summary_count > 0
-        || projection.message_stats.scratchpad_reminder_count > 0
-        || projection.message_stats.cycle_briefing_count > 0;
-    if has_memory_plane_injection {
-        record_memory_plane_replay_anchor_check(cov.memory_plane_replay_anchor_ok);
-    }
-    let has_compaction_replay = projection.compaction_index.artifact_count > 0
-        || projection.message_stats.compaction_artifact_count > 0;
-    if has_compaction_replay {
-        record_compaction_replay_anchor_check(cov.compaction_replay_anchor_ok);
-    }
-    if !cov.timeline_vs_session_ok
-        || !cov.plane_depth_ok
-        || !cov.role_index_ok
-        || !cov.memory_plane_user_ok
-        || !cov.compaction_depth_ok
-        || !cov.compaction_artifact_ok
-        || !cov.continuation_anchor_ok
-        || !cov.request_approval_anchor_ok
-        || !cov.notify_lsp_anchor_ok
-        || !cov.memory_plane_replay_anchor_ok
-        || !cov.compaction_replay_anchor_ok
-    {
-        record_timeline_coherence_check(false);
-    }
     if let Some(summary) = cov.summary {
         eprintln!(
             "[resume-session] kernel message plane diff (thread {}): {summary}",
@@ -599,10 +540,9 @@ pub(crate) async fn get_kernel_thread_replay(
     .await
     .map_err(|e| ApiError::internal(format!("kernel thread replay task panicked: {e}")))??;
 
-    let timeline_ok =
+    let _timeline_ok =
         verify_message_timeline_coherence(&projection.message_stats, &projection.message_timeline)
             .is_none();
-    record_timeline_coherence_check(timeline_ok);
 
     let role_index = role_index_for_replay(None, &query);
     let plane_coverage = query.session_message_count.and_then(|count| {
@@ -682,27 +622,9 @@ pub(crate) async fn get_kernel_thread_replay(
             block_count: entry.block_count,
         })
         .collect();
-    let message_coverage = plane_coverage.as_ref().map(|cov| {
-        record_message_coverage_check(cov.coverage_ok);
-        if projection.compaction_index.artifact_count > 0 {
-            record_message_compaction_depth_check(cov.compaction_depth_ok);
-        }
-        record_timeline_coherence_check(
-            cov.coherence_ok
-                && cov.timeline_vs_session_ok
-                && cov.timeline_vs_requests_ok
-                && cov.plane_depth_ok
-                && cov.role_index_ok
-                && cov.memory_plane_user_ok
-                && cov.compaction_depth_ok
-                && cov.compaction_artifact_ok
-                && cov.continuation_anchor_ok
-                && cov.request_approval_anchor_ok
-                && cov.notify_lsp_anchor_ok
-                && cov.memory_plane_replay_anchor_ok
-                && cov.compaction_replay_anchor_ok,
-        );
-        KernelThreadMessageCoverage {
+    let message_coverage = plane_coverage
+        .as_ref()
+        .map(|cov| KernelThreadMessageCoverage {
             session_message_count: cov.session_message_count,
             kernel_model_message_count: cov.kernel_model_message_count,
             coverage_ok: cov.coverage_ok,
@@ -712,8 +634,7 @@ pub(crate) async fn get_kernel_thread_replay(
                 build_session_message_coverage(cov.session_message_count, &projection.message_stats)
                     .and_then(|c| c.summary)
             },
-        }
-    });
+        });
     let message_timeline_coverage = plane_coverage.map(|cov| KernelThreadMessageTimelineCoverage {
         session_message_count: cov.session_message_count,
         kernel_model_message_count: cov.kernel_model_message_count,
@@ -753,24 +674,11 @@ pub(crate) async fn get_kernel_thread_replay(
 
     let has_continuation = projection.message_stats.step_limit_continuation_count > 0
         || projection.message_stats.loop_guard_continuation_count > 0;
-    if has_continuation {
-        record_continuation_anchor_check(projection.continuation_anchor_ok);
-    }
-    if projection.message_stats.tool_call_planned_count > 0 {
-        record_request_approval_anchor_check(projection.request_approval_anchor_ok);
-        record_notify_lsp_anchor_check(projection.notify_lsp_anchor_ok);
-    }
     let has_memory_plane_injection = projection.message_stats.scratchpad_summary_count > 0
         || projection.message_stats.scratchpad_reminder_count > 0
         || projection.message_stats.cycle_briefing_count > 0;
-    if has_memory_plane_injection {
-        record_memory_plane_replay_anchor_check(projection.memory_plane_replay_anchor_ok);
-    }
     let has_compaction_replay = projection.compaction_index.artifact_count > 0
         || projection.message_stats.compaction_artifact_count > 0;
-    if has_compaction_replay {
-        record_compaction_replay_anchor_check(projection.compaction_replay_anchor_ok);
-    }
 
     Ok(Json(KernelThreadReplayResponse {
         thread_id: report.thread_id,
