@@ -16,6 +16,20 @@ pub fn verify_memory_plane_batch4_coherence(events: &[KernelEvent]) -> Option<St
     {
         diffs.push(format!("query_replay: {summary}"));
     }
+    if let Some(summary) =
+        crate::engine::turn_loop::memory_plane_compiler_policy::verify_memory_plane_compiler_source_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("compiler_source: {summary}"));
+    }
+    if let Some(summary) =
+        crate::engine::turn_loop::memory_plane_compiler_policy::verify_compiler_queried_sources_coherence(
+            events,
+        )
+    {
+        diffs.push(format!("compiler_projection: {summary}"));
+    }
     if diffs.is_empty() {
         None
     } else {

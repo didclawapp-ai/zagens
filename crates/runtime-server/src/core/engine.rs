@@ -46,7 +46,7 @@ pub(crate) mod kernel_v3_step_verify;
 mod layered_context;
 mod loop_guard;
 mod lsp_hooks;
-mod memory_plane_compiler_ops;
+mod memory_plane_artifact_ops;
 mod memory_plane_ops;
 mod memory_plane_query_ops;
 mod message_handlers;

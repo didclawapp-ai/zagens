@@ -9,13 +9,20 @@ array of tagged `KernelEvent` records (same shape as `kernel_events.payload`).
 | `write_batch.json` | Turn with mutating tool + deferred activation |
 | `lht_continue.json` | Step-limit continuation + steer injection |
 | `loop_guard.json` | Loop guard triggered on duplicate tool call |
-| `scratchpad_compaction.json` | Scratchpad + compaction + cycle briefing |
+| `scratchpad_compaction.json` | Scratchpad + compaction + cycle briefing (`EmitArtifact` replay for scratchpad; `InjectSteer` anchor for cycle briefing) |
 | `cycle_handoff.json` | LHT cycle advance + overflow cycle handoff |
 | `overflow_recovery.json` | Budget recompile overflow recovery |
 | `capacity_checkpoint.json` | Pre/post capacity checkpoints with trim |
 | `manual_compaction.json` | Manual `/compact` compaction artifact |
 | `deferred_activation.json` | Deferred tool promotion without tool batch |
-| `memory_plane_query.json` | WorkingSet + TopicMemory queries + dual `MemoryPlaneQueried` |
+| `memory_plane_query.json` | WorkingSet + TopicMemory queries; `MemoryPlaneQueried` **before** step-2 `ModelRequestIssued` (compiler projection gate) |
+
+Replay notes (Phase D):
+
+- Scratchpad summary/reminder events replay as `Effect::EmitArtifact` (not `SteerInjected`).
+- `memory_plane_query.json` event order matches live: pre-`CallModel` queries precede `model_request_issued`.
+- Batch-4 gate includes compiler source mapping + log/projection coherence checks.
+
 | `resume_thread_parity.json` | Resume log vs session-direct parity gate (steer + read tool turn) |
 | `layered_context_seam.json` | Flash L2 seam + `RunLayeredContextCheckpoint` replay anchor |
 | `system_prompt_refresh.json` | v3 refresh chain (`user_memory` + `topic_episodic` + `RefreshSystemPrompt` replay) |
@@ -23,12 +30,12 @@ array of tagged `KernelEvent` records (same shape as `kernel_events.payload`).
 | `message_body_rebuild.session.json` | Canonical session JSON for 5c byte-parity gate |
 | `resume_thread_parity.session.json` | Canonical session JSON paired with `resume_thread_parity.json` |
 
+Run: `cargo test -p zagens-core golden_replay`
+
 Resume (`POST /v1/sessions/{id}/resume`) cross-checks session compaction artifacts
 against kernel log `replaced_range` anchors when SQLite compaction rows exist.
 Continuation steps are validated for `InjectSteer` replay effects on threads with
 step-limit / loop-guard continuation events.
-
-Run: `cargo test -p zagens-core golden_replay`
 
 Thread replay API: `GET /v1/runtime/kernel-replay/thread/{thread_id}` returns
 `message_timeline` anchors, `continuation_anchor_ok` (when continuation events exist),

@@ -19,6 +19,7 @@ pub mod live_turn_machine;
 pub mod live_turn_outer_driver;
 pub mod live_turn_outer_planner;
 pub mod loop_guard_replay_policy;
+pub mod memory_artifact_policy;
 pub mod memory_plane_archival_policy;
 pub mod memory_plane_compiler_policy;
 pub mod memory_plane_episodic_policy;

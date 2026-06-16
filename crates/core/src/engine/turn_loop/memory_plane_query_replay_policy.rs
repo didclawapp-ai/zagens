@@ -70,6 +70,26 @@ pub fn verify_step_query_memory_anchor(
         return None;
     }
     if logged == replayed {
+        let step_queries: Vec<KernelEvent> = turn_events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    KernelEvent::MemoryPlaneQueried {
+                        step_idx: s,
+                        ..
+                    } if *s == step_idx
+                )
+            })
+            .cloned()
+            .collect();
+        if let Some(summary) =
+            crate::engine::turn_loop::memory_plane_compiler_policy::verify_memory_plane_compiler_source_coherence(
+                &step_queries,
+            )
+        {
+            return Some(format!("step {step_idx} {summary}"));
+        }
         None
     } else {
         Some(format!(
@@ -255,12 +275,21 @@ mod tests {
                 input_text: "x".into(),
                 max_steps: 3,
             },
+            KernelEvent::ModelRequestIssued {
+                turn_id: "t1".into(),
+                step_idx: 1,
+                request_fp: crate::engine::request_fingerprint::RequestFingerprint {
+                    static_prefix_sha256: "aa".into(),
+                    full_prefix_sha256: "bb".into(),
+                },
+                token_budget: 4096,
+            },
             KernelEvent::MemoryPlaneQueried {
                 turn_id: "t1".into(),
                 step_idx: 1,
                 layer: "working".into(),
                 query_key: "scratchpad_summary".into(),
-                compiler_source: String::new(),
+                compiler_source: "memory.scratchpad_summary".into(),
             },
             KernelEvent::TurnEnded {
                 turn_id: "t1".into(),
@@ -269,5 +298,12 @@ mod tests {
             },
         ];
         assert!(verify_memory_plane_query_replay_coherence(&events).is_some());
+        assert!(
+            crate::engine::turn_loop::memory_plane_compiler_policy::verify_memory_plane_compiler_source_coherence(
+                &events,
+            )
+            .is_none(),
+            "compiler source mapping should still be valid"
+        );
     }
 }

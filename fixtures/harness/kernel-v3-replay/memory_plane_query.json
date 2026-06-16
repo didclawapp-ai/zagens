@@ -61,16 +61,6 @@
     "block_token_est": 96
   },
   {
-    "event_type": "model_request_issued",
-    "turn_id": "golden-memory-plane-query-001",
-    "step_idx": 2,
-    "request_fp": {
-      "static_prefix_sha256": "tm333333",
-      "full_prefix_sha256": "tm444444"
-    },
-    "token_budget": 8192
-  },
-  {
     "event_type": "memory_plane_queried",
     "turn_id": "golden-memory-plane-query-001",
     "step_idx": 2,
@@ -85,6 +75,16 @@
     "layer": "episodic",
     "query_key": "topic_episodic",
     "compiler_source": "topic_memory"
+  },
+  {
+    "event_type": "model_request_issued",
+    "turn_id": "golden-memory-plane-query-001",
+    "step_idx": 2,
+    "request_fp": {
+      "static_prefix_sha256": "tm333333",
+      "full_prefix_sha256": "tm444444"
+    },
+    "token_budget": 8192
   },
   {
     "event_type": "turn_ended",

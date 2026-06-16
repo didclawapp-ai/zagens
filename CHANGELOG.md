@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Runtime (kernel v3 Phase D — memory plane compiler alignment):**
+  - `QueryMemory` logs `MemoryPlaneQueried`; ContextCompiler force-include/budget overrides derive from log projection (`compiler_queried_sources_from_projection`) instead of a runtime side channel.
+  - `verify_memory_plane_compiler_source_coherence` + `verify_compiler_queried_sources_coherence` wired into batch-4 replay gate.
+- **Runtime (kernel v3 Phase D — `Effect::EmitArtifact`):**
+  - `Effect::EmitArtifact { kind, area_hint }` for scratchpad snapshot/reminder; `ReplayTurnMachine` replays `ScratchpadSummaryInjected` / `ScratchpadReminderInjected` through it (cycle briefing remains `InjectSteer` anchor).
+  - v3 live path routes `maybe_inject_scratchpad_*` through `memory_plane_artifact_ops` (no spurious `SteerInjected` on scratchpad inject).
 - **Runtime (kernel v3 — core fallback step planning):**
   - `run_v3_step` plans via `LiveTurnMachine::inner_step_live_plan` before streaming/tool phases (non-runtime hosts without `EffectInterpreter`).
 

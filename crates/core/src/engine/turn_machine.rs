@@ -414,6 +414,12 @@ pub enum Effect {
     },
     /// Rebuild session system prompt from memory-plane reads (v3 refresh tail).
     RefreshSystemPrompt,
+    /// Emit a memory-plane artifact (scratchpad snapshot / reminder; Phase D).
+    EmitArtifact {
+        kind: crate::engine::turn_loop::memory_artifact_policy::MemoryArtifactKind,
+        /// Optional log hint (e.g. scratchpad reminder `area_path` on replay).
+        area_hint: Option<String>,
+    },
 }
 
 // ── StepOutput ────────────────────────────────────────────────────────────────
@@ -497,8 +503,12 @@ impl TurnMachine for ReplayTurnMachine {
                 });
             }
             KernelEvent::ScratchpadReminderInjected { .. }
-            | KernelEvent::ScratchpadSummaryInjected { .. }
-            | KernelEvent::CycleBriefingInjected { .. } => {
+            | KernelEvent::ScratchpadSummaryInjected { .. } => {
+                out.effects.extend(
+                    crate::engine::turn_loop::memory_artifact_policy::memory_plane_emit_artifact_effects_from_events(&[event.clone()]),
+                );
+            }
+            KernelEvent::CycleBriefingInjected { .. } => {
                 out.effects.push(Effect::InjectSteer {
                     text: String::new(),
                 });
@@ -561,7 +571,7 @@ impl TurnMachine for ReplayTurnMachine {
                 query_key,
                 step_idx,
                 ..
-            } if !projection.model_request_seen_this_step => {
+            } if *step_idx > projection.step_idx || !projection.model_request_seen_this_step => {
                 let layer =
                     crate::engine::turn_loop::memory_plane_projection_policy::MemoryPlaneLayer::from_log_layer(
                         layer,
@@ -1634,39 +1644,51 @@ pub fn is_memory_plane_injection_kernel_event(event: &KernelEvent) -> bool {
     )
 }
 
-/// Memory-plane `InjectSteer` replay effects (empty text anchors).
+/// Memory-plane replay effects (`EmitArtifact` for scratchpad; `InjectSteer` anchor for cycle briefing).
 #[must_use]
 pub fn memory_plane_inject_steer_effects_from_events(events: &[KernelEvent]) -> Vec<Effect> {
-    events
-        .iter()
-        .filter(|event| is_memory_plane_injection_kernel_event(event))
-        .map(|_| Effect::InjectSteer {
-            text: String::new(),
-        })
-        .collect()
+    let mut out = crate::engine::turn_loop::memory_artifact_policy::memory_plane_emit_artifact_effects_from_events(events);
+    out.extend(
+        events
+            .iter()
+            .filter(|event| matches!(event, KernelEvent::CycleBriefingInjected { .. }))
+            .map(|_| Effect::InjectSteer {
+                text: String::new(),
+            }),
+    );
+    out
 }
 
-/// Count memory-plane `InjectSteer` effects emitted by [`ReplayTurnMachine`] for observed events.
+/// Whether an effect replays a memory-plane injection anchor.
+#[must_use]
+pub fn is_memory_plane_replay_effect(effect: &Effect) -> bool {
+    matches!(
+        effect,
+        Effect::EmitArtifact { .. } | Effect::InjectSteer { .. }
+    )
+}
+
+/// Count memory-plane replay effects emitted by [`ReplayTurnMachine`] for observed events.
 fn count_memory_plane_replay_inject_effects(events: &[KernelEvent]) -> usize {
     let mut machine = ReplayTurnMachine;
     let mut projection = TurnKernelProjection::default();
     let mut count = 0;
     for event in events {
         let is_memory_plane = is_memory_plane_injection_kernel_event(&event);
-        let out = machine.step(&mut projection, event.clone());
+        let out = machine.step(&projection, event.clone());
         projection.apply(&event);
         if is_memory_plane {
             count += out
                 .effects
                 .iter()
-                .filter(|effect| matches!(effect, Effect::InjectSteer { .. }))
+                .filter(|effect| is_memory_plane_replay_effect(effect))
                 .count();
         }
     }
     count
 }
 
-/// Verify scratchpad / reminder / cycle-briefing events replay `InjectSteer` in the effect chain.
+/// Verify scratchpad / reminder / cycle-briefing events replay memory-plane effects.
 #[must_use]
 pub fn verify_thread_memory_plane_replay_anchors(
     turn_events: &[(String, Vec<KernelEvent>)],
@@ -1683,7 +1705,7 @@ pub fn verify_thread_memory_plane_replay_anchors(
         let replayed = count_memory_plane_replay_inject_effects(events);
         if replayed < expected {
             issues.push(format!(
-                "turn {turn_id} expected {expected} memory-plane InjectSteer replay effects, found {replayed}"
+                "turn {turn_id} expected {expected} memory-plane replay effects, found {replayed}"
             ));
         }
     }
@@ -1694,7 +1716,7 @@ pub fn verify_thread_memory_plane_replay_anchors(
     }
 }
 
-/// Verify memory-plane injections in a step slice replay `InjectSteer` in the step effect chain.
+/// Verify memory-plane injections in a step slice replay artifact/steer anchors.
 #[must_use]
 pub fn verify_step_memory_plane_replay_anchor(
     turn_events: &[KernelEvent],
@@ -1708,15 +1730,15 @@ pub fn verify_step_memory_plane_replay_anchor(
     if expected == 0 {
         return None;
     }
-    let inject_effects = replay_step_effects(turn_events, step_idx)
+    let replay_effects = replay_step_effects(turn_events, step_idx)
         .iter()
-        .filter(|effect| matches!(effect, Effect::InjectSteer { .. }))
+        .filter(|effect| is_memory_plane_replay_effect(effect))
         .count();
-    if inject_effects >= expected {
+    if replay_effects >= expected {
         None
     } else {
         Some(format!(
-            "step {step_idx} expected >= {expected} memory-plane InjectSteer replay effects, found {inject_effects}"
+            "step {step_idx} expected >= {expected} memory-plane replay effects, found {replay_effects}"
         ))
     }
 }
@@ -2532,6 +2554,7 @@ pub fn replay_effect_counts(events: &[KernelEvent]) -> ReplayEffectCounts {
             Effect::Sleep { .. } => counts.sleep += 1,
             Effect::QueryMemory { .. } => counts.query_memory += 1,
             Effect::RunLayeredContextCheckpoint | Effect::RefreshSystemPrompt => {}
+            Effect::EmitArtifact { .. } => {}
         }
     }
     counts
@@ -2840,6 +2863,7 @@ impl Effect {
             Effect::QueryMemory { .. } => "query_memory",
             Effect::RunLayeredContextCheckpoint => "run_layered_context_checkpoint",
             Effect::RefreshSystemPrompt => "refresh_system_prompt",
+            Effect::EmitArtifact { .. } => "emit_artifact",
         }
     }
 }

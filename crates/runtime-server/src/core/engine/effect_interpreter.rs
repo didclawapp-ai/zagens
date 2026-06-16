@@ -85,9 +85,6 @@ impl<'a> EffectInterpreter<'a> {
         Engine: V3TurnHost,
     {
         self.engine.clear_v3_approval_outcomes();
-        super::memory_plane_compiler_ops::clear_memory_query_compiler_sources(
-            self.engine.runtime_ext_mut(),
-        );
         let model = self.engine.session_mut().model.clone();
         let token_budget = context_input_budget(&model, TURN_MAX_OUTPUT_TOKENS)
             .map(|b| b.min(u32::MAX as usize) as u32)
@@ -485,6 +482,19 @@ impl<'a> EffectInterpreter<'a> {
                 InterpretOutcome::Executed
             }
             Effect::RefreshSystemPrompt => InterpretOutcome::NotImplemented,
+            Effect::EmitArtifact { kind, area_hint } => {
+                let ext = self.engine.runtime_ext();
+                let turn_id = ext
+                    .kernel_active_turn_id
+                    .clone()
+                    .unwrap_or_else(|| "effect-interpreter".to_string());
+                let step_idx = ext.kernel_active_step;
+                let _ = self
+                    .engine
+                    .run_emit_artifact_effect(&turn_id, step_idx, kind, area_hint)
+                    .await;
+                InterpretOutcome::Executed
+            }
             _ => InterpretOutcome::NotImplemented,
         }
     }

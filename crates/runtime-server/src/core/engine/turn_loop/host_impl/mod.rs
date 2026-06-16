@@ -673,7 +673,13 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
         // Consume the cap first (before borrowing `self.session`) so the mutable
         // borrow of `self.0` does not alias the immutable borrow via `proj`.
         let overflow_budget_cap = self.0.overflow_source_budget_cap.take();
-        let queried_sources = self.runtime_ext().kernel_memory_query_sources.clone();
+        let turn_events = self.runtime_ext().kernel_turn_events.turn_events();
+        let projection =
+            zagens_core::engine::turn_machine::TurnKernelProjection::from_events(turn_events);
+        let queried_sources =
+            zagens_core::engine::turn_loop::memory_plane_compiler_policy::compiler_queried_sources_from_projection(
+                &projection,
+            );
 
         let compiler = crate::context_compiler_shadow::build_compiler_from_snapshot(&snapshot);
         let proj = ContextProjection::from_session(&self.session, snapshot.step_idx);
@@ -729,7 +735,6 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
             None
         };
 
-        let queried_sources = self.runtime_ext().kernel_memory_query_sources.clone();
         if !queried_sources.is_empty() {
             tracing::info!(
                 target: "kernel_v3",
@@ -737,7 +742,7 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
                 queried = ?queried_sources,
                 has_working_set,
                 has_compaction,
-                "compiler_request_context: memory query sources this step"
+                "compiler_request_context: memory query sources this step (log projection)"
             );
         }
 
@@ -1071,26 +1076,48 @@ impl zagens_core::engine::turn_loop::TurnLoopOuterHost for Engine {
         if self.scratchpad_summary_injected_this_turn {
             return false;
         }
-        let Some(summary_msg) = scratchpad_flow::maybe_summary_before_final_answer(
-            &self.session.workspace,
-            self.scratchpad_run_id.as_deref(),
-            &self.config.scratchpad,
-        ) else {
-            return false;
-        };
-        let text = crate::core::engine::memory_plane_ops::user_message_plain_text(&summary_msg);
-        self.inject_memory_plane_steer_message(text).await;
-        self.scratchpad_summary_injected_this_turn = true;
-        emit_kernel_event(
+        if !self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            let Some(summary_msg) = scratchpad_flow::maybe_summary_before_final_answer(
+                &self.session.workspace,
+                self.scratchpad_run_id.as_deref(),
+                &self.config.scratchpad,
+            ) else {
+                return false;
+            };
+            let text = crate::core::engine::memory_plane_ops::user_message_plain_text(&summary_msg);
+            self.inject_memory_plane_steer_message(text).await;
+            self.scratchpad_summary_injected_this_turn = true;
+            emit_kernel_event(
+                self,
+                KernelEvent::ScratchpadSummaryInjected {
+                    turn_id: turn.id.clone(),
+                    at_step: turn.step,
+                },
+            );
+            return true;
+        }
+        Engine::run_emit_artifact_effect(
             self,
-            KernelEvent::ScratchpadSummaryInjected {
-                turn_id: turn.id.clone(),
-                at_step: turn.step,
-            },
-        );
-        true
+            &turn.id,
+            turn.step,
+            zagens_core::engine::turn_loop::memory_artifact_policy::MemoryArtifactKind::ScratchpadSnapshot,
+            None,
+        )
+        .await
     }
+
     async fn maybe_inject_scratchpad_reminder(&mut self, turn: &TurnContext) {
+        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
+            let _ = Engine::run_emit_artifact_effect(
+                self,
+                &turn.id,
+                turn.step,
+                zagens_core::engine::turn_loop::memory_artifact_policy::MemoryArtifactKind::ScratchpadReminder,
+                None,
+            )
+            .await;
+            return;
+        }
         if let Some((reminder, area_path)) = scratchpad_flow::build_readonly_reminder_message(
             &self.session.workspace,
             self.scratchpad_run_id.as_deref(),

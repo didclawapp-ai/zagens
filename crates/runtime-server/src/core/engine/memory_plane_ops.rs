@@ -1,32 +1,17 @@
-//! v3 memory-plane steer — routes scratchpad summary/reminder through [`Effect::InjectSteer`].
+//! v3 memory-plane steer — legacy non-v3 session writes for memory injections.
 
 use zagens_core::chat::{ContentBlock, Message};
-use zagens_core::engine::turn_machine::Effect;
 
-use super::effect_interpreter::EffectInterpreter;
 use super::*;
 
 impl Engine {
-    /// Inject scratchpad / reminder user text (v3: `Effect::InjectSteer`; legacy: session write).
+    /// Legacy session write for memory-plane user text (non-v3 path only).
     pub(in crate::core::engine) async fn inject_memory_plane_steer_message(
         &mut self,
         text: String,
     ) {
         let steer = text.trim().to_string();
         if steer.is_empty() {
-            return;
-        }
-        if self.runtime_ext().kernel_machine_mode.uses_v3_turn_loop() {
-            tracing::info!(
-                target: "kernel_v3",
-                turn_id = ?self.runtime_ext().kernel_active_turn_id,
-                step = self.runtime_ext().kernel_active_step,
-                "v3 memory-plane: InjectSteer (effect plan)"
-            );
-            let mut interpreter = EffectInterpreter::new(self);
-            let _ = interpreter
-                .interpret(Effect::InjectSteer { text: steer })
-                .await;
             return;
         }
         let workspace = self.session.workspace.clone();

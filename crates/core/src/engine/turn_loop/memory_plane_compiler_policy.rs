@@ -3,6 +3,7 @@
 use std::collections::BTreeSet;
 
 use crate::engine::context_compiler::{BudgetOverride, BudgetPolicy, SourceId};
+use crate::engine::kernel_event::KernelEvent;
 
 use super::memory_plane_episodic_policy::QUERY_TOPIC_EPISODIC;
 use super::memory_plane_query_policy::{
@@ -88,6 +89,108 @@ pub fn compiler_budget_overrides_for_queried_sources(
     out
 }
 
+/// Derive ContextCompiler source ids queried this step from log projection (batch 8h / Phase D).
+#[must_use]
+pub fn compiler_queried_sources_from_projection(
+    projection: &crate::engine::turn_machine::TurnKernelProjection,
+) -> BTreeSet<String> {
+    projection
+        .memory_plane_queried_keys_this_step
+        .iter()
+        .map(|query_key| compiler_source_for_query_key(query_key).to_string())
+        .filter(|source| source != "memory.unknown")
+        .collect()
+}
+
+/// Verify projection-derived compiler sources match logged queries before each model request.
+#[must_use]
+pub fn verify_compiler_queried_sources_coherence(events: &[KernelEvent]) -> Option<String> {
+    let mut step_indices = BTreeSet::new();
+    for event in events {
+        if let KernelEvent::MemoryPlaneQueried { step_idx, .. } = event {
+            step_indices.insert(*step_idx);
+        }
+    }
+    let mut issues = Vec::new();
+    for step_idx in step_indices {
+        let logged = compiler_sources_logged_at_step(events, step_idx);
+        let derived = compiler_sources_from_projection_at_step(events, step_idx);
+        if logged != derived {
+            issues.push(format!(
+                "step {step_idx} compiler_sources log={logged:?} projection={derived:?}"
+            ));
+        }
+    }
+    if issues.is_empty() {
+        None
+    } else {
+        Some(issues.join("; "))
+    }
+}
+
+/// Logged compiler source ids for a step.
+#[must_use]
+pub fn compiler_sources_logged_at_step(events: &[KernelEvent], step_idx: u32) -> BTreeSet<String> {
+    events
+        .iter()
+        .filter_map(|event| {
+            let KernelEvent::MemoryPlaneQueried {
+                step_idx: s,
+                query_key,
+                ..
+            } = event
+            else {
+                return None;
+            };
+            if *s != step_idx {
+                return None;
+            }
+            Some(compiler_source_for_query_key(query_key).to_string())
+        })
+        .collect()
+}
+
+/// Projection-derived compiler sources immediately before a step's `ModelRequestIssued`.
+#[must_use]
+pub fn compiler_sources_from_projection_at_step(
+    events: &[KernelEvent],
+    step_idx: u32,
+) -> BTreeSet<String> {
+    let mut projection = crate::engine::turn_machine::TurnKernelProjection::default();
+    for event in events {
+        if let KernelEvent::ModelRequestIssued { step_idx: s, .. } = event {
+            if *s == step_idx {
+                break;
+            }
+        }
+        projection.apply(event);
+    }
+    compiler_queried_sources_from_projection(&projection)
+}
+
+/// Verify logged `MemoryPlaneQueried.compiler_source` matches the query-key mapping table.
+#[must_use]
+pub fn verify_memory_plane_compiler_source_coherence(events: &[KernelEvent]) -> Option<String> {
+    for event in events {
+        let KernelEvent::MemoryPlaneQueried {
+            step_idx,
+            query_key,
+            compiler_source,
+            ..
+        } = event
+        else {
+            continue;
+        };
+        let expected = compiler_source_for_query_key(query_key);
+        if compiler_source.as_str() != expected {
+            return Some(format!(
+                "step {step_idx} query_key={query_key} compiler_source={compiler_source} expected={expected}"
+            ));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +232,33 @@ mod tests {
             resolved_compiler_includes_for_queried_sources(&queried, false, false, false, true);
         assert!(!has_compaction);
         assert!(has_working_set);
+    }
+
+    #[test]
+    fn compiler_source_coherence_on_memory_plane_query_fixture() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/harness/kernel-v3-replay/memory_plane_query.json");
+        let raw = std::fs::read_to_string(&path).expect("read fixture");
+        let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
+        assert!(
+            verify_memory_plane_compiler_source_coherence(&events).is_none(),
+            "memory_plane_query.json compiler source mapping failed"
+        );
+        assert!(
+            verify_compiler_queried_sources_coherence(&events).is_none(),
+            "memory_plane_query.json compiler projection coherence failed"
+        );
+    }
+
+    #[test]
+    fn compiler_source_coherence_detects_mismatch() {
+        let events = vec![KernelEvent::MemoryPlaneQueried {
+            turn_id: "t1".into(),
+            step_idx: 1,
+            layer: "working".into(),
+            query_key: QUERY_WORKING_SET.into(),
+            compiler_source: "memory.compaction".into(),
+        }];
+        assert!(verify_memory_plane_compiler_source_coherence(&events).is_some());
     }
 }
