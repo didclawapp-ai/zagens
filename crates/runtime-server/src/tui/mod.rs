@@ -6,6 +6,7 @@ mod approval_policy;
 mod automation;
 mod composer_editor;
 mod composer_paste;
+mod composer_paste_batch;
 mod composer_paste_guard;
 mod composer_slash;
 mod display_format;
@@ -155,18 +156,27 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                         batch.push(extra);
                     }
                     let mut quit = false;
-                    for event in batch {
-                        if handle_input_event(
-                            &event,
-                            &mut ctx,
-                            &mut host,
-                            &mut app,
-                            &mut ctrl_c_streak,
-                            &mut ctrl_c_last,
-                            &shell_tx,
-                        ).await? {
-                            quit = true;
-                            break;
+                    if let Some(paste) = composer_paste_batch::try_coalesce_terminal_paste(&batch) {
+                        if app.layout.focus == FocusRegion::Chat {
+                            if !app.composer_focus {
+                                app.composer_focus = true;
+                            }
+                            app.handle_composer_paste(&paste);
+                        }
+                    } else {
+                        for event in batch {
+                            if handle_input_event(
+                                &event,
+                                &mut ctx,
+                                &mut host,
+                                &mut app,
+                                &mut ctrl_c_streak,
+                                &mut ctrl_c_last,
+                                &shell_tx,
+                            ).await? {
+                                quit = true;
+                                break;
+                            }
                         }
                     }
                     if quit {
@@ -373,13 +383,25 @@ async fn handle_input_event(
             *ctrl_c_last = None;
 
             match key.code {
+                KeyCode::Char('?') if composer_absorbs_text_keys(app) => {
+                    app.handle_char('?');
+                }
                 KeyCode::Char('?') => {
                     app.show_help = !app.show_help;
+                }
+                KeyCode::Tab if !app.approval_open() && composer_absorbs_text_keys(app) => {
+                    app.handle_char('\t');
                 }
                 KeyCode::Tab if !app.approval_open() => {
                     handle_tab_focus(app, key.modifiers.contains(KeyModifiers::SHIFT));
                 }
+                KeyCode::Char('[') if composer_absorbs_text_keys(app) => {
+                    app.handle_char('[');
+                }
                 KeyCode::Char('[') => app.layout.toggle_left(),
+                KeyCode::Char(']') if composer_absorbs_text_keys(app) => {
+                    app.handle_char(']');
+                }
                 KeyCode::Char(']') => app.layout.toggle_right(),
                 KeyCode::Char('n')
                     if key.modifiers.contains(KeyModifiers::CONTROL)
@@ -389,12 +411,12 @@ async fn handle_input_event(
                     app.reload_after_thread_switch(host).await;
                 }
                 KeyCode::Char('j')
-                    if app.layout.focus == FocusRegion::Chat && app.composer_focus =>
+                    if app.layout.focus == FocusRegion::Chat && composer_absorbs_text_keys(app) =>
                 {
                     app.handle_char('j');
                 }
                 KeyCode::Char('k')
-                    if app.layout.focus == FocusRegion::Chat && app.composer_focus =>
+                    if app.layout.focus == FocusRegion::Chat && composer_absorbs_text_keys(app) =>
                 {
                     app.handle_char('k');
                 }
@@ -612,13 +634,25 @@ async fn handle_input_event(
                     app.composer.delete_forward();
                     app.sync_slash_palette();
                 }
-                KeyCode::Char(ch) => app.handle_char(ch),
+                KeyCode::Char(ch) => {
+                    if app.composer_paste_guard.paste_active()
+                        && app.layout.focus == FocusRegion::Chat
+                    {
+                        app.composer_focus = true;
+                    }
+                    app.handle_char(ch);
+                }
                 _ => {}
             }
         }
         _ => {}
     }
     Ok(false)
+}
+
+fn composer_absorbs_text_keys(app: &AppState) -> bool {
+    (app.layout.focus == FocusRegion::Chat && app.composer_focus)
+        || app.composer_paste_guard.paste_active()
 }
 
 fn enter_transcript_scroll_if_needed(app: &mut AppState) {

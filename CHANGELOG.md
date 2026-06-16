@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **TUI (composer — legacy conhost paste):** cmd.exe / conhost injects clipboard text as rapid Char+Enter key events; coalesce same-frame bursts into one multiline insert, extend paste-session detection for slow injection, and route `[` `]` `Tab` `?` (and `j`/`k` during paste) into the composer so sidebars no longer collapse mid-paste.
 - **Runtime (LHT — macro CRAFT `on_graph_complete`):** When the checklist/plan graph is complete but micro completion gates are still red, `auto_enter_craft = on_graph_complete` (or `user_confirm`) now evaluates the macro loop **before** unverified/mismatch nudges and can spawn CRAFT or prompt for confirm — previously CRAFT only ran after `graph_complete` (all micro gates green).
 - **Runtime (LHT — manifest gate Jest EPERM):** Harness classifies Jest `spawn EPERM` / `spawn EACCES` as infra (not assertion) and appends a `--runInBand` / `.npmrc` cache hint in manifest-failed nudges on Windows-style Node tasks.
 - **Runtime (LHT — step-limit continuation regression):** When checklist reached 100% but `update_plan` still had an `InProgress` phase (checklist-driven execution without plan sync), `maybe_continue_at_step_limit` / loop-guard continuations no longer skipped — restores bounded step-budget grants (up to 4× baseline) instead of hard `Reached maximum steps` at 100 tool steps. Abandoned all-pending plans (DEMO5 zombie plan) still do not trigger continuation. `note_incomplete_stop_if_lht` uses the same rule for observability.
