@@ -9,7 +9,7 @@ OUT="${1:-release-cli-artifacts}"
 mkdir -p "$OUT"
 
 echo "Building release CLI binaries..."
-bash scripts/ci/cargo-retry.sh build -p zagens-cli --release --locked --bin zagens --bin zagens-runtime
+bash scripts/ci/cargo-retry.sh build -p zagens-cli --release --locked --features tui --bin zagens --bin zagens-runtime --bin zagens-tui
 
 TRIPLE="$(rustc -vV | sed -n 's/^host: //p')"
 EXT=""
@@ -17,7 +17,7 @@ if [[ "$TRIPLE" == *windows* ]]; then
   EXT=".exe"
 fi
 
-for name in zagens zagens-runtime; do
+for name in zagens zagens-runtime zagens-tui; do
   src="target/release/${name}${EXT}"
   dest="${OUT}/${name}-${TRIPLE}${EXT}"
   cp "$src" "$dest"

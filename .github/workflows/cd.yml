@@ -184,9 +184,9 @@ jobs:
             extract → run the installer** for a prompt-free install. Verify the
             download with the matching `.sha256` file.
 
-            ## Headless CLI (`zagens`)
+            ## Headless CLI (`zagens`, `zagens-tui`)
 
-            Cross-platform CLI binaries (`zagens`, `zagens-runtime`) and matching
+            Cross-platform CLI binaries (`zagens`, `zagens-runtime`, `zagens-tui`) and matching
             `.sha256` checksums are attached when the CLI matrix job succeeds.
             Install via Scoop or download the archive for your target triple.
 
