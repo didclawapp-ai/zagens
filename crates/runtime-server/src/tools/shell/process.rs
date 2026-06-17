@@ -185,6 +185,7 @@ impl ShellChild {
             // grandchildren don't survive as orphans holding ports (C1).
             ShellChild::Process(child) => kill_child_process_group(child),
             ShellChild::Pty(child) => {
+                #[cfg(windows)]
                 let pid = child.process_id();
                 let result = child.kill();
                 // Windows PTY kill may leave Start-Process grandchildren (C1/T3).
