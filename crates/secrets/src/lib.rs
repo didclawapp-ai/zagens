@@ -49,7 +49,7 @@ pub enum SecretsError {
 }
 
 /// Abstract secret store; concrete implementations may use the OS
-/// keyring, a JSON file under `~/.deepseek/secrets/`, or an in-memory
+/// keyring, a JSON file under `~/.zagens/secrets/`, or an in-memory
 /// map (tests).
 pub trait KeyringStore: Send + Sync {
     /// Read a secret. Returns `Ok(None)` if no entry exists.
@@ -184,7 +184,7 @@ impl KeyringStore for InMemoryKeyringStore {
 }
 
 /// JSON-on-disk fallback for headless environments without a Secret
-/// Service / dbus. Stored at `<home>/.deepseek/secrets/secrets.json`
+/// Service / dbus. Stored at `<home>/.zagens/secrets/secrets.json`
 /// with mode `0600`.
 #[derive(Debug, Clone)]
 pub struct FileKeyringStore {
@@ -308,7 +308,7 @@ impl KeyringStore for FileKeyringStore {
     }
 
     fn backend_name(&self) -> &'static str {
-        "file-based (~/.deepseek/secrets/)"
+        "file-based (~/.zagens/secrets/)"
     }
 }
 
@@ -359,7 +359,7 @@ impl Secrets {
     /// Construct the platform-appropriate default backend. On platforms
     /// where an OS keyring backend is reachable this returns
     /// [`DefaultKeyringStore`]; otherwise it falls back to
-    /// [`FileKeyringStore`] under `~/.deepseek/secrets/`.
+    /// [`FileKeyringStore`] under `~/.zagens/secrets/`.
     pub fn auto_detect() -> Self {
         let default_store = DefaultKeyringStore::default();
         match default_store.probe() {
@@ -765,7 +765,7 @@ mod tests {
     #[test]
     fn file_store_default_path_uses_home() {
         // We don't override HOME here (other tests do); we just check the
-        // shape of the path is `<home>/.deepseek/secrets/secrets.json`.
+        // shape of the path is `<home>/.zagens/secrets/secrets.json`.
         let path = FileKeyringStore::default_path().unwrap();
         assert!(
             path.ends_with("secrets/secrets.json") || path.ends_with("secrets\\secrets.json"),

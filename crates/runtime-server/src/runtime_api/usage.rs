@@ -1,7 +1,5 @@
 //! Usage aggregation, routing rules, symbol index rebuild (R-003 A4.5).
 
-use std::path::PathBuf;
-
 use axum::Json;
 use axum::extract::{Query, State};
 use chrono::Utc;
@@ -105,13 +103,8 @@ pub(crate) async fn rebuild_symbol_index(
     State(_state): State<RuntimeApiState>,
     Query(q): Query<RebuildSymbolIndexQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let ws = PathBuf::from(&q.workspace);
-    if !ws.is_dir() {
-        return Err(ApiError::bad_request(format!(
-            "Not a directory: {}",
-            q.workspace
-        )));
-    }
+    let ws =
+        zagens_config::user_scoped_workspace(&q.workspace).map_err(|e| ApiError::bad_request(e))?;
     let ws_for_build = ws.clone();
     let path = zagens_config::workspace_meta_file_write(&ws, "symbols.json");
     let index = tokio::task::spawn_blocking(move || {

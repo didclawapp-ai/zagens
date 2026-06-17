@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop (audit 2026-06-17):** Symbol-index IPC (`get_symbol_index_info`, `delete_symbol_index`, `rebuild_symbol_index`) and runtime `POST /v1/symbol-index/rebuild` now require workspace paths under the user home or documents directory; secrets crate docs/`backend_name()` aligned to `~/.zagens/secrets/`; config `redact_secret` fully masks API keys; `openExternalUrl` validates schemes via `URL.protocol`; removed unused `tauri-plugin-shell`; sidecar supervisor log records only `port` from `DS_PICK_READY`; sidecar probe HTTP client no longer panics when TLS stack init fails.
 - **TUI (audit PR-A):** ANSI CSI strip recognizes ECMA-48 final bytes (`0x40–0x7E`); composer buffer capped at 128K chars; unfocused transcript border uses transcript style; overlay `centered_rect` deduplicated; expanded thinking/tool detail shows “more lines” ellipsis; draw path adds `trace_span!(tui_draw)`; live-activity waiting state distinguishes edit vs scroll in title/hint and auto-focuses composer when typing to queue.
 - **Runtime (Kernel V3 — replay parity):** `verify_step_effect_parity` no longer passes when a step has `ToolCallPlanned` events but no `ModelRequestIssued` anchor in the log.
 - **Runtime (Kernel V3 — turn lifecycle):** Streaming `return_early` and pre-inner failure paths now emit `KernelEvent::TurnEnded` before returning from `handle_deepseek_turn`.

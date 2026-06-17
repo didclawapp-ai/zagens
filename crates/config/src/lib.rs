@@ -32,9 +32,9 @@ pub use paths::{
     LEGACY_USER_DATA_DIR_NAME, LEGACY_WORKSPACE_META_DIR_NAME, USER_DATA_DIR_NAME,
     WORKSPACE_META_DIR_NAME, default_config_path, legacy_config_path, legacy_user_data_root,
     legacy_workspace_meta_dir, migrate_legacy_user_data_if_needed, tilde_user_data_path,
-    user_data_path, user_data_path_or_relative, user_data_root, workspace_meta_dir,
-    workspace_meta_dir_read, workspace_meta_file_read, workspace_meta_file_write,
-    workspace_meta_rel,
+    user_data_path, user_data_path_or_relative, user_data_root, user_scoped_workspace,
+    workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
+    workspace_meta_file_write, workspace_meta_rel,
 };
 pub use ui_settings::{
     LhtComposerMode, normalize_configured_locale, read_lht_composer_mode_setting,
@@ -1791,11 +1791,8 @@ fn serialize_http_headers(headers: &BTreeMap<String, String>) -> Option<String> 
     )
 }
 
-fn redact_secret(secret: &str) -> String {
-    if secret.len() <= 16 {
-        return "********".to_string();
-    }
-    format!("{}***{}", &secret[..4], &secret[secret.len() - 4..])
+fn redact_secret(_secret: &str) -> String {
+    "********".to_string()
 }
 
 struct DebugProviders<'a>(&'a ProvidersToml);
@@ -2349,10 +2346,7 @@ mod tests {
 
         let values = config.list_values();
 
-        assert_eq!(
-            values.get("api_key").map(String::as_str),
-            Some("sk-d***cret")
-        );
+        assert_eq!(values.get("api_key").map(String::as_str), Some("********"));
     }
 
     #[test]

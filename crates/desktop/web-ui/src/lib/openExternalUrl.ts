@@ -1,12 +1,23 @@
-const ALLOWED_SCHEMES = ['http:', 'https:', 'mailto:'];
+const ALLOWED_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
 
-/** Open a URL in the OS browser or mail client (Tauri shell); falls back to window.open in dev. */
+/** Returns true when `url` uses an allowed external scheme (http/https/mailto). */
+export function isAllowedExternalUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return false;
+  }
+  try {
+    return ALLOWED_SCHEMES.has(new URL(trimmed).protocol.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** Open a URL in the OS browser or mail client (Tauri invoke); falls back to window.open in dev. */
 export async function openExternalUrl(url: string): Promise<void> {
   const trimmed = url.trim();
   if (!trimmed) return;
-  // Reject URLs with non-whitelisted schemes to prevent javascript:/data: URIs.
-  const lower = trimmed.toLowerCase();
-  if (!ALLOWED_SCHEMES.some((s) => lower.startsWith(s))) {
+  if (!isAllowedExternalUrl(trimmed)) {
     console.warn('[openExternalUrl] blocked unsafe scheme:', trimmed);
     return;
   }

@@ -35,7 +35,6 @@ uuid.workspace = true
 tauri = { version = "2", features = ["devtools", "tray-icon", "image-ico"] }
 reqwest = { workspace = true, features = ["json", "rustls", "stream"] }
 futures-util = "0.3"
-tauri-plugin-shell = "2"
 ignore = "0.4"
 tauri-plugin-dialog = "2"
 tauri-plugin-clipboard-manager = "2"

@@ -42,13 +42,17 @@ const RAPID_RESTART_WINDOW_SECS: u64 = 60;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// Shared client for localhost probes (avoids reconstructing TLS stacks per request on Windows).
-static SIDECAR_PROBE_HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
+static SIDECAR_PROBE_HTTP: LazyLock<Option<reqwest::Client>> = LazyLock::new(|| {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_millis(400))
         .timeout(Duration::from_secs(3))
         .build()
-        .expect("sidecar probe reqwest client")
+        .ok()
 });
+
+fn sidecar_probe_http() -> Option<&'static reqwest::Client> {
+    SIDECAR_PROBE_HTTP.as_ref()
+}
 
 /// Avoid inheriting System32/System as the implicit cwd for embedded `deepseek serve`:
 /// tooling defaults (and broken session resumes) would otherwise latch onto that directory.
@@ -246,8 +250,11 @@ fn compute_token_fingerprint(token: &str) -> String {
 }
 
 async fn probe_sidecar(port: u16, expected_fp: &str) -> ProbeOutcome {
+    let Some(client) = sidecar_probe_http() else {
+        return ProbeOutcome::Other("sidecar probe HTTP client unavailable".to_string());
+    };
     let url = format!("http://127.0.0.1:{port}/internal/probe");
-    match SIDECAR_PROBE_HTTP.get(&url).send().await {
+    match client.get(&url).send().await {
         Ok(resp) if resp.status().is_success() => {
             match resp.json::<InternalProbeResponse>().await {
                 Ok(body) if body.token_fingerprint == expected_fp => ProbeOutcome::Ok,
@@ -274,8 +281,11 @@ async fn sidecar_ready_legacy(port: u16, token: &str) -> bool {
 
 #[allow(dead_code)]
 async fn is_healthy_legacy(port: u16) -> bool {
+    let Some(client) = sidecar_probe_http() else {
+        return false;
+    };
     let url = format!("http://127.0.0.1:{port}/health");
-    match SIDECAR_PROBE_HTTP.get(&url).send().await {
+    match client.get(&url).send().await {
         Ok(resp) => resp.status() == StatusCode::OK,
         Err(_) => false,
     }
@@ -286,8 +296,11 @@ async fn runtime_api_accepts_token_legacy(port: u16, token: &str) -> bool {
     if token.trim().is_empty() {
         return true;
     }
+    let Some(client) = sidecar_probe_http() else {
+        return false;
+    };
     let url = format!("http://127.0.0.1:{port}/v1/sessions");
-    match SIDECAR_PROBE_HTTP
+    match client
         .get(&url)
         .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
         .send()
@@ -340,13 +353,13 @@ fn spawn_stdout_forwarder(
             }
             if let Some(rest) = line.strip_prefix("DS_PICK_READY ") {
                 if let Some(tx) = ready_tx.take() {
-                    supervisor_log(format!("event=ready_signal line={line}"));
                     let payload: serde_json::Value = rest.parse().unwrap_or_default();
                     let real_port = payload
                         .get("port")
                         .and_then(serde_json::Value::as_u64)
                         .and_then(|p| u16::try_from(p).ok())
                         .unwrap_or(0);
+                    supervisor_log(format!("event=ready_signal port={real_port}"));
                     let _ = app.emit("sidecar://ready", &payload);
                     let _ = tx.send(ReadySignal { port: real_port });
                 }

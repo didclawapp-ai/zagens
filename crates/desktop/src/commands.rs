@@ -2506,12 +2506,13 @@ pub async fn rebuild_symbol_index(
     ctx: tauri::State<'_, AppContext>,
     workspace: String,
 ) -> Result<(), String> {
+    let ws = user_scoped_workspace_root(&workspace)?;
     let runtime_port = ctx.require_port()?;
     let token = &ctx.runtime_token;
     let client = reqwest::Client::new();
     let url = format!(
         "http://127.0.0.1:{runtime_port}/v1/symbol-index/rebuild?workspace={}",
-        urlencoding(&workspace)
+        urlencoding(ws.to_string_lossy().as_ref())
     );
     eprintln!("[symbol-index] rebuild: POST {url}");
     let resp = client
@@ -2553,10 +2554,7 @@ pub struct SymbolIndexInfo {
 
 #[tauri::command]
 pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, String> {
-    let ws = PathBuf::from(workspace.trim());
-    if !ws.is_dir() {
-        return Err("工作区路径不存在".to_string());
-    }
+    let ws = user_scoped_workspace_root(&workspace)?;
     let meta_dir = workspace_meta_dir_read(&ws);
     let index_path = workspace_meta_file_read(&ws, "symbols.json");
 
@@ -2676,10 +2674,7 @@ pub fn get_symbol_index_info(workspace: String) -> Result<SymbolIndexInfo, Strin
 
 #[tauri::command]
 pub fn delete_symbol_index(workspace: String) -> Result<(), String> {
-    let ws = PathBuf::from(workspace.trim());
-    if !ws.is_dir() {
-        return Err("工作区路径不存在".to_string());
-    }
+    let ws = user_scoped_workspace_root(&workspace)?;
     for rel in [
         "symbols.json",
         ".symbols_fingerprint",

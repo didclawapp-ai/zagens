@@ -99,6 +99,37 @@ pub fn workspace_meta_rel(relative: &str) -> String {
     format!("{WORKSPACE_META_DIR_NAME}/{relative}")
 }
 
+/// Canonicalize a workspace root and require it to live under the user's home or
+/// documents directory (desktop IPC + runtime symbol-index hardening).
+pub fn user_scoped_workspace(raw: &str) -> Result<PathBuf, String> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err("workspace path must not be empty".to_string());
+    }
+    let base = PathBuf::from(t)
+        .canonicalize()
+        .map_err(|e| format!("invalid workspace path: {e}"))?;
+    if !base.is_dir() {
+        return Err("workspace must be a directory".to_string());
+    }
+    let allowed_roots: Vec<PathBuf> = [dirs::home_dir(), dirs::document_dir()]
+        .into_iter()
+        .flatten()
+        .filter_map(|path| path.canonicalize().ok())
+        .collect();
+    if allowed_roots.is_empty() {
+        return Err("could not resolve user home or documents directory".to_string());
+    }
+    if allowed_roots
+        .iter()
+        .any(|allowed| base.starts_with(allowed))
+    {
+        Ok(base)
+    } else {
+        Err("workspace must be under the user home or documents directory".to_string())
+    }
+}
+
 /// Default `~/.zagens/config.toml`.
 pub fn default_config_path() -> Result<PathBuf> {
     Ok(user_data_root()?.join(CONFIG_FILE_NAME))
