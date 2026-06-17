@@ -129,6 +129,9 @@ pub fn wrap_transcript_line(line: &str, max_cols: usize) -> Vec<String> {
     if let Some(body) = line.strip_prefix("you> ") {
         return wrap_with_hanging("you> ", TRANSCRIPT_INDENT_4, body, max_cols);
     }
+    if let Some(body) = line.strip_prefix("+ ") {
+        return wrap_with_hanging("+ ", TRANSCRIPT_INDENT_4, body, max_cols);
+    }
     if let Some(body) = line.strip_prefix("THK> ") {
         return wrap_with_hanging("THK> ", TRANSCRIPT_INDENT_5, body, max_cols);
     }

@@ -555,6 +555,11 @@ pub fn transcript_line(
     if let Some(rest) = text.strip_prefix(USER_TAG) {
         return tagged_line(USER_TAG, rest, kind, live);
     }
+    if kind == TranscriptLineKind::User {
+        if let Some(rest) = text.strip_prefix("+ ") {
+            return tagged_line("+ ", rest, kind, live);
+        }
+    }
     if let Some(rest) = text.strip_prefix(AI_TAG) {
         // First assistant line: apply inline markdown to the body after the tag.
         let base = body_style(kind, live);
@@ -582,6 +587,15 @@ pub fn transcript_line(
             text.to_string(),
             body_style(TranscriptLineKind::Thinking, live),
         ));
+    }
+
+    // ── User continuation lines (4-space indent, no repeated you> tag) ─────────
+    if kind == TranscriptLineKind::User && text.starts_with("    ") {
+        let base = body_style(kind, live);
+        return Line::from(vec![
+            Span::styled("    ".to_string(), base),
+            Span::styled(text[4..].to_string(), base),
+        ]);
     }
 
     // ── Assistant continuation lines (4-space indent) ──────────────────────────

@@ -197,6 +197,30 @@ impl TranscriptState {
         self.open_turn || self.streaming || self.is_thinking() || self.is_tools_active()
     }
 
+    /// True while assistant reply text is actively streaming (Enter queues; Ctrl+Enter steers).
+    pub fn is_assistant_content_streaming(&self) -> bool {
+        self.active_turn()
+            .is_some_and(|turn| turn.content_streaming)
+    }
+
+    /// Append a mid-turn steer line to the open turn's user block (`+ …`).
+    pub fn append_steer_input(&mut self, text: &str) {
+        let text = text.trim();
+        if text.is_empty() {
+            return;
+        }
+        self.bump_render();
+        if let Some(turn) = self.active_turn_mut() {
+            if !turn.user.is_empty() {
+                turn.user.push_str("\n\n");
+            }
+            turn.user.push_str("+ ");
+            turn.user.push_str(text);
+        } else {
+            self.items.push(TranscriptItem::info(format!("+ {text}")));
+        }
+    }
+
     /// Short label for the activity marquee (Transcript ↔ Composer divider).
     pub fn activity_banner_label(&self) -> String {
         if self.is_thinking() {
@@ -357,13 +381,18 @@ impl TranscriptState {
         }
     }
 
-    pub fn render_styled_lines(&mut self, max_lines: usize, max_cols: usize) -> Vec<Line<'static>> {
+    pub fn render_styled_lines(
+        &mut self,
+        max_lines: usize,
+        max_cols: usize,
+        locale: crate::localization::Locale,
+    ) -> Vec<Line<'static>> {
         let wrapped = self.wrapped_physical_lines(max_cols);
 
         if wrapped.is_empty() {
             return vec![styled_line(
                 TranscriptLineKind::Meta,
-                "Transcript empty - type a prompt in Composer and press Enter.",
+                crate::localization::tr(locale, crate::localization::MessageId::TuiTranscriptEmpty),
                 false,
                 None,
             )];
@@ -841,11 +870,45 @@ impl LogicalLine {
 }
 
 fn logical_lines_for_user(text: &str) -> Vec<LogicalLine> {
-    text.lines()
-        .map(|line| {
-            LogicalLine::plain(TranscriptLineKind::User, format!("{USER_TAG}{line}"), false)
-        })
-        .collect()
+    let mut out = Vec::new();
+    let mut first = true;
+    let mut pending_blank = false;
+    for line in text.lines() {
+        if line.is_empty() {
+            if !out.is_empty() {
+                pending_blank = true;
+            }
+            continue;
+        }
+        if pending_blank {
+            out.push(LogicalLine::prose_paragraph_spacer());
+            pending_blank = false;
+        }
+        if line.starts_with("+ ") {
+            out.push(LogicalLine::plain(
+                TranscriptLineKind::User,
+                line.to_string(),
+                false,
+            ));
+            first = false;
+            continue;
+        }
+        let prefix = if first { USER_TAG } else { "    " };
+        out.push(LogicalLine::plain(
+            TranscriptLineKind::User,
+            format!("{prefix}{line}"),
+            false,
+        ));
+        first = false;
+    }
+    if out.is_empty() && !text.trim().is_empty() {
+        out.push(LogicalLine::plain(
+            TranscriptLineKind::User,
+            format!("{USER_TAG}{}", text.trim()),
+            false,
+        ));
+    }
+    out
 }
 
 fn logical_lines_for_assistant(text: &str, streaming: bool) -> Vec<LogicalLine> {
@@ -1352,7 +1415,7 @@ mod tests {
 
     fn render_joined(state: &mut TranscriptState, max_lines: usize, max_cols: usize) -> String {
         state
-            .render_styled_lines(max_lines, max_cols)
+            .render_styled_lines(max_lines, max_cols, crate::localization::Locale::En)
             .iter()
             .map(|line| {
                 line.spans
@@ -1603,6 +1666,30 @@ mod tests {
             second,
             first + 2,
             "expected exactly one blank row separating paragraphs (multiple blanks collapse to one)"
+        );
+    }
+
+    #[test]
+    fn multiline_user_prompt_shows_single_you_tag() {
+        let mut state = TranscriptState::default();
+        let mut turn = TranscriptTurn::new("第一行\n第二行\n第三行".to_string());
+        turn.content = "ok".to_string();
+        turn.open = false;
+        push_closed_turn(&mut state, turn);
+        let joined = render_joined(&mut state, 40, 80);
+        let you_count = joined.matches("you>").count();
+        assert_eq!(
+            you_count, 1,
+            "one user turn should render a single you> tag"
+        );
+        assert!(joined.contains("第一行"));
+        assert!(joined.contains("第二行"));
+        assert!(joined.contains("第三行"));
+        let second_pos = joined.find("第二行").expect("second line");
+        let prefix = &joined[second_pos.saturating_sub(8)..second_pos];
+        assert!(
+            !prefix.contains("you>"),
+            "continuation lines should not repeat the you> tag"
         );
     }
 

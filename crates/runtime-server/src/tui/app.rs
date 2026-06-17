@@ -29,6 +29,9 @@ use super::session_host::TuiSessionHost;
 use super::task_graph::{TaskGraphSnapshot, title_bar_harness_line_from_graph};
 use super::transcript::{TranscriptItem, TranscriptState, apply_event};
 use crate::core::events::Event;
+use crate::localization::Locale;
+
+use super::i18n::{load_locale, resumed_thread_banner};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComposerEnterAction {
@@ -92,6 +95,7 @@ pub struct AppState {
     pub composer_paste_guard: ComposerPasteGuard,
     /// Theme saved when the /theme picker opened; restored on Esc.
     pub theme_picker_original: Option<TuiThemeId>,
+    pub locale: Locale,
 }
 
 impl AppState {
@@ -107,7 +111,9 @@ impl AppState {
         }
         let mut inspector = InspectorCache::default();
         inspector.refresh_static(&host.thread.workspace, host.config());
-        let sessions = host.workspace_session_list(host.thread_id()).await;
+        let sessions = host
+            .workspace_session_list(host.thread_id(), load_locale())
+            .await;
 
         let mut state = Self {
             layout: LayoutEngine::new(inline_mode, layout_prefs),
@@ -154,6 +160,7 @@ impl AppState {
             slash: SlashCommandState::default(),
             composer_paste_guard: ComposerPasteGuard::default(),
             theme_picker_original: None,
+            locale: load_locale(),
         };
         state.sync_thread_meta(host);
         state.sync_lht_mode();
@@ -672,7 +679,8 @@ impl AppState {
         max_lines: usize,
         max_cols: usize,
     ) -> Vec<ratatui::text::Line<'static>> {
-        self.transcript.render_styled_lines(max_lines, max_cols)
+        self.transcript
+            .render_styled_lines(max_lines, max_cols, self.locale)
     }
 
     pub fn composer_shows_cursor(&self) -> bool {
@@ -693,16 +701,17 @@ impl AppState {
         let cursor_on = show_cursor && composer_cursor_blink_on(self.cursor_blink_since);
 
         if self.composer.is_empty() {
+            use crate::localization::{MessageId, tr};
             let hint_body = if self.transcript.is_live_activity() {
                 if self.composer_focus {
-                    " waiting for reply...  Ctrl+C interrupt  Esc scroll  type to queue next message"
+                    tr(self.locale, MessageId::TuiComposerHintWaitingEdit)
                 } else {
-                    " waiting for reply...  Ctrl+C interrupt  Esc edit  j/k scroll transcript"
+                    tr(self.locale, MessageId::TuiComposerHintWaitingScroll)
                 }
             } else if self.composer_focus {
-                " type prompt...  Ctrl+V paste (recommended)  Shift+Enter newline  Enter send"
+                tr(self.locale, MessageId::TuiComposerHintTypePrompt)
             } else {
-                " Esc edit  j/k scroll transcript  Tab focus panes"
+                tr(self.locale, MessageId::TuiComposerHintScrollMode)
             };
             let hint_style = if self.composer_focus {
                 theme::composer_idle()
@@ -761,6 +770,26 @@ impl AppState {
             .collect()
     }
 
+    pub fn pull_last_queued_into_composer(&mut self) -> bool {
+        let Some(text) = self.prompt_queue.pop_back() else {
+            return false;
+        };
+        self.composer.clear();
+        self.composer.insert_str(&text);
+        self.prompt_history.reset_browse();
+        self.sync_slash_palette();
+        true
+    }
+
+    pub fn queued_preview_lines(&self, width: usize) -> Vec<ratatui::text::Line<'static>> {
+        let messages: Vec<String> = self.prompt_queue.iter().cloned().collect();
+        super::pending_input::render_queued_preview(self.locale, &messages, width)
+    }
+
+    pub fn push_steer_message(&mut self, text: &str) {
+        self.transcript.append_steer_input(text);
+    }
+
     pub fn can_send_prompt(&self) -> bool {
         !self.approval_open()
             && !self.composer.text().trim().is_empty()
@@ -781,6 +810,7 @@ impl AppState {
         max_rows: usize,
     ) -> Vec<ratatui::text::Line<'static>> {
         render_palette(
+            self.locale,
             self.composer.text(),
             self.slash.selected,
             width,
@@ -909,7 +939,7 @@ impl AppState {
         if !self.transcript.items.is_empty() {
             self.transcript.items.insert(
                 0,
-                TranscriptItem::info(format!("resumed thread {}", self.thread_id)),
+                TranscriptItem::info(resumed_thread_banner(self.locale, &self.thread_id)),
             );
         }
     }
@@ -939,7 +969,9 @@ impl AppState {
             .refresh_static(&host.thread.workspace, host.config());
         self.inspector_ui.reset_for_tab();
         self.refresh_panels(host).await;
-        self.sessions = host.workspace_session_list(host.thread_id()).await;
+        self.sessions = host
+            .workspace_session_list(host.thread_id(), self.locale)
+            .await;
     }
 
     pub fn poll_due(&self) -> bool {
@@ -967,7 +999,9 @@ impl AppState {
     }
 
     pub async fn refresh_sessions(&mut self, host: &TuiSessionHost) {
-        self.sessions = host.workspace_session_list(host.thread_id()).await;
+        self.sessions = host
+            .workspace_session_list(host.thread_id(), self.locale)
+            .await;
     }
 }
 
@@ -1050,6 +1084,7 @@ fn test_app_state_for_draw(composer_text: &str) -> AppState {
         slash: SlashCommandState::default(),
         composer_paste_guard: ComposerPasteGuard::default(),
         theme_picker_original: None,
+        locale: crate::localization::Locale::En,
     }
 }
 

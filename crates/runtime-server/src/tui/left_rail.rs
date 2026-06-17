@@ -4,9 +4,11 @@ use std::collections::HashMap;
 
 use ratatui::text::{Line, Span};
 
+use crate::localization::{Locale, MessageId, tr};
 use crate::runtime_threads::ThreadRecord;
 
 use super::display_format::{display_width, truncate_display_width};
+use super::i18n::inspector_tab_label;
 use super::layout::InspectorTab;
 use super::theme::{self, TuiPanel};
 
@@ -33,7 +35,11 @@ pub struct SessionList {
 }
 
 /// Display label for a session row (matches `/v1/threads/summary` title logic).
-pub fn resolve_session_label(thread: &ThreadRecord, latest_turn_summary: Option<&str>) -> String {
+pub fn resolve_session_label(
+    thread: &ThreadRecord,
+    latest_turn_summary: Option<&str>,
+    locale: Locale,
+) -> String {
     thread
         .title
         .as_deref()
@@ -46,24 +52,25 @@ pub fn resolve_session_label(thread: &ThreadRecord, latest_turn_summary: Option<
                 .filter(|s| !s.is_empty())
                 .map(ToOwned::to_owned)
         })
-        .unwrap_or_else(|| "New Session".to_string())
+        .unwrap_or_else(|| tr(locale, MessageId::TuiNewSession).to_string())
 }
 
 impl SessionList {
-    pub fn from_threads(threads: Vec<ThreadRecord>, active_id: &str) -> Self {
-        Self::from_threads_with_summaries(threads, active_id, &HashMap::new())
+    pub fn from_threads(threads: Vec<ThreadRecord>, active_id: &str, locale: Locale) -> Self {
+        Self::from_threads_with_summaries(threads, active_id, &HashMap::new(), locale)
     }
 
     pub fn from_threads_with_summaries(
         threads: Vec<ThreadRecord>,
         active_id: &str,
         turn_summaries: &HashMap<String, String>,
+        locale: Locale,
     ) -> Self {
         let entries: Vec<SessionEntry> = threads
             .into_iter()
             .map(|t| {
                 let summary = turn_summaries.get(&t.id).map(String::as_str);
-                let label = resolve_session_label(&t, summary);
+                let label = resolve_session_label(&t, summary, locale);
                 let updated_hint = t.updated_at.format("%m-%d").to_string();
                 SessionEntry {
                     id: t.id,
@@ -92,17 +99,22 @@ impl SessionList {
         }
     }
 
-    pub fn render_styled_lines(&self, height: usize, pane_inner_cols: usize) -> Vec<Line<'static>> {
+    pub fn render_styled_lines(
+        &self,
+        height: usize,
+        pane_inner_cols: usize,
+        locale: Locale,
+    ) -> Vec<Line<'static>> {
         let max_cols = clip_width(pane_inner_cols);
         let mut lines = Vec::new();
         lines.push(styled_clip(
-            "Sessions",
+            tr(locale, MessageId::TuiLeftRailSessions),
             max_cols,
             theme::panel(LEFT).heading(),
         ));
         if self.entries.is_empty() {
             lines.push(styled_clip(
-                "(no sessions)",
+                tr(locale, MessageId::TuiLeftRailNoSessions),
                 max_cols,
                 theme::panel(LEFT).hint(),
             ));
@@ -136,19 +148,23 @@ impl SessionList {
 
         lines.push(Line::from(Span::raw("")));
         lines.push(styled_clip(
-            "Inspector",
+            tr(locale, MessageId::TuiLeftRailInspector),
             max_cols,
             theme::panel(LEFT).heading(),
         ));
         lines.push(styled_clip(
-            "j/k Enter Ctrl+N",
+            tr(locale, MessageId::TuiLeftRailNavHint),
             max_cols,
             theme::panel(LEFT).hint(),
         ));
         lines
     }
 
-    pub fn inspector_tab_line(active: InspectorTab, pane_inner_cols: usize) -> Line<'static> {
+    pub fn inspector_tab_line(
+        active: InspectorTab,
+        pane_inner_cols: usize,
+        locale: Locale,
+    ) -> Line<'static> {
         let max_cols = clip_width(pane_inner_cols);
         let spans: Vec<Span> = InspectorTab::ALL
             .iter()
@@ -156,7 +172,7 @@ impl SessionList {
             .flat_map(|(i, tab)| {
                 let is_active = *tab == active;
                 let mark = if is_active { ">" } else { " " };
-                let label = format!("{mark}{}{} ", i + 1, tab.label());
+                let label = format!("{mark}{}{} ", i + 1, inspector_tab_label(locale, *tab));
                 vec![Span::styled(label, theme::panel(LEFT).tab(is_active))]
             })
             .collect();
@@ -243,6 +259,7 @@ fn format_session_line(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::localization::Locale;
 
     #[test]
     fn session_line_fits_narrow_left_rail() {
@@ -316,15 +333,18 @@ mod tests {
             plan_snapshot: None,
         };
         assert_eq!(
-            resolve_session_label(&thread, Some("turn summary")),
+            resolve_session_label(&thread, Some("turn summary"), Locale::En),
             "Custom title"
         );
         thread.title = None;
         assert_eq!(
-            resolve_session_label(&thread, Some("turn summary")),
+            resolve_session_label(&thread, Some("turn summary"), Locale::En),
             "turn summary"
         );
-        assert_eq!(resolve_session_label(&thread, None), "New Session");
+        assert_eq!(
+            resolve_session_label(&thread, None, Locale::En),
+            "New Session"
+        );
     }
 
     #[test]
@@ -335,7 +355,7 @@ mod tests {
 
     #[test]
     fn inspector_tab_line_fits_width() {
-        let line = SessionList::inspector_tab_line(InspectorTab::Files, 28);
+        let line = SessionList::inspector_tab_line(InspectorTab::Files, 28, Locale::En);
         let plain: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
         assert!(
             display_width(&plain) <= clip_width(28),

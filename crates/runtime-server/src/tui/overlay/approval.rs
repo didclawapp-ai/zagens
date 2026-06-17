@@ -3,6 +3,9 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
+use crate::localization::{Locale, MessageId, tr};
+
+use super::super::i18n::approval_body;
 use super::super::theme;
 use super::centered_rect;
 
@@ -15,25 +18,15 @@ pub struct PendingApproval {
     pub show_detail: bool,
 }
 
-pub fn draw_approval(frame: &mut Frame<'_>, pending: &PendingApproval) {
+pub fn draw_approval(frame: &mut Frame<'_>, locale: Locale, pending: &PendingApproval) {
     let area = centered_rect(70, 40, frame.area());
     frame.render_widget(Clear, area);
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(theme::approval_border())
         .style(theme::overlay_panel())
-        .title(" Approval required ");
-    let body = if pending.show_detail {
-        format!(
-            "Tool: {}\nKey: {}\n\n{}\n\n[y] Allow   [n] Deny   [a] Allow session   [v] Summary\n[Esc] Deny",
-            pending.tool_name, pending.approval_key, pending.description
-        )
-    } else {
-        format!(
-            "Tool: {}\n\n{}\n\n[y] Allow   [n] Deny   [a] Allow session   [v] Detail\n[Esc] Deny",
-            pending.tool_name, pending.description
-        )
-    };
+        .title(tr(locale, MessageId::TuiApprovalTitle));
+    let body = approval_body(locale, pending);
     frame.render_widget(
         Paragraph::new(body)
             .block(block)

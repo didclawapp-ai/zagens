@@ -6,7 +6,11 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use zagens_config::LhtComposerMode;
 
+use crate::localization::Locale;
+
 use super::composer_editor::ComposerEditor;
+use super::i18n::{slash_alias_description, slash_description, slash_language_description};
+use super::locale_cmd::{filter_locale_tags, parse_locale_storage_arg, read_locale_storage};
 use super::theme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +25,8 @@ pub enum SlashAction {
     ShowHelp,
     ShowAutomation,
     ClearComposer,
+    SetLocale(String),
+    CycleLocale,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +47,7 @@ pub(crate) enum SlashActionKind {
     Help,
     Automation,
     Clear,
+    Locale,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -50,6 +57,7 @@ enum SlashPickerMode {
     Models,
     LhtModes,
     Themes,
+    Locales,
 }
 
 const COMMANDS: &[SlashCommandDef] = &[
@@ -113,6 +121,18 @@ const COMMANDS: &[SlashCommandDef] = &[
         takes_arg: false,
         action: SlashActionKind::Clear,
     },
+    SlashCommandDef {
+        name: "locale",
+        description: "Switch UI language (empty cycles)",
+        takes_arg: true,
+        action: SlashActionKind::Locale,
+    },
+    SlashCommandDef {
+        name: "language",
+        description: "Switch UI language (alias)",
+        takes_arg: true,
+        action: SlashActionKind::Locale,
+    },
 ];
 
 #[derive(Debug, Clone, Default)]
@@ -148,6 +168,17 @@ impl SlashCommandState {
             self.open = true;
             self.mode = SlashPickerMode::Themes;
             let count = filter_themes(composer).len();
+            if count == 0 {
+                self.selected = 0;
+            } else if self.selected >= count {
+                self.selected = count - 1;
+            }
+            return;
+        }
+        if locale_picker_active(composer) {
+            self.open = true;
+            self.mode = SlashPickerMode::Locales;
+            let count = filter_locales(composer).len();
             if count == 0 {
                 self.selected = 0;
             } else if self.selected >= count {
@@ -191,6 +222,7 @@ impl SlashCommandState {
         let count = match self.mode {
             SlashPickerMode::LhtModes => filter_lht_modes(composer).len(),
             SlashPickerMode::Themes => filter_themes(composer).len(),
+            SlashPickerMode::Locales => filter_locales(composer).len(),
             SlashPickerMode::Models => filter_models(composer, model_catalog).len(),
             SlashPickerMode::Commands => filter_commands(composer).len(),
         };
@@ -260,6 +292,38 @@ fn parse_lht_arg(arg: &str) -> Option<LhtComposerMode> {
         "off" => Some(LhtComposerMode::Off),
         _ => None,
     }
+}
+
+// ── Locale picker ────────────────────────────────────────────────────────────
+
+pub fn locale_picker_active(composer: &str) -> bool {
+    split_command_line(composer)
+        .map(|(name, _)| is_locale_command(name))
+        .unwrap_or(false)
+}
+
+fn is_locale_command(name: &str) -> bool {
+    matches!(name.to_ascii_lowercase().as_str(), "locale" | "language")
+}
+
+fn locale_arg(composer: &str) -> Option<&str> {
+    let (name, arg) = split_command_line(composer)?;
+    if is_locale_command(name) {
+        Some(arg)
+    } else {
+        None
+    }
+}
+
+pub fn filter_locales(composer: &str) -> Vec<&'static str> {
+    filter_locale_tags(locale_arg(composer).unwrap_or(""))
+}
+
+pub fn selected_locale_storage(composer: &str, selected: usize) -> Option<String> {
+    filter_locales(composer)
+        .into_iter()
+        .nth(selected)
+        .map(|tag| tag.to_string())
 }
 
 // ── Theme picker ─────────────────────────────────────────────────────────────
@@ -415,6 +479,13 @@ pub fn try_parse_action(composer: &str, current_workspace: &Path) -> Option<Slas
                 parse_theme_arg(arg).map(SlashAction::SwitchTheme)
             }
         }
+        SlashActionKind::Locale => {
+            if arg.is_empty() {
+                Some(SlashAction::CycleLocale)
+            } else {
+                parse_locale_storage_arg(arg).map(SlashAction::SetLocale)
+            }
+        }
         SlashActionKind::New => Some(SlashAction::NewSession),
         SlashActionKind::Help => Some(SlashAction::ShowHelp),
         SlashActionKind::Automation => Some(SlashAction::ShowAutomation),
@@ -439,11 +510,16 @@ pub fn selected_lht_mode(composer: &str, selected: usize) -> Option<LhtComposerM
     filter_lht_modes(composer).into_iter().nth(selected)
 }
 
+pub fn selected_locale(composer: &str, selected: usize) -> Option<String> {
+    selected_locale_storage(composer, selected)
+}
+
 pub fn selected_model(composer: &str, selected: usize, catalog: &[String]) -> Option<String> {
     filter_models(composer, catalog).into_iter().nth(selected)
 }
 
 pub fn render_palette(
+    locale: Locale,
     composer: &str,
     selected: usize,
     width: usize,
@@ -452,6 +528,9 @@ pub fn render_palette(
     current_model: &str,
     current_lht_mode: LhtComposerMode,
 ) -> Vec<Line<'static>> {
+    if locale_picker_active(composer) {
+        return render_locale_palette(locale, composer, selected, width, max_rows);
+    }
     if lht_picker_active(composer) {
         return render_lht_palette(composer, selected, width, max_rows, current_lht_mode);
     }
@@ -468,10 +547,20 @@ pub fn render_palette(
             current_model,
         );
     }
-    render_command_palette(composer, selected, width, max_rows)
+    render_command_palette(locale, composer, selected, width, max_rows)
+}
+
+fn slash_command_description(locale: Locale, cmd: &SlashCommandDef) -> &'static str {
+    match cmd.name {
+        "cd" => slash_alias_description(locale, cmd.action),
+        "m" => slash_alias_description(locale, cmd.action),
+        "language" => slash_language_description(locale),
+        _ => slash_description(locale, cmd.action),
+    }
 }
 
 fn render_command_palette(
+    locale: Locale,
     composer: &str,
     selected: usize,
     width: usize,
@@ -504,7 +593,10 @@ fn render_command_palette(
         } else {
             format!("/{}", cmd.name)
         };
-        let label = format!("{mark} {hint:<22} {desc}", desc = cmd.description);
+        let label = format!(
+            "{mark} {hint:<22} {desc}",
+            desc = slash_command_description(locale, cmd)
+        );
         let style = if idx == selected {
             theme::palette_selection()
         } else {
@@ -548,6 +640,55 @@ fn render_model_palette(
         let active = model.eq_ignore_ascii_case(current_model);
         let suffix = if active { "  (current)" } else { "" };
         let label = format!("{mark} {model}{suffix}");
+        let style = if idx == selected {
+            Style::default()
+                .fg(theme::footer_model())
+                .add_modifier(Modifier::BOLD)
+        } else if active {
+            Style::default().fg(theme::footer_model())
+        } else {
+            theme::hint()
+        };
+        lines.push(Line::from(Span::styled(pad(width, &label), style)));
+    }
+    lines
+}
+
+fn render_locale_palette(
+    locale: Locale,
+    composer: &str,
+    selected: usize,
+    width: usize,
+    max_rows: usize,
+) -> Vec<Line<'static>> {
+    use crate::localization::{MessageId, tr};
+
+    let matches = filter_locales(composer);
+    if matches.is_empty() {
+        return vec![Line::from(Span::styled(
+            pad(width, " (no matching locales)"),
+            theme::hint(),
+        ))];
+    }
+
+    let current = read_locale_storage();
+    let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(
+        pad(width, tr(locale, MessageId::TuiLocalePickerHint)),
+        theme::hint(),
+    )));
+
+    let visible = max_rows.saturating_sub(1).max(1);
+    let start = if selected >= visible {
+        selected + 1 - visible
+    } else {
+        0
+    };
+    for (idx, tag) in matches.iter().enumerate().skip(start).take(visible) {
+        let mark = if idx == selected { ">" } else { " " };
+        let active = tag.eq_ignore_ascii_case(&current);
+        let suffix = if active { "  (current)" } else { "" };
+        let label = format!("{mark} {tag}{suffix}");
         let style = if idx == selected {
             Style::default()
                 .fg(theme::footer_model())

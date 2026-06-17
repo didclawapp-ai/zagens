@@ -378,6 +378,88 @@ pub enum MessageId {
     HomeYoloModeCaution,
     HomePlanModeTip,
     HomePlanModeChecklistTip,
+    TuiPanelTranscript,
+    TuiPanelTranscriptScroll,
+    TuiPanelComposer,
+    TuiPanelComposerScroll,
+    TuiPanelComposerWaitingEdit,
+    TuiPanelComposerWaitingScroll,
+    TuiPanelStatus,
+    TuiPanelLeft,
+    TuiPanelLht,
+    TuiPanelLhtFocused,
+    TuiInspectorTabFiles,
+    TuiInspectorTabDiff,
+    TuiInspectorTabAgents,
+    TuiInspectorTabMcp,
+    TuiInspectorTabActivity,
+    TuiLeftRailSessions,
+    TuiLeftRailNoSessions,
+    TuiLeftRailInspector,
+    TuiLeftRailNavHint,
+    TuiNewSession,
+    TuiComposerHintWaitingEdit,
+    TuiComposerHintWaitingScroll,
+    TuiComposerHintTypePrompt,
+    TuiComposerHintScrollMode,
+    TuiApprovalTitle,
+    TuiApprovalToolLabel,
+    TuiApprovalKeyLabel,
+    TuiApprovalAllow,
+    TuiApprovalDeny,
+    TuiApprovalAllowSession,
+    TuiApprovalSummary,
+    TuiApprovalDetail,
+    TuiHelpTitle,
+    TuiHelpCloseTitle,
+    TuiHelpSectionFocus,
+    TuiHelpSectionLeftRail,
+    TuiHelpSectionRightRail,
+    TuiHelpSectionChat,
+    TuiHelpSectionApproval,
+    TuiHelpSectionGlobal,
+    TuiHelpSectionLaunch,
+    TuiHelpSectionTerminalFont,
+    TuiSlashWorkspace,
+    TuiSlashCd,
+    TuiSlashModel,
+    TuiSlashModelAlias,
+    TuiSlashLht,
+    TuiSlashTheme,
+    TuiSlashNew,
+    TuiSlashHelp,
+    TuiSlashAuto,
+    TuiSlashClear,
+    TuiInspectorHintFiles,
+    TuiInspectorHintDiff,
+    TuiInspectorHintAgents,
+    TuiInspectorHintMcp,
+    TuiInspectorHintActivity,
+    TuiTranscriptEmpty,
+    TuiResumedThread,
+    TuiAutoTitle,
+    TuiAutoListHint,
+    TuiAutoEditRule,
+    TuiAutoNewRule,
+    TuiAutoEditHint,
+    TuiAutoName,
+    TuiAutoTrigger,
+    TuiAutoSeconds,
+    TuiAutoToolFilter,
+    TuiAutoAnyTool,
+    TuiAutoAction,
+    TuiAutoPrompt,
+    TuiAutoShellCmd,
+    TuiAutoMessage,
+    TuiAutoCommand,
+    TuiSlashLocale,
+    TuiSlashLanguage,
+    TuiLocalePickerHint,
+    TuiLocaleChanged,
+    TuiPendingInputsTitle,
+    TuiPendingQueuedKind,
+    TuiPendingEditHint,
+    TuiSteerInjected,
 }
 
 #[allow(dead_code)]
@@ -568,6 +650,88 @@ pub const ALL_MESSAGE_IDS: &[MessageId] = &[
     MessageId::HomeYoloModeCaution,
     MessageId::HomePlanModeTip,
     MessageId::HomePlanModeChecklistTip,
+    MessageId::TuiPanelTranscript,
+    MessageId::TuiPanelTranscriptScroll,
+    MessageId::TuiPanelComposer,
+    MessageId::TuiPanelComposerScroll,
+    MessageId::TuiPanelComposerWaitingEdit,
+    MessageId::TuiPanelComposerWaitingScroll,
+    MessageId::TuiPanelStatus,
+    MessageId::TuiPanelLeft,
+    MessageId::TuiPanelLht,
+    MessageId::TuiPanelLhtFocused,
+    MessageId::TuiInspectorTabFiles,
+    MessageId::TuiInspectorTabDiff,
+    MessageId::TuiInspectorTabAgents,
+    MessageId::TuiInspectorTabMcp,
+    MessageId::TuiInspectorTabActivity,
+    MessageId::TuiLeftRailSessions,
+    MessageId::TuiLeftRailNoSessions,
+    MessageId::TuiLeftRailInspector,
+    MessageId::TuiLeftRailNavHint,
+    MessageId::TuiNewSession,
+    MessageId::TuiComposerHintWaitingEdit,
+    MessageId::TuiComposerHintWaitingScroll,
+    MessageId::TuiComposerHintTypePrompt,
+    MessageId::TuiComposerHintScrollMode,
+    MessageId::TuiApprovalTitle,
+    MessageId::TuiApprovalToolLabel,
+    MessageId::TuiApprovalKeyLabel,
+    MessageId::TuiApprovalAllow,
+    MessageId::TuiApprovalDeny,
+    MessageId::TuiApprovalAllowSession,
+    MessageId::TuiApprovalSummary,
+    MessageId::TuiApprovalDetail,
+    MessageId::TuiHelpTitle,
+    MessageId::TuiHelpCloseTitle,
+    MessageId::TuiHelpSectionFocus,
+    MessageId::TuiHelpSectionLeftRail,
+    MessageId::TuiHelpSectionRightRail,
+    MessageId::TuiHelpSectionChat,
+    MessageId::TuiHelpSectionApproval,
+    MessageId::TuiHelpSectionGlobal,
+    MessageId::TuiHelpSectionLaunch,
+    MessageId::TuiHelpSectionTerminalFont,
+    MessageId::TuiSlashWorkspace,
+    MessageId::TuiSlashCd,
+    MessageId::TuiSlashModel,
+    MessageId::TuiSlashModelAlias,
+    MessageId::TuiSlashLht,
+    MessageId::TuiSlashTheme,
+    MessageId::TuiSlashNew,
+    MessageId::TuiSlashHelp,
+    MessageId::TuiSlashAuto,
+    MessageId::TuiSlashClear,
+    MessageId::TuiInspectorHintFiles,
+    MessageId::TuiInspectorHintDiff,
+    MessageId::TuiInspectorHintAgents,
+    MessageId::TuiInspectorHintMcp,
+    MessageId::TuiInspectorHintActivity,
+    MessageId::TuiTranscriptEmpty,
+    MessageId::TuiResumedThread,
+    MessageId::TuiAutoTitle,
+    MessageId::TuiAutoListHint,
+    MessageId::TuiAutoEditRule,
+    MessageId::TuiAutoNewRule,
+    MessageId::TuiAutoEditHint,
+    MessageId::TuiAutoName,
+    MessageId::TuiAutoTrigger,
+    MessageId::TuiAutoSeconds,
+    MessageId::TuiAutoToolFilter,
+    MessageId::TuiAutoAnyTool,
+    MessageId::TuiAutoAction,
+    MessageId::TuiAutoPrompt,
+    MessageId::TuiAutoShellCmd,
+    MessageId::TuiAutoMessage,
+    MessageId::TuiAutoCommand,
+    MessageId::TuiSlashLocale,
+    MessageId::TuiSlashLanguage,
+    MessageId::TuiLocalePickerHint,
+    MessageId::TuiLocaleChanged,
+    MessageId::TuiPendingInputsTitle,
+    MessageId::TuiPendingQueuedKind,
+    MessageId::TuiPendingEditHint,
+    MessageId::TuiSteerInjected,
 ];
 
 pub fn tr(locale: Locale, id: MessageId) -> &'static str {
@@ -955,6 +1119,120 @@ fn english(id: MessageId) -> &'static str {
         MessageId::HomeYoloModeCaution => "  Be careful with destructive operations!",
         MessageId::HomePlanModeTip => "Plan mode - Design before implementing",
         MessageId::HomePlanModeChecklistTip => "  Use /plan to create structured checklists",
+        MessageId::TuiPanelTranscript => " Transcript ",
+        MessageId::TuiPanelTranscriptScroll => " Transcript (scroll) ",
+        MessageId::TuiPanelComposer => " Composer ",
+        MessageId::TuiPanelComposerScroll => " Composer (scroll) ",
+        MessageId::TuiPanelComposerWaitingEdit => " Composer (waiting · edit) ",
+        MessageId::TuiPanelComposerWaitingScroll => " Composer (waiting · scroll) ",
+        MessageId::TuiPanelStatus => " Status ",
+        MessageId::TuiPanelLeft => " Left ",
+        MessageId::TuiPanelLht => " LHT ",
+        MessageId::TuiPanelLhtFocused => " LHT | j/k scroll l toggle i inspector ",
+        MessageId::TuiInspectorTabFiles => "Files",
+        MessageId::TuiInspectorTabDiff => "Diff",
+        MessageId::TuiInspectorTabAgents => "Agents",
+        MessageId::TuiInspectorTabMcp => "MCP",
+        MessageId::TuiInspectorTabActivity => "Activity",
+        MessageId::TuiLeftRailSessions => "Sessions",
+        MessageId::TuiLeftRailNoSessions => "(no sessions)",
+        MessageId::TuiLeftRailInspector => "Inspector",
+        MessageId::TuiLeftRailNavHint => "j/k Enter Ctrl+N",
+        MessageId::TuiNewSession => "New Session",
+        MessageId::TuiComposerHintWaitingEdit => {
+            " waiting...  Enter queue  Ctrl+Enter steer  type to continue  Ctrl+C interrupt"
+        }
+        MessageId::TuiComposerHintWaitingScroll => {
+            " waiting...  Esc edit  Enter queue  Ctrl+Enter steer  j/k scroll"
+        }
+        MessageId::TuiComposerHintTypePrompt => {
+            " type prompt...  Ctrl+V paste (recommended)  Shift+Enter newline  Enter send"
+        }
+        MessageId::TuiComposerHintScrollMode => " Esc edit  j/k scroll transcript  Tab focus panes",
+        MessageId::TuiApprovalTitle => " Approval required ",
+        MessageId::TuiApprovalToolLabel => "Tool",
+        MessageId::TuiApprovalKeyLabel => "Key",
+        MessageId::TuiApprovalAllow => "Allow",
+        MessageId::TuiApprovalDeny => "Deny",
+        MessageId::TuiApprovalAllowSession => "Allow session",
+        MessageId::TuiApprovalSummary => "Summary",
+        MessageId::TuiApprovalDetail => "Detail",
+        MessageId::TuiHelpTitle => "Zagens TUI - shortcuts",
+        MessageId::TuiHelpCloseTitle => " Help (? to close) ",
+        MessageId::TuiHelpSectionFocus => {
+            "Focus\n  Tab / Shift+Tab     Rotate Left / Chat / Right (Right lands on upper inspector)\n  [ / ]               Collapse left / right rail"
+        }
+        MessageId::TuiHelpSectionLeftRail => {
+            "Left rail (sessions)\n  j / k               Select session\n  Enter               Switch session\n  Ctrl+N              New session"
+        }
+        MessageId::TuiHelpSectionRightRail => {
+            "Right rail (inspector + LHT)\n  Tab                 Focus right column\n  1-5                 Files / Diff / Agents / MCP / Activity\n  j / k               Scroll inspector (or LHT pane when focused)\n  Enter               Files: expand dir / preview file / Diff: patch / MCP: tools\n  Esc                 Back from detail view\n  s                   Diff: toggle staged vs worktree\n  - / =               Narrow / widen right rail (saved to tui-layout.toml)\n  l                   Toggle LHT lower pane\n  i                   Focus upper inspector (when LHT visible)"
+        }
+        MessageId::TuiHelpSectionChat => {
+            "Chat\n  Tab                 Input -> scroll transcript -> side columns\n  Shift+Tab           Reverse focus order\n  Esc                 Toggle input / scroll (cancel slash menu when typing /)\n  Enter               Send prompt (input mode)\n  Shift+Enter         Insert newline (input or scroll mode — focuses composer)\n  Up / Down           Cursor up/down line in prompt (history browse at boundary)\n  Left / Right        Move cursor; Ctrl+Left word-jump\n  Home / End          Line start / end\n  Ctrl+W              Delete word backward\n  Ctrl+U              Delete to line start\n  Ctrl+V              Paste from clipboard (multiline; preferred)\n  Shift+Insert        Paste from clipboard (Windows)\n  Note                Terminal right-click paste may warn/split lines — use Ctrl+V\n  /commands           Slash menu - ^v select  Enter run\n  /model <id>         Switch text model (alias /m)\n  /lht [auto|strict|off]  LHT composer mode (empty cycles)\n  /theme [name]       Switch TUI color theme (empty cycles)\n  j / k / Up / Down   Scroll transcript (Shift+Enter starts multiline input)\n  PgUp / PgDn         Scroll transcript (auto-enter scroll mode)\n  Ctrl+A              Cycle approval policy (4 modes, saved to config)\n  o                   Expand/collapse last tool block"
+        }
+        MessageId::TuiHelpSectionApproval => {
+            "Approval modal\n  y / Enter           Allow\n  n / Esc             Deny\n  a                   Allow for session\n  v                   Toggle detail view"
+        }
+        MessageId::TuiHelpSectionGlobal => {
+            "Global\n  Ctrl+C              Interrupt turn\n  Ctrl+C twice        Quit\n  Ctrl+Q              Quit\n  ?                   Toggle this help"
+        }
+        MessageId::TuiHelpSectionLaunch => {
+            "Launch (CLI)\n  --fresh             New session; default resumes last session in workspace\n  --mouse-capture     Enable mouse wheel scrolling"
+        }
+        MessageId::TuiHelpSectionTerminalFont => {
+            "Terminal font (recommended)\n  Windows Terminal    Cascadia Mono, JetBrains Mono, Consolas\n  Legacy console      Consolas 11+ or NSimSun for CJK\n  Set in terminal profile - zagens-tui uses your terminal font"
+        }
+        MessageId::TuiSlashWorkspace => "Switch workspace directory",
+        MessageId::TuiSlashCd => "Switch workspace (alias)",
+        MessageId::TuiSlashModel => "Switch text model for this session",
+        MessageId::TuiSlashModelAlias => "Switch model (alias)",
+        MessageId::TuiSlashLht => "LHT mode: auto / strict / off (empty cycles)",
+        MessageId::TuiSlashTheme => "Switch TUI color theme (empty cycles)",
+        MessageId::TuiSlashNew => "New session in current workspace",
+        MessageId::TuiSlashHelp => "Show keyboard shortcuts",
+        MessageId::TuiSlashAuto => "Automation rules: hooks, timers, triggers",
+        MessageId::TuiSlashClear => "Clear composer input",
+        MessageId::TuiInspectorHintFiles => "j/k nav Enter file/dir Esc back",
+        MessageId::TuiInspectorHintDiff => "j/k nav Enter patch s staged Esc",
+        MessageId::TuiInspectorHintAgents => "j/k nav",
+        MessageId::TuiInspectorHintMcp => "j/k nav Enter tools",
+        MessageId::TuiInspectorHintActivity => "j/k scroll log",
+        MessageId::TuiTranscriptEmpty => {
+            "Transcript empty - type a prompt in Composer and press Enter."
+        }
+        MessageId::TuiResumedThread => "resumed thread {id}",
+        MessageId::TuiAutoTitle => " Automation (/auto) ",
+        MessageId::TuiAutoListHint => {
+            " j/k move  Space toggle  n new  Enter edit  d delete  e editor  Esc close "
+        }
+        MessageId::TuiAutoEditRule => " Edit Rule ",
+        MessageId::TuiAutoNewRule => " New Rule ",
+        MessageId::TuiAutoEditHint => {
+            " Tab next  Shift+Tab prev  ←/→ cycle  Enter save  Esc cancel "
+        }
+        MessageId::TuiAutoName => "Name",
+        MessageId::TuiAutoTrigger => "Trigger",
+        MessageId::TuiAutoSeconds => "Seconds",
+        MessageId::TuiAutoToolFilter => "Tool name",
+        MessageId::TuiAutoAnyTool => "any tool (leave blank)",
+        MessageId::TuiAutoAction => "Action",
+        MessageId::TuiAutoPrompt => "Prompt",
+        MessageId::TuiAutoShellCmd => "Shell cmd",
+        MessageId::TuiAutoMessage => "Message",
+        MessageId::TuiAutoCommand => "Command",
+        MessageId::TuiSlashLocale => "Switch UI language (empty cycles)",
+        MessageId::TuiSlashLanguage => "Switch UI language (alias)",
+        MessageId::TuiLocalePickerHint => {
+            " Locale | ^v select  Enter apply  empty /locale cycles  Esc cancel "
+        }
+        MessageId::TuiLocaleChanged => {
+            "locale: {locale} (UI updated; model replies follow on next turn)"
+        }
+        MessageId::TuiPendingInputsTitle => "Pending inputs",
+        MessageId::TuiPendingQueuedKind => "Queued follow-up",
+        MessageId::TuiPendingEditHint => " ↑ edit last queued message",
+        MessageId::TuiSteerInjected => "steer: injected into current turn",
     }
 }
 
@@ -1241,6 +1519,112 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::HomeYoloModeCaution => "  破壊的な操作には注意してください！",
         MessageId::HomePlanModeTip => "Plan モード - 実装前に設計",
         MessageId::HomePlanModeChecklistTip => "  /plan を使って構造化されたチェックリストを作成",
+        MessageId::TuiPanelTranscript => " トランスクリプト ",
+        MessageId::TuiPanelTranscriptScroll => " トランスクリプト (スクロール) ",
+        MessageId::TuiPanelComposer => " コンポーザー ",
+        MessageId::TuiPanelComposerScroll => " コンポーザー (スクロール) ",
+        MessageId::TuiPanelComposerWaitingEdit => " コンポーザー (待機 · 編集) ",
+        MessageId::TuiPanelComposerWaitingScroll => " コンポーザー (待機 · スクロール) ",
+        MessageId::TuiPanelStatus => " ステータス ",
+        MessageId::TuiPanelLeft => " 左 ",
+        MessageId::TuiPanelLht => " LHT ",
+        MessageId::TuiPanelLhtFocused => " LHT | j/k スクロール l 切替 i インスペクタ ",
+        MessageId::TuiInspectorTabFiles => "ファイル",
+        MessageId::TuiInspectorTabDiff => "Diff",
+        MessageId::TuiInspectorTabAgents => "Agents",
+        MessageId::TuiInspectorTabMcp => "MCP",
+        MessageId::TuiInspectorTabActivity => "アクティビティ",
+        MessageId::TuiLeftRailSessions => "セッション",
+        MessageId::TuiLeftRailNoSessions => "(セッションなし)",
+        MessageId::TuiLeftRailInspector => "インスペクタ",
+        MessageId::TuiLeftRailNavHint => "j/k Enter Ctrl+N",
+        MessageId::TuiNewSession => "新規セッション",
+        MessageId::TuiComposerHintWaitingEdit => {
+            " 待機中...  Enter キュー  Ctrl+Enter ステア  入力継続  Ctrl+C 中断"
+        }
+        MessageId::TuiComposerHintWaitingScroll => {
+            " 待機中...  Esc 編集  Enter キュー  Ctrl+Enter ステア  j/k スクロール"
+        }
+        MessageId::TuiComposerHintTypePrompt => {
+            " プロンプト入力...  Ctrl+V 貼付  Shift+Enter 改行  Enter 送信"
+        }
+        MessageId::TuiComposerHintScrollMode => " Esc 編集  j/k スクロール  Tab パネル切替",
+        MessageId::TuiApprovalTitle => " 承認が必要 ",
+        MessageId::TuiApprovalToolLabel => "ツール",
+        MessageId::TuiApprovalKeyLabel => "キー",
+        MessageId::TuiApprovalAllow => "許可",
+        MessageId::TuiApprovalDeny => "拒否",
+        MessageId::TuiApprovalAllowSession => "セッション許可",
+        MessageId::TuiApprovalSummary => "概要",
+        MessageId::TuiApprovalDetail => "詳細",
+        MessageId::TuiHelpTitle => "Zagens TUI - ショートカット",
+        MessageId::TuiHelpCloseTitle => " ヘルプ (? 閉じる) ",
+        MessageId::TuiHelpSectionFocus => {
+            "フォーカス\n  Tab / Shift+Tab     左 / チャット / 右を切替\n  [ / ]               左右レールを折りたたみ"
+        }
+        MessageId::TuiHelpSectionLeftRail => {
+            "左レール (セッション)\n  j / k               セッション選択\n  Enter               セッション切替\n  Ctrl+N              新規セッション"
+        }
+        MessageId::TuiHelpSectionRightRail => {
+            "右レール (インスペクタ + LHT)\n  Tab                 右カラムにフォーカス\n  1-5                 ファイル / Diff / Agents / MCP / アクティビティ\n  j / k               インスペクタをスクロール\n  Enter               ファイル: 展開/プレビュー  Diff: パッチ  MCP: ツール\n  Esc                 詳細から戻る\n  s                   Diff: staged/worktree 切替\n  - / =               右レール幅調整\n  l                   LHT 下ペイン切替\n  i                   上インスペクタにフォーカス"
+        }
+        MessageId::TuiHelpSectionChat => {
+            "チャット\n  Tab                 入力 -> スクロール -> サイド\n  Shift+Tab           逆順フォーカス\n  Esc                 入力/スクロール切替\n  Enter               送信\n  Shift+Enter         改行\n  Ctrl+V              クリップボード貼付\n  /commands           スラッシュメニュー\n  /model <id>         モデル切替\n  /lht [auto|strict|off]  LHT モード\n  /theme [name]       テーマ切替\n  Ctrl+A              承認ポリシー循環\n  o                   最後のツールブロック展開/折畳"
+        }
+        MessageId::TuiHelpSectionApproval => {
+            "承認モーダル\n  y / Enter           許可\n  n / Esc             拒否\n  a                   セッション許可\n  v                   詳細切替"
+        }
+        MessageId::TuiHelpSectionGlobal => {
+            "グローバル\n  Ctrl+C              ターン中断\n  Ctrl+C 2回          終了\n  Ctrl+Q              終了\n  ?                   ヘルプ切替"
+        }
+        MessageId::TuiHelpSectionLaunch => {
+            "起動 (CLI)\n  --fresh             新規セッション\n  --mouse-capture     マウスホイール有効"
+        }
+        MessageId::TuiHelpSectionTerminalFont => {
+            "ターミナルフォント (推奨)\n  Windows Terminal    Cascadia Mono, JetBrains Mono, Consolas\n  レガシーコンソール  Consolas 11+ または NSimSun (CJK)\n  ターミナル設定で指定"
+        }
+        MessageId::TuiSlashWorkspace => "ワークスペースディレクトリを切替",
+        MessageId::TuiSlashCd => "ワークスペース切替（別名）",
+        MessageId::TuiSlashModel => "このセッションのテキストモデルを切替",
+        MessageId::TuiSlashModelAlias => "モデル切替（別名）",
+        MessageId::TuiSlashLht => "LHT モード: auto / strict / off（空で循環）",
+        MessageId::TuiSlashTheme => "TUI 配色を切替（空で循環）",
+        MessageId::TuiSlashNew => "現在のワークスペースで新規セッション",
+        MessageId::TuiSlashHelp => "キーボードショートカットを表示",
+        MessageId::TuiSlashAuto => "自動化ルール: フック、タイマー、トリガー",
+        MessageId::TuiSlashClear => "コンポーザー入力をクリア",
+        MessageId::TuiInspectorHintFiles => "j/k nav Enter file/dir Esc back",
+        MessageId::TuiInspectorHintDiff => "j/k nav Enter patch s staged Esc",
+        MessageId::TuiInspectorHintAgents => "j/k nav",
+        MessageId::TuiInspectorHintMcp => "j/k nav Enter tools",
+        MessageId::TuiInspectorHintActivity => "j/k scroll log",
+        MessageId::TuiTranscriptEmpty => "トランスクリプトが空 — コンポーザーに入力して Enter。",
+        MessageId::TuiResumedThread => "スレッド {id} を再開",
+        MessageId::TuiAutoTitle => " 自動化 (/auto) ",
+        MessageId::TuiAutoListHint => {
+            " j/k 移動  Space 切替  n 新規  Enter 編集  d 削除  e エディタ  Esc 閉じる "
+        }
+        MessageId::TuiAutoEditRule => " ルール編集 ",
+        MessageId::TuiAutoNewRule => " 新規ルール ",
+        MessageId::TuiAutoEditHint => " Tab 次  Shift+Tab 前  ←/→ 循環  Enter 保存  Esc 取消",
+        MessageId::TuiAutoName => "名前",
+        MessageId::TuiAutoTrigger => "トリガー",
+        MessageId::TuiAutoSeconds => "秒",
+        MessageId::TuiAutoToolFilter => "ツール名",
+        MessageId::TuiAutoAnyTool => "任意のツール（空欄可）",
+        MessageId::TuiAutoAction => "アクション",
+        MessageId::TuiAutoPrompt => "Prompt",
+        MessageId::TuiAutoShellCmd => "Shell コマンド",
+        MessageId::TuiAutoMessage => "メッセージ",
+        MessageId::TuiAutoCommand => "コマンド",
+        MessageId::TuiSlashLocale => "UI 言語を切替（空で循環）",
+        MessageId::TuiSlashLanguage => "UI 言語を切替（別名）",
+        MessageId::TuiLocalePickerHint => " 言語 | ^v 選択  Enter 適用  空 /locale 循環  Esc 取消 ",
+        MessageId::TuiLocaleChanged => "locale: {locale}（UI 更新済み；モデル返答は次ターンから）",
+        MessageId::TuiPendingInputsTitle => "保留入力",
+        MessageId::TuiPendingQueuedKind => "キュー",
+        MessageId::TuiPendingEditHint => " ↑ 最後のキューを編集",
+        MessageId::TuiSteerInjected => "steer: 現在ターンに注入しました",
     })
 }
 
@@ -1482,6 +1866,114 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::HomeYoloModeCaution => "  请小心破坏性操作！",
         MessageId::HomePlanModeTip => "Plan 模式 - 先设计再实现",
         MessageId::HomePlanModeChecklistTip => "  使用 /plan 创建结构化检查清单",
+        MessageId::TuiPanelTranscript => " 对话 ",
+        MessageId::TuiPanelTranscriptScroll => " 对话 (滚动) ",
+        MessageId::TuiPanelComposer => " 输入 ",
+        MessageId::TuiPanelComposerScroll => " 输入 (滚动) ",
+        MessageId::TuiPanelComposerWaitingEdit => " 输入 (等待回复 · 编辑) ",
+        MessageId::TuiPanelComposerWaitingScroll => " 输入 (等待回复 · 滚动) ",
+        MessageId::TuiPanelStatus => " 状态 ",
+        MessageId::TuiPanelLeft => " 左侧 ",
+        MessageId::TuiPanelLht => " LHT ",
+        MessageId::TuiPanelLhtFocused => " LHT | j/k 滚动 l 切换 i 检查器 ",
+        MessageId::TuiInspectorTabFiles => "文件",
+        MessageId::TuiInspectorTabDiff => "Diff",
+        MessageId::TuiInspectorTabAgents => "Agents",
+        MessageId::TuiInspectorTabMcp => "MCP",
+        MessageId::TuiInspectorTabActivity => "活动",
+        MessageId::TuiLeftRailSessions => "会话",
+        MessageId::TuiLeftRailNoSessions => "(无会话)",
+        MessageId::TuiLeftRailInspector => "检查器",
+        MessageId::TuiLeftRailNavHint => "j/k Enter Ctrl+N",
+        MessageId::TuiNewSession => "新会话",
+        MessageId::TuiComposerHintWaitingEdit => {
+            " 等待中...  Enter 排队  Ctrl+Enter 注入  可继续输入  Ctrl+C 中断"
+        }
+        MessageId::TuiComposerHintWaitingScroll => {
+            " 等待中...  Esc 编辑  Enter 排队  Ctrl+Enter 注入  j/k 滚动"
+        }
+        MessageId::TuiComposerHintTypePrompt => {
+            " 输入提示...  Ctrl+V 粘贴(推荐)  Shift+Enter 换行  Enter 发送"
+        }
+        MessageId::TuiComposerHintScrollMode => " Esc 编辑  j/k 滚动对话  Tab 切换面板",
+        MessageId::TuiApprovalTitle => " 需要审批 ",
+        MessageId::TuiApprovalToolLabel => "工具",
+        MessageId::TuiApprovalKeyLabel => "键",
+        MessageId::TuiApprovalAllow => "允许",
+        MessageId::TuiApprovalDeny => "拒绝",
+        MessageId::TuiApprovalAllowSession => "本会话允许",
+        MessageId::TuiApprovalSummary => "摘要",
+        MessageId::TuiApprovalDetail => "详情",
+        MessageId::TuiHelpTitle => "Zagens TUI - 快捷键",
+        MessageId::TuiHelpCloseTitle => " 帮助 (? 关闭) ",
+        MessageId::TuiHelpSectionFocus => {
+            "焦点\n  Tab / Shift+Tab     轮换 左栏 / 对话 / 右栏（右栏聚焦上层检查器）\n  [ / ]               折叠左/右栏"
+        }
+        MessageId::TuiHelpSectionLeftRail => {
+            "左栏 (会话)\n  j / k               选择会话\n  Enter               切换会话\n  Ctrl+N              新建会话"
+        }
+        MessageId::TuiHelpSectionRightRail => {
+            "右栏 (检查器 + LHT)\n  Tab                 聚焦右栏\n  1-5                 文件 / Diff / Agents / MCP / 活动\n  j / k               滚动检查器（或 LHT 面板）\n  Enter               文件: 展开目录/预览  Diff: 补丁  MCP: 工具\n  Esc                 从详情返回\n  s                   Diff: 切换 staged/worktree\n  - / =               收窄/加宽右栏（保存到 tui-layout.toml）\n  l                   切换 LHT 下方面板\n  i                   聚焦上层检查器（LHT 可见时）"
+        }
+        MessageId::TuiHelpSectionChat => {
+            "对话\n  Tab                 输入 -> 滚动对话 -> 侧栏\n  Shift+Tab           反向切换焦点\n  Esc                 切换输入/滚动（输入 / 时取消斜杠菜单）\n  Enter               发送（输入模式）\n  Shift+Enter         插入换行（输入或滚动模式 — 聚焦输入框）\n  Up / Down           在提示中上下移动光标（边界处浏览历史）\n  Left / Right        移动光标；Ctrl+Left 按词跳转\n  Home / End          行首 / 行尾\n  Ctrl+W              向后删除词\n  Ctrl+U              删除到行首\n  Ctrl+V              从剪贴板粘贴（多行；推荐）\n  Shift+Insert        从剪贴板粘贴（Windows）\n  注意                终端右键粘贴可能警告/拆行 — 请用 Ctrl+V\n  /commands           斜杠菜单 - ^v 选择  Enter 运行\n  /model <id>         切换文本模型（别名 /m）\n  /lht [auto|strict|off]  LHT Composer 模式（空参数循环）\n  /theme [name]       切换 TUI 配色（空参数循环）\n  j / k / Up / Down   滚动对话（Shift+Enter 开始多行输入）\n  PgUp / PgDn         滚动对话（自动进入滚动模式）\n  Ctrl+A              循环审批策略（4 种，保存到 config）\n  o                   展开/折叠最后一个工具块"
+        }
+        MessageId::TuiHelpSectionApproval => {
+            "审批弹窗\n  y / Enter           允许\n  n / Esc             拒绝\n  a                   本会话允许\n  v                   切换详情视图"
+        }
+        MessageId::TuiHelpSectionGlobal => {
+            "全局\n  Ctrl+C              中断回合\n  Ctrl+C 两次         退出\n  Ctrl+Q              退出\n  ?                   切换此帮助"
+        }
+        MessageId::TuiHelpSectionLaunch => {
+            "启动 (CLI)\n  --fresh             新会话；默认恢复工作区上次会话\n  --mouse-capture     启用鼠标滚轮滚动"
+        }
+        MessageId::TuiHelpSectionTerminalFont => {
+            "终端字体 (推荐)\n  Windows Terminal    Cascadia Mono, JetBrains Mono, Consolas\n  旧版控制台          Consolas 11+ 或 NSimSun（CJK）\n  在终端配置中设置 — zagens-tui 使用你的终端字体"
+        }
+        MessageId::TuiSlashWorkspace => "切换工作区目录",
+        MessageId::TuiSlashCd => "切换工作区（别名）",
+        MessageId::TuiSlashModel => "切换本会话文本模型",
+        MessageId::TuiSlashModelAlias => "切换模型（别名）",
+        MessageId::TuiSlashLht => "LHT 模式：auto / strict / off（空参数循环）",
+        MessageId::TuiSlashTheme => "切换 TUI 配色（空参数循环）",
+        MessageId::TuiSlashNew => "在当前工作区新建会话",
+        MessageId::TuiSlashHelp => "显示键盘快捷键",
+        MessageId::TuiSlashAuto => "自动化规则：钩子、定时器、触发器",
+        MessageId::TuiSlashClear => "清空输入框",
+        MessageId::TuiInspectorHintFiles => "j/k 导航 Enter 文件/目录 Esc 返回",
+        MessageId::TuiInspectorHintDiff => "j/k 导航 Enter 补丁 s staged Esc",
+        MessageId::TuiInspectorHintAgents => "j/k 导航",
+        MessageId::TuiInspectorHintMcp => "j/k 导航 Enter 工具",
+        MessageId::TuiInspectorHintActivity => "j/k 滚动日志",
+        MessageId::TuiTranscriptEmpty => "对话为空 — 在输入框中输入提示并按 Enter。",
+        MessageId::TuiResumedThread => "已恢复线程 {id}",
+        MessageId::TuiAutoTitle => " 自动化 (/auto) ",
+        MessageId::TuiAutoListHint => {
+            " j/k 移动  Space 开关  n 新建  Enter 编辑  d 删除  e 编辑器  Esc 关闭 "
+        }
+        MessageId::TuiAutoEditRule => " 编辑规则 ",
+        MessageId::TuiAutoNewRule => " 新建规则 ",
+        MessageId::TuiAutoEditHint => {
+            " Tab 下一项  Shift+Tab 上一项  ←/→ 循环  Enter 保存  Esc 取消 "
+        }
+        MessageId::TuiAutoName => "名称",
+        MessageId::TuiAutoTrigger => "触发器",
+        MessageId::TuiAutoSeconds => "秒数",
+        MessageId::TuiAutoToolFilter => "工具名",
+        MessageId::TuiAutoAnyTool => "任意工具（留空）",
+        MessageId::TuiAutoAction => "动作",
+        MessageId::TuiAutoPrompt => "Prompt",
+        MessageId::TuiAutoShellCmd => "Shell 命令",
+        MessageId::TuiAutoMessage => "消息",
+        MessageId::TuiAutoCommand => "命令",
+        MessageId::TuiSlashLocale => "切换界面语言（空参数循环）",
+        MessageId::TuiSlashLanguage => "切换界面语言（别名）",
+        MessageId::TuiLocalePickerHint => " 语言 | ^v 选择  Enter 应用  空 /locale 循环  Esc 取消 ",
+        MessageId::TuiLocaleChanged => "locale: {locale}（界面已更新；模型回复从下一回合起生效）",
+        MessageId::TuiPendingInputsTitle => "待发送输入",
+        MessageId::TuiPendingQueuedKind => "排队",
+        MessageId::TuiPendingEditHint => " ↑ 编辑最后一条排队消息",
+        MessageId::TuiSteerInjected => "steer: 已注入当前回合",
     })
 }
 
@@ -1781,6 +2273,120 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::HomeYoloModeCaution => "  Tenha cuidado com operações destrutivas!",
         MessageId::HomePlanModeTip => "Modo Plan - Planeje antes de implementar",
         MessageId::HomePlanModeChecklistTip => "  Use /plan para criar checklists estruturados",
+        MessageId::TuiPanelTranscript => " Transcrição ",
+        MessageId::TuiPanelTranscriptScroll => " Transcrição (rolagem) ",
+        MessageId::TuiPanelComposer => " Composer ",
+        MessageId::TuiPanelComposerScroll => " Composer (rolagem) ",
+        MessageId::TuiPanelComposerWaitingEdit => " Composer (aguardando · editar) ",
+        MessageId::TuiPanelComposerWaitingScroll => " Composer (aguardando · rolar) ",
+        MessageId::TuiPanelStatus => " Status ",
+        MessageId::TuiPanelLeft => " Esquerda ",
+        MessageId::TuiPanelLht => " LHT ",
+        MessageId::TuiPanelLhtFocused => " LHT | j/k rolar l alternar i inspetor ",
+        MessageId::TuiInspectorTabFiles => "Arquivos",
+        MessageId::TuiInspectorTabDiff => "Diff",
+        MessageId::TuiInspectorTabAgents => "Agents",
+        MessageId::TuiInspectorTabMcp => "MCP",
+        MessageId::TuiInspectorTabActivity => "Atividade",
+        MessageId::TuiLeftRailSessions => "Sessões",
+        MessageId::TuiLeftRailNoSessions => "(sem sessões)",
+        MessageId::TuiLeftRailInspector => "Inspetor",
+        MessageId::TuiLeftRailNavHint => "j/k Enter Ctrl+N",
+        MessageId::TuiNewSession => "Nova sessão",
+        MessageId::TuiComposerHintWaitingEdit => {
+            " aguardando...  Enter enfileirar  Ctrl+Enter steer  digite para continuar  Ctrl+C interromper"
+        }
+        MessageId::TuiComposerHintWaitingScroll => {
+            " aguardando...  Esc editar  Enter enfileirar  Ctrl+Enter steer  j/k rolar"
+        }
+        MessageId::TuiComposerHintTypePrompt => {
+            " digite prompt...  Ctrl+V colar  Shift+Enter nova linha  Enter enviar"
+        }
+        MessageId::TuiComposerHintScrollMode => " Esc editar  j/k rolar  Tab focar painéis",
+        MessageId::TuiApprovalTitle => " Aprovação necessária ",
+        MessageId::TuiApprovalToolLabel => "Ferramenta",
+        MessageId::TuiApprovalKeyLabel => "Chave",
+        MessageId::TuiApprovalAllow => "Permitir",
+        MessageId::TuiApprovalDeny => "Negar",
+        MessageId::TuiApprovalAllowSession => "Permitir sessão",
+        MessageId::TuiApprovalSummary => "Resumo",
+        MessageId::TuiApprovalDetail => "Detalhe",
+        MessageId::TuiHelpTitle => "Zagens TUI - atalhos",
+        MessageId::TuiHelpCloseTitle => " Ajuda (? fechar) ",
+        MessageId::TuiHelpSectionFocus => {
+            "Foco\n  Tab / Shift+Tab     Alternar Esquerda / Chat / Direita\n  [ / ]               Recolher trilhos esquerdo/direito"
+        }
+        MessageId::TuiHelpSectionLeftRail => {
+            "Trilho esquerdo (sessões)\n  j / k               Selecionar sessão\n  Enter               Trocar sessão\n  Ctrl+N              Nova sessão"
+        }
+        MessageId::TuiHelpSectionRightRail => {
+            "Trilho direito (inspetor + LHT)\n  Tab                 Focar coluna direita\n  1-5                 Arquivos / Diff / Agents / MCP / Atividade\n  j / k               Rolar inspetor\n  Enter               Arquivos: expandir/preview  Diff: patch  MCP: ferramentas\n  Esc                 Voltar do detalhe\n  s                   Diff: alternar staged/worktree\n  - / =               Ajustar largura do trilho direito\n  l                   Alternar painel LHT inferior\n  i                   Focar inspetor superior"
+        }
+        MessageId::TuiHelpSectionChat => {
+            "Chat\n  Tab                 Entrada -> rolar -> colunas\n  Shift+Tab           Ordem inversa de foco\n  Esc                 Alternar entrada/rolagem\n  Enter               Enviar prompt\n  Shift+Enter         Nova linha\n  Ctrl+V              Colar da área de transferência\n  /commands           Menu slash\n  /model <id>         Alternar modelo\n  /lht [auto|strict|off]  Modo LHT\n  /theme [name]       Alternar tema\n  Ctrl+A              Ciclar política de aprovação\n  o                   Expandir/recolher último bloco de ferramenta"
+        }
+        MessageId::TuiHelpSectionApproval => {
+            "Modal de aprovação\n  y / Enter           Permitir\n  n / Esc             Negar\n  a                   Permitir sessão\n  v                   Alternar detalhe"
+        }
+        MessageId::TuiHelpSectionGlobal => {
+            "Global\n  Ctrl+C              Interromper turno\n  Ctrl+C duas vezes   Sair\n  Ctrl+Q              Sair\n  ?                   Alternar ajuda"
+        }
+        MessageId::TuiHelpSectionLaunch => {
+            "Inicialização (CLI)\n  --fresh             Nova sessão\n  --mouse-capture     Ativar roda do mouse"
+        }
+        MessageId::TuiHelpSectionTerminalFont => {
+            "Fonte do terminal (recomendado)\n  Windows Terminal    Cascadia Mono, JetBrains Mono, Consolas\n  Console legado      Consolas 11+ ou NSimSun para CJK\n  Configure no perfil do terminal"
+        }
+        MessageId::TuiSlashWorkspace => "Alternar diretório do workspace",
+        MessageId::TuiSlashCd => "Alternar workspace (alias)",
+        MessageId::TuiSlashModel => "Alternar modelo de texto desta sessão",
+        MessageId::TuiSlashModelAlias => "Alternar modelo (alias)",
+        MessageId::TuiSlashLht => "Modo LHT: auto / strict / off (vazio alterna)",
+        MessageId::TuiSlashTheme => "Alternar tema de cores do TUI (vazio alterna)",
+        MessageId::TuiSlashNew => "Nova sessão no workspace atual",
+        MessageId::TuiSlashHelp => "Mostrar atalhos de teclado",
+        MessageId::TuiSlashAuto => "Regras de automação: hooks, timers, gatilhos",
+        MessageId::TuiSlashClear => "Limpar entrada do composer",
+        MessageId::TuiInspectorHintFiles => "j/k nav Enter file/dir Esc back",
+        MessageId::TuiInspectorHintDiff => "j/k nav Enter patch s staged Esc",
+        MessageId::TuiInspectorHintAgents => "j/k nav",
+        MessageId::TuiInspectorHintMcp => "j/k nav Enter tools",
+        MessageId::TuiInspectorHintActivity => "j/k scroll log",
+        MessageId::TuiTranscriptEmpty => {
+            "Transcrição vazia — digite um prompt no Composer e pressione Enter."
+        }
+        MessageId::TuiResumedThread => "thread {id} retomada",
+        MessageId::TuiAutoTitle => " Automação (/auto) ",
+        MessageId::TuiAutoListHint => {
+            " j/k mover  Space alternar  n novo  Enter editar  d excluir  e editor  Esc fechar "
+        }
+        MessageId::TuiAutoEditRule => " Editar regra ",
+        MessageId::TuiAutoNewRule => " Nova regra ",
+        MessageId::TuiAutoEditHint => {
+            " Tab próx  Shift+Tab ant  ←/→ ciclar  Enter salvar  Esc cancelar"
+        }
+        MessageId::TuiAutoName => "Nome",
+        MessageId::TuiAutoTrigger => "Gatilho",
+        MessageId::TuiAutoSeconds => "Segundos",
+        MessageId::TuiAutoToolFilter => "Nome da ferramenta",
+        MessageId::TuiAutoAnyTool => "qualquer ferramenta (deixe em branco)",
+        MessageId::TuiAutoAction => "Ação",
+        MessageId::TuiAutoPrompt => "Prompt",
+        MessageId::TuiAutoShellCmd => "Cmd shell",
+        MessageId::TuiAutoMessage => "Mensagem",
+        MessageId::TuiAutoCommand => "Comando",
+        MessageId::TuiSlashLocale => "Alternar idioma da UI (vazio alterna)",
+        MessageId::TuiSlashLanguage => "Alternar idioma da UI (alias)",
+        MessageId::TuiLocalePickerHint => {
+            " Idioma | ^v selecionar  Enter aplicar  vazio /locale alterna  Esc cancelar "
+        }
+        MessageId::TuiLocaleChanged => {
+            "locale: {locale} (UI atualizada; respostas do modelo na próxima rodada)"
+        }
+        MessageId::TuiPendingInputsTitle => "Entradas pendentes",
+        MessageId::TuiPendingQueuedKind => "Fila",
+        MessageId::TuiPendingEditHint => " ↑ editar última mensagem na fila",
+        MessageId::TuiSteerInjected => "steer: injetado na rodada atual",
     })
 }
 

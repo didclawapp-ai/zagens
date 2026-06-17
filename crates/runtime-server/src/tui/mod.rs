@@ -13,18 +13,22 @@ mod display_format;
 mod draw;
 mod focus;
 mod harness;
+mod i18n;
 mod inline_markdown;
 mod input_thread;
 pub(crate) mod inspector;
 mod layout;
 mod left_rail;
 mod lht_mode;
+mod locale_cmd;
 mod markdown_table;
 mod overlay;
+mod pending_input;
 mod poll;
 mod runtime_events;
 mod session_host;
 mod stderr_log;
+mod submit_disposition;
 mod task_graph;
 mod terminal;
 mod theme;
@@ -45,9 +49,11 @@ use self::focus::FocusRegion;
 use self::input_thread::TerminalInput;
 use self::layout::{InspectorTab, TuiLayoutPrefs};
 use self::session_host::TuiSessionHost;
+use self::submit_disposition::{SubmitDisposition, decide as decide_submit_disposition};
 use self::terminal::{TuiTerminal, enter_inserts_newline, is_ctrl_c, is_key_press};
 use crate::cli::args::Cli;
 use crate::cli::context::load_cli_context;
+use crate::localization::{MessageId, tr};
 
 /// Entry point for the `zagens-tui` binary.
 pub async fn run_tui(cli: Cli) -> Result<()> {
@@ -502,7 +508,9 @@ async fn handle_input_event(
                     }
                 }
                 KeyCode::Enter if app.layout.focus == FocusRegion::Chat => {
-                    let newline = enter_inserts_newline(key);
+                    let force_steer = key.modifiers.contains(KeyModifiers::CONTROL)
+                        && !key.modifiers.contains(KeyModifiers::SHIFT);
+                    let newline = enter_inserts_newline(key) && !force_steer;
                     if app.composer_focus {
                         match app.handle_composer_enter(newline) {
                             ComposerEnterAction::Slash => {
@@ -512,7 +520,7 @@ async fn handle_input_event(
                             }
                             ComposerEnterAction::Send => {
                                 if let Some(prompt) = app.take_composer_prompt() {
-                                    submit_prompt(host, app, &prompt).await;
+                                    submit_user_input(host, app, &prompt, force_steer).await;
                                 }
                             }
                             ComposerEnterAction::Newline | ComposerEnterAction::None => {}
@@ -578,7 +586,14 @@ async fn handle_input_event(
                 {
                     // Multi-line: move cursor up within text; fall back to history at first line.
                     if !app.composer.move_up_line() {
-                        app.prompt_history.browse_up(&mut app.composer);
+                        if app.composer.is_empty()
+                            && app.transcript.is_live_activity()
+                            && app.pull_last_queued_into_composer()
+                        {
+                            // ↑ pulled last queued follow-up into composer
+                        } else {
+                            app.prompt_history.browse_up(&mut app.composer);
+                        }
                         app.sync_slash_palette();
                     }
                 }
@@ -1056,9 +1071,11 @@ fn execute_slash_noop(app: &mut AppState, action: SlashAction) -> bool {
             true
         }
         // These need host context — caller should use SendPrompt or RunShell instead.
-        SlashAction::NewSession | SlashAction::SwitchModel(_) | SlashAction::SwitchWorkspace(_) => {
-            false
-        }
+        SlashAction::NewSession
+        | SlashAction::SwitchModel(_)
+        | SlashAction::SwitchWorkspace(_)
+        | SlashAction::SetLocale(_)
+        | SlashAction::CycleLocale => false,
     }
 }
 
@@ -1128,6 +1145,15 @@ async fn handle_slash_enter(
     shell_tx: &tokio::sync::mpsc::UnboundedSender<String>,
 ) -> Result<bool> {
     let current_ws = host.thread.workspace.clone();
+    if composer_slash::locale_picker_active(app.composer.text())
+        && app.slash.open
+        && let Some(tag) = composer_slash::selected_locale(app.composer.text(), app.slash.selected)
+    {
+        app.composer.clear();
+        app.slash.close();
+        execute_slash_action(ctx, host, app, SlashAction::SetLocale(tag), shell_tx).await?;
+        return Ok(true);
+    }
     if composer_slash::theme_picker_active(app.composer.text())
         && app.slash.open
         && let Some(theme_id) =
@@ -1209,7 +1235,8 @@ async fn handle_slash_enter(
                     composer_slash::SlashActionKind::Workspace
                     | composer_slash::SlashActionKind::Model
                     | composer_slash::SlashActionKind::Lht
-                    | composer_slash::SlashActionKind::Theme => {
+                    | composer_slash::SlashActionKind::Theme
+                    | composer_slash::SlashActionKind::Locale => {
                         return Ok(true);
                     }
                 };
@@ -1260,6 +1287,17 @@ async fn execute_slash_action(
         SlashAction::CycleTheme => {
             let next = theme::current_id().cycle();
             apply_theme_change(app, next);
+        }
+        SlashAction::SetLocale(tag) => {
+            if let Err(err) = locale_cmd::apply_locale_change(app, host, &tag).await {
+                app.push_system_line(format!("locale: {err:#}"));
+            }
+        }
+        SlashAction::CycleLocale => {
+            let next = locale_cmd::cycle_locale_storage(&locale_cmd::read_locale_storage());
+            if let Err(err) = locale_cmd::apply_locale_change(app, host, next).await {
+                app.push_system_line(format!("locale: {err:#}"));
+            }
         }
         SlashAction::NewSession => {
             host.new_session(ctx).await?;
@@ -1327,28 +1365,50 @@ fn preview_theme_selection(app: &mut AppState) {
     }
 }
 
-async fn submit_prompt(host: &TuiSessionHost, app: &mut AppState, prompt: &str) {
+async fn submit_user_input(
+    host: &TuiSessionHost,
+    app: &mut AppState,
+    prompt: &str,
+    force_steer: bool,
+) {
     let prompt = prompt.trim();
     if prompt.is_empty() {
         return;
     }
-    if app.transcript.is_live_activity() {
-        app.prompt_queue.push_back(prompt.to_string());
-        app.push_system_line(format!(
-            "Queued message ({}) — sends when the current turn finishes",
-            app.prompt_queue.len()
-        ));
-        return;
+
+    match decide_submit_disposition(&app.transcript, force_steer) {
+        SubmitDisposition::Immediate => {
+            app.prompt_history.push_sent(prompt);
+            app.push_user_message(prompt.to_string());
+            app.transcript.streaming = true;
+            app.blocked_line = None;
+            if let Err(err) = host.send_prompt(prompt).await {
+                app.transcript.streaming = false;
+                app.transcript.close_open_turn();
+                app.push_system_line(format!("Failed to start turn: {err:#}"));
+            }
+        }
+        SubmitDisposition::Queue => {
+            app.prompt_queue.push_back(prompt.to_string());
+        }
+        SubmitDisposition::Steer => {
+            app.prompt_history.push_sent(prompt);
+            match host.steer_prompt(prompt).await {
+                Ok(()) => {
+                    app.push_steer_message(prompt);
+                    app.push_system_line(tr(app.locale, MessageId::TuiSteerInjected).to_string());
+                }
+                Err(err) => {
+                    app.prompt_queue.push_back(prompt.to_string());
+                    app.push_system_line(format!("steer failed ({err:#}) — queued"));
+                }
+            }
+        }
     }
-    app.prompt_history.push_sent(prompt);
-    app.push_user_message(prompt.to_string());
-    app.transcript.streaming = true;
-    app.blocked_line = None;
-    if let Err(err) = host.send_prompt(prompt).await {
-        app.transcript.streaming = false;
-        app.transcript.close_open_turn();
-        app.push_system_line(format!("Failed to start turn: {err:#}"));
-    }
+}
+
+async fn submit_prompt(host: &TuiSessionHost, app: &mut AppState, prompt: &str) {
+    submit_user_input(host, app, prompt, false).await;
 }
 
 async fn drain_prompt_queue(host: &TuiSessionHost, app: &mut AppState) {
@@ -1356,7 +1416,7 @@ async fn drain_prompt_queue(host: &TuiSessionHost, app: &mut AppState) {
         let Some(next) = app.prompt_queue.pop_front() else {
             break;
         };
-        submit_prompt(host, app, &next).await;
+        submit_user_input(host, app, &next, false).await;
         if app.transcript.is_live_activity() {
             break;
         }

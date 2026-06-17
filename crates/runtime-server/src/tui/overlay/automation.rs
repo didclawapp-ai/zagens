@@ -20,6 +20,8 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph};
 
+use crate::localization::{Locale, MessageId, tr};
+
 use super::super::automation::{ActionKind, AutomationConfig, AutomationRule, TriggerKind};
 use super::super::theme;
 use super::centered_rect;
@@ -279,7 +281,12 @@ impl AutomationUiState {
 // ── Drawing ────────────────────────────────────────────────────────────────
 
 /// Draw the automation overlay over the current frame.
-pub fn draw_automation(frame: &mut Frame<'_>, config: &AutomationConfig, ui: &AutomationUiState) {
+pub fn draw_automation(
+    frame: &mut Frame<'_>,
+    locale: Locale,
+    config: &AutomationConfig,
+    ui: &AutomationUiState,
+) {
     let area = centered_rect(84, 80, frame.area());
     frame.render_widget(Clear, area);
 
@@ -287,14 +294,14 @@ pub fn draw_automation(frame: &mut Frame<'_>, config: &AutomationConfig, ui: &Au
         .borders(Borders::ALL)
         .border_style(theme::border_focus())
         .style(theme::overlay_panel())
-        .title(" Automation  [/auto] ");
+        .title(tr(locale, MessageId::TuiAutoTitle));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
     if ui.edit_mode {
-        draw_edit_view(frame, inner, config, ui);
+        draw_edit_view(frame, inner, locale, config, ui);
     } else {
-        draw_list_view(frame, inner, config, ui);
+        draw_list_view(frame, inner, locale, config, ui);
     }
 }
 
@@ -303,6 +310,7 @@ pub fn draw_automation(frame: &mut Frame<'_>, config: &AutomationConfig, ui: &Au
 fn draw_list_view(
     frame: &mut Frame<'_>,
     area: Rect,
+    locale: Locale,
     config: &AutomationConfig,
     ui: &AutomationUiState,
 ) {
@@ -316,10 +324,7 @@ fn draw_list_view(
         .split(area);
 
     frame.render_widget(
-        Paragraph::new(
-            " j/k select  Space toggle  n new  Enter edit  d delete  e open editor  Esc close",
-        )
-        .style(theme::hint()),
+        Paragraph::new(tr(locale, MessageId::TuiAutoListHint)).style(theme::hint()),
         chunks[0],
     );
 
@@ -407,17 +412,18 @@ fn render_rule_item(rule: &AutomationRule, width: usize) -> ListItem<'static> {
 fn draw_edit_view(
     frame: &mut Frame<'_>,
     area: Rect,
+    locale: Locale,
     config: &AutomationConfig,
     ui: &AutomationUiState,
 ) {
     let _ = config;
 
     let title = if ui.editing_id.is_some() {
-        " Edit Rule "
+        tr(locale, MessageId::TuiAutoEditRule)
     } else {
-        " New Rule "
+        tr(locale, MessageId::TuiAutoNewRule)
     };
-    let hint_text = " Tab next  Shift+Tab prev  ←/→ cycle  Enter save  Esc cancel ";
+    let hint_text = tr(locale, MessageId::TuiAutoEditHint);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -444,7 +450,7 @@ fn draw_edit_view(
     render_form_field(
         frame,
         chunks[2],
-        "Name",
+        tr(locale, MessageId::TuiAutoName),
         &ui.f_name,
         ui.edit_field == EditField::Name,
         false,
@@ -457,7 +463,7 @@ fn draw_edit_view(
     render_selector_field(
         frame,
         chunks[3],
-        "Trigger",
+        tr(locale, MessageId::TuiAutoTrigger),
         trigger_val,
         ui.edit_field == EditField::TriggerType,
     );
@@ -465,21 +471,21 @@ fn draw_edit_view(
     render_form_field(
         frame,
         chunks[4],
-        "Seconds",
+        tr(locale, MessageId::TuiAutoSeconds),
         if has_secs { &ui.f_secs } else { "—" },
         ui.edit_field == EditField::Secs,
         !has_secs,
     );
 
     let tool_hint = if ui.f_tool_filter.is_empty() && has_tool {
-        "any tool (leave blank)"
+        tr(locale, MessageId::TuiAutoAnyTool)
     } else {
         &ui.f_tool_filter
     };
     render_form_field(
         frame,
         chunks[5],
-        "Tool name",
+        tr(locale, MessageId::TuiAutoToolFilter),
         if has_tool { tool_hint } else { "—" },
         ui.edit_field == EditField::ToolFilter,
         !has_tool,
@@ -492,16 +498,16 @@ fn draw_edit_view(
     render_selector_field(
         frame,
         chunks[6],
-        "Action",
+        tr(locale, MessageId::TuiAutoAction),
         action_val,
         ui.edit_field == EditField::ActionType,
     );
 
     let text_label = match ui.f_action_idx {
-        0 => "Prompt",
-        2 => "Shell cmd",
-        3 => "Message",
-        _ => "Command",
+        0 => tr(locale, MessageId::TuiAutoPrompt),
+        2 => tr(locale, MessageId::TuiAutoShellCmd),
+        3 => tr(locale, MessageId::TuiAutoMessage),
+        _ => tr(locale, MessageId::TuiAutoCommand),
     };
     render_form_field(
         frame,

@@ -8,9 +8,12 @@ use ratatui::widgets::{Block, Clear, Paragraph};
 
 use super::app::AppState;
 use super::focus::FocusRegion;
+use super::i18n::inspector_tab_hint;
 use super::inspector::render_lht_styled;
 use super::layout::{InspectorTab, LayoutRegions, RightPaneRegions, split_center_column};
 use super::overlay::{draw_approval, draw_automation, draw_help};
+use crate::localization::{MessageId, tr};
+
 use super::theme::{self, TuiPanel};
 
 use chrome::{
@@ -70,13 +73,18 @@ pub fn draw(
     }
 
     if app.show_help {
-        draw_help(frame);
+        draw_help(frame, app.locale);
     }
     if let Some(pending) = &app.pending_approval {
-        draw_approval(frame, pending);
+        draw_approval(frame, app.locale, pending);
     }
     if app.show_automation {
-        draw_automation(frame, &app.automation_engine.config, &app.automation_ui);
+        draw_automation(
+            frame,
+            app.locale,
+            &app.automation_engine.config,
+            &app.automation_ui,
+        );
     }
 }
 
@@ -154,9 +162,9 @@ fn draw_center_column(
     let transcript_focused = chat_focused && !app.composer_focus;
     let transcript_fill = theme::panel(TuiPanel::Transcript).surface(transcript_focused);
     let transcript_title = if transcript_focused {
-        " Transcript (scroll) "
+        tr(app.locale, MessageId::TuiPanelTranscriptScroll)
     } else {
-        " Transcript "
+        tr(app.locale, MessageId::TuiPanelTranscript)
     };
     let (transcript_w, transcript_h) = pane::inset_line_budget(center.transcript, section);
     paint_pane(
@@ -173,23 +181,33 @@ fn draw_center_column(
     let composer_focused = chat_focused && app.composer_focus;
     let composer_title = if live_activity {
         if composer_focused {
-            " Composer (waiting · edit) "
+            tr(app.locale, MessageId::TuiPanelComposerWaitingEdit)
         } else {
-            " Composer (waiting · scroll) "
+            tr(app.locale, MessageId::TuiPanelComposerWaitingScroll)
         }
     } else if composer_focused {
-        " Composer "
+        tr(app.locale, MessageId::TuiPanelComposer)
     } else {
-        " Composer (scroll) "
+        tr(app.locale, MessageId::TuiPanelComposerScroll)
     };
     let (input_w, composer_h) = pane::inset_line_budget(center.composer, section);
+    let pending_preview: Vec<_> =
+        if app.transcript.is_live_activity() && !app.prompt_queue.is_empty() {
+            app.queued_preview_lines(input_w.max(20))
+        } else {
+            Vec::new()
+        };
+    let pending_rows = pending_preview.len().min(6);
     let palette_rows = if app.slash.open {
         app.slash_palette_lines(input_w.max(20), 6).len().min(6)
     } else {
         0
     };
-    let text_h = composer_h.saturating_sub(palette_rows).max(1);
-    let mut composer_lines = app.composer_render(text_h.max(1), input_w.max(20));
+    let text_h = composer_h
+        .saturating_sub(palette_rows + pending_rows)
+        .max(1);
+    let mut composer_lines = pending_preview;
+    composer_lines.extend(app.composer_render(text_h.max(1), input_w.max(20)));
     if app.slash.open && palette_rows > 0 {
         composer_lines.extend(app.slash_palette_lines(input_w.max(20), palette_rows));
     }
@@ -204,7 +222,7 @@ fn draw_center_column(
         true,
     );
 
-    let status_title = " Status ";
+    let status_title = tr(app.locale, MessageId::TuiPanelStatus);
     let (status_w, _) = pane::inset_line_budget(center.status, section);
     paint_pane(
         frame,
@@ -246,12 +264,13 @@ fn draw_left_rail(
     let left_focused = app.layout.focus == FocusRegion::Left;
     let plan = BorderPlan::for_left_rail();
     let (inner_w, inner_h) = pane::line_budget(regions.left, plan);
-    let mut lines = app
-        .sessions
-        .render_styled_lines(inner_h.saturating_sub(6).max(4), inner_w);
+    let mut lines =
+        app.sessions
+            .render_styled_lines(inner_h.saturating_sub(6).max(4), inner_w, app.locale);
     lines.push(super::left_rail::SessionList::inspector_tab_line(
         app.layout.prefs.inspector_tab(),
         inner_w,
+        app.locale,
     ));
     let border_style = styles.map_or(theme::panel(TuiPanel::Left).surface(left_focused), |s| {
         if left_focused {
@@ -263,7 +282,7 @@ fn draw_left_rail(
     paint_pane(
         frame,
         regions.left,
-        " Left ",
+        tr(app.locale, MessageId::TuiPanelLeft),
         plan,
         border_style,
         theme::panel(TuiPanel::Left).surface(left_focused),
@@ -288,7 +307,7 @@ fn draw_right_rail(
     let inspector_focused = focus == FocusRegion::Right
         && (!app.lht_pane_visible()
             || app.right_subfocus == super::focus::RightSubfocus::Inspector);
-    let inspector_title = inspector_title(tab, inspector_focused);
+    let inspector_title = inspector_title(app.locale, tab, inspector_focused);
     let inspector_border = styles.map_or(
         theme::panel(TuiPanel::Inspector).surface(inspector_focused),
         |s| {
@@ -329,9 +348,9 @@ fn draw_right_rail(
     let lht_focused =
         focus == FocusRegion::Right && app.right_subfocus == super::focus::RightSubfocus::Lht;
     let lht_title = if lht_focused {
-        " LHT | j/k scroll l toggle i inspector "
+        tr(app.locale, MessageId::TuiPanelLhtFocused)
     } else {
-        " LHT "
+        tr(app.locale, MessageId::TuiPanelLht)
     };
     let lht_border = styles.map_or(theme::panel(TuiPanel::Lht).surface(lht_focused), |s| {
         if lht_focused {
@@ -354,18 +373,17 @@ fn draw_right_rail(
     );
 }
 
-fn inspector_title(tab: InspectorTab, focused: bool) -> String {
+fn inspector_title(
+    locale: crate::localization::Locale,
+    tab: InspectorTab,
+    focused: bool,
+) -> String {
+    use super::i18n::inspector_tab_label;
     if !focused {
-        return format!(" {} ", tab.label());
+        return format!(" {} ", inspector_tab_label(locale, tab));
     }
-    let hint = match tab {
-        InspectorTab::Files => "j/k nav Enter file/dir Esc back",
-        InspectorTab::Diff => "j/k nav Enter patch s staged Esc",
-        InspectorTab::Agents => "j/k nav",
-        InspectorTab::Mcp => "j/k nav Enter tools",
-        InspectorTab::Activity => "j/k scroll log",
-    };
-    format!(" {} | {hint} ", tab.label())
+    let hint = inspector_tab_hint(locale, tab);
+    format!(" {} | {hint} ", inspector_tab_label(locale, tab))
 }
 
 fn truncate_middle(text: &str, max_chars: usize) -> String {

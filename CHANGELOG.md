@@ -20,8 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **TUI (`zagens-tui`):** Pending-input preview above the composer while a turn runs; Enter queues during assistant streaming, steers during tool/wait gaps (CodeWhale-style); **Ctrl+Enter** forces steer; **↑** on an empty composer pulls the last queued message back for editing.
+
+- **TUI i18n:** Ratatui chrome now reads `~/.zagens/settings.toml` `locale` (auto / en / ja / zh-Hans / pt-BR) — panels, composer hints, slash picker, help overlay, approval modal, automation overlay, left-rail sessions, and transcript empty state. Added 74 `Tui*` message IDs in `localization.rs` with four-language coverage; `tui/i18n.rs` wires helpers into `AppState.locale`. **`/locale`** and **`/language`** slash commands switch language at runtime (persist settings, refresh UI); empty `/locale` cycles tags.
+
 ### Fixed
 
+- **TUI (`zagens-tui`):** Multi-line user prompts show a single `you>` tag with indented continuation lines (paste/send no longer repeats the tag on every row).
 - **Desktop (audit 2026-06-17):** Symbol-index IPC (`get_symbol_index_info`, `delete_symbol_index`, `rebuild_symbol_index`) and runtime `POST /v1/symbol-index/rebuild` now require workspace paths under the user home or documents directory; secrets crate docs/`backend_name()` aligned to `~/.zagens/secrets/`; config `redact_secret` fully masks API keys; `openExternalUrl` validates schemes via `URL.protocol`; removed unused `tauri-plugin-shell`; sidecar supervisor log records only `port` from `DS_PICK_READY`; sidecar probe HTTP client no longer panics when TLS stack init fails.
 - **TUI (audit PR-A):** ANSI CSI strip recognizes ECMA-48 final bytes (`0x40–0x7E`); composer buffer capped at 128K chars; unfocused transcript border uses transcript style; overlay `centered_rect` deduplicated; expanded thinking/tool detail shows “more lines” ellipsis; draw path adds `trace_span!(tui_draw)`; live-activity waiting state distinguishes edit vs scroll in title/hint and auto-focuses composer when typing to queue.
 - **Runtime (Kernel V3 — replay parity):** `verify_step_effect_parity` no longer passes when a step has `ToolCallPlanned` events but no `ModelRequestIssued` anchor in the log.

@@ -200,6 +200,36 @@ impl TuiSessionHost {
         Ok(())
     }
 
+    pub async fn active_turn_id(&self) -> Option<String> {
+        let active = self.manager.active.lock().await;
+        active
+            .engines
+            .get(&self.thread.id)
+            .and_then(|state| state.active_turn.as_ref().map(|t| t.turn_id.clone()))
+    }
+
+    pub async fn steer_prompt(&self, prompt: &str) -> Result<()> {
+        let prompt = prompt.trim();
+        if prompt.is_empty() {
+            bail!("prompt is empty");
+        }
+        let turn_id = self
+            .active_turn_id()
+            .await
+            .context("no active turn to steer")?;
+        self.manager
+            .steer_turn(
+                &self.thread.id,
+                &turn_id,
+                crate::runtime_threads::SteerTurnRequest {
+                    prompt: prompt.to_string(),
+                },
+            )
+            .await
+            .context("steer_turn failed")?;
+        Ok(())
+    }
+
     pub async fn interrupt_turn(&self) -> Result<()> {
         if let Some(handle) = self.engine_handle().await {
             handle.cancel();
@@ -348,7 +378,11 @@ impl TuiSessionHost {
     }
 
     /// Left-rail session rows with display names (thread title or latest turn summary).
-    pub async fn workspace_session_list(&self, active_id: &str) -> SessionList {
+    pub async fn workspace_session_list(
+        &self,
+        active_id: &str,
+        locale: crate::localization::Locale,
+    ) -> SessionList {
         let threads = self.list_workspace_threads().await.unwrap_or_default();
         let mut turn_summaries = std::collections::HashMap::new();
         for thread in &threads {
@@ -368,7 +402,7 @@ impl TuiSessionHost {
                 }
             }
         }
-        SessionList::from_threads_with_summaries(threads, active_id, &turn_summaries)
+        SessionList::from_threads_with_summaries(threads, active_id, &turn_summaries, locale)
     }
 
     pub async fn switch_thread(&mut self, thread_id: &str) -> Result<()> {
