@@ -7,9 +7,9 @@ use serde_json::json;
 
 use crate::audit::log_sensitive_event;
 
+use super::super::API_KEYRING_SENTINEL;
 use super::super::providers::ApiProvider;
 use super::super::types::Config;
-use super::super::{API_KEYRING_SENTINEL, DEFAULT_TEXT_MODEL};
 use super::paths::{default_config_path, ensure_parent_dir, write_config_file_secure};
 
 /// Where a saved credential ended up. Returned by [`save_api_key`] so
@@ -130,6 +130,10 @@ pub(crate) fn save_api_key_to_config_file(api_key: &str) -> Result<PathBuf> {
 
     ensure_parent_dir(&config_path)?;
 
+    if !config_path.exists() {
+        super::paths::ensure_config_file_exists(Some(config_path.clone()))?;
+    }
+
     let key_to_write = api_key.to_string();
 
     let content = if config_path.exists() {
@@ -152,28 +156,10 @@ pub(crate) fn save_api_key_to_config_file(api_key: &str) -> Result<PathBuf> {
             format!("api_key = \"{key_to_write}\"\n{existing}")
         }
     } else {
-        // Create new minimal config
-        format!(
-            r#"# DeepSeek TUI Configuration
-# Get your API key from https://platform.deepseek.com
-# Or set DEEPSEEK_API_KEY environment variable
-
-api_key = "{key_to_write}"
-
-# Base URL (default: https://api.deepseek.com/beta)
-# Set https://api.deepseek.com to opt out of beta features.
-# base_url = "https://api.deepseek.com/beta"
-
-# Default model
-default_text_model = "{default_model}"
-
-# Thinking mode (DeepSeek V4 reasoning effort):
-# "off" | "low" | "medium" | "high" | "max"
-# Shift+Tab in the TUI cycles between off / high / max.
-reasoning_effort = "max"
-"#,
-            default_model = DEFAULT_TEXT_MODEL
-        )
+        anyhow::bail!(
+            "config file missing after ensure_default_on_disk: {}",
+            config_path.display()
+        );
     };
 
     write_config_file_secure(&config_path, &content)

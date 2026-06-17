@@ -169,6 +169,22 @@ impl TuiSessionHost {
         &self.manager.config
     }
 
+    /// Push a freshly saved API key into the live runtime manager and drop any
+    /// cached engine so the next turn rebuilds `DeepSeekClient` with it.
+    ///
+    /// `TuiSessionHost::open` clones config before onboarding; without this
+    /// sync, first-run key entry lands in `ctx.config` and on disk but the
+    /// thread engine still carries the pre-onboarding "key not found" error.
+    pub async fn sync_runtime_api_key(&mut self, api_key: Option<String>) -> Result<()> {
+        let manager = Arc::make_mut(&mut self.manager);
+        manager.config.api_key = api_key;
+        self.manager
+            .unload_idle_thread_engine(&self.thread.id)
+            .await
+            .context("reload runtime after API key update")?;
+        Ok(())
+    }
+
     pub async fn engine_handle(&self) -> Option<EngineHandle> {
         let active = self.manager.active.lock().await;
         active
@@ -274,8 +290,20 @@ impl TuiSessionHost {
             return Ok(self.approval_policy.clone());
         }
         let next = approval_policy::next_policy(&self.approval_policy);
-        approval_policy::persist_to_config(next)?;
-        self.approval_policy = next.to_string();
+        self.apply_approval_policy(next).await
+    }
+
+    pub async fn set_approval_policy(&mut self, policy: &str) -> Result<String> {
+        if !policy_cyclable(self.yolo) {
+            return Ok(self.approval_policy.clone());
+        }
+        let policy = approval_policy::normalize_policy(policy);
+        self.apply_approval_policy(policy).await
+    }
+
+    async fn apply_approval_policy(&mut self, policy: &str) -> Result<String> {
+        approval_policy::persist_to_config(policy)?;
+        self.approval_policy = policy.to_string();
         self.auto_approve = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
         self.thread = self
             .manager

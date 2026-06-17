@@ -154,6 +154,40 @@ async fn install_mock_engine(manager: &RuntimeThreadManager, thread_id: &str) ->
     harness
 }
 
+#[tokio::test]
+async fn runtime_api_key_sync_unloads_cached_engine() -> Result<()> {
+    let manager = test_manager(test_runtime_dir())?;
+    let thread = manager
+        .create_thread(CreateThreadRequest {
+            model: None,
+            workspace: None,
+            mode: None,
+            allow_shell: None,
+            trust_mode: None,
+            auto_approve: None,
+            archived: false,
+            system_prompt: None,
+            task_id: None,
+            task_type: None,
+        })
+        .await?;
+    let _harness = install_mock_engine(&manager, &thread.id).await;
+
+    {
+        let active = manager.active.lock().await;
+        assert!(active.engines.contains_key(&thread.id));
+    }
+
+    let mut manager = manager;
+    manager.config.api_key = Some("fresh-onboarding-key".to_string());
+    manager.unload_idle_thread_engine(&thread.id).await?;
+
+    let active = manager.active.lock().await;
+    assert!(!active.engines.contains_key(&thread.id));
+    assert_eq!(manager.config.deepseek_api_key()?, "fresh-onboarding-key");
+    Ok(())
+}
+
 async fn wait_for_terminal_turn(
     manager: &RuntimeThreadManager,
     turn_id: &str,

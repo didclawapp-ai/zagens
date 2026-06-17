@@ -56,6 +56,7 @@ pub fn slash_description(locale: Locale, kind: SlashActionKind) -> &'static str 
             SlashActionKind::ApiKey => MessageId::TuiSlashApiKey,
             SlashActionKind::Login => MessageId::TuiSlashLogin,
             SlashActionKind::Logout => MessageId::TuiSlashLogout,
+            SlashActionKind::Approve => MessageId::TuiSlashApprove,
         },
     )
 }
@@ -67,6 +68,7 @@ pub fn slash_alias_description(locale: Locale, kind: SlashActionKind) -> &'stati
         SlashActionKind::Model => tr(locale, MessageId::TuiSlashModelAlias),
         SlashActionKind::ApiKey => tr(locale, MessageId::TuiSlashKey),
         SlashActionKind::Login => tr(locale, MessageId::TuiSlashLogin),
+        SlashActionKind::Approve => tr(locale, MessageId::TuiSlashApproval),
         _ => slash_description(locale, kind),
     }
 }

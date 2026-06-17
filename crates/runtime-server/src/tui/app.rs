@@ -824,6 +824,7 @@ impl AppState {
             &self.model_catalog,
             &self.model_display,
             self.current_lht_composer_mode(),
+            &self.approval_display,
         )
     }
 

@@ -7,6 +7,7 @@ use crate::config::{clear_api_key, save_api_key};
 use crate::localization::{MessageId, tr};
 
 use super::app::AppState;
+use super::session_host::TuiSessionHost;
 
 pub fn is_clear_arg(arg: &str) -> bool {
     matches!(
@@ -15,7 +16,12 @@ pub fn is_clear_arg(arg: &str) -> bool {
     )
 }
 
-pub fn apply_save_api_key(ctx: &mut CliContext, app: &mut AppState, key: &str) -> Result<()> {
+pub async fn apply_save_api_key(
+    ctx: &mut CliContext,
+    host: &mut TuiSessionHost,
+    app: &mut AppState,
+    key: &str,
+) -> Result<()> {
     let trimmed = key.trim();
     if trimmed.is_empty() {
         app.push_system_line(tr(app.locale, MessageId::TuiApiKeyUsage).to_string());
@@ -24,6 +30,7 @@ pub fn apply_save_api_key(ctx: &mut CliContext, app: &mut AppState, key: &str) -
     match save_api_key(trimmed) {
         Ok(saved) => {
             ctx.config.api_key = Some(trimmed.to_string());
+            host.sync_runtime_api_key(Some(trimmed.to_string())).await?;
             app.push_system_line(format!(
                 "{} ({})",
                 tr(app.locale, MessageId::TuiOnboardingKeySaved),
@@ -35,10 +42,15 @@ pub fn apply_save_api_key(ctx: &mut CliContext, app: &mut AppState, key: &str) -
     Ok(())
 }
 
-pub fn apply_clear_api_key(ctx: &mut CliContext, app: &mut AppState) -> Result<()> {
+pub async fn apply_clear_api_key(
+    ctx: &mut CliContext,
+    host: &mut TuiSessionHost,
+    app: &mut AppState,
+) -> Result<()> {
     match clear_api_key() {
         Ok(()) => {
             ctx.config.api_key = None;
+            host.sync_runtime_api_key(None).await?;
             app.push_system_line(tr(app.locale, MessageId::TuiApiKeyCleared).to_string());
         }
         Err(err) => app.push_system_line(format!("api-key: {err:#}")),

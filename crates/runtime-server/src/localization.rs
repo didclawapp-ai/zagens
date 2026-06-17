@@ -458,6 +458,8 @@ pub enum MessageId {
     TuiSlashKey,
     TuiSlashLogin,
     TuiSlashLogout,
+    TuiSlashApprove,
+    TuiSlashApproval,
     TuiApiKeyCleared,
     TuiApiKeyUsage,
     TuiLocalePickerHint,
@@ -755,6 +757,8 @@ pub const ALL_MESSAGE_IDS: &[MessageId] = &[
     MessageId::TuiSlashKey,
     MessageId::TuiSlashLogin,
     MessageId::TuiSlashLogout,
+    MessageId::TuiSlashApprove,
+    MessageId::TuiSlashApproval,
     MessageId::TuiApiKeyCleared,
     MessageId::TuiApiKeyUsage,
     MessageId::TuiLocalePickerHint,
@@ -1219,7 +1223,7 @@ fn english(id: MessageId) -> &'static str {
             "Right rail (inspector + LHT)\n  Tab                 Focus right column\n  1-5                 Files / Diff / Agents / MCP / Activity\n  j / k               Scroll inspector (or LHT pane when focused)\n  Enter               Files: expand dir / preview file / Diff: patch / MCP: tools\n  Esc                 Back from detail view\n  s                   Diff: toggle staged vs worktree\n  - / =               Narrow / widen right rail (saved to tui-layout.toml)\n  l                   Toggle LHT lower pane\n  i                   Focus upper inspector (when LHT visible)"
         }
         MessageId::TuiHelpSectionChat => {
-            "Chat\n  Tab                 Input -> scroll transcript -> side columns\n  Shift+Tab           Reverse focus order\n  Esc                 Toggle input / scroll (cancel slash menu when typing /)\n  Enter               Send prompt (input mode)\n  Shift+Enter         Insert newline (input or scroll mode — focuses composer)\n  Up / Down           Cursor up/down line in prompt (history browse at boundary)\n  Left / Right        Move cursor; Ctrl+Left word-jump\n  Home / End          Line start / end\n  Ctrl+W              Delete word backward\n  Ctrl+U              Delete to line start\n  Ctrl+V              Paste from clipboard (multiline; preferred)\n  Shift+Insert        Paste from clipboard (Windows)\n  Note                Terminal right-click paste may warn/split lines — use Ctrl+V\n  /commands           Slash menu - ^v select  Enter run\n  /model <id>         Switch text model (alias /m)\n  /lht [auto|strict|off]  LHT composer mode (empty cycles)\n  /theme [name]       Switch TUI color theme (empty cycles)\n  j / k / Up / Down   Scroll transcript (Shift+Enter starts multiline input)\n  PgUp / PgDn         Scroll transcript (auto-enter scroll mode)\n  Ctrl+A              Cycle approval policy (4 modes, saved to config)\n  o                   Expand/collapse last tool block"
+            "Chat\n  Tab                 Input -> scroll transcript -> side columns\n  Shift+Tab           Reverse focus order\n  Esc                 Toggle input / scroll (cancel slash menu when typing /)\n  Enter               Send prompt (input mode)\n  Shift+Enter         Insert newline (input or scroll mode — focuses composer)\n  Up / Down           Cursor up/down line in prompt (history browse at boundary)\n  Left / Right        Move cursor; Ctrl+Left word-jump\n  Home / End          Line start / end\n  Ctrl+W              Delete word backward\n  Ctrl+U              Delete to line start\n  Ctrl+V              Paste from clipboard (multiline; preferred)\n  Shift+Insert        Paste from clipboard (Windows)\n  Note                Terminal right-click paste may warn/split lines — use Ctrl+V\n  /commands           Slash menu - ^v select  Enter run\n  /model <id>         Switch text model (alias /m)\n  /lht [auto|strict|off]  LHT composer mode (empty cycles)\n  /theme [name]       Switch TUI color theme (empty cycles)\n  /approve [policy]   Approval policy (empty cycles; alias /approval)\n  j / k / Up / Down   Scroll transcript (Shift+Enter starts multiline input)\n  PgUp / PgDn         Scroll transcript (auto-enter scroll mode)\n  Ctrl+A              Cycle approval policy (4 modes, saved to config)\n  o                   Expand/collapse last tool block"
         }
         MessageId::TuiHelpSectionApproval => {
             "Approval modal\n  y / Enter           Allow\n  n / Esc             Deny\n  a                   Allow for session\n  v                   Toggle detail view"
@@ -1277,6 +1281,10 @@ fn english(id: MessageId) -> &'static str {
         MessageId::TuiSlashKey => "Save or clear API key (alias)",
         MessageId::TuiSlashLogin => "Save DeepSeek API key (CLI alias)",
         MessageId::TuiSlashLogout => "Clear saved DeepSeek API key",
+        MessageId::TuiSlashApprove => {
+            "Approval policy: on-request / untrusted / never / auto (empty cycles)"
+        }
+        MessageId::TuiSlashApproval => "Approval policy (alias)",
         MessageId::TuiApiKeyCleared => "API key cleared",
         MessageId::TuiApiKeyUsage => "/api-key sk-… save · /api-key clear or /logout remove",
         MessageId::TuiLocalePickerHint => {
@@ -1650,7 +1658,7 @@ fn japanese(id: MessageId) -> Option<&'static str> {
             "右レール (インスペクタ + LHT)\n  Tab                 右カラムにフォーカス\n  1-5                 ファイル / Diff / Agents / MCP / アクティビティ\n  j / k               インスペクタをスクロール\n  Enter               ファイル: 展開/プレビュー  Diff: パッチ  MCP: ツール\n  Esc                 詳細から戻る\n  s                   Diff: staged/worktree 切替\n  - / =               右レール幅調整\n  l                   LHT 下ペイン切替\n  i                   上インスペクタにフォーカス"
         }
         MessageId::TuiHelpSectionChat => {
-            "チャット\n  Tab                 入力 -> スクロール -> サイド\n  Shift+Tab           逆順フォーカス\n  Esc                 入力/スクロール切替\n  Enter               送信\n  Shift+Enter         改行\n  Ctrl+V              クリップボード貼付\n  /commands           スラッシュメニュー\n  /model <id>         モデル切替\n  /lht [auto|strict|off]  LHT モード\n  /theme [name]       テーマ切替\n  Ctrl+A              承認ポリシー循環\n  o                   最後のツールブロック展開/折畳"
+            "チャット\n  Tab                 入力 -> スクロール -> サイド\n  Shift+Tab           逆順フォーカス\n  Esc                 入力/スクロール切替\n  Enter               送信\n  Shift+Enter         改行\n  Ctrl+V              クリップボード貼付\n  /commands           スラッシュメニュー\n  /model <id>         モデル切替\n  /lht [auto|strict|off]  LHT モード\n  /theme [name]       テーマ切替\n  /approve [policy]   承認ポリシー（空で循環）\n  Ctrl+A              承認ポリシー循環\n  o                   最後のツールブロック展開/折畳"
         }
         MessageId::TuiHelpSectionApproval => {
             "承認モーダル\n  y / Enter           許可\n  n / Esc             拒否\n  a                   セッション許可\n  v                   詳細切替"
@@ -1704,6 +1712,10 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::TuiSlashKey => "API キー保存/削除（別名）",
         MessageId::TuiSlashLogin => "DeepSeek API キーを保存（CLI 別名）",
         MessageId::TuiSlashLogout => "保存済み DeepSeek API キーを削除",
+        MessageId::TuiSlashApprove => {
+            "承認ポリシー: on-request / untrusted / never / auto（空で循環）"
+        }
+        MessageId::TuiSlashApproval => "承認ポリシー（別名）",
         MessageId::TuiApiKeyCleared => "API キーを削除しました",
         MessageId::TuiApiKeyUsage => "/api-key sk-… 保存 · /api-key clear または /logout で削除",
         MessageId::TuiLocalePickerHint => " 言語 | ^v 選択  Enter 適用  空 /locale 循環  Esc 取消 ",
@@ -2026,7 +2038,7 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
             "右栏 (检查器 + LHT)\n  Tab                 聚焦右栏\n  1-5                 文件 / Diff / Agents / MCP / 活动\n  j / k               滚动检查器（或 LHT 面板）\n  Enter               文件: 展开目录/预览  Diff: 补丁  MCP: 工具\n  Esc                 从详情返回\n  s                   Diff: 切换 staged/worktree\n  - / =               收窄/加宽右栏（保存到 tui-layout.toml）\n  l                   切换 LHT 下方面板\n  i                   聚焦上层检查器（LHT 可见时）"
         }
         MessageId::TuiHelpSectionChat => {
-            "对话\n  Tab                 输入 -> 滚动对话 -> 侧栏\n  Shift+Tab           反向切换焦点\n  Esc                 切换输入/滚动（输入 / 时取消斜杠菜单）\n  Enter               发送（输入模式）\n  Shift+Enter         插入换行（输入或滚动模式 — 聚焦输入框）\n  Up / Down           在提示中上下移动光标（边界处浏览历史）\n  Left / Right        移动光标；Ctrl+Left 按词跳转\n  Home / End          行首 / 行尾\n  Ctrl+W              向后删除词\n  Ctrl+U              删除到行首\n  Ctrl+V              从剪贴板粘贴（多行；推荐）\n  Shift+Insert        从剪贴板粘贴（Windows）\n  注意                终端右键粘贴可能警告/拆行 — 请用 Ctrl+V\n  /commands           斜杠菜单 - ^v 选择  Enter 运行\n  /model <id>         切换文本模型（别名 /m）\n  /lht [auto|strict|off]  LHT Composer 模式（空参数循环）\n  /theme [name]       切换 TUI 配色（空参数循环）\n  j / k / Up / Down   滚动对话（Shift+Enter 开始多行输入）\n  PgUp / PgDn         滚动对话（自动进入滚动模式）\n  Ctrl+A              循环审批策略（4 种，保存到 config）\n  o                   展开/折叠最后一个工具块"
+            "对话\n  Tab                 输入 -> 滚动对话 -> 侧栏\n  Shift+Tab           反向切换焦点\n  Esc                 切换输入/滚动（输入 / 时取消斜杠菜单）\n  Enter               发送（输入模式）\n  Shift+Enter         插入换行（输入或滚动模式 — 聚焦输入框）\n  Up / Down           在提示中上下移动光标（边界处浏览历史）\n  Left / Right        移动光标；Ctrl+Left 按词跳转\n  Home / End          行首 / 行尾\n  Ctrl+W              向后删除词\n  Ctrl+U              删除到行首\n  Ctrl+V              从剪贴板粘贴（多行；推荐）\n  Shift+Insert        从剪贴板粘贴（Windows）\n  注意                终端右键粘贴可能警告/拆行 — 请用 Ctrl+V\n  /commands           斜杠菜单 - ^v 选择  Enter 运行\n  /model <id>         切换文本模型（别名 /m）\n  /lht [auto|strict|off]  LHT Composer 模式（空参数循环）\n  /theme [name]       切换 TUI 配色（空参数循环）\n  /approve [policy]   审批策略（空参数循环；别名 /approval）\n  j / k / Up / Down   滚动对话（Shift+Enter 开始多行输入）\n  PgUp / PgDn         滚动对话（自动进入滚动模式）\n  Ctrl+A              循环审批策略（4 种，保存到 config）\n  o                   展开/折叠最后一个工具块"
         }
         MessageId::TuiHelpSectionApproval => {
             "审批弹窗\n  y / Enter           允许\n  n / Esc             拒绝\n  a                   本会话允许\n  v                   切换详情视图"
@@ -2082,6 +2094,10 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::TuiSlashKey => "保存或清除 API 密钥（别名）",
         MessageId::TuiSlashLogin => "保存 DeepSeek API 密钥（CLI 别名）",
         MessageId::TuiSlashLogout => "清除已保存的 DeepSeek API 密钥",
+        MessageId::TuiSlashApprove => {
+            "审批策略：on-request / untrusted / never / auto（空参数循环）"
+        }
+        MessageId::TuiSlashApproval => "审批策略（别名）",
         MessageId::TuiApiKeyCleared => "API 密钥已清除",
         MessageId::TuiApiKeyUsage => "/api-key sk-… 保存 · /api-key clear 或 /logout 清除",
         MessageId::TuiLocalePickerHint => " 语言 | ^v 选择  Enter 应用  空 /locale 循环  Esc 取消 ",
@@ -2458,7 +2474,7 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
             "Trilho direito (inspetor + LHT)\n  Tab                 Focar coluna direita\n  1-5                 Arquivos / Diff / Agents / MCP / Atividade\n  j / k               Rolar inspetor\n  Enter               Arquivos: expandir/preview  Diff: patch  MCP: ferramentas\n  Esc                 Voltar do detalhe\n  s                   Diff: alternar staged/worktree\n  - / =               Ajustar largura do trilho direito\n  l                   Alternar painel LHT inferior\n  i                   Focar inspetor superior"
         }
         MessageId::TuiHelpSectionChat => {
-            "Chat\n  Tab                 Entrada -> rolar -> colunas\n  Shift+Tab           Ordem inversa de foco\n  Esc                 Alternar entrada/rolagem\n  Enter               Enviar prompt\n  Shift+Enter         Nova linha\n  Ctrl+V              Colar da área de transferência\n  /commands           Menu slash\n  /model <id>         Alternar modelo\n  /lht [auto|strict|off]  Modo LHT\n  /theme [name]       Alternar tema\n  Ctrl+A              Ciclar política de aprovação\n  o                   Expandir/recolher último bloco de ferramenta"
+            "Chat\n  Tab                 Entrada -> rolar -> colunas\n  Shift+Tab           Ordem inversa de foco\n  Esc                 Alternar entrada/rolagem\n  Enter               Enviar prompt\n  Shift+Enter         Nova linha\n  Ctrl+V              Colar da área de transferência\n  /commands           Menu slash\n  /model <id>         Alternar modelo\n  /lht [auto|strict|off]  Modo LHT\n  /theme [name]       Alternar tema\n  /approve [policy]   Política de aprovação (vazio alterna)\n  Ctrl+A              Ciclar política de aprovação\n  o                   Expandir/recolher último bloco de ferramenta"
         }
         MessageId::TuiHelpSectionApproval => {
             "Modal de aprovação\n  y / Enter           Permitir\n  n / Esc             Negar\n  a                   Permitir sessão\n  v                   Alternar detalhe"
@@ -2516,6 +2532,10 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::TuiSlashKey => "Salvar ou remover chave API (alias)",
         MessageId::TuiSlashLogin => "Salvar chave DeepSeek API (alias CLI)",
         MessageId::TuiSlashLogout => "Remover chave DeepSeek API salva",
+        MessageId::TuiSlashApprove => {
+            "Política de aprovação: on-request / untrusted / never / auto (vazio alterna)"
+        }
+        MessageId::TuiSlashApproval => "Política de aprovação (alias)",
         MessageId::TuiApiKeyCleared => "Chave API removida",
         MessageId::TuiApiKeyUsage => "/api-key sk-… salvar · /api-key clear ou /logout remover",
         MessageId::TuiLocalePickerHint => {

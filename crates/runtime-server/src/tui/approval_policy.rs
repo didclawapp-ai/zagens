@@ -47,6 +47,20 @@ pub fn persist_to_config(policy: &str) -> Result<()> {
     Ok(())
 }
 
+/// Parse a `/approve` argument into a canonical config value.
+#[must_use]
+pub fn parse_approval_arg(arg: &str) -> Option<&'static str> {
+    match arg.trim().to_ascii_lowercase().as_str() {
+        "auto" => Some("auto"),
+        "never" | "deny" | "denied" => Some("never"),
+        "untrusted" => Some("untrusted"),
+        "on-request" | "onrequest" | "on_request" | "request" | "suggest" | "suggested" => {
+            Some("on-request")
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,5 +88,14 @@ mod tests {
         assert_eq!(policy_display_label("untrusted"), "Untrusted");
         assert_eq!(policy_display_label("never"), "Never");
         assert_eq!(policy_display_label("auto"), "Auto");
+    }
+
+    #[test]
+    fn parse_approval_arg_accepts_aliases() {
+        assert_eq!(parse_approval_arg("on-request"), Some("on-request"));
+        assert_eq!(parse_approval_arg("OnRequest"), Some("on-request"));
+        assert_eq!(parse_approval_arg("deny"), Some("never"));
+        assert_eq!(parse_approval_arg("auto"), Some("auto"));
+        assert!(parse_approval_arg("bogus").is_none());
     }
 }

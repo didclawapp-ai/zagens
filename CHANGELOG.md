@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **TUI onboarding / API key:** First-run key entry and `/api-key` now sync credentials into the live runtime manager and unload the cached thread engine so the next message rebuilds `DeepSeekClient` instead of reusing a pre-onboarding "DeepSeek API key not found" error.
+
+### Added
+
+- **TUI slash commands:** `/approve` and `/approval` switch the global approval policy (`on-request` / `untrusted` / `never` / `auto`); empty argument cycles like `/lht` and `/theme`, with a picker UI and persistence to `~/.zagens/config.toml`.
+- **TUI first-run config:** `zagens-tui` now seeds `~/.zagens/config.toml` from the same `first_run_defaults` template as the desktop app on startup; onboarding API-key save updates that file instead of writing a 4-line legacy stub.
+
 ## [0.8.1] - 2026-06-17
 
 ### Fixed

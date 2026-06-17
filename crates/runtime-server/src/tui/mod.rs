@@ -69,6 +69,8 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
         );
     }
 
+    let _ = crate::config::ensure_config_file_exists(cli.config.clone())
+        .context("create default ~/.zagens/config.toml")?;
     let mut ctx = load_cli_context(&cli)?;
     let show_onboarding = should_show_onboarding(&cli, &ctx.config);
     let onboarding_plan = OnboardingPlan::build(&ctx.config);
@@ -1106,7 +1108,9 @@ fn execute_slash_noop(app: &mut AppState, action: SlashAction) -> bool {
         | SlashAction::CycleLocale
         | SlashAction::SaveApiKey(_)
         | SlashAction::ClearApiKey
-        | SlashAction::ShowApiKeyUsage => false,
+        | SlashAction::ShowApiKeyUsage
+        | SlashAction::SetApprovalPolicy(_)
+        | SlashAction::CycleApprovalPolicy => false,
     }
 }
 
@@ -1207,6 +1211,23 @@ async fn handle_slash_enter(
         execute_slash_action(ctx, host, app, SlashAction::SetLhtMode(mode), shell_tx).await?;
         return Ok(true);
     }
+    if composer_slash::approval_picker_active(app.composer.text())
+        && app.slash.open
+        && let Some(policy) =
+            composer_slash::selected_approval_policy(app.composer.text(), app.slash.selected)
+    {
+        app.composer.clear();
+        app.slash.close();
+        execute_slash_action(
+            ctx,
+            host,
+            app,
+            SlashAction::SetApprovalPolicy(policy.to_string()),
+            shell_tx,
+        )
+        .await?;
+        return Ok(true);
+    }
     if composer_slash::model_picker_active(app.composer.text())
         && app.slash.open
         && let Some(model) = composer_slash::selected_model(
@@ -1270,7 +1291,8 @@ async fn handle_slash_enter(
                     | composer_slash::SlashActionKind::Theme
                     | composer_slash::SlashActionKind::Locale
                     | composer_slash::SlashActionKind::ApiKey
-                    | composer_slash::SlashActionKind::Login => {
+                    | composer_slash::SlashActionKind::Login
+                    | composer_slash::SlashActionKind::Approve => {
                         return Ok(true);
                     }
                 };
@@ -1360,13 +1382,29 @@ async fn execute_slash_action(
         }
         SlashAction::ClearComposer => {}
         SlashAction::SaveApiKey(key) => {
-            api_key_cmd::apply_save_api_key(ctx, app, &key)?;
+            api_key_cmd::apply_save_api_key(ctx, host, app, &key).await?;
         }
         SlashAction::ClearApiKey => {
-            api_key_cmd::apply_clear_api_key(ctx, app)?;
+            api_key_cmd::apply_clear_api_key(ctx, host, app).await?;
         }
         SlashAction::ShowApiKeyUsage => {
             app.push_system_line(tr(app.locale, MessageId::TuiApiKeyUsage).to_string());
+        }
+        SlashAction::SetApprovalPolicy(policy) => {
+            if let Err(err) = host.set_approval_policy(&policy).await {
+                app.push_system_line(format!("approve: {err:#}"));
+            } else {
+                app.sync_thread_meta(host);
+                app.push_system_line(format!("approve: {}", app.approval_display));
+            }
+        }
+        SlashAction::CycleApprovalPolicy => {
+            if let Err(err) = host.cycle_approval_policy().await {
+                app.push_system_line(format!("approve: {err:#}"));
+            } else {
+                app.sync_thread_meta(host);
+                app.push_system_line(format!("approve: {}", app.approval_display));
+            }
         }
     }
     Ok(())

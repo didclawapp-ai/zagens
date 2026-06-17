@@ -30,6 +30,8 @@ pub enum SlashAction {
     SaveApiKey(String),
     ClearApiKey,
     ShowApiKeyUsage,
+    SetApprovalPolicy(String),
+    CycleApprovalPolicy,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,6 +56,7 @@ pub(crate) enum SlashActionKind {
     ApiKey,
     Login,
     Logout,
+    Approve,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -64,6 +67,7 @@ enum SlashPickerMode {
     LhtModes,
     Themes,
     Locales,
+    ApprovalPolicies,
 }
 
 const COMMANDS: &[SlashCommandDef] = &[
@@ -163,6 +167,18 @@ const COMMANDS: &[SlashCommandDef] = &[
         takes_arg: false,
         action: SlashActionKind::Logout,
     },
+    SlashCommandDef {
+        name: "approve",
+        description: "Approval policy: on-request / untrusted / never / auto (empty cycles)",
+        takes_arg: true,
+        action: SlashActionKind::Approve,
+    },
+    SlashCommandDef {
+        name: "approval",
+        description: "Approval policy (alias)",
+        takes_arg: true,
+        action: SlashActionKind::Approve,
+    },
 ];
 
 #[derive(Debug, Clone, Default)]
@@ -216,6 +232,17 @@ impl SlashCommandState {
             }
             return;
         }
+        if approval_picker_active(composer) {
+            self.open = true;
+            self.mode = SlashPickerMode::ApprovalPolicies;
+            let count = filter_approval_policies(composer).len();
+            if count == 0 {
+                self.selected = 0;
+            } else if self.selected >= count {
+                self.selected = count - 1;
+            }
+            return;
+        }
         if model_picker_active(composer) {
             self.open = true;
             self.mode = SlashPickerMode::Models;
@@ -253,6 +280,7 @@ impl SlashCommandState {
             SlashPickerMode::LhtModes => filter_lht_modes(composer).len(),
             SlashPickerMode::Themes => filter_themes(composer).len(),
             SlashPickerMode::Locales => filter_locales(composer).len(),
+            SlashPickerMode::ApprovalPolicies => filter_approval_policies(composer).len(),
             SlashPickerMode::Models => filter_models(composer, model_catalog).len(),
             SlashPickerMode::Commands => filter_commands(composer).len(),
         };
@@ -321,6 +349,48 @@ fn parse_lht_arg(arg: &str) -> Option<LhtComposerMode> {
         "strict" => Some(LhtComposerMode::Strict),
         "off" => Some(LhtComposerMode::Off),
         _ => None,
+    }
+}
+
+// ── Approval policy picker ───────────────────────────────────────────────────
+
+pub fn filter_approval_policies(composer: &str) -> Vec<&'static str> {
+    use super::approval_policy::{POLICIES, policy_display_label};
+
+    let arg = approval_arg(composer).unwrap_or("");
+    let query = arg.trim().to_ascii_lowercase();
+    POLICIES
+        .iter()
+        .copied()
+        .filter(|policy| {
+            query.is_empty()
+                || policy.starts_with(&query)
+                || policy_display_label(policy)
+                    .to_ascii_lowercase()
+                    .starts_with(&query)
+                || policy_display_label(policy)
+                    .to_ascii_lowercase()
+                    .contains(&query)
+        })
+        .collect()
+}
+
+pub fn approval_picker_active(composer: &str) -> bool {
+    split_command_line(composer)
+        .map(|(name, _)| is_approval_command(name))
+        .unwrap_or(false)
+}
+
+fn is_approval_command(name: &str) -> bool {
+    matches!(name.to_ascii_lowercase().as_str(), "approve" | "approval")
+}
+
+fn approval_arg(composer: &str) -> Option<&str> {
+    let (name, arg) = split_command_line(composer)?;
+    if is_approval_command(name) {
+        Some(arg)
+    } else {
+        None
     }
 }
 
@@ -531,6 +601,14 @@ pub fn try_parse_action(composer: &str, current_workspace: &Path) -> Option<Slas
             }
         }
         SlashActionKind::Logout => Some(SlashAction::ClearApiKey),
+        SlashActionKind::Approve => {
+            if arg.is_empty() {
+                Some(SlashAction::CycleApprovalPolicy)
+            } else {
+                super::approval_policy::parse_approval_arg(arg)
+                    .map(|policy| SlashAction::SetApprovalPolicy(policy.to_string()))
+            }
+        }
     }
 }
 
@@ -561,6 +639,10 @@ pub fn selected_lht_mode(composer: &str, selected: usize) -> Option<LhtComposerM
     filter_lht_modes(composer).into_iter().nth(selected)
 }
 
+pub fn selected_approval_policy(composer: &str, selected: usize) -> Option<&'static str> {
+    filter_approval_policies(composer).into_iter().nth(selected)
+}
+
 pub fn selected_locale(composer: &str, selected: usize) -> Option<String> {
     selected_locale_storage(composer, selected)
 }
@@ -579,9 +661,19 @@ pub fn render_palette(
     model_catalog: &[String],
     current_model: &str,
     current_lht_mode: LhtComposerMode,
+    current_approval_policy: &str,
 ) -> Vec<Line<'static>> {
     if locale_picker_active(composer) {
         return render_locale_palette(locale, composer, selected, width, max_rows);
+    }
+    if approval_picker_active(composer) {
+        return render_approval_palette(
+            composer,
+            selected,
+            width,
+            max_rows,
+            current_approval_policy,
+        );
     }
     if lht_picker_active(composer) {
         return render_lht_palette(composer, selected, width, max_rows, current_lht_mode);
@@ -804,6 +896,58 @@ fn render_lht_palette(
     lines
 }
 
+fn render_approval_palette(
+    composer: &str,
+    selected: usize,
+    width: usize,
+    max_rows: usize,
+    current_policy: &str,
+) -> Vec<Line<'static>> {
+    use super::approval_policy::policy_display_label;
+
+    let matches = filter_approval_policies(composer);
+    if matches.is_empty() {
+        return vec![Line::from(Span::styled(
+            pad(width, " (no matching approval policies)"),
+            theme::hint(),
+        ))];
+    }
+
+    let current = super::approval_policy::normalize_policy(current_policy);
+    let mut lines = Vec::new();
+    lines.push(Line::from(Span::styled(
+        pad(
+            width,
+            " Approve | ^v select  Enter apply  empty /approve cycles  Esc cancel",
+        ),
+        theme::hint(),
+    )));
+
+    let visible = max_rows.saturating_sub(1).max(1);
+    let start = if selected >= visible {
+        selected + 1 - visible
+    } else {
+        0
+    };
+    for (idx, policy) in matches.iter().enumerate().skip(start).take(visible) {
+        let mark = if idx == selected { ">" } else { " " };
+        let active = *policy == current;
+        let suffix = if active { "  (current)" } else { "" };
+        let label = format!("{mark} {}{suffix}", policy_display_label(policy));
+        let style = if idx == selected {
+            Style::default()
+                .fg(theme::approval_color(policy_display_label(policy)))
+                .add_modifier(Modifier::BOLD)
+        } else if active {
+            Style::default().fg(theme::approval_color(policy_display_label(policy)))
+        } else {
+            theme::hint()
+        };
+        lines.push(Line::from(Span::styled(pad(width, &label), style)));
+    }
+    lines
+}
+
 fn render_theme_palette(
     composer: &str,
     selected: usize,
@@ -1006,5 +1150,30 @@ mod tests {
         );
         assert_eq!(editor.text(), "/workspace ");
         assert_eq!(editor.cursor(), editor.text().len());
+    }
+
+    #[test]
+    fn filter_approve_command() {
+        let matches = filter_commands("/app");
+        assert!(matches.iter().any(|c| c.name == "approve"));
+        assert!(matches.iter().any(|c| c.name == "approval"));
+    }
+
+    #[test]
+    fn parse_approve_cycle_when_empty() {
+        let action = try_parse_action("/approve", Path::new(".")).expect("action");
+        assert_eq!(action, SlashAction::CycleApprovalPolicy);
+    }
+
+    #[test]
+    fn parse_approve_never() {
+        let action = try_parse_action("/approval never", Path::new(".")).expect("action");
+        assert_eq!(action, SlashAction::SetApprovalPolicy("never".to_string()));
+    }
+
+    #[test]
+    fn approval_picker_filters_policies() {
+        let hits = filter_approval_policies("/approve unt");
+        assert_eq!(hits, vec!["untrusted"]);
     }
 }

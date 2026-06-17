@@ -1,6 +1,6 @@
 //! Onboarding key handling and persistence.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::super::app::AppState;
@@ -70,7 +70,7 @@ pub async fn handle_onboarding_key(
 
 async fn advance_step(
     ctx: &mut CliContext,
-    _host: &mut TuiSessionHost,
+    host: &mut TuiSessionHost,
     app: &mut AppState,
 ) -> Result<()> {
     if matches!(app.onboarding.phase(), Some(OnboardingPhase::ApiKey)) {
@@ -79,7 +79,12 @@ async fn advance_step(
             app.onboarding.busy = true;
             match save_api_key(&key) {
                 Ok(saved) => {
-                    ctx.config.api_key = Some(key);
+                    ctx.config.api_key = Some(key.clone());
+                    if let Err(err) = host.sync_runtime_api_key(Some(key)).await {
+                        app.onboarding.error = Some(format!("{err:#}"));
+                        app.onboarding.busy = false;
+                        return Ok(());
+                    }
                     app.push_system_line(format!(
                         "{} ({})",
                         tr(app.locale, MessageId::TuiOnboardingKeySaved),
@@ -97,7 +102,7 @@ async fn advance_step(
     }
     app.onboarding.advance();
     if app.onboarding.phase().is_none() {
-        complete_onboarding(ctx, _host, app).await?;
+        complete_onboarding(ctx, host, app).await?;
     }
     Ok(())
 }
@@ -115,7 +120,10 @@ async fn complete_onboarding(
     if has_key_step && !key_text.is_empty() && ctx.config.api_key.is_none() {
         match save_api_key(&key_text) {
             Ok(saved) => {
-                ctx.config.api_key = Some(key_text);
+                ctx.config.api_key = Some(key_text.clone());
+                host.sync_runtime_api_key(Some(key_text))
+                    .await
+                    .context("sync API key to runtime after onboarding")?;
                 app.push_system_line(format!(
                     "{} ({})",
                     tr(app.locale, MessageId::TuiOnboardingKeySaved),
