@@ -112,8 +112,8 @@ if ($ToolsPolicy) {
 }
 $configDigest = (Get-FileHash -Path $configPath -Algorithm SHA256).Hash.Substring(0, 16)
 # Track what was explicitly requested. "default" means we rely on the runtime default.
-# Scheduler default is "shadow" (M4 bake), policy default is "engine" (M3 bake complete).
-$toolsSchedulerLabel = if ($ToolsScheduler) { $ToolsScheduler.Trim().ToLower() } else { "default(shadow)" }
+# Scheduler default is "dag" (M4 flip), policy default is "engine" (M3 bake complete).
+$toolsSchedulerLabel = if ($ToolsScheduler) { $ToolsScheduler.Trim().ToLower() } else { "default(dag)" }
 $toolsPolicyLabel    = if ($ToolsPolicy)    { $ToolsPolicy.Trim().ToLower()    } else { "default(engine)" }
 
 Write-Host "=== Kernel v2 corpus run ===" -ForegroundColor Cyan
@@ -223,10 +223,9 @@ foreach ($task in $tasks) {
 
             Save-CorpusEventStream -Base $sidecar.Base -ThreadId $threadId -OutFile $eventsFile
             $detail = Invoke-LhtHarnessRest -Uri (Join-LhtHarnessApiUri -Base $sidecar.Base -RelativePath "v1/threads/$threadId") -Method GET
-            # Always probe shadow counters: scheduler default is "shadow" (M4 bake) and
-            # policy default is "engine" (M3 bake complete). Skip only when explicitly set to a
-            # non-shadow mode so the bake report has data regardless of whether -ToolsScheduler
-            # or -ToolsPolicy was passed.
+            # Probe kernel-shadow when bake modes may be active. Scheduler default is "dag";
+            # pass -ToolsScheduler shadow for M4 bake counters. Policy default is "engine";
+            # pass -ToolsPolicy shadow for M3 bake counters.
             $skipProbe = ($ToolsScheduler -and $ToolsScheduler.Trim().ToLower() -in @("legacy","dag")) -and
                          ($ToolsPolicy    -and $ToolsPolicy.Trim().ToLower()    -in @("legacy","engine"))
             if (-not $skipProbe) {

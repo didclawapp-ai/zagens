@@ -12,12 +12,12 @@ Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo
 
 > **Nota dos autores:** Não acredite que um Agent de IA pode fazer qualquer coisa — ele tem limites. O que podemos fazer é ampliar esses limites.
 
-> **Licença:** [MIT](LICENSE). Linhagem do runtime: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). Capacidades abaixo refletem **Zagens v0.8.1** — veja [CHANGELOG.md](CHANGELOG.md).
+> **Licença:** [MIT](LICENSE). Linhagem do runtime: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). Capacidades abaixo refletem **Zagens v0.8.2** — veja [CHANGELOG.md](CHANGELOG.md).
 
 | Recurso | Link |
 |---------|------|
 | Guias do usuário | [zagens.com/docs](https://zagens.com/docs) |
-| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (último **`zagens-v0.8.1`**) · [zagens.com/download](https://zagens.com/download) |
+| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (último **`zagens-v0.8.2`**) · [zagens.com/download](https://zagens.com/download) |
 | Especificações | [`docs/README.md`](docs/README.md) |
 | Contribuição | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Segurança | [`SECURITY.md`](SECURITY.md) |
@@ -60,7 +60,7 @@ Também: **CRAFT multi-agent** (sub-agents, vereditos fix-loop, blackboard P1 �
 
 ---
 
-## Disponível hoje (v0.8.1)
+## Disponível hoje (v0.8.2)
 
 **Motor Kernel V3:** loop de turn event-sourced — log `KernelEvent` em `sessions.db`, planejamento `LiveTurnMachine`, IO `EffectInterpreter`, fixtures golden de replay. Spec: [AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md).
 
@@ -115,7 +115,7 @@ Specs públicas em [`docs/`](docs/README.md). Direção:
 | **`zagens`** (CLI headless) | ✅ | ✅ | ✅ |
 | **App desktop** | — (use TUI) | — (use TUI) | ✅ instalador |
 
-Instale via **binários pré-compilados** ([Releases `zagens-v0.8.1`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.1)), **`cargo install`** (crates.io) ou **da fonte** (abaixo).
+Instale via **binários pré-compilados** ([Releases `zagens-v0.8.2`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.2)), **`cargo install`** (crates.io) ou **da fonte** (abaixo).
 
 **Pré-requisito Rust** (só `cargo install` / fonte): [rustup](https://rustup.rs/) (Rust **1.88+**; CI usa 1.96). Linux/macOS: `source "$HOME/.cargo/env"`; Windows: abra um terminal novo.
 
@@ -128,13 +128,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
 # TUI (primeira compilação: 10–30 min)
-cargo install zagens-cli --version 0.8.1 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.2 --bin zagens-tui --features tui --locked
 
 # CLI headless (opcional)
-cargo install zagens-cli --version 0.8.1 --bin zagens --locked
+cargo install zagens-cli --version 0.8.2 --bin zagens --locked
 ```
 
-**Pré-compilado** (sem Rust): baixe `zagens-tui-x86_64-unknown-linux-gnu` e/ou `zagens-x86_64-unknown-linux-gnu` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.1), verifique o `.sha256`, `chmod +x` e coloque no `PATH`.
+**Pré-compilado** (sem Rust): baixe `zagens-tui-x86_64-unknown-linux-gnu` e/ou `zagens-x86_64-unknown-linux-gnu` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.2), verifique o `.sha256`, `chmod +x` e coloque no `PATH`.
 
 ```bash
 zagens-tui              # restaura última sessão
@@ -148,29 +148,29 @@ xcode-select --install    # se faltar toolchain C
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
-cargo install zagens-cli --version 0.8.1 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.1 --bin zagens --locked   # opcional
+cargo install zagens-cli --version 0.8.2 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.2 --bin zagens --locked   # opcional
 ```
 
-**Pré-compilado:** `zagens-tui-x86_64-apple-darwin` ou `zagens-tui-aarch64-apple-darwin` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.1).
+**Pré-compilado:** `zagens-tui-x86_64-apple-darwin` ou `zagens-tui-aarch64-apple-darwin` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.2).
 
 #### Windows
 
-**Pré-compilado (mais rápido):** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.1) — `zagens-tui-x86_64-pc-windows-msvc.exe`, `zagens-x86_64-pc-windows-msvc.exe` (+ `.sha256`). Adicione a pasta ao `PATH` ou copie os `.exe` para uma pasta no `PATH`.
+**Pré-compilado (mais rápido):** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.2) — `zagens-tui-x86_64-pc-windows-msvc.exe`, `zagens-x86_64-pc-windows-msvc.exe` (+ `.sha256`). Adicione a pasta ao `PATH` ou copie os `.exe` para uma pasta no `PATH`.
 
 **crates.io** (instale [Rust for Windows](https://rustup.rs/) antes):
 
 ```powershell
-cargo install zagens-cli --version 0.8.1 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.1 --bin zagens --locked
+cargo install zagens-cli --version 0.8.2 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.2 --bin zagens --locked
 ```
 
 ### crates.io (todas as plataformas)
 
 ```bash
-cargo install zagens-cli --version 0.8.1 --bin zagens-tui --features tui --locked   # TUI
-cargo install zagens-cli --version 0.8.1 --bin zagens --locked                   # CLI
-cargo install zagens-cli --version 0.8.1 --bin zagens-runtime --locked           # sidecar HTTP (opcional)
+cargo install zagens-cli --version 0.8.2 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.2 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.2 --bin zagens-runtime --locked           # sidecar HTTP (opcional)
 ```
 
 ### Da fonte — desktop

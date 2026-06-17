@@ -125,7 +125,7 @@ sandbox_mode = "workspace-write" # read-only | workspace-write | danger-full-acc
 # diff_rate stays < 0.1% for the full period.
 # [tools]
 # policy = "legacy" # legacy | shadow | engine
-# scheduler = "legacy" # legacy | shadow | dag
+# scheduler = "dag" # legacy | shadow | dag (default: dag)
 
 # ─────────────────────────────────────────────────────────────────────────────────
 # External Sandbox Backend (pluggable remote execution)

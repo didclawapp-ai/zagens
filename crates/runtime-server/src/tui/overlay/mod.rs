@@ -1,8 +1,9 @@
-//! Full-screen overlays (approval, help, automation).
+//! Full-screen overlays (approval, help, automation, MCP config).
 
 mod approval;
 mod automation;
 mod help;
+mod mcp;
 mod onboarding;
 
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -10,6 +11,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 pub use approval::{PendingApproval, draw_approval};
 pub use automation::{AutomationUiState, draw_automation};
 pub use help::draw_help;
+pub use mcp::{McpConfigUiState, McpOverlayFocus, draw_mcp_config};
 pub use onboarding::{OnboardingUiState, draw_onboarding};
 
 /// Percent-sized popup rect centered in `area`.

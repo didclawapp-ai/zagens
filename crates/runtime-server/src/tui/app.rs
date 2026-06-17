@@ -23,7 +23,7 @@ use super::inspector::{
 use super::layout::{InspectorTab, LayoutEngine, TuiLayoutPrefs};
 use super::left_rail::SessionList;
 use super::lht_mode::{format_lht_mode_label, load_lht_composer_mode};
-use super::overlay::{AutomationUiState, OnboardingUiState, PendingApproval};
+use super::overlay::{AutomationUiState, McpConfigUiState, OnboardingUiState, PendingApproval};
 use super::poll::poll_interval;
 use super::session_host::TuiSessionHost;
 use super::task_graph::{TaskGraphSnapshot, title_bar_harness_line_from_graph};
@@ -79,6 +79,9 @@ pub struct AppState {
     pub show_help: bool,
     /// Whether the automation settings overlay is open.
     pub show_automation: bool,
+    /// MCP `mcp.json` editor overlay (`/mcp`).
+    pub show_mcp: bool,
+    pub mcp_ui: McpConfigUiState,
     /// First-run onboarding overlay (welcome, API key, default task type).
     pub show_onboarding: bool,
     pub onboarding: OnboardingUiState,
@@ -154,6 +157,8 @@ impl AppState {
             pending_approval: None,
             show_help: false,
             show_automation: false,
+            show_mcp: false,
+            mcp_ui: McpConfigUiState::new(String::new(), String::new()),
             show_onboarding: false,
             onboarding: OnboardingUiState::new(vec![]),
             automation_ui: AutomationUiState::default(),
@@ -694,6 +699,7 @@ impl AppState {
             && !self.approval_open()
             && !self.show_help
             && !self.show_onboarding
+            && !self.show_mcp
     }
 
     pub fn composer_render(
@@ -832,6 +838,7 @@ impl AppState {
         !self.approval_open()
             && !self.show_help
             && !self.show_onboarding
+            && !self.show_mcp
             && self.layout.focus == FocusRegion::Chat
             && self.composer_focus
     }
@@ -1083,6 +1090,8 @@ fn test_app_state_for_draw(composer_text: &str) -> AppState {
         pending_approval: None,
         show_help: false,
         show_automation: false,
+        show_mcp: false,
+        mcp_ui: McpConfigUiState::new(String::new(), String::new()),
         show_onboarding: false,
         onboarding: OnboardingUiState::new(vec![]),
         automation_ui: AutomationUiState::default(),

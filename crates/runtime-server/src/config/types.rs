@@ -687,7 +687,7 @@ pub struct ToolsConfigToml {
     /// Policy engine mode: `"legacy"` (default), `"shadow"`, or `"engine"`.
     #[serde(default)]
     pub policy: Option<String>,
-    /// Batch scheduler: `"legacy"` (default), `"shadow"`, or `"dag"`.
+    /// Batch scheduler: `"legacy"`, `"shadow"`, or `"dag"` (default).
     #[serde(default)]
     pub scheduler: Option<String>,
     /// Context compiler mode: `"legacy"` (default), `"shadow"`, or `"v2"`.
@@ -760,10 +760,10 @@ pub enum ToolsSchedulerMode {
     /// Set `[tools] scheduler = "legacy"` in config.toml.
     Legacy,
     /// DAG scheduler runs in parallel with legacy; group diffs are logged but
-    /// legacy execution order controls (default — M4 bake period).
-    #[default]
+    /// legacy execution order controls (`[tools] scheduler = "shadow"` bake mode).
     Shadow,
     /// DAG scheduler controls execution waves (resource-dependency parallelism).
+    #[default]
     Dag,
 }
 
@@ -774,8 +774,8 @@ impl ToolsSchedulerMode {
             Some("legacy") => Self::Legacy,
             Some("shadow") => Self::Shadow,
             Some("dag") => Self::Dag,
-            // Unknown / missing values → Shadow (same as code default).
-            _ => Self::Shadow,
+            // Unknown / missing values → Dag (same as code default).
+            _ => Self::Dag,
         }
     }
 

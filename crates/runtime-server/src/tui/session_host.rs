@@ -185,6 +185,15 @@ impl TuiSessionHost {
         Ok(())
     }
 
+    /// Drop a cached thread engine so the next turn reloads MCP tools from disk.
+    pub async fn reload_mcp_config(&mut self) -> Result<()> {
+        self.manager
+            .unload_idle_thread_engine(&self.thread.id)
+            .await
+            .context("reload runtime after MCP config update")?;
+        Ok(())
+    }
+
     pub async fn engine_handle(&self) -> Option<EngineHandle> {
         let active = self.manager.active.lock().await;
         active

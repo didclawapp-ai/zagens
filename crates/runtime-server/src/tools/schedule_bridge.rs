@@ -368,6 +368,13 @@ mod tests {
     }
 
     #[test]
+    fn default_scheduler_mode_is_dag() {
+        assert_eq!(ToolsSchedulerMode::default(), ToolsSchedulerMode::Dag);
+        assert_eq!(ToolsSchedulerMode::parse(None), ToolsSchedulerMode::Dag);
+        assert_eq!(ToolsSchedulerMode::parse(Some("")), ToolsSchedulerMode::Dag);
+    }
+
+    #[test]
     fn shadow_records_diff_without_changing_legacy_groups() {
         let before = scheduler_shadow_stats();
         let plans = vec![

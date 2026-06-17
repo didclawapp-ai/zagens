@@ -766,7 +766,7 @@ impl Config {
         crate::config::ToolsPolicyMode::parse(self.tools.as_ref().and_then(|t| t.policy.as_deref()))
     }
 
-    /// Resolved kernel-v2 batch scheduler mode (`[tools] scheduler`, default `legacy`).
+    /// Resolved kernel-v2 batch scheduler mode (`[tools] scheduler`, default `dag`).
     #[must_use]
     pub fn tools_scheduler_mode(&self) -> crate::config::ToolsSchedulerMode {
         crate::config::ToolsSchedulerMode::parse(

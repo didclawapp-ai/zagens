@@ -11,7 +11,7 @@ use super::focus::FocusRegion;
 use super::i18n::inspector_tab_hint;
 use super::inspector::render_lht_styled;
 use super::layout::{InspectorTab, LayoutRegions, RightPaneRegions, split_center_column};
-use super::overlay::{draw_approval, draw_automation, draw_help, draw_onboarding};
+use super::overlay::{draw_approval, draw_automation, draw_help, draw_mcp_config, draw_onboarding};
 use crate::localization::{MessageId, tr};
 
 use super::theme::{self, TuiPanel};
@@ -83,6 +83,9 @@ pub fn draw(
             &app.automation_engine.config,
             &app.automation_ui,
         );
+    }
+    if app.show_mcp {
+        draw_mcp_config(frame, app.locale, &app.mcp_ui, app.cursor_blink_since);
     }
     if app.show_onboarding {
         draw_onboarding(frame, app.locale, &app.onboarding, &app.workspace_display);

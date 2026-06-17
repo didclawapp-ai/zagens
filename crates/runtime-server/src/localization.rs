@@ -487,6 +487,15 @@ pub enum MessageId {
     TuiOnboardingStepMode,
     TuiOnboardingKeySaved,
     TuiOnboardingComplete,
+    TuiSlashMcp,
+    TuiMcpTitle,
+    TuiMcpPathLabel,
+    TuiMcpSave,
+    TuiMcpCancel,
+    TuiMcpFooter,
+    TuiMcpSaved,
+    TuiMcpParseError,
+    TuiMcpEmptyError,
 }
 
 #[allow(dead_code)]
@@ -786,6 +795,15 @@ pub const ALL_MESSAGE_IDS: &[MessageId] = &[
     MessageId::TuiOnboardingStepMode,
     MessageId::TuiOnboardingKeySaved,
     MessageId::TuiOnboardingComplete,
+    MessageId::TuiSlashMcp,
+    MessageId::TuiMcpTitle,
+    MessageId::TuiMcpPathLabel,
+    MessageId::TuiMcpSave,
+    MessageId::TuiMcpCancel,
+    MessageId::TuiMcpFooter,
+    MessageId::TuiMcpSaved,
+    MessageId::TuiMcpParseError,
+    MessageId::TuiMcpEmptyError,
 ];
 
 pub fn tr(locale: Locale, id: MessageId) -> &'static str {
@@ -1322,6 +1340,17 @@ fn english(id: MessageId) -> &'static str {
         MessageId::TuiOnboardingStepMode => "Mode",
         MessageId::TuiOnboardingKeySaved => "API key saved",
         MessageId::TuiOnboardingComplete => "Setup complete — happy building!",
+        MessageId::TuiSlashMcp => "Edit MCP servers JSON (mcp.json)",
+        MessageId::TuiMcpTitle => "MCP config",
+        MessageId::TuiMcpPathLabel => "File:",
+        MessageId::TuiMcpSave => "Save",
+        MessageId::TuiMcpCancel => "Cancel",
+        MessageId::TuiMcpFooter => {
+            "Type or paste JSON · Ctrl+V paste · Tab focus · Enter save/cancel · Ctrl+S save · Esc cancel"
+        }
+        MessageId::TuiMcpSaved => "MCP config saved (applies on next turn)",
+        MessageId::TuiMcpParseError => "Invalid JSON",
+        MessageId::TuiMcpEmptyError => "MCP config cannot be empty",
     }
 }
 
@@ -1747,6 +1776,17 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::TuiOnboardingStepMode => "モード",
         MessageId::TuiOnboardingKeySaved => "API キーを保存しました",
         MessageId::TuiOnboardingComplete => "セットアップ完了 — さあ始めましょう！",
+        MessageId::TuiSlashMcp => "MCP サーバ JSON を編集 (mcp.json)",
+        MessageId::TuiMcpTitle => "MCP 設定",
+        MessageId::TuiMcpPathLabel => "ファイル:",
+        MessageId::TuiMcpSave => "保存",
+        MessageId::TuiMcpCancel => "キャンセル",
+        MessageId::TuiMcpFooter => {
+            "JSON を入力/貼り付け · Ctrl+V · Tab フォーカス · Enter 保存/取消 · Ctrl+S 保存 · Esc 取消"
+        }
+        MessageId::TuiMcpSaved => "MCP 設定を保存しました（次のターンから反映）",
+        MessageId::TuiMcpParseError => "JSON が無効です",
+        MessageId::TuiMcpEmptyError => "MCP 設定を空にできません",
     })
 }
 
@@ -2125,6 +2165,17 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::TuiOnboardingStepMode => "模式",
         MessageId::TuiOnboardingKeySaved => "API 密钥已保存",
         MessageId::TuiOnboardingComplete => "初始化完成 — 开始使用吧！",
+        MessageId::TuiSlashMcp => "编辑 MCP 服务器 JSON（mcp.json）",
+        MessageId::TuiMcpTitle => "MCP 配置",
+        MessageId::TuiMcpPathLabel => "文件:",
+        MessageId::TuiMcpSave => "保存",
+        MessageId::TuiMcpCancel => "取消",
+        MessageId::TuiMcpFooter => {
+            "输入或粘贴 JSON · Ctrl+V 粘贴 · Tab 切换焦点 · Enter 保存/取消 · Ctrl+S 保存 · Esc 取消"
+        }
+        MessageId::TuiMcpSaved => "MCP 配置已保存（下次对话生效）",
+        MessageId::TuiMcpParseError => "JSON 无效",
+        MessageId::TuiMcpEmptyError => "MCP 配置不能为空",
     })
 }
 
@@ -2571,6 +2622,17 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::TuiOnboardingStepMode => "Modo",
         MessageId::TuiOnboardingKeySaved => "Chave API salva",
         MessageId::TuiOnboardingComplete => "Configuração concluída — bom trabalho!",
+        MessageId::TuiSlashMcp => "Editar JSON de servidores MCP (mcp.json)",
+        MessageId::TuiMcpTitle => "Config MCP",
+        MessageId::TuiMcpPathLabel => "Arquivo:",
+        MessageId::TuiMcpSave => "Salvar",
+        MessageId::TuiMcpCancel => "Cancelar",
+        MessageId::TuiMcpFooter => {
+            "Digite ou cole JSON · Ctrl+V colar · Tab foco · Enter salvar/cancelar · Ctrl+S salvar · Esc cancelar"
+        }
+        MessageId::TuiMcpSaved => "Config MCP salva (vale na próxima rodada)",
+        MessageId::TuiMcpParseError => "JSON inválido",
+        MessageId::TuiMcpEmptyError => "A config MCP não pode ficar vazia",
     })
 }
 

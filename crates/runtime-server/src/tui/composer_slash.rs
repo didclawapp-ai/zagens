@@ -32,6 +32,7 @@ pub enum SlashAction {
     ShowApiKeyUsage,
     SetApprovalPolicy(String),
     CycleApprovalPolicy,
+    ShowMcp,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,6 +58,7 @@ pub(crate) enum SlashActionKind {
     Login,
     Logout,
     Approve,
+    Mcp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -178,6 +180,12 @@ const COMMANDS: &[SlashCommandDef] = &[
         description: "Approval policy (alias)",
         takes_arg: true,
         action: SlashActionKind::Approve,
+    },
+    SlashCommandDef {
+        name: "mcp",
+        description: "Edit MCP servers JSON (mcp.json)",
+        takes_arg: false,
+        action: SlashActionKind::Mcp,
     },
 ];
 
@@ -589,6 +597,7 @@ pub fn try_parse_action(composer: &str, current_workspace: &Path) -> Option<Slas
         SlashActionKind::New => Some(SlashAction::NewSession),
         SlashActionKind::Help => Some(SlashAction::ShowHelp),
         SlashActionKind::Automation => Some(SlashAction::ShowAutomation),
+        SlashActionKind::Mcp => Some(SlashAction::ShowMcp),
         SlashActionKind::Clear => Some(SlashAction::ClearComposer),
         SlashActionKind::ApiKey => parse_api_key_action(arg),
         SlashActionKind::Login => {
@@ -1175,5 +1184,17 @@ mod tests {
     fn approval_picker_filters_policies() {
         let hits = filter_approval_policies("/approve unt");
         assert_eq!(hits, vec!["untrusted"]);
+    }
+
+    #[test]
+    fn parse_mcp_opens_overlay() {
+        let action = try_parse_action("/mcp", Path::new(".")).expect("action");
+        assert_eq!(action, SlashAction::ShowMcp);
+    }
+
+    #[test]
+    fn filter_mcp_command() {
+        let matches = filter_commands("/mc");
+        assert!(matches.iter().any(|c| c.name == "mcp"));
     }
 }

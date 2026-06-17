@@ -57,6 +57,7 @@ pub fn slash_description(locale: Locale, kind: SlashActionKind) -> &'static str 
             SlashActionKind::Login => MessageId::TuiSlashLogin,
             SlashActionKind::Logout => MessageId::TuiSlashLogout,
             SlashActionKind::Approve => MessageId::TuiSlashApprove,
+            SlashActionKind::Mcp => MessageId::TuiSlashMcp,
         },
     )
 }

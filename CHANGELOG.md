@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.1`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.1**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.2`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.2**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,12 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-06-17
+
+### Changed
+
+- **Runtime (kernel-v2 M4):** `[tools] scheduler` code default is now `dag` (was `shadow`); missing or unknown values resolve to `dag`. `shadow` remains for bake/diff observation; `legacy` remains a kill-switch.
+
 ### Fixed
 
 - **TUI onboarding / API key:** First-run key entry and `/api-key` now sync credentials into the live runtime manager and unload the cached thread engine so the next message rebuilds `DeepSeekClient` instead of reusing a pre-onboarding "DeepSeek API key not found" error.
 
 ### Added
 
+- **TUI MCP config:** `/mcp` opens an overlay to edit `mcp.json` as JSON (type or paste), with Save/Cancel, validation, and engine reload on the next turn.
 - **TUI slash commands:** `/approve` and `/approval` switch the global approval policy (`on-request` / `untrusted` / `never` / `auto`); empty argument cycles like `/lht` and `/theme`, with a picker UI and persistence to `~/.zagens/config.toml`.
 - **TUI first-run config:** `zagens-tui` now seeds `~/.zagens/config.toml` from the same `first_run_defaults` template as the desktop app on startup; onboarding API-key save updates that file instead of writing a 4-line legacy stub.
 

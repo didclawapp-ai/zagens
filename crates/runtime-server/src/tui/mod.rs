@@ -23,6 +23,7 @@ mod left_rail;
 mod lht_mode;
 mod locale_cmd;
 mod markdown_table;
+mod mcp_cmd;
 mod onboarding;
 mod overlay;
 mod pending_input;
@@ -41,7 +42,7 @@ mod transcript_turn;
 
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
 
 use self::app::AppState;
@@ -356,6 +357,10 @@ async fn handle_input_event(
                 onboarding_paste(app, text);
                 return Ok(false);
             }
+            if app.show_mcp {
+                mcp_cmd::mcp_paste(app, text);
+                return Ok(false);
+            }
             if app.layout.focus == FocusRegion::Chat {
                 if !app.composer_focus {
                     app.composer_focus = true;
@@ -391,6 +396,11 @@ async fn handle_input_event(
             // Automation overlay — intercept all keys while open.
             if app.show_automation {
                 return handle_automation_key(*key, host, app).await;
+            }
+
+            // MCP config overlay — intercept all keys while open.
+            if app.show_mcp {
+                return mcp_cmd::handle_mcp_key(*key, host, app).await;
             }
 
             if let Some(pending) = app.pending_approval.clone() {
@@ -1078,6 +1088,7 @@ fn execute_slash_noop(app: &mut AppState, action: SlashAction) -> bool {
             app.automation_ui.clamp_selection(len);
             true
         }
+        SlashAction::ShowMcp => false,
         SlashAction::SwitchTheme(id) => {
             apply_theme_change(app, id);
             true
@@ -1283,6 +1294,7 @@ async fn handle_slash_enter(
                     composer_slash::SlashActionKind::New => SlashAction::NewSession,
                     composer_slash::SlashActionKind::Help => SlashAction::ShowHelp,
                     composer_slash::SlashActionKind::Automation => SlashAction::ShowAutomation,
+                    composer_slash::SlashActionKind::Mcp => SlashAction::ShowMcp,
                     composer_slash::SlashActionKind::Clear => SlashAction::ClearComposer,
                     composer_slash::SlashActionKind::Logout => SlashAction::ClearApiKey,
                     composer_slash::SlashActionKind::Workspace
@@ -1379,6 +1391,9 @@ async fn execute_slash_action(
             app.automation_ui.edit_mode = false;
             let len = app.automation_engine.config.rules.len();
             app.automation_ui.clamp_selection(len);
+        }
+        SlashAction::ShowMcp => {
+            mcp_cmd::open_mcp_overlay(app, host.config());
         }
         SlashAction::ClearComposer => {}
         SlashAction::SaveApiKey(key) => {
