@@ -53,6 +53,9 @@ pub fn slash_description(locale: Locale, kind: SlashActionKind) -> &'static str 
             SlashActionKind::Automation => MessageId::TuiSlashAuto,
             SlashActionKind::Clear => MessageId::TuiSlashClear,
             SlashActionKind::Locale => MessageId::TuiSlashLocale,
+            SlashActionKind::ApiKey => MessageId::TuiSlashApiKey,
+            SlashActionKind::Login => MessageId::TuiSlashLogin,
+            SlashActionKind::Logout => MessageId::TuiSlashLogout,
         },
     )
 }
@@ -62,6 +65,8 @@ pub fn slash_alias_description(locale: Locale, kind: SlashActionKind) -> &'stati
     match kind {
         SlashActionKind::Workspace => tr(locale, MessageId::TuiSlashCd),
         SlashActionKind::Model => tr(locale, MessageId::TuiSlashModelAlias),
+        SlashActionKind::ApiKey => tr(locale, MessageId::TuiSlashKey),
+        SlashActionKind::Login => tr(locale, MessageId::TuiSlashLogin),
         _ => slash_description(locale, kind),
     }
 }

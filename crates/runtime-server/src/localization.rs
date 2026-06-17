@@ -454,12 +454,37 @@ pub enum MessageId {
     TuiAutoCommand,
     TuiSlashLocale,
     TuiSlashLanguage,
+    TuiSlashApiKey,
+    TuiSlashKey,
+    TuiSlashLogin,
+    TuiSlashLogout,
+    TuiApiKeyCleared,
+    TuiApiKeyUsage,
     TuiLocalePickerHint,
     TuiLocaleChanged,
     TuiPendingInputsTitle,
     TuiPendingQueuedKind,
     TuiPendingEditHint,
     TuiSteerInjected,
+    TuiOnboardingTitle,
+    TuiOnboardingWelcomeTitle,
+    TuiOnboardingWelcomeBody,
+    TuiOnboardingWorkspace,
+    TuiOnboardingKeyTitle,
+    TuiOnboardingKeyHint,
+    TuiOnboardingModeTitle,
+    TuiOnboardingModeAuto,
+    TuiOnboardingModeAutoDesc,
+    TuiOnboardingModeCode,
+    TuiOnboardingModeCodeDesc,
+    TuiOnboardingModeOffice,
+    TuiOnboardingModeOfficeDesc,
+    TuiOnboardingFooter,
+    TuiOnboardingStepWelcome,
+    TuiOnboardingStepKey,
+    TuiOnboardingStepMode,
+    TuiOnboardingKeySaved,
+    TuiOnboardingComplete,
 }
 
 #[allow(dead_code)]
@@ -726,12 +751,37 @@ pub const ALL_MESSAGE_IDS: &[MessageId] = &[
     MessageId::TuiAutoCommand,
     MessageId::TuiSlashLocale,
     MessageId::TuiSlashLanguage,
+    MessageId::TuiSlashApiKey,
+    MessageId::TuiSlashKey,
+    MessageId::TuiSlashLogin,
+    MessageId::TuiSlashLogout,
+    MessageId::TuiApiKeyCleared,
+    MessageId::TuiApiKeyUsage,
     MessageId::TuiLocalePickerHint,
     MessageId::TuiLocaleChanged,
     MessageId::TuiPendingInputsTitle,
     MessageId::TuiPendingQueuedKind,
     MessageId::TuiPendingEditHint,
     MessageId::TuiSteerInjected,
+    MessageId::TuiOnboardingTitle,
+    MessageId::TuiOnboardingWelcomeTitle,
+    MessageId::TuiOnboardingWelcomeBody,
+    MessageId::TuiOnboardingWorkspace,
+    MessageId::TuiOnboardingKeyTitle,
+    MessageId::TuiOnboardingKeyHint,
+    MessageId::TuiOnboardingModeTitle,
+    MessageId::TuiOnboardingModeAuto,
+    MessageId::TuiOnboardingModeAutoDesc,
+    MessageId::TuiOnboardingModeCode,
+    MessageId::TuiOnboardingModeCodeDesc,
+    MessageId::TuiOnboardingModeOffice,
+    MessageId::TuiOnboardingModeOfficeDesc,
+    MessageId::TuiOnboardingFooter,
+    MessageId::TuiOnboardingStepWelcome,
+    MessageId::TuiOnboardingStepKey,
+    MessageId::TuiOnboardingStepMode,
+    MessageId::TuiOnboardingKeySaved,
+    MessageId::TuiOnboardingComplete,
 ];
 
 pub fn tr(locale: Locale, id: MessageId) -> &'static str {
@@ -1223,6 +1273,12 @@ fn english(id: MessageId) -> &'static str {
         MessageId::TuiAutoCommand => "Command",
         MessageId::TuiSlashLocale => "Switch UI language (empty cycles)",
         MessageId::TuiSlashLanguage => "Switch UI language (alias)",
+        MessageId::TuiSlashApiKey => "Save or clear DeepSeek API key",
+        MessageId::TuiSlashKey => "Save or clear API key (alias)",
+        MessageId::TuiSlashLogin => "Save DeepSeek API key (CLI alias)",
+        MessageId::TuiSlashLogout => "Clear saved DeepSeek API key",
+        MessageId::TuiApiKeyCleared => "API key cleared",
+        MessageId::TuiApiKeyUsage => "/api-key sk-… save · /api-key clear or /logout remove",
         MessageId::TuiLocalePickerHint => {
             " Locale | ^v select  Enter apply  empty /locale cycles  Esc cancel "
         }
@@ -1233,6 +1289,31 @@ fn english(id: MessageId) -> &'static str {
         MessageId::TuiPendingQueuedKind => "Queued follow-up",
         MessageId::TuiPendingEditHint => " ↑ edit last queued message",
         MessageId::TuiSteerInjected => "steer: injected into current turn",
+        MessageId::TuiOnboardingTitle => "Setup",
+        MessageId::TuiOnboardingWelcomeTitle => "Welcome to Zagens",
+        MessageId::TuiOnboardingWelcomeBody => {
+            "Get started in a few steps — configure your API key and default mode."
+        }
+        MessageId::TuiOnboardingWorkspace => "Workspace:",
+        MessageId::TuiOnboardingKeyTitle => "Enter your DeepSeek API key",
+        MessageId::TuiOnboardingKeyHint => "Stored only on this machine. Esc to skip this step.",
+        MessageId::TuiOnboardingModeTitle => "Choose a default mode",
+        MessageId::TuiOnboardingModeAuto => "Auto",
+        MessageId::TuiOnboardingModeAutoDesc => "Zagens picks code vs office from the task.",
+        MessageId::TuiOnboardingModeCode => "Code",
+        MessageId::TuiOnboardingModeCodeDesc => {
+            "Engineering: files, shell, long-horizon refactors."
+        }
+        MessageId::TuiOnboardingModeOffice => "Office",
+        MessageId::TuiOnboardingModeOfficeDesc => {
+            "Documents: writing, spreadsheets, reports, slides."
+        }
+        MessageId::TuiOnboardingFooter => "Enter next · Esc back · Esc on key step skips",
+        MessageId::TuiOnboardingStepWelcome => "Welcome",
+        MessageId::TuiOnboardingStepKey => "API Key",
+        MessageId::TuiOnboardingStepMode => "Mode",
+        MessageId::TuiOnboardingKeySaved => "API key saved",
+        MessageId::TuiOnboardingComplete => "Setup complete — happy building!",
     }
 }
 
@@ -1619,12 +1700,41 @@ fn japanese(id: MessageId) -> Option<&'static str> {
         MessageId::TuiAutoCommand => "コマンド",
         MessageId::TuiSlashLocale => "UI 言語を切替（空で循環）",
         MessageId::TuiSlashLanguage => "UI 言語を切替（別名）",
+        MessageId::TuiSlashApiKey => "DeepSeek API キーを保存または削除",
+        MessageId::TuiSlashKey => "API キー保存/削除（別名）",
+        MessageId::TuiSlashLogin => "DeepSeek API キーを保存（CLI 別名）",
+        MessageId::TuiSlashLogout => "保存済み DeepSeek API キーを削除",
+        MessageId::TuiApiKeyCleared => "API キーを削除しました",
+        MessageId::TuiApiKeyUsage => "/api-key sk-… 保存 · /api-key clear または /logout で削除",
         MessageId::TuiLocalePickerHint => " 言語 | ^v 選択  Enter 適用  空 /locale 循環  Esc 取消 ",
         MessageId::TuiLocaleChanged => "locale: {locale}（UI 更新済み；モデル返答は次ターンから）",
         MessageId::TuiPendingInputsTitle => "保留入力",
         MessageId::TuiPendingQueuedKind => "キュー",
         MessageId::TuiPendingEditHint => " ↑ 最後のキューを編集",
         MessageId::TuiSteerInjected => "steer: 現在ターンに注入しました",
+        MessageId::TuiOnboardingTitle => "セットアップ",
+        MessageId::TuiOnboardingWelcomeTitle => "Zagens へようこそ",
+        MessageId::TuiOnboardingWelcomeBody => {
+            "数ステップで始められます — API キーとデフォルトモードを設定してください。"
+        }
+        MessageId::TuiOnboardingWorkspace => "ワークスペース:",
+        MessageId::TuiOnboardingKeyTitle => "DeepSeek API キーを入力",
+        MessageId::TuiOnboardingKeyHint => "この端末にのみ保存されます。Esc でスキップ。",
+        MessageId::TuiOnboardingModeTitle => "デフォルトモードを選択",
+        MessageId::TuiOnboardingModeAuto => "自動",
+        MessageId::TuiOnboardingModeAutoDesc => "タスクに応じて code / office を選択。",
+        MessageId::TuiOnboardingModeCode => "Code",
+        MessageId::TuiOnboardingModeCodeDesc => "開発: ファイル、シェル、大規模リファクタ。",
+        MessageId::TuiOnboardingModeOffice => "Office",
+        MessageId::TuiOnboardingModeOfficeDesc => {
+            "ドキュメント: 執筆、表計算、レポート、スライド。"
+        }
+        MessageId::TuiOnboardingFooter => "Enter 次へ · Esc 戻る · キー入力で Esc はスキップ",
+        MessageId::TuiOnboardingStepWelcome => "ようこそ",
+        MessageId::TuiOnboardingStepKey => "API キー",
+        MessageId::TuiOnboardingStepMode => "モード",
+        MessageId::TuiOnboardingKeySaved => "API キーを保存しました",
+        MessageId::TuiOnboardingComplete => "セットアップ完了 — さあ始めましょう！",
     })
 }
 
@@ -1968,12 +2078,37 @@ fn chinese_simplified(id: MessageId) -> Option<&'static str> {
         MessageId::TuiAutoCommand => "命令",
         MessageId::TuiSlashLocale => "切换界面语言（空参数循环）",
         MessageId::TuiSlashLanguage => "切换界面语言（别名）",
+        MessageId::TuiSlashApiKey => "保存或清除 DeepSeek API 密钥",
+        MessageId::TuiSlashKey => "保存或清除 API 密钥（别名）",
+        MessageId::TuiSlashLogin => "保存 DeepSeek API 密钥（CLI 别名）",
+        MessageId::TuiSlashLogout => "清除已保存的 DeepSeek API 密钥",
+        MessageId::TuiApiKeyCleared => "API 密钥已清除",
+        MessageId::TuiApiKeyUsage => "/api-key sk-… 保存 · /api-key clear 或 /logout 清除",
         MessageId::TuiLocalePickerHint => " 语言 | ^v 选择  Enter 应用  空 /locale 循环  Esc 取消 ",
         MessageId::TuiLocaleChanged => "locale: {locale}（界面已更新；模型回复从下一回合起生效）",
         MessageId::TuiPendingInputsTitle => "待发送输入",
         MessageId::TuiPendingQueuedKind => "排队",
         MessageId::TuiPendingEditHint => " ↑ 编辑最后一条排队消息",
         MessageId::TuiSteerInjected => "steer: 已注入当前回合",
+        MessageId::TuiOnboardingTitle => "初始化",
+        MessageId::TuiOnboardingWelcomeTitle => "欢迎使用 Zagens",
+        MessageId::TuiOnboardingWelcomeBody => "只需几步 — 配置 API 密钥与默认模式即可开始。",
+        MessageId::TuiOnboardingWorkspace => "工作区:",
+        MessageId::TuiOnboardingKeyTitle => "输入 DeepSeek API 密钥",
+        MessageId::TuiOnboardingKeyHint => "仅保存在本机。Esc 可跳过此步。",
+        MessageId::TuiOnboardingModeTitle => "选择默认模式",
+        MessageId::TuiOnboardingModeAuto => "自动",
+        MessageId::TuiOnboardingModeAutoDesc => "根据任务在 code / office 间自动选择。",
+        MessageId::TuiOnboardingModeCode => "Code",
+        MessageId::TuiOnboardingModeCodeDesc => "工程开发：文件、命令行、长周期重构。",
+        MessageId::TuiOnboardingModeOffice => "Office",
+        MessageId::TuiOnboardingModeOfficeDesc => "文档办公：写作、表格、报告、演示。",
+        MessageId::TuiOnboardingFooter => "Enter 下一步 · Esc 返回 · 密钥页 Esc 跳过",
+        MessageId::TuiOnboardingStepWelcome => "欢迎",
+        MessageId::TuiOnboardingStepKey => "API 密钥",
+        MessageId::TuiOnboardingStepMode => "模式",
+        MessageId::TuiOnboardingKeySaved => "API 密钥已保存",
+        MessageId::TuiOnboardingComplete => "初始化完成 — 开始使用吧！",
     })
 }
 
@@ -2377,6 +2512,12 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::TuiAutoCommand => "Comando",
         MessageId::TuiSlashLocale => "Alternar idioma da UI (vazio alterna)",
         MessageId::TuiSlashLanguage => "Alternar idioma da UI (alias)",
+        MessageId::TuiSlashApiKey => "Salvar ou remover chave DeepSeek API",
+        MessageId::TuiSlashKey => "Salvar ou remover chave API (alias)",
+        MessageId::TuiSlashLogin => "Salvar chave DeepSeek API (alias CLI)",
+        MessageId::TuiSlashLogout => "Remover chave DeepSeek API salva",
+        MessageId::TuiApiKeyCleared => "Chave API removida",
+        MessageId::TuiApiKeyUsage => "/api-key sk-… salvar · /api-key clear ou /logout remover",
         MessageId::TuiLocalePickerHint => {
             " Idioma | ^v selecionar  Enter aplicar  vazio /locale alterna  Esc cancelar "
         }
@@ -2387,6 +2528,29 @@ fn portuguese_brazil(id: MessageId) -> Option<&'static str> {
         MessageId::TuiPendingQueuedKind => "Fila",
         MessageId::TuiPendingEditHint => " ↑ editar última mensagem na fila",
         MessageId::TuiSteerInjected => "steer: injetado na rodada atual",
+        MessageId::TuiOnboardingTitle => "Configuração",
+        MessageId::TuiOnboardingWelcomeTitle => "Bem-vindo ao Zagens",
+        MessageId::TuiOnboardingWelcomeBody => {
+            "Comece em poucos passos — configure a chave de API e o modo padrão."
+        }
+        MessageId::TuiOnboardingWorkspace => "Workspace:",
+        MessageId::TuiOnboardingKeyTitle => "Informe sua chave DeepSeek API",
+        MessageId::TuiOnboardingKeyHint => "Armazenada apenas neste computador. Esc para pular.",
+        MessageId::TuiOnboardingModeTitle => "Escolha o modo padrão",
+        MessageId::TuiOnboardingModeAuto => "Auto",
+        MessageId::TuiOnboardingModeAutoDesc => "Zagens escolhe code ou office conforme a tarefa.",
+        MessageId::TuiOnboardingModeCode => "Code",
+        MessageId::TuiOnboardingModeCodeDesc => "Engenharia: arquivos, shell, refatorações longas.",
+        MessageId::TuiOnboardingModeOffice => "Office",
+        MessageId::TuiOnboardingModeOfficeDesc => {
+            "Documentos: redação, planilhas, relatórios, slides."
+        }
+        MessageId::TuiOnboardingFooter => "Enter avançar · Esc voltar · Esc na chave pula",
+        MessageId::TuiOnboardingStepWelcome => "Boas-vindas",
+        MessageId::TuiOnboardingStepKey => "Chave API",
+        MessageId::TuiOnboardingStepMode => "Modo",
+        MessageId::TuiOnboardingKeySaved => "Chave API salva",
+        MessageId::TuiOnboardingComplete => "Configuração concluída — bom trabalho!",
     })
 }
 

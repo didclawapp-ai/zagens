@@ -27,6 +27,9 @@ pub enum SlashAction {
     ClearComposer,
     SetLocale(String),
     CycleLocale,
+    SaveApiKey(String),
+    ClearApiKey,
+    ShowApiKeyUsage,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -48,6 +51,9 @@ pub(crate) enum SlashActionKind {
     Automation,
     Clear,
     Locale,
+    ApiKey,
+    Login,
+    Logout,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -132,6 +138,30 @@ const COMMANDS: &[SlashCommandDef] = &[
         description: "Switch UI language (alias)",
         takes_arg: true,
         action: SlashActionKind::Locale,
+    },
+    SlashCommandDef {
+        name: "api-key",
+        description: "Save or clear DeepSeek API key",
+        takes_arg: true,
+        action: SlashActionKind::ApiKey,
+    },
+    SlashCommandDef {
+        name: "key",
+        description: "Save or clear API key (alias)",
+        takes_arg: true,
+        action: SlashActionKind::ApiKey,
+    },
+    SlashCommandDef {
+        name: "login",
+        description: "Save DeepSeek API key (CLI alias)",
+        takes_arg: true,
+        action: SlashActionKind::Login,
+    },
+    SlashCommandDef {
+        name: "logout",
+        description: "Clear saved DeepSeek API key",
+        takes_arg: false,
+        action: SlashActionKind::Logout,
     },
 ];
 
@@ -490,6 +520,27 @@ pub fn try_parse_action(composer: &str, current_workspace: &Path) -> Option<Slas
         SlashActionKind::Help => Some(SlashAction::ShowHelp),
         SlashActionKind::Automation => Some(SlashAction::ShowAutomation),
         SlashActionKind::Clear => Some(SlashAction::ClearComposer),
+        SlashActionKind::ApiKey => parse_api_key_action(arg),
+        SlashActionKind::Login => {
+            if arg.is_empty() {
+                None
+            } else if super::api_key_cmd::is_clear_arg(arg) {
+                Some(SlashAction::ClearApiKey)
+            } else {
+                Some(SlashAction::SaveApiKey(arg.trim().to_string()))
+            }
+        }
+        SlashActionKind::Logout => Some(SlashAction::ClearApiKey),
+    }
+}
+
+fn parse_api_key_action(arg: &str) -> Option<SlashAction> {
+    if arg.is_empty() {
+        Some(SlashAction::ShowApiKeyUsage)
+    } else if super::api_key_cmd::is_clear_arg(arg) {
+        Some(SlashAction::ClearApiKey)
+    } else {
+        Some(SlashAction::SaveApiKey(arg.trim().to_string()))
     }
 }
 
@@ -874,6 +925,25 @@ mod tests {
     #[test]
     fn incomplete_model_returns_none() {
         assert!(try_parse_action("/model", Path::new(".")).is_none());
+    }
+
+    #[test]
+    fn parse_api_key_save_clear_and_logout() {
+        let ws = Path::new(".");
+        let save = try_parse_action("/api-key sk-test", ws).expect("save");
+        assert_eq!(save, SlashAction::SaveApiKey("sk-test".into()));
+        assert_eq!(
+            try_parse_action("/key clear", ws),
+            Some(SlashAction::ClearApiKey)
+        );
+        assert_eq!(
+            try_parse_action("/logout", ws),
+            Some(SlashAction::ClearApiKey)
+        );
+        assert_eq!(
+            try_parse_action("/api-key", ws),
+            Some(SlashAction::ShowApiKeyUsage)
+        );
     }
 
     #[test]

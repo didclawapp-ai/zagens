@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **TUI i18n:** Ratatui chrome now reads `~/.zagens/settings.toml` `locale` (auto / en / ja / zh-Hans / pt-BR) — panels, composer hints, slash picker, help overlay, approval modal, automation overlay, left-rail sessions, and transcript empty state. Added 74 `Tui*` message IDs in `localization.rs` with four-language coverage; `tui/i18n.rs` wires helpers into `AppState.locale`. **`/locale`** and **`/language`** slash commands switch language at runtime (persist settings, refresh UI); empty `/locale` cycles tags.
 
+- **TUI onboarding:** First-run overlay aligned with desktop — welcome, optional DeepSeek API key (Esc skip), default task type (`auto` / `code` / `office`); reads/writes `~/.zagens/settings.toml` (`onboarding_complete`, `task_type_preference`); **`--skip-onboarding`** CLI flag; new threads respect saved task-type preference instead of forcing `code`.
+
+- **TUI slash commands:** **`/api-key`** / **`/key`** save or clear the DeepSeek API key (`clear` removes); **`/login`** / **`/logout`** CLI-aligned aliases.
+
 ### Fixed
 
 - **TUI (`zagens-tui`):** Multi-line user prompts show a single `you>` tag with indented continuation lines (paste/send no longer repeats the tag on every row).

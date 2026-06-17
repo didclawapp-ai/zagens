@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use tokio::sync::broadcast;
 
@@ -18,7 +18,7 @@ use crate::runtime_threads::{
     UpdateThreadRequest,
 };
 use crate::task_manager::TaskManagerConfig;
-use crate::task_type::TaskType;
+use crate::task_type::resolve_task_type;
 
 use super::approval_policy::{self, policy_cyclable, policy_display_label};
 use super::harness::{ChecklistSnapshot, parse_checklist_json, parse_checklist_panel_payload};
@@ -128,7 +128,6 @@ impl TuiSessionHost {
         let layout_prefs = super::layout::TuiLayoutPrefs::load();
         let thread =
             resolve_thread(&manager, ctx, cli, layout_prefs.last_thread_id.as_deref()).await?;
-        let thread = ensure_tui_code_task_type(&manager, thread).await?;
         manager.resume_thread(&thread.id).await?;
 
         let event_rx = manager.subscribe_events();
@@ -402,9 +401,33 @@ impl TuiSessionHost {
         SessionList::from_threads_with_summaries(threads, active_id, &turn_summaries, locale)
     }
 
+    pub async fn apply_task_type(&mut self, raw: &str) -> Result<()> {
+        let task_type = resolve_task_type(Some(raw), &self.thread.workspace, None)
+            .as_str()
+            .to_string();
+        if self.thread.task_type == task_type {
+            return Ok(());
+        }
+        let mut updated = self.thread.clone();
+        updated.task_type = task_type;
+        updated.updated_at = Utc::now();
+        {
+            let store = self.manager.store.clone();
+            let copy = updated.clone();
+            tokio::task::spawn_blocking(move || store.save_thread(&copy))
+                .await
+                .map_err(|e| anyhow::anyhow!("save thread panicked: {e}"))??;
+        }
+        {
+            let mut active = self.manager.active.lock().await;
+            active.engines.remove(&updated.id);
+        }
+        self.thread = updated;
+        Ok(())
+    }
+
     pub async fn switch_thread(&mut self, thread_id: &str) -> Result<()> {
         let thread = self.manager.get_thread(thread_id).await?;
-        let thread = ensure_tui_code_task_type(&self.manager, thread).await?;
         self.manager.resume_thread(&thread.id).await?;
         self.thread = thread;
         self.auto_approve = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
@@ -430,7 +453,6 @@ impl TuiSessionHost {
                     .await?
             }
         };
-        let thread = ensure_tui_code_task_type(&self.manager, thread).await?;
         self.manager.resume_thread(&thread.id).await?;
         self.thread = thread;
         self.auto_approve = effective_auto_approve(self.yolo, &self.thread, &self.approval_policy);
@@ -615,47 +637,28 @@ async fn create_new_thread(
         .await
 }
 
-/// TUI targets code/agent workflows; office task type is not used.
+/// TUI thread creation respects `~/.zagens/settings.toml` task-type preference.
 fn tui_create_thread_request(
     workspace: std::path::PathBuf,
     mode: &str,
     yolo: bool,
     allow_shell: bool,
 ) -> CreateThreadRequest {
+    let pref = zagens_config::read_task_type_preference_setting()
+        .ok()
+        .flatten();
+    let task_type = resolve_task_type(pref.as_deref().or(Some("code")), &workspace, None)
+        .as_str()
+        .to_string();
     CreateThreadRequest {
         workspace: Some(workspace),
         mode: Some(mode.to_string()),
         auto_approve: Some(yolo),
         allow_shell: Some(allow_shell),
         trust_mode: Some(yolo),
-        task_type: Some(TaskType::Code.as_str().to_string()),
+        task_type: Some(task_type),
         ..Default::default()
     }
-}
-
-/// Resume/continue may load legacy `office` threads — normalize to code for TUI.
-async fn ensure_tui_code_task_type(
-    manager: &RuntimeThreadManager,
-    thread: ThreadRecord,
-) -> Result<ThreadRecord> {
-    if thread.task_type == TaskType::Code.as_str() {
-        return Ok(thread);
-    }
-    let mut updated = thread;
-    updated.task_type = TaskType::Code.as_str().to_string();
-    updated.updated_at = Utc::now();
-    {
-        let store = manager.store.clone();
-        let copy = updated.clone();
-        tokio::task::spawn_blocking(move || store.save_thread(&copy))
-            .await
-            .map_err(|e| anyhow!("save thread panicked: {e}"))??;
-    }
-    {
-        let mut active = manager.active.lock().await;
-        active.engines.remove(&updated.id);
-    }
-    Ok(updated)
 }
 
 async fn resolve_by_prefix(manager: &RuntimeThreadManager, needle: &str) -> Result<ThreadRecord> {

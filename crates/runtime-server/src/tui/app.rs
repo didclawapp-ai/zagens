@@ -23,7 +23,7 @@ use super::inspector::{
 use super::layout::{InspectorTab, LayoutEngine, TuiLayoutPrefs};
 use super::left_rail::SessionList;
 use super::lht_mode::{format_lht_mode_label, load_lht_composer_mode};
-use super::overlay::{AutomationUiState, PendingApproval};
+use super::overlay::{AutomationUiState, OnboardingUiState, PendingApproval};
 use super::poll::poll_interval;
 use super::session_host::TuiSessionHost;
 use super::task_graph::{TaskGraphSnapshot, title_bar_harness_line_from_graph};
@@ -79,6 +79,9 @@ pub struct AppState {
     pub show_help: bool,
     /// Whether the automation settings overlay is open.
     pub show_automation: bool,
+    /// First-run onboarding overlay (welcome, API key, default task type).
+    pub show_onboarding: bool,
+    pub onboarding: OnboardingUiState,
     /// UI state for the automation overlay (list selection, edit form buffers).
     pub automation_ui: AutomationUiState,
     /// Runtime engine that drives timer and idle triggers.
@@ -151,6 +154,8 @@ impl AppState {
             pending_approval: None,
             show_help: false,
             show_automation: false,
+            show_onboarding: false,
+            onboarding: OnboardingUiState::new(vec![]),
             automation_ui: AutomationUiState::default(),
             automation_engine: AutomationEngine::new(AutomationConfig::load()),
             editor_request: None,
@@ -688,6 +693,7 @@ impl AppState {
             && self.layout.focus == FocusRegion::Chat
             && !self.approval_open()
             && !self.show_help
+            && !self.show_onboarding
     }
 
     pub fn composer_render(
@@ -824,6 +830,7 @@ impl AppState {
     fn composer_editable(&self) -> bool {
         !self.approval_open()
             && !self.show_help
+            && !self.show_onboarding
             && self.layout.focus == FocusRegion::Chat
             && self.composer_focus
     }
@@ -1075,6 +1082,8 @@ fn test_app_state_for_draw(composer_text: &str) -> AppState {
         pending_approval: None,
         show_help: false,
         show_automation: false,
+        show_onboarding: false,
+        onboarding: OnboardingUiState::new(vec![]),
         automation_ui: AutomationUiState::default(),
         automation_engine: AutomationEngine::new(AutomationConfig::default()),
         editor_request: None,

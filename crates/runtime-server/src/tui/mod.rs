@@ -1,6 +1,7 @@
 //! Full-screen terminal UI (`zagens-tui`).
 
 mod activity_strip;
+mod api_key_cmd;
 mod app;
 mod approval_policy;
 mod automation;
@@ -22,6 +23,7 @@ mod left_rail;
 mod lht_mode;
 mod locale_cmd;
 mod markdown_table;
+mod onboarding;
 mod overlay;
 mod pending_input;
 mod poll;
@@ -48,6 +50,10 @@ use self::composer_slash::SlashAction;
 use self::focus::FocusRegion;
 use self::input_thread::TerminalInput;
 use self::layout::{InspectorTab, TuiLayoutPrefs};
+use self::onboarding::{
+    OnboardingPlan, handle_onboarding_key, onboarding_paste, should_show_onboarding,
+};
+use self::overlay::OnboardingUiState;
 use self::session_host::TuiSessionHost;
 use self::submit_disposition::{SubmitDisposition, decide as decide_submit_disposition};
 use self::terminal::{TuiTerminal, enter_inserts_newline, is_ctrl_c, is_key_press};
@@ -64,13 +70,23 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
     }
 
     let mut ctx = load_cli_context(&cli)?;
+    let show_onboarding = should_show_onboarding(&cli, &ctx.config);
+    let onboarding_plan = OnboardingPlan::build(&ctx.config);
     let mut host = TuiSessionHost::open(&mut ctx, &cli).await?;
     let resumed = cli.resume.is_some() || cli.continue_session || !cli.fresh;
-    let initial_prompt = cli.prompt.clone();
+    let initial_prompt = if show_onboarding {
+        None
+    } else {
+        cli.prompt.clone()
+    };
 
     let inline_mode = cli.no_alt_screen;
     let mouse_capture = resolve_mouse_capture(&cli);
     let mut app = AppState::new(TuiLayoutPrefs::load(), inline_mode, &host).await;
+    if show_onboarding {
+        app.show_onboarding = true;
+        app.onboarding = OnboardingUiState::new(onboarding_plan.phases);
+    }
     if resumed {
         app.seed_resume_banner();
     }
@@ -163,7 +179,9 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                     }
                     let mut quit = false;
                     if let Some(paste) = composer_paste_batch::try_coalesce_terminal_paste(&batch) {
-                        if app.layout.focus == FocusRegion::Chat {
+                        if app.show_onboarding {
+                            onboarding_paste(&mut app, &paste);
+                        } else if app.layout.focus == FocusRegion::Chat {
                             if !app.composer_focus {
                                 app.composer_focus = true;
                             }
@@ -332,6 +350,10 @@ async fn handle_input_event(
             app.terminal_resized = true;
         }
         Event::Paste(text) => {
+            if app.show_onboarding {
+                onboarding_paste(app, text);
+                return Ok(false);
+            }
             if app.layout.focus == FocusRegion::Chat {
                 if !app.composer_focus {
                     app.composer_focus = true;
@@ -357,6 +379,11 @@ async fn handle_input_event(
             if app.show_help {
                 app.show_help = false;
                 return Ok(false);
+            }
+
+            // Onboarding overlay — intercept all keys while open.
+            if app.show_onboarding {
+                return handle_onboarding_key(*key, ctx, host, app).await;
             }
 
             // Automation overlay — intercept all keys while open.
@@ -1076,7 +1103,10 @@ fn execute_slash_noop(app: &mut AppState, action: SlashAction) -> bool {
         | SlashAction::SwitchModel(_)
         | SlashAction::SwitchWorkspace(_)
         | SlashAction::SetLocale(_)
-        | SlashAction::CycleLocale => false,
+        | SlashAction::CycleLocale
+        | SlashAction::SaveApiKey(_)
+        | SlashAction::ClearApiKey
+        | SlashAction::ShowApiKeyUsage => false,
     }
 }
 
@@ -1233,11 +1263,14 @@ async fn handle_slash_enter(
                     composer_slash::SlashActionKind::Help => SlashAction::ShowHelp,
                     composer_slash::SlashActionKind::Automation => SlashAction::ShowAutomation,
                     composer_slash::SlashActionKind::Clear => SlashAction::ClearComposer,
+                    composer_slash::SlashActionKind::Logout => SlashAction::ClearApiKey,
                     composer_slash::SlashActionKind::Workspace
                     | composer_slash::SlashActionKind::Model
                     | composer_slash::SlashActionKind::Lht
                     | composer_slash::SlashActionKind::Theme
-                    | composer_slash::SlashActionKind::Locale => {
+                    | composer_slash::SlashActionKind::Locale
+                    | composer_slash::SlashActionKind::ApiKey
+                    | composer_slash::SlashActionKind::Login => {
                         return Ok(true);
                     }
                 };
@@ -1326,6 +1359,15 @@ async fn execute_slash_action(
             app.automation_ui.clamp_selection(len);
         }
         SlashAction::ClearComposer => {}
+        SlashAction::SaveApiKey(key) => {
+            api_key_cmd::apply_save_api_key(ctx, app, &key)?;
+        }
+        SlashAction::ClearApiKey => {
+            api_key_cmd::apply_clear_api_key(ctx, app)?;
+        }
+        SlashAction::ShowApiKeyUsage => {
+            app.push_system_line(tr(app.locale, MessageId::TuiApiKeyUsage).to_string());
+        }
     }
     Ok(())
 }
