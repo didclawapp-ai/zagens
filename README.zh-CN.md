@@ -12,12 +12,12 @@
 
 > **作者语：** 不要相信 AI Agent 能做任何事情，它是有边界的；我们能做的，就是拓展这种边界。
 
-> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.7.5** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
+> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.8.0** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.5`**）· [zagens.com/download](https://zagens.com/download) |
+| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.0`**）· [zagens.com/download](https://zagens.com/download) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
@@ -60,7 +60,7 @@
 
 ---
 
-## 当前已具备（v0.7.5）
+## 当前已具备（v0.8.0）
 
 **Kernel V3 引擎：** 事件溯源 turn 循环 — `sessions.db` 中的 `KernelEvent` 日志、`LiveTurnMachine` 规划、`EffectInterpreter` IO、golden 重放夹具。规格：[AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md)。
 
@@ -126,18 +126,29 @@ cargo build -p zagens-cli --features tui --bin zagens-tui
 ./target/debug/zagens-tui          # 恢复上次会话；--fresh 新建会话
 ```
 
-**无 GUI CLI**（自动化 / HTTP sidecar）：
+**crates.io**（Linux / macOS / Windows）：
 
 ```bash
-cargo install zagens-cli --version 0.7.5 --bin zagens --locked
+# 无 GUI CLI
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
 
+# Runtime sidecar（可选；桌面端自带）
+cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked
+
+# 全屏终端 TUI（需启用 `tui` feature）
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+```
+
+**CLI 示例：**
+
+```bash
 zagens doctor
 zagens exec '总结 src/ 变更' --json
 zagens exec '重构 auth 模块' --auto
 zagens serve --http --port 7878
 ```
 
-预编译 CLI 与 SHA-256：[Releases](https://github.com/didclawapp-ai/zagens/releases)。配置样例：[config.example.toml](config.example.toml)。
+预编译二进制与 SHA-256：[Releases](https://github.com/didclawapp-ai/zagens/releases)。配置样例：[config.example.toml](config.example.toml)。
 
 ---
 

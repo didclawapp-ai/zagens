@@ -12,12 +12,12 @@
 
 > **作者より：** AI Agent が何でもできるわけではない — 境界がある。私たちにできるのは、その境界を広げることだ。
 
-> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.7.5** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
+> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.8.0** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
 
 | リソース | リンク |
 |----------|--------|
 | ユーザーガイド | [zagens.com/docs](https://zagens.com/docs) |
-| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.7.5`**）· [zagens.com/download](https://zagens.com/download) |
+| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.0`**）· [zagens.com/download](https://zagens.com/download) |
 | 設計仕様 | [`docs/README.md`](docs/README.md) |
 | コントリビューション | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | セキュリティ | [`SECURITY.md`](SECURITY.md) |
@@ -60,7 +60,7 @@
 
 ---
 
-## 現時点で提供（v0.7.5）
+## 現時点で提供（v0.8.0）
 
 **Kernel V3 エンジン:** イベントソーシング turn — `sessions.db` の `KernelEvent` ログ、`LiveTurnMachine` 計画、`EffectInterpreter` IO、golden リプレイフィクスチャ。仕様: [AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md)。
 
@@ -126,18 +126,29 @@ cargo build -p zagens-cli --features tui --bin zagens-tui
 ./target/debug/zagens-tui          # 前回セッション復元；--fresh で新規
 ```
 
-**ヘッドレス CLI**（自動化 / HTTP sidecar）:
+**crates.io**（Linux / macOS / Windows）:
 
 ```bash
-cargo install zagens-cli --version 0.7.5 --bin zagens --locked
+# ヘッドレス CLI
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
 
+# Runtime sidecar（任意；デスクトップは同梱）
+cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked
+
+# 全画面ターミナル TUI（`tui` feature が必要）
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+```
+
+**CLI の例:**
+
+```bash
 zagens doctor
 zagens exec 'summarize src/' --json
 zagens exec 'refactor auth module' --auto
 zagens serve --http --port 7878
 ```
 
-ビルド済み CLI + SHA-256: [Releases](https://github.com/didclawapp-ai/zagens/releases)。設定: [config.example.toml](config.example.toml)。
+ビルド済みバイナリ + SHA-256: [Releases](https://github.com/didclawapp-ai/zagens/releases)。設定: [config.example.toml](config.example.toml)。
 
 ---
 

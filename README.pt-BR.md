@@ -12,12 +12,12 @@ Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo
 
 > **Nota dos autores:** Não acredite que um Agent de IA pode fazer qualquer coisa — ele tem limites. O que podemos fazer é ampliar esses limites.
 
-> **Licença:** [MIT](LICENSE). Linhagem do runtime: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). Capacidades abaixo refletem **Zagens v0.7.5** — veja [CHANGELOG.md](CHANGELOG.md).
+> **Licença:** [MIT](LICENSE). Linhagem do runtime: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). Capacidades abaixo refletem **Zagens v0.8.0** — veja [CHANGELOG.md](CHANGELOG.md).
 
 | Recurso | Link |
 |---------|------|
 | Guias do usuário | [zagens.com/docs](https://zagens.com/docs) |
-| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (último **`zagens-v0.7.5`**) · [zagens.com/download](https://zagens.com/download) |
+| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (último **`zagens-v0.8.0`**) · [zagens.com/download](https://zagens.com/download) |
 | Especificações | [`docs/README.md`](docs/README.md) |
 | Contribuição | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Segurança | [`SECURITY.md`](SECURITY.md) |
@@ -60,7 +60,7 @@ Também: **CRAFT multi-agent** (sub-agents, vereditos fix-loop, blackboard P1 �
 
 ---
 
-## Disponível hoje (v0.7.5)
+## Disponível hoje (v0.8.0)
 
 **Motor Kernel V3:** loop de turn event-sourced — log `KernelEvent` em `sessions.db`, planejamento `LiveTurnMachine`, IO `EffectInterpreter`, fixtures golden de replay. Spec: [AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md).
 
@@ -126,18 +126,29 @@ cargo build -p zagens-cli --features tui --bin zagens-tui
 ./target/debug/zagens-tui          # restaura última sessão; --fresh para nova
 ```
 
-**CLI headless** (automação / sidecar HTTP):
+**crates.io** (Linux / macOS / Windows):
 
 ```bash
-cargo install zagens-cli --version 0.7.5 --bin zagens --locked
+# CLI headless
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
 
+# Sidecar runtime (opcional; o desktop já inclui o seu)
+cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked
+
+# TUI em tela cheia no terminal (requer feature `tui`)
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+```
+
+**Exemplos de CLI:**
+
+```bash
 zagens doctor
 zagens exec 'summarize src/' --json
 zagens exec 'refactor auth module' --auto
 zagens serve --http --port 7878
 ```
 
-CLI pré-compilado + SHA-256: [Releases](https://github.com/didclawapp-ai/zagens/releases). Config: [config.example.toml](config.example.toml).
+Binários pré-compilados + SHA-256: [Releases](https://github.com/didclawapp-ai/zagens/releases). Config: [config.example.toml](config.example.toml).
 
 ---
 
