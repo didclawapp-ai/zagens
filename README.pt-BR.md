@@ -103,9 +103,77 @@ Specs públicas em [`docs/`](docs/README.md). Direção:
 
 ## Início rápido
 
-**Pré-compilado (Windows):** [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) — zip desktop + CLI `zagens` / `zagens-tui`. SmartScreen: [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md).
+### Zagens Desktop (Windows)
 
-**Da fonte — desktop:**
+[GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) distribui o instalador **Windows** (`*-setup.exe.zip`). Pacotes desktop macOS / Linux estão planejados. SmartScreen: [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md).
+
+### CLI e TUI — por plataforma
+
+| Superfície | Linux | macOS | Windows |
+|------------|-------|-------|---------|
+| **`zagens-tui`** (UI terminal em tela cheia) | ✅ | ✅ | ✅ |
+| **`zagens`** (CLI headless) | ✅ | ✅ | ✅ |
+| **App desktop** | — (use TUI) | — (use TUI) | ✅ instalador |
+
+Instale via **binários pré-compilados** ([Releases `zagens-v0.8.0`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0)), **`cargo install`** (crates.io) ou **da fonte** (abaixo).
+
+**Pré-requisito Rust** (só `cargo install` / fonte): [rustup](https://rustup.rs/) (Rust **1.88+**; CI usa 1.96). Linux/macOS: `source "$HOME/.cargo/env"`; Windows: abra um terminal novo.
+
+#### Linux (Ubuntu / Debian)
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl pkg-config libssl-dev
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+# TUI (primeira compilação: 10–30 min)
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+
+# CLI headless (opcional)
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
+```
+
+**Pré-compilado** (sem Rust): baixe `zagens-tui-x86_64-unknown-linux-gnu` e/ou `zagens-x86_64-unknown-linux-gnu` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0), verifique o `.sha256`, `chmod +x` e coloque no `PATH`.
+
+```bash
+zagens-tui              # restaura última sessão
+zagens-tui --fresh      # nova sessão
+```
+
+#### macOS
+
+```bash
+xcode-select --install    # se faltar toolchain C
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked   # opcional
+```
+
+**Pré-compilado:** `zagens-tui-x86_64-apple-darwin` ou `zagens-tui-aarch64-apple-darwin` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0).
+
+#### Windows
+
+**Pré-compilado (mais rápido):** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0) — `zagens-tui-x86_64-pc-windows-msvc.exe`, `zagens-x86_64-pc-windows-msvc.exe` (+ `.sha256`). Adicione a pasta ao `PATH` ou copie os `.exe` para uma pasta no `PATH`.
+
+**crates.io** (instale [Rust for Windows](https://rustup.rs/) antes):
+
+```powershell
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
+```
+
+### crates.io (todas as plataformas)
+
+```bash
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked           # sidecar HTTP (opcional)
+```
+
+### Da fonte — desktop
 
 ```bash
 git clone https://github.com/didclawapp-ai/zagens.git
@@ -119,25 +187,14 @@ cd .. && cargo tauri dev
 # API key: Configurações do Zagens ou ~/.zagens/config.toml
 ```
 
-**Da fonte — TUI terminal** (mesmo Kernel V3, runtime in-process):
+### Da fonte — TUI terminal
 
 ```bash
 cargo build -p zagens-cli --features tui --bin zagens-tui
 ./target/debug/zagens-tui          # restaura última sessão; --fresh para nova
 ```
 
-**crates.io** (Linux / macOS / Windows):
-
-```bash
-# CLI headless
-cargo install zagens-cli --version 0.8.0 --bin zagens --locked
-
-# Sidecar runtime (opcional; o desktop já inclui o seu)
-cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked
-
-# TUI em tela cheia no terminal (requer feature `tui`)
-cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
-```
+**API key:** `DEEPSEEK_API_KEY`, `~/.zagens/config.toml`, ou `/api-key` / onboarding no TUI.
 
 **Exemplos de CLI:**
 
@@ -148,7 +205,7 @@ zagens exec 'refactor auth module' --auto
 zagens serve --http --port 7878
 ```
 
-Binários pré-compilados + SHA-256: [Releases](https://github.com/didclawapp-ai/zagens/releases). Config: [config.example.toml](config.example.toml).
+Config: [config.example.toml](config.example.toml).
 
 ---
 

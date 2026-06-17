@@ -103,9 +103,77 @@
 
 ## クイックスタート
 
-**ビルド済み（Windows）:** [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) — デスクトップ zip + `zagens` / `zagens-tui` CLI。SmartScreen: [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
+### Zagens デスクトップ（Windows）
 
-**ソースから — デスクトップ:**
+[GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) で **Windows** デスクトップインストーラ（`*-setup.exe.zip`）を配布。macOS / Linux デスクトップパッケージは計画中。SmartScreen: [SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
+
+### CLI と TUI — プラットフォーム別
+
+| 入口 | Linux | macOS | Windows |
+|------|-------|-------|---------|
+| **`zagens-tui`**（全画面ターミナル UI） | ✅ | ✅ | ✅ |
+| **`zagens`**（ヘッドレス CLI） | ✅ | ✅ | ✅ |
+| **デスクトップアプリ** | —（TUI を使用） | —（TUI を使用） | ✅ インストーラ |
+
+**プリビルド**（[Releases `zagens-v0.8.0`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0)）、**`cargo install`**（crates.io）、**ソースビルド**（下記）のいずれかで導入。
+
+**Rust 前提**（`cargo install` / ソースのみ）: [rustup](https://rustup.rs/)（Rust **1.88+**；CI は 1.96）。Linux/macOS は `source "$HOME/.cargo/env"`、Windows はターミナル再起動。
+
+#### Linux（Ubuntu / Debian）
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl pkg-config libssl-dev
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+# TUI（初回コンパイルは 10–30 分程度）
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+
+# ヘッドレス CLI（任意）
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
+```
+
+**プリビルド**（Rust 不要）: [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0) から `zagens-tui-x86_64-unknown-linux-gnu` および/または `zagens-x86_64-unknown-linux-gnu` を取得し、`.sha256` を検証、`chmod +x` して `PATH` に配置。
+
+```bash
+zagens-tui              # 前回セッション復元
+zagens-tui --fresh      # 新規セッション
+```
+
+#### macOS
+
+```bash
+xcode-select --install    # C ツールチェーンがない場合
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked   # 任意
+```
+
+**プリビルド:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0) の `zagens-tui-x86_64-apple-darwin`（Intel）または `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
+
+#### Windows
+
+**プリビルド（最速）:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（+ `.sha256`）。フォルダを `PATH` に追加するか、`.exe` を `PATH` 上のディレクトリへコピー。
+
+**crates.io**（先に [Rust for Windows](https://rustup.rs/) をインストール）:
+
+```powershell
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
+```
+
+### crates.io（全プラットフォーム）
+
+```bash
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked           # HTTP sidecar（任意）
+```
+
+### ソースから — デスクトップ
 
 ```bash
 git clone https://github.com/didclawapp-ai/zagens.git
@@ -119,25 +187,14 @@ cd .. && cargo tauri dev
 # API キー: Zagens 設定、または ~/.zagens/config.toml
 ```
 
-**ソースから — ターミナル TUI**（同一 Kernel V3、プロセス内 runtime）:
+### ソースから — ターミナル TUI
 
 ```bash
 cargo build -p zagens-cli --features tui --bin zagens-tui
 ./target/debug/zagens-tui          # 前回セッション復元；--fresh で新規
 ```
 
-**crates.io**（Linux / macOS / Windows）:
-
-```bash
-# ヘッドレス CLI
-cargo install zagens-cli --version 0.8.0 --bin zagens --locked
-
-# Runtime sidecar（任意；デスクトップは同梱）
-cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked
-
-# 全画面ターミナル TUI（`tui` feature が必要）
-cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
-```
+**API キー:** `DEEPSEEK_API_KEY`、`~/.zagens/config.toml`、または TUI の `/api-key` / 初回オンボーディング。
 
 **CLI の例:**
 
@@ -148,7 +205,7 @@ zagens exec 'refactor auth module' --auto
 zagens serve --http --port 7878
 ```
 
-ビルド済みバイナリ + SHA-256: [Releases](https://github.com/didclawapp-ai/zagens/releases)。設定: [config.example.toml](config.example.toml)。
+設定: [config.example.toml](config.example.toml)。
 
 ---
 

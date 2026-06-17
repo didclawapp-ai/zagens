@@ -103,9 +103,77 @@
 
 ## 快速开始
 
-**预编译（Windows）：** [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) — 桌面安装 zip + `zagens` / `zagens-tui` CLI。SmartScreen：[SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
+### Zagens 桌面（Windows）
 
-**从源码 — 桌面：**
+[GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) 提供 **Windows** 桌面安装包（`*-setup.exe.zip`）。macOS / Linux 桌面包规划中。SmartScreen：[SMARTSCREEN.md](docs/desktop/SMARTSCREEN.md)。
+
+### CLI 与 TUI — 按平台
+
+| 入口 | Linux | macOS | Windows |
+|------|-------|-------|---------|
+| **`zagens-tui`**（全屏终端 UI） | ✅ | ✅ | ✅ |
+| **`zagens`**（无 GUI CLI） | ✅ | ✅ | ✅ |
+| **桌面应用** | —（用 TUI） | —（用 TUI） | ✅ 安装包 |
+
+可通过 **预编译包**（[Releases `zagens-v0.8.0`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0)）、**`cargo install`**（crates.io）或 **源码构建**（见下）安装。
+
+**Rust 前置**（仅 `cargo install` / 源码需要）：安装 [rustup](https://rustup.rs/)（Rust **1.88+**；CI 使用 1.96）。Linux/macOS 执行 `source "$HOME/.cargo/env"`，Windows 重开终端。
+
+#### Linux（Ubuntu / Debian）
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl pkg-config libssl-dev
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+# TUI（首次编译约 10–30 分钟）
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+
+# 无 GUI CLI（可选）
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
+```
+
+**预编译**（无需 Rust）：从 [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0) 下载 `zagens-tui-x86_64-unknown-linux-gnu` 和/或 `zagens-x86_64-unknown-linux-gnu`，校验对应 `.sha256`，`chmod +x` 后放入 `PATH` 目录。
+
+```bash
+zagens-tui              # 恢复上次会话
+zagens-tui --fresh      # 新建会话
+```
+
+#### macOS
+
+```bash
+xcode-select --install    # 若缺少 C 工具链
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked   # 可选
+```
+
+**预编译：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0) 上的 `zagens-tui-x86_64-apple-darwin`（Intel）或 `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
+
+#### Windows
+
+**预编译（最快）：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.0) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（及 `.sha256`）。将目录加入 `PATH`，或把 `.exe` 复制到已在 `PATH` 中的文件夹。
+
+**crates.io**（先安装 [Rust for Windows](https://rustup.rs/)）：
+
+```powershell
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked
+```
+
+### crates.io（全平台）
+
+```bash
+cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.0 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked           # HTTP sidecar（可选）
+```
+
+### 从源码 — 桌面
 
 ```bash
 git clone https://github.com/didclawapp-ai/zagens.git
@@ -119,25 +187,14 @@ cd .. && cargo tauri dev
 # API Key：Zagens 设置，或 ~/.zagens/config.toml
 ```
 
-**从源码 — 终端 TUI**（同一 Kernel V3 引擎，进程内 runtime）：
+### 从源码 — 终端 TUI
 
 ```bash
 cargo build -p zagens-cli --features tui --bin zagens-tui
 ./target/debug/zagens-tui          # 恢复上次会话；--fresh 新建会话
 ```
 
-**crates.io**（Linux / macOS / Windows）：
-
-```bash
-# 无 GUI CLI
-cargo install zagens-cli --version 0.8.0 --bin zagens --locked
-
-# Runtime sidecar（可选；桌面端自带）
-cargo install zagens-cli --version 0.8.0 --bin zagens-runtime --locked
-
-# 全屏终端 TUI（需启用 `tui` feature）
-cargo install zagens-cli --version 0.8.0 --bin zagens-tui --features tui --locked
-```
+**API Key：** `DEEPSEEK_API_KEY`、`~/.zagens/config.toml`，或 TUI 内 `/api-key` / 首次引导。
 
 **CLI 示例：**
 
@@ -148,7 +205,7 @@ zagens exec '重构 auth 模块' --auto
 zagens serve --http --port 7878
 ```
 
-预编译二进制与 SHA-256：[Releases](https://github.com/didclawapp-ai/zagens/releases)。配置样例：[config.example.toml](config.example.toml)。
+配置样例：[config.example.toml](config.example.toml)。
 
 ---
 
