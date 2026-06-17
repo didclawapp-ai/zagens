@@ -302,6 +302,21 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0
+          },
+          "run_layered_context_checkpoint": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "refresh_system_prompt": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
+          },
+          "emit_artifact": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0
           }
         },
         "required": [
@@ -312,7 +327,10 @@
           "run_compaction",
           "notify_lsp",
           "sleep",
-          "query_memory"
+          "query_memory",
+          "run_layered_context_checkpoint",
+          "refresh_system_prompt",
+          "emit_artifact"
         ]
       },
       "ResumeSessionKernelReplay": {
@@ -548,6 +566,26 @@
             ],
             "format": "uint32",
             "minimum": 0
+          },
+          "kernel_transcript_preview_row_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0
+          },
+          "message_transcript_preview_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message_transcript_preview_body_ok": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [

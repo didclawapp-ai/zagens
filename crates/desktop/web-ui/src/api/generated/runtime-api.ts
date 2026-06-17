@@ -1042,6 +1042,12 @@ export type components = {
             readonly sleep: number;
             /** Format: uint32 */
             readonly query_memory: number;
+            /** Format: uint32 */
+            readonly run_layered_context_checkpoint: number;
+            /** Format: uint32 */
+            readonly refresh_system_prompt: number;
+            /** Format: uint32 */
+            readonly emit_artifact: number;
         };
         readonly ResumeSessionKernelReplay: {
             /** Format: uint */
@@ -1094,6 +1100,10 @@ export type components = {
              * @description Anchor-class replay effect total (`inject_steer` + `run_compaction` + `notify_lsp`).
              */
             readonly replay_anchor_effect_count?: number | null;
+            /** Format: uint32 */
+            readonly kernel_transcript_preview_row_count?: number | null;
+            readonly message_transcript_preview_ok?: boolean | null;
+            readonly message_transcript_preview_body_ok?: boolean | null;
         };
         /** ResumeSessionResponse */
         readonly ResumeSessionResponse: {
