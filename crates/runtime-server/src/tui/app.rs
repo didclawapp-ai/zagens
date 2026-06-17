@@ -694,9 +694,15 @@ impl AppState {
 
         if self.composer.is_empty() {
             let hint_body = if self.transcript.is_live_activity() {
-                " waiting for reply...  Ctrl+C interrupt  Esc scroll  type to queue next message"
-            } else {
+                if self.composer_focus {
+                    " waiting for reply...  Ctrl+C interrupt  Esc scroll  type to queue next message"
+                } else {
+                    " waiting for reply...  Ctrl+C interrupt  Esc edit  j/k scroll transcript"
+                }
+            } else if self.composer_focus {
                 " type prompt...  Ctrl+V paste (recommended)  Shift+Enter newline  Enter send"
+            } else {
+                " Esc edit  j/k scroll transcript  Tab focus panes"
             };
             let hint_style = if self.composer_focus {
                 theme::composer_idle()

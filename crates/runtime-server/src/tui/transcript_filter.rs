@@ -36,6 +36,11 @@ fn sanitize_char(ch: char) -> Option<char> {
     }
 }
 
+/// ECMA-48 CSI final byte: `@` through `~` (0x40–0x7E).
+fn is_csi_final_byte(ch: char) -> bool {
+    ch.is_ascii() && (0x40..=0x7E).contains(&(ch as u8))
+}
+
 fn strip_ansi_escapes(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -44,7 +49,7 @@ fn strip_ansi_escapes(text: &str) -> String {
             if chars.peek() == Some(&'[') {
                 chars.next();
                 for c in chars.by_ref() {
-                    if c.is_ascii_alphabetic() || c == '@' {
+                    if is_csi_final_byte(c) {
                         break;
                     }
                 }
@@ -285,5 +290,16 @@ mod tests {
     #[test]
     fn compact_count_formats_thousands() {
         assert_eq!(format_compact_count(434_948), "435k chars");
+    }
+
+    #[test]
+    fn strip_ansi_csi_final_byte_tilde() {
+        let input = "\x1b[12~hello";
+        assert_eq!(strip_ansi_escapes(input), "hello");
+    }
+
+    #[test]
+    fn strip_ansi_drops_lone_escape_byte() {
+        assert_eq!(strip_ansi_escapes("\x1bPhello"), "Phello");
     }
 }

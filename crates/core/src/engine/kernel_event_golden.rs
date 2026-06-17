@@ -315,6 +315,7 @@ mod tests {
         );
         let counts = crate::engine::turn_machine::replay_effect_counts(&events);
         assert_eq!(counts.call_model, 1);
+        assert!(counts.run_layered_context_checkpoint >= 1);
         assert_eq!(
             events
                 .iter()
@@ -346,6 +347,10 @@ mod tests {
         )));
         assert_eq!(
             crate::engine::turn_machine::replay_effect_counts(&events).call_model,
+            1
+        );
+        assert_eq!(
+            crate::engine::turn_machine::replay_effect_counts(&events).refresh_system_prompt,
             1
         );
     }

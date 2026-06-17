@@ -27,6 +27,8 @@ const THINKING_GAP_LINES: usize = 1;
 /// How many lines of live thinking text to show while the model is still streaming its reasoning.
 const THINKING_LIVE_LINES: usize = 3;
 const THINKING_PREVIEW_MAX: usize = 120;
+const THINKING_EXPAND_MAX: usize = 64;
+const TOOL_DETAIL_EXPAND_LINES: usize = 16;
 
 /// Visual category for transcript coloring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -656,13 +658,23 @@ fn logical_lines_for_merged_thinking(
         return out;
     }
     if expanded {
-        for line in text.lines().take(64) {
-            if line.trim().is_empty() {
-                continue;
-            }
+        let lines: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+        let total = lines.len();
+        for line in lines.iter().take(THINKING_EXPAND_MAX) {
             out.push(LogicalLine::plain(
                 TranscriptLineKind::Thinking,
                 format!("     {line}"),
+                false,
+            ));
+        }
+        if total > THINKING_EXPAND_MAX {
+            let remaining = total - THINKING_EXPAND_MAX;
+            out.push(LogicalLine::plain(
+                TranscriptLineKind::Thinking,
+                format!("     … ({remaining} more lines)"),
                 false,
             ));
         }
@@ -960,10 +972,20 @@ fn logical_lines_for_tool(tool: &TurnTool, anim_since: Option<Instant>) -> Vec<L
         live,
     )];
     if tool.expanded && !tool.detail.is_empty() {
-        for line in tool.detail.lines().take(16) {
+        let lines: Vec<&str> = tool.detail.lines().collect();
+        let total = lines.len();
+        for line in lines.iter().take(TOOL_DETAIL_EXPAND_LINES) {
             out.push(LogicalLine::plain(
                 TranscriptLineKind::ToolChain,
                 format!("    {line}"),
+                false,
+            ));
+        }
+        if total > TOOL_DETAIL_EXPAND_LINES {
+            let remaining = total - TOOL_DETAIL_EXPAND_LINES;
+            out.push(LogicalLine::plain(
+                TranscriptLineKind::ToolChain,
+                format!("    … ({remaining} more lines)"),
                 false,
             ));
         }

@@ -33,6 +33,7 @@ pub fn draw(
     regions: &LayoutRegions,
     right: &RightPaneRegions,
 ) {
+    let _span = tracing::trace_span!("tui_draw").entered();
     let root_bg = theme::panel(TuiPanel::Transcript).surface(false);
     frame.render_widget(Clear, frame.area());
     frame.render_widget(Block::default().style(root_bg), frame.area());
@@ -171,7 +172,11 @@ fn draw_center_column(
 
     let composer_focused = chat_focused && app.composer_focus;
     let composer_title = if live_activity {
-        " Composer (waiting) "
+        if composer_focused {
+            " Composer (waiting · edit) "
+        } else {
+            " Composer (waiting · scroll) "
+        }
     } else if composer_focused {
         " Composer "
     } else {
@@ -223,13 +228,7 @@ fn pane_border_style(styles: Option<&BorderStyles>, panel: TuiPanel, focused: bo
         return theme::border_idle();
     };
     match panel {
-        TuiPanel::Transcript => {
-            if focused {
-                styles.transcript
-            } else {
-                styles.composer
-            }
-        }
+        TuiPanel::Transcript => styles.transcript,
         TuiPanel::Composer => styles.composer,
         _ => styles.composer,
     }

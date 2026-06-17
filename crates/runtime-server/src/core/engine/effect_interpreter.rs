@@ -296,6 +296,13 @@ impl<'a> EffectInterpreter<'a> {
                     return InterpretOutcome::Executed;
                 }
                 let Some(stream) = ctx.stream.as_mut() else {
+                    tracing::warn!(
+                        target: "kernel_v3",
+                        turn_id = %ctx.turn.id,
+                        step = ctx.turn.step,
+                        effect = "execute_batch",
+                        "v3 step: ExecuteBatch requires prior CallModel stream"
+                    );
                     return InterpretOutcome::NotImplemented;
                 };
                 if stream.tool_uses.is_empty() {
@@ -336,9 +343,25 @@ impl<'a> EffectInterpreter<'a> {
                 description,
             } => {
                 let Some(stream) = ctx.stream.as_ref() else {
+                    tracing::warn!(
+                        target: "kernel_v3",
+                        turn_id = %ctx.turn.id,
+                        step = ctx.turn.step,
+                        call_id = %call_id,
+                        effect = "request_approval",
+                        "v3 step: RequestApproval requires prior CallModel stream"
+                    );
                     return InterpretOutcome::NotImplemented;
                 };
                 let Some(tool_use) = stream.tool_uses.iter().find(|t| t.id == call_id) else {
+                    tracing::warn!(
+                        target: "kernel_v3",
+                        turn_id = %ctx.turn.id,
+                        step = ctx.turn.step,
+                        call_id = %call_id,
+                        effect = "request_approval",
+                        "v3 step: RequestApproval call_id not found in stream tool_uses"
+                    );
                     return InterpretOutcome::NotImplemented;
                 };
                 let _ = self
@@ -363,7 +386,11 @@ impl<'a> EffectInterpreter<'a> {
                 self.engine.run_query_memory_effect(layer, &query_key).await;
                 InterpretOutcome::Executed
             }
-            _ => self.interpret(effect).await,
+            Effect::RefreshSystemPrompt => {
+                self.engine.run_refresh_system_prompt_effect(ctx.mode);
+                InterpretOutcome::Executed
+            }
+            other => self.interpret(other).await,
         }
     }
 
@@ -439,12 +466,22 @@ impl<'a> EffectInterpreter<'a> {
     pub async fn interpret(&mut self, effect: Effect) -> InterpretOutcome {
         match effect {
             Effect::CallModel { .. } | Effect::ExecuteBatch { .. } => {
+                tracing::warn!(
+                    target: "kernel_v3",
+                    effect = effect.kind_str(),
+                    "interpret: step-scoped effect routed to standalone interpret()"
+                );
                 InterpretOutcome::NotImplemented
             }
             Effect::RequestApproval { .. } => {
                 if self.engine.effect_replay_anchor_only() {
                     InterpretOutcome::Executed
                 } else {
+                    tracing::warn!(
+                        target: "kernel_v3",
+                        effect = "request_approval",
+                        "interpret: RequestApproval requires v3 step context"
+                    );
                     InterpretOutcome::NotImplemented
                 }
             }
@@ -481,7 +518,11 @@ impl<'a> EffectInterpreter<'a> {
                 self.engine.run_layered_context_checkpoint_effect().await;
                 InterpretOutcome::Executed
             }
-            Effect::RefreshSystemPrompt => InterpretOutcome::NotImplemented,
+            Effect::RefreshSystemPrompt => {
+                let app_mode = self.engine.runtime_ext().turn_app_mode;
+                self.engine.refresh_system_prompt(app_mode);
+                InterpretOutcome::Executed
+            }
             Effect::EmitArtifact { kind, area_hint } => {
                 let ext = self.engine.runtime_ext();
                 let turn_id = ext
@@ -495,7 +536,14 @@ impl<'a> EffectInterpreter<'a> {
                     .await;
                 InterpretOutcome::Executed
             }
-            _ => InterpretOutcome::NotImplemented,
+            _ => {
+                tracing::warn!(
+                    target: "kernel_v3",
+                    effect = effect.kind_str(),
+                    "interpret: unknown or future Effect variant"
+                );
+                InterpretOutcome::NotImplemented
+            }
         }
     }
 

@@ -1,5 +1,7 @@
 //! Approval + user-input handshake — TUI shell over `zagens-core::engine::approval`.
 
+use std::time::Duration;
+
 use crate::core::events::Event;
 use crate::tools::approval_cache::{ApprovalCacheStatus, ApprovalKey};
 use crate::tools::user_input::{UserInputRequest, UserInputResponse};
@@ -15,17 +17,35 @@ pub(super) type ApprovalDecision = CoreApprovalDecision<crate::sandbox::SandboxP
 pub(super) type ApprovalResult = CoreApprovalResult<crate::sandbox::SandboxPolicy>;
 pub(super) type UserInputDecision = CoreUserInputDecision<UserInputResponse>;
 
+const DEFAULT_APPROVAL_TIMEOUT_SECS: u64 = 120;
+
+fn approval_wait_timeout() -> Duration {
+    Duration::from_secs(
+        std::env::var("DEEPSEEK_RUNTIME_APPROVAL_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_APPROVAL_TIMEOUT_SECS)
+            .max(1),
+    )
+}
+
 impl Engine {
     pub(super) async fn await_tool_approval(
         &mut self,
         tool_id: &str,
     ) -> Result<ApprovalResult, crate::tools::spec::ToolError> {
+        let deadline = tokio::time::Instant::now() + approval_wait_timeout();
         loop {
             tokio::select! {
                 _ = self.0.cancel_token.cancelled() => {
                     return Err(crate::tools::spec::ToolError::execution_failed(
                         "Request cancelled while awaiting approval".to_string(),
                     ));
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    return Err(crate::tools::spec::ToolError::execution_failed(format!(
+                        "Timed out waiting for approval on tool `{tool_id}`"
+                    )));
                 }
                 decision = self.0.rx_approval.recv() => {
                     let Some(decision) = decision else {
@@ -50,13 +70,36 @@ impl Engine {
                                 remember_for_session,
                             });
                         }
+                        ApprovalDecision::Approved { id, .. } => {
+                            tracing::warn!(
+                                target: "approval",
+                                expected = %tool_id,
+                                received = %id,
+                                "discarded approval decision for unexpected tool id"
+                            );
+                        }
                         ApprovalDecision::Denied { id } if id == tool_id => {
                             return Ok(ApprovalResult::Denied);
+                        }
+                        ApprovalDecision::Denied { id } => {
+                            tracing::warn!(
+                                target: "approval",
+                                expected = %tool_id,
+                                received = %id,
+                                "discarded denial decision for unexpected tool id"
+                            );
                         }
                         ApprovalDecision::RetryWithPolicy { id, policy } if id == tool_id => {
                             return Ok(ApprovalResult::RetryWithPolicy(policy));
                         }
-                        _ => continue,
+                        ApprovalDecision::RetryWithPolicy { id, .. } => {
+                            tracing::warn!(
+                                target: "approval",
+                                expected = %tool_id,
+                                received = %id,
+                                "discarded retry-with-policy decision for unexpected tool id"
+                            );
+                        }
                     }
                 }
             }
@@ -89,5 +132,15 @@ impl Engine {
             .await;
 
         recv_user_input_for_tool(tool_id, &self.0.cancel_token, &mut self.0.rx_user_input).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approval_wait_timeout_default_is_positive() {
+        assert!(approval_wait_timeout() >= Duration::from_secs(1));
     }
 }

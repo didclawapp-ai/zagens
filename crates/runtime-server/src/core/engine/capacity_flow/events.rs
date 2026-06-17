@@ -6,6 +6,34 @@ use zagens_core::turn::TurnContext;
 
 use super::super::*;
 
+fn capacity_metric_as_u32(value: f64, field: &'static str) -> u32 {
+    if value.is_nan() {
+        tracing::warn!(
+            target: "capacity",
+            field,
+            "capacity token metric is NaN; treating as 0"
+        );
+        return 0;
+    }
+    if value > f64::from(u32::MAX) {
+        tracing::warn!(
+            target: "capacity",
+            field,
+            raw = value,
+            clamped = u32::MAX,
+            "capacity token metric exceeds u32::MAX; clamping"
+        );
+    } else if value < 0.0 {
+        tracing::debug!(
+            target: "capacity",
+            field,
+            raw = value,
+            "capacity token metric is negative; clamping to 0"
+        );
+    }
+    value.max(0.0).min(f64::from(u32::MAX)) as u32
+}
+
 impl Engine {
     pub(in crate::core::engine) async fn emit_coherence_signal(
         &mut self,
@@ -94,8 +122,8 @@ impl Engine {
             return;
         };
         let kernel_action = CapacityAction::from_guardrail(decision.action, &decision.reason);
-        let tokens_used = snapshot.h_hat.max(0.0).min(u32::MAX as f64) as u32;
-        let token_budget = snapshot.c_hat.max(0.0).min(u32::MAX as f64) as u32;
+        let tokens_used = capacity_metric_as_u32(snapshot.h_hat, "tokens_used");
+        let token_budget = capacity_metric_as_u32(snapshot.c_hat, "token_budget");
         emit_kernel_event(
             self,
             KernelEvent::CapacityCheckpoint {

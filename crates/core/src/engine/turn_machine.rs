@@ -2517,6 +2517,9 @@ pub struct ReplayEffectCounts {
     pub notify_lsp: u32,
     pub sleep: u32,
     pub query_memory: u32,
+    pub run_layered_context_checkpoint: u32,
+    pub refresh_system_prompt: u32,
+    pub emit_artifact: u32,
 }
 
 impl ReplayEffectCounts {
@@ -2553,8 +2556,9 @@ pub fn replay_effect_counts(events: &[KernelEvent]) -> ReplayEffectCounts {
             Effect::NotifyLsp { .. } => counts.notify_lsp += 1,
             Effect::Sleep { .. } => counts.sleep += 1,
             Effect::QueryMemory { .. } => counts.query_memory += 1,
-            Effect::RunLayeredContextCheckpoint | Effect::RefreshSystemPrompt => {}
-            Effect::EmitArtifact { .. } => {}
+            Effect::RunLayeredContextCheckpoint => counts.run_layered_context_checkpoint += 1,
+            Effect::RefreshSystemPrompt => counts.refresh_system_prompt += 1,
+            Effect::EmitArtifact { .. } => counts.emit_artifact += 1,
         }
     }
     counts
@@ -2576,6 +2580,9 @@ pub fn replay_thread_effect_counts(
         total.notify_lsp += counts.notify_lsp;
         total.sleep += counts.sleep;
         total.query_memory += counts.query_memory;
+        total.run_layered_context_checkpoint += counts.run_layered_context_checkpoint;
+        total.refresh_system_prompt += counts.refresh_system_prompt;
+        total.emit_artifact += counts.emit_artifact;
     }
     total
 }
@@ -3173,7 +3180,8 @@ mod tests {
         let raw = std::fs::read_to_string(&path).expect("read fixture");
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         let counts = replay_effect_counts(&events);
-        assert_eq!(counts.inject_steer, 3);
+        assert_eq!(counts.inject_steer, 1);
+        assert_eq!(counts.emit_artifact, 2);
         assert_eq!(counts.run_compaction, 1);
     }
 
@@ -3185,7 +3193,8 @@ mod tests {
         let events: Vec<KernelEvent> = serde_json::from_str(&raw).expect("parse");
         let turn_events = [("t1".into(), events)];
         let counts = replay_thread_effect_counts(&turn_events);
-        assert_eq!(counts.inject_steer, 3);
+        assert_eq!(counts.inject_steer, 1);
+        assert_eq!(counts.emit_artifact, 2);
         assert_eq!(counts.run_compaction, 1);
         let projection = replay_thread_projection("t1", &turn_events);
         assert_eq!(projection.effect_counts, counts);

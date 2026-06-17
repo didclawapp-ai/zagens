@@ -35,6 +35,32 @@ use crate::tools::schedule_bridge::{self, ScheduleContext};
 use crate::tools::user_input::UserInputRequest;
 use zagens_core::engine::turn_loop::TurnLoopToolExec;
 
+fn cancelled_tool_outcome(plan: &ToolExecutionPlan) -> ToolExecOutcome {
+    ToolExecOutcome {
+        index: plan.index,
+        id: plan.id.clone(),
+        name: plan.name.clone(),
+        input: plan.input.clone(),
+        started_at: Instant::now(),
+        result: Err(ToolError::execution_failed(
+            "Request cancelled while executing tools".to_string(),
+        )),
+    }
+}
+
+fn fill_unexecuted_cancelled_outcomes(
+    outcomes: &mut [Option<ToolExecOutcome>],
+    plans: &[ToolExecutionPlan],
+    local_slot: impl Fn(usize) -> usize,
+) {
+    for plan in plans {
+        let slot = local_slot(plan.index);
+        if outcomes[slot].is_none() {
+            outcomes[slot] = Some(cancelled_tool_outcome(plan));
+        }
+    }
+}
+
 fn schedule_context(engine: &Engine) -> ScheduleContext {
     let sandbox_enforced = engine
         .runtime_ext()
@@ -93,12 +119,18 @@ pub(super) async fn execute_tool_plans(
     outcomes.resize_with(plans.len(), || None);
 
     for group in groups {
+        if engine.cancel_token.is_cancelled() {
+            break;
+        }
         let subgroups = if scheduler.uses_dag_groups() {
             schedule_bridge::split_wave_execution_subgroups(&plans, &group, &ctx)
         } else {
             vec![group.clone()]
         };
         for subgroup in subgroups {
+            if engine.cancel_token.is_cancelled() {
+                break;
+            }
             let batch: Vec<ToolExecutionPlan> =
                 subgroup.iter().map(|&i| plans[i].clone()).collect();
             let parallel_override = if scheduler.uses_dag_groups() {
@@ -129,7 +161,21 @@ pub(super) async fn execute_tool_plans(
             }
         }
     }
-    outcomes.into_iter().flatten().collect()
+    let cancelled = engine.cancel_token.is_cancelled();
+    outcomes
+        .into_iter()
+        .enumerate()
+        .map(|(idx, outcome)| {
+            outcome.unwrap_or_else(|| {
+                debug_assert!(
+                    cancelled,
+                    "missing tool outcome for plan {} without cancellation",
+                    plans[idx].id
+                );
+                cancelled_tool_outcome(&plans[idx])
+            })
+        })
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -181,7 +227,10 @@ async fn execute_tool_plans_batch(
     if parallel_allowed {
         let mut tool_tasks = FuturesUnordered::new();
         let wave_parallel = parallel_override == Some(true);
-        for plan in plans {
+        for plan in &plans {
+            if engine.cancel_token.is_cancelled() {
+                break;
+            }
             if let Some(result) = plan.guard_result.clone() {
                 let result = Ok(result);
                 let _ = engine
@@ -194,9 +243,9 @@ async fn execute_tool_plans_batch(
                     .await;
                 outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
-                    id: plan.id,
-                    name: plan.name,
-                    input: plan.input,
+                    id: plan.id.clone(),
+                    name: plan.name.clone(),
+                    input: plan.input.clone(),
                     started_at: Instant::now(),
                     result,
                 });
@@ -205,9 +254,9 @@ async fn execute_tool_plans_batch(
             if let Some(err) = plan.blocked_error.clone() {
                 outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                     index: plan.index,
-                    id: plan.id,
-                    name: plan.name,
-                    input: plan.input,
+                    id: plan.id.clone(),
+                    name: plan.name.clone(),
+                    input: plan.input.clone(),
                     started_at: Instant::now(),
                     result: Err(err),
                 });
@@ -227,8 +276,8 @@ async fn execute_tool_plans_batch(
                         .await;
                     outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
                         index: plan.index,
-                        id: plan.id,
-                        name: plan.name,
+                        id: plan.id.clone(),
+                        name: plan.name.clone(),
                         input: effective_input,
                         started_at: Instant::now(),
                         result,
@@ -305,12 +354,31 @@ async fn execute_tool_plans_batch(
             });
         }
 
-        while let Some(outcome) = tool_tasks.next().await {
-            let slot = local_slot(outcome.index);
-            outcomes[slot] = Some(outcome);
+        let cancel = engine.cancel_token.clone();
+        loop {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => break,
+                outcome = tool_tasks.next() => {
+                    match outcome {
+                        None => break,
+                        Some(outcome) => {
+                            let slot = local_slot(outcome.index);
+                            outcomes[slot] = Some(outcome);
+                        }
+                    }
+                }
+            }
+        }
+        if engine.cancel_token.is_cancelled() {
+            fill_unexecuted_cancelled_outcomes(&mut outcomes, &plans, &local_slot);
         }
     } else {
-        for plan in plans {
+        for plan in &plans {
+            if engine.cancel_token.is_cancelled() {
+                fill_unexecuted_cancelled_outcomes(&mut outcomes, &plans, &local_slot);
+                break;
+            }
             let tool_id = plan.id.clone();
             let tool_name = plan.name.clone();
             let mut tool_input = plan.input.clone();

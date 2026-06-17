@@ -22,9 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **TUI (audit PR-A):** ANSI CSI strip recognizes ECMA-48 final bytes (`0x40–0x7E`); composer buffer capped at 128K chars; unfocused transcript border uses transcript style; overlay `centered_rect` deduplicated; expanded thinking/tool detail shows “more lines” ellipsis; draw path adds `trace_span!(tui_draw)`; live-activity waiting state distinguishes edit vs scroll in title/hint and auto-focuses composer when typing to queue.
 - **Runtime (Kernel V3 — replay parity):** `verify_step_effect_parity` no longer passes when a step has `ToolCallPlanned` events but no `ModelRequestIssued` anchor in the log.
 - **Runtime (Kernel V3 — turn lifecycle):** Streaming `return_early` and pre-inner failure paths now emit `KernelEvent::TurnEnded` before returning from `handle_deepseek_turn`.
 - **Runtime (Kernel V3 — capacity replay):** `VerifyWithToolReplay` dispatch returns the live tool-replay outcome instead of discarding it and hardcoding `false`.
+- **Runtime (Kernel V3 — approvals):** `RetryWithPolicy` emits `ApprovalVerdict::Retried` instead of mislabeling the decision as `Approved`.
+- **Runtime (Kernel V3 — effects):** `Effect::RefreshSystemPrompt` is implemented in `EffectInterpreter` (v3 step + standalone paths); `interpret()` matches all effect variants explicitly.
+- **Runtime (Kernel V3 — tool batch):** Tool plan execution polls `cancel_token` between waves and plans; unfilled slots become cancelled outcomes when interrupted.
+- **Runtime (Kernel V3 — session resume):** Seeding a new runtime thread on session resume inherits `trust_mode` / `auto_approve` from the linked thread record (request body may override).
+- **Runtime (Kernel V3 — steer inject):** `InjectSteer` rejects disallowed control characters and truncates at 8192 chars before transcript injection.
+- **Runtime (Kernel V3 — effect interpreter):** v3-step `ExecuteBatch` / `RequestApproval` `NotImplemented` paths now emit structured `warn` logs (missing stream or call_id).
+- **Runtime (Kernel V3 — replay counts):** `ReplayEffectCounts` tracks `run_layered_context_checkpoint`, `refresh_system_prompt`, and `emit_artifact`.
+- **Runtime (Kernel V3 — capacity):** Capacity checkpoint token fields warn on NaN/overflow clamp; `CapacityAction::from_guardrail` logs non-Continue mappings with guardrail reason at debug level.
 - **TUI (composer — Shift+Enter):** Shift+Enter inserts a newline in the prompt; from transcript scroll mode it also focuses the composer so multiline input works without pressing Esc first.
 - **TUI (composer — legacy conhost paste):** cmd.exe / conhost injects clipboard text as rapid Char+Enter key events; coalesce same-frame bursts into one multiline insert, extend paste-session detection for slow injection, and route `[` `]` `Tab` `?` (and `j`/`k` during paste) into the composer so sidebars no longer collapse mid-paste.
 - **Runtime (LHT — macro CRAFT `on_graph_complete`):** When the checklist/plan graph is complete but micro completion gates are still red, `auto_enter_craft = on_graph_complete` (or `user_confirm`) now evaluates the macro loop **before** unverified/mismatch nudges and can spawn CRAFT or prompt for confirm — previously CRAFT only ran after `graph_complete` (all micro gates green).

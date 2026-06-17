@@ -22,6 +22,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragra
 
 use super::super::automation::{ActionKind, AutomationConfig, AutomationRule, TriggerKind};
 use super::super::theme;
+use super::centered_rect;
 
 // ── UI State ───────────────────────────────────────────────────────────────
 
@@ -589,25 +590,4 @@ fn render_selector_field(
         Span::styled(value_display, value_style),
     ];
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
-}
-
-// ── Geometry ───────────────────────────────────────────────────────────────
-
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let vert = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(vert[1])[1]
 }

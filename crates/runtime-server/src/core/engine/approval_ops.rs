@@ -143,7 +143,7 @@ impl Engine {
                     KernelEvent::ApprovalResolved {
                         turn_id: turn_id.to_string(),
                         call_id: call_id.to_string(),
-                        verdict: ApprovalVerdict::Approved,
+                        verdict: ApprovalVerdict::Retried,
                     },
                 );
                 V3ApprovalStepOutcome::RetryWithPolicy(policy)

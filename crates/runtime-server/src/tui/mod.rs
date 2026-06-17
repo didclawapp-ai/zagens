@@ -637,6 +637,7 @@ async fn handle_input_event(
                     app.sync_slash_palette();
                 }
                 KeyCode::Char(ch) => {
+                    maybe_focus_composer_for_input(app, ch);
                     if app.composer_paste_guard.paste_active()
                         && app.layout.focus == FocusRegion::Chat
                     {
@@ -655,6 +656,16 @@ async fn handle_input_event(
 fn composer_absorbs_text_keys(app: &AppState) -> bool {
     (app.layout.focus == FocusRegion::Chat && app.composer_focus)
         || app.composer_paste_guard.paste_active()
+}
+
+/// During live activity, restore composer edit mode when the user starts typing.
+fn maybe_focus_composer_for_input(app: &mut AppState, ch: char) {
+    if app.layout.focus != FocusRegion::Chat || app.composer_focus {
+        return;
+    }
+    if app.transcript.is_live_activity() && !ch.is_control() {
+        app.composer_focus = true;
+    }
 }
 
 fn enter_transcript_scroll_if_needed(app: &mut AppState) {

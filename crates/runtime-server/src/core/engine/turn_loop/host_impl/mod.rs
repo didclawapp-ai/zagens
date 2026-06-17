@@ -141,6 +141,9 @@ impl KernelTurnHost for Engine {
                 request_approval = counts.request_approval,
                 sleep = counts.sleep,
                 query_memory = counts.query_memory,
+                run_layered_context_checkpoint = counts.run_layered_context_checkpoint,
+                refresh_system_prompt = counts.refresh_system_prompt,
+                emit_artifact = counts.emit_artifact,
                 "v3 turn effect replay counts"
             );
             if do_replay_verify {

@@ -95,6 +95,10 @@ pub(crate) struct ResumeSessionRequest {
     mode: Option<String>,
     #[serde(default)]
     task_type: Option<String>,
+    #[serde(default)]
+    trust_mode: Option<bool>,
+    #[serde(default)]
+    auto_approve: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -235,6 +239,13 @@ pub(crate) async fn resume_session_thread(
         }
     }
 
+    let (trust_mode, auto_approve) = resolve_resume_thread_flags(
+        &state.runtime_threads,
+        session.metadata.runtime_thread_id.as_deref(),
+        req.trust_mode,
+        req.auto_approve,
+    );
+
     let thread = state
         .runtime_threads
         .create_thread(CreateThreadRequest {
@@ -242,8 +253,8 @@ pub(crate) async fn resume_session_thread(
             workspace: Some(workspace),
             mode: Some(mode),
             allow_shell: None,
-            trust_mode: None,
-            auto_approve: None,
+            trust_mode,
+            auto_approve,
             archived: false,
             system_prompt: session.system_prompt.clone(),
             task_id: None,
@@ -417,5 +428,86 @@ pub(crate) fn map_session_err(id: &str, err: std::io::Error, action: &str) -> Ap
             ApiError::bad_request(format!("Invalid session id '{id}'"))
         }
         _ => ApiError::internal(format!("Failed to {action} session '{id}': {err}")),
+    }
+}
+
+/// Prefer explicit resume request flags; otherwise inherit from the linked runtime thread record.
+pub(crate) fn resolve_resume_thread_flags(
+    runtime_threads: &crate::runtime_threads::SharedRuntimeThreadManager,
+    stored_thread_id: Option<&str>,
+    req_trust_mode: Option<bool>,
+    req_auto_approve: Option<bool>,
+) -> (Option<bool>, Option<bool>) {
+    if req_trust_mode.is_some() || req_auto_approve.is_some() {
+        return (req_trust_mode, req_auto_approve);
+    }
+    let Some(tid) = stored_thread_id.map(str::trim).filter(|id| !id.is_empty()) else {
+        return (None, None);
+    };
+    match runtime_threads.load_thread_sync(tid) {
+        Ok(thread) => (Some(thread.trust_mode), Some(thread.auto_approve)),
+        Err(_) => (None, None),
+    }
+}
+
+#[cfg(test)]
+mod resume_flag_tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::runtime_threads::{CreateThreadRequest, RuntimeThreadManager, RuntimeThreadStore};
+    use tempfile::TempDir;
+    use uuid::Uuid;
+
+    fn test_manager(dir: &TempDir) -> RuntimeThreadManager {
+        let data_dir = dir.path().join(format!("runtime-{}", Uuid::new_v4()));
+        let store = RuntimeThreadStore::open_json_only(data_dir.clone()).expect("open store");
+        RuntimeThreadManager::open_with_store(
+            Config::default(),
+            dir.path().to_path_buf(),
+            crate::runtime_threads::RuntimeThreadManagerConfig {
+                task_data_dir: data_dir.clone(),
+                data_dir,
+                max_active_threads: 4,
+                http_approval_timeout_secs: 120,
+            },
+            store,
+        )
+        .expect("open runtime")
+    }
+
+    #[tokio::test]
+    async fn resolve_resume_inherits_linked_thread_trust() {
+        let dir = TempDir::new().expect("tempdir");
+        let manager = test_manager(&dir);
+        let thread = manager
+            .create_thread(CreateThreadRequest {
+                model: None,
+                workspace: None,
+                mode: None,
+                allow_shell: None,
+                trust_mode: Some(true),
+                auto_approve: Some(true),
+                archived: false,
+                system_prompt: None,
+                task_id: None,
+                task_type: None,
+            })
+            .await
+            .expect("create thread");
+        let shared = std::sync::Arc::new(manager);
+        let (trust, auto) = resolve_resume_thread_flags(&shared, Some(&thread.id), None, None);
+        assert_eq!(trust, Some(true));
+        assert_eq!(auto, Some(true));
+    }
+
+    #[test]
+    fn resolve_resume_prefers_request_over_linked_thread() {
+        let dir = TempDir::new().expect("tempdir");
+        let manager = test_manager(&dir);
+        let shared = std::sync::Arc::new(manager);
+        let (trust, auto) =
+            resolve_resume_thread_flags(&shared, Some("thr_missing"), Some(false), Some(false));
+        assert_eq!(trust, Some(false));
+        assert_eq!(auto, Some(false));
     }
 }

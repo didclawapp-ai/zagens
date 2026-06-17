@@ -4,6 +4,8 @@ use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 
 const HISTORY_CAP: usize = 100;
+/// Total composer buffer cap (chars); per-paste cap is separate in `composer_paste.rs`.
+pub const MAX_COMPOSER_LEN: usize = 131_072;
 
 /// Editable prompt buffer (`cursor` is a UTF-8 byte index on a char boundary).
 #[derive(Debug, Clone, Default)]
@@ -34,8 +36,15 @@ impl ComposerEditor {
         self.cursor
     }
 
+    fn has_room_for(&self, additional_chars: usize) -> bool {
+        self.text.chars().count().saturating_add(additional_chars) <= MAX_COMPOSER_LEN
+    }
+
     pub fn insert_char(&mut self, ch: char) {
         if ch == '\r' {
+            return;
+        }
+        if !self.has_room_for(1) {
             return;
         }
         self.text.insert(self.cursor, ch);
@@ -44,6 +53,10 @@ impl ComposerEditor {
 
     pub fn insert_str(&mut self, s: &str) {
         if s.is_empty() {
+            return;
+        }
+        let new_chars = s.chars().count();
+        if !self.has_room_for(new_chars) {
             return;
         }
         self.text.insert_str(self.cursor, s);
@@ -371,5 +384,14 @@ mod tests {
         assert_eq!(ed.text(), "second");
         assert!(h.browse_down(&mut ed));
         assert_eq!(ed.text(), "draft");
+    }
+
+    #[test]
+    fn insert_stops_at_max_len() {
+        let mut ed = ComposerEditor::default();
+        ed.insert_str(&"x".repeat(MAX_COMPOSER_LEN));
+        assert_eq!(ed.text().chars().count(), MAX_COMPOSER_LEN);
+        ed.insert_char('y');
+        assert_eq!(ed.text().chars().count(), MAX_COMPOSER_LEN);
     }
 }

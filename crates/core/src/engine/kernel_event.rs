@@ -86,6 +86,8 @@ pub enum ToolOutcome {
 pub enum ApprovalVerdict {
     Approved,
     Rejected,
+    /// User chose retry with an elevated sandbox policy (not a plain approval).
+    Retried,
 }
 
 /// Policy metadata resolved for a planned call (subset relevant to replay).
@@ -142,13 +144,23 @@ pub enum CapacityAction {
 impl CapacityAction {
     /// Map capacity-controller output to kernel schema action.
     #[must_use]
-    pub fn from_guardrail(action: crate::capacity::GuardrailAction, _reason: &str) -> Self {
-        match action {
+    pub fn from_guardrail(action: crate::capacity::GuardrailAction, reason: &str) -> Self {
+        let mapped = match action {
             crate::capacity::GuardrailAction::NoIntervention => Self::Continue,
             crate::capacity::GuardrailAction::TargetedContextRefresh => Self::Trim,
             crate::capacity::GuardrailAction::VerifyWithToolReplay => Self::Continue,
             crate::capacity::GuardrailAction::VerifyAndReplan => Self::Handoff,
+        };
+        if !reason.is_empty() && !matches!(mapped, Self::Continue) {
+            tracing::debug!(
+                target: "capacity",
+                guardrail = ?action,
+                kernel_action = ?mapped,
+                reason,
+                "CapacityAction mapped from guardrail"
+            );
         }
+        mapped
     }
 }
 
