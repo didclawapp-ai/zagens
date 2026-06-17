@@ -14,9 +14,9 @@ description = "Core runtime boundaries for Zagens agent architecture"
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-zagens-config = { path = "../config", version = "0.8.0" }
-zagens-protocol = { path = "../protocol", version = "0.8.0" }
-zagens-tools = { path = "../tools", version = "0.8.0" }
+zagens-config = { path = "../config", version = "0.8.1" }
+zagens-protocol = { path = "../protocol", version = "0.8.1" }
+zagens-tools = { path = "../tools", version = "0.8.1" }
 futures-util = { version = "0.3", features = ["std"] }
 serde.workspace = true
 serde_json.workspace = true
