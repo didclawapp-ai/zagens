@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod coverage;
+pub mod note_quality;
 pub mod path_store;
 pub mod schema;
 pub mod summary;

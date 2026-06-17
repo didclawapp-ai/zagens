@@ -1341,6 +1341,37 @@ const zhHans = {
   lhtSettings: {
     intro:
       '写入 ~/.zagens/config.toml 的 [long_horizon]。Composer 顶栏三态（LHT / LHT·严格 / LHT·关）在下一 turn 覆盖下方部分项，无需重启 sidecar。',
+    introShort:
+      '选择工作模式即可覆盖常用组合；细项在「高级设置」中，写入 ~/.zagens/config.toml。',
+    sectionWorkMode: '工作模式',
+    workModeIntro: '点选即应用并保存；全库审查会自动关闭 Composer LHT 覆盖。',
+    presetActive: '当前',
+    customPreset: '自定义',
+    currentSummary:
+      '生效：{{mode}} · Composer {{composer}} · LHT {{lht}} · 宏观循环 {{macro}} · 完成门 {{gate}}',
+    sectionComposerOverride: 'Composer 会话覆盖',
+    composerOverrideIntro: '仅影响当前会话的下一 turn；与顶栏 LHT 三态同步。',
+    composerModeAuto: '跟随配置',
+    composerModeStrict: '严格',
+    composerModeOff: '关闭',
+    composerModeShort_auto: '跟随',
+    composerModeShort_strict: '严格',
+    composerModeShort_off: '关',
+    composerOverrideOffShort: '会话内 LHT harness 关闭；适合全库审查与只读审计。',
+    composerOverrideStrictShort: '会话内强制严格模式并启用 enforce 子门。',
+    advancedSettings: '高级设置',
+    advancedSettingsHint: 'nudge 次数、完成门禁、宏观循环等；日常无需修改。',
+    saveAdvanced: '保存高级设置',
+    saveAdvancedHint: '修改高级项后需保存；切换工作模式会自动写入 config。',
+    summaryLht_auto: '开·自动',
+    summaryLht_strict: '开·严格',
+    summaryLht_off: '关',
+    summaryMacro_on: '开',
+    summaryMacro_off: '关',
+    summaryGate_off: '关',
+    summaryGate_observe: 'observe',
+    summaryGate_enforce: 'enforce',
+    summaryGate_mixed: '混合',
     composerOverrideOff:
       'Composer 当前为 LHT·关 — 已同步关闭 settings 与 config.toml；除非在设置中重新启用或切到严格，harness 保持关闭。',
     composerOverrideStrict:

@@ -1357,6 +1357,37 @@ const en: TranslationMap = {
   lhtSettings: {
     intro:
       'Writes ~/.zagens/config.toml [long_horizon]. Composer tri-state (LHT / LHT·strict / LHT·off) overrides some fields on the next turn without restart.',
+    introShort:
+      'Pick a work mode for common combinations; fine-tuning lives under Advanced settings (saved to ~/.zagens/config.toml).',
+    sectionWorkMode: 'Work mode',
+    workModeIntro: 'Click to apply and save. Repo audit also sets Composer LHT override to off.',
+    presetActive: 'Active',
+    customPreset: 'Custom',
+    currentSummary:
+      'Effective: {{mode}} · Composer {{composer}} · LHT {{lht}} · Macro {{macro}} · Gates {{gate}}',
+    sectionComposerOverride: 'Composer session override',
+    composerOverrideIntro: 'Applies on the next turn in this session; synced with the composer LHT chip.',
+    composerModeAuto: 'Follow config',
+    composerModeStrict: 'Strict',
+    composerModeOff: 'Off',
+    composerModeShort_auto: 'follow',
+    composerModeShort_strict: 'strict',
+    composerModeShort_off: 'off',
+    composerOverrideOffShort: 'LHT harness off for this session — suited to repo audits.',
+    composerOverrideStrictShort: 'Forces strict mode and enforce sub-gates for this session.',
+    advancedSettings: 'Advanced settings',
+    advancedSettingsHint: 'Nudge limits, completion gates, macro loop — usually leave defaults.',
+    saveAdvanced: 'Save advanced settings',
+    saveAdvancedHint: 'Required after editing advanced fields; work modes save automatically.',
+    summaryLht_auto: 'on·auto',
+    summaryLht_strict: 'on·strict',
+    summaryLht_off: 'off',
+    summaryMacro_on: 'on',
+    summaryMacro_off: 'off',
+    summaryGate_off: 'off',
+    summaryGate_observe: 'observe',
+    summaryGate_enforce: 'enforce',
+    summaryGate_mixed: 'mixed',
     composerOverrideOff:
       'Composer is LHT·off — settings and config.toml are synced off; harness stays disabled until you re-enable in Settings or cycle to strict.',
     composerOverrideStrict:

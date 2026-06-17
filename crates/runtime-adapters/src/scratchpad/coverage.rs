@@ -4,6 +4,8 @@ use crate::scratchpad::config::ScratchpadConfig;
 use crate::scratchpad::schema::{AreaStatus, Inventory, NoteLine};
 use crate::scratchpad::summary::compute_superseded_ids;
 
+pub use crate::scratchpad::note_quality::{area_meets_deferred_quality, area_meets_done_quality};
+
 /// Coverage metrics for inventory + notes (§6.12.4).
 #[derive(Debug, Clone)]
 pub struct CoverageStats {
@@ -44,24 +46,6 @@ pub enum CoverageGateOutcome {
         stats: CoverageStats,
         reason: String,
     },
-}
-
-/// `done` area counts as reviewed/accounted when it has ≥1 finding or cleared note.
-#[must_use]
-pub fn area_meets_done_quality(area_id: &str, notes: &[NoteLine]) -> bool {
-    notes
-        .iter()
-        .any(|n| n.area_id == area_id && (n.kind == "finding" || n.kind == "cleared"))
-}
-
-/// `deferred` area counts as accounted when it has ≥1 meta note with non-empty claim.
-#[must_use]
-pub fn area_meets_deferred_quality(area_id: &str, notes: &[NoteLine]) -> bool {
-    notes.iter().any(|n| {
-        n.area_id == area_id
-            && n.kind == "meta"
-            && n.claim.as_ref().is_some_and(|c| !c.trim().is_empty())
-    })
 }
 
 #[must_use]
@@ -192,7 +176,7 @@ pub fn areas_failing_quality_gate(
                 gaps.push(AreaQualityGap {
                     id: area.id.clone(),
                     status: "done".into(),
-                    fix: "scratchpad_append kind=finding or kind=cleared (meta-only notes do not count for done)".into(),
+                    fix: "scratchpad_append kind=finding or kind=cleared with [D#] evidence (meta-only notes do not count for done)".into(),
                 });
             }
             AreaStatus::Deferred
@@ -202,7 +186,7 @@ pub fn areas_failing_quality_gate(
                 gaps.push(AreaQualityGap {
                     id: area.id.clone(),
                     status: "deferred".into(),
-                    fix: "scratchpad_append kind=meta with non-empty claim (defer reason)".into(),
+                    fix: "scratchpad_append kind=meta with non-empty defer reason (not security-risk-only stub)".into(),
                 });
             }
             _ => {}

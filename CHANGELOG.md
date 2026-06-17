@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Audit workflow:** `audit-repo` skill and scratchpad gates now require multi-dimension balance — `kind=cleared` notes need `[D#]` tags and substantive evidence; defer reasons cannot be security-risk-only stubs; report template adds non-security sections (tests, maintainability, architecture).
+
 ## [0.8.2] - 2026-06-17
 
 ### Changed

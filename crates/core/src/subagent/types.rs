@@ -107,6 +107,8 @@ pub struct StructuredFindings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub area_path: Option<String>,
     pub items: Vec<AuditFindingItem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
 }

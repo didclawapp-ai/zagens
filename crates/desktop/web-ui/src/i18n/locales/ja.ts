@@ -1357,6 +1357,37 @@ const ja: TranslationMap = {
   lhtSettings: {
     intro:
       '~/.zagens/config.toml の [long_horizon] を編集。Composer 三態（LHT / LHT·厳格 / LHT·オフ）は次ターンで一部を上書き、再起動不要。',
+    introShort:
+      '作業モードを選ぶだけでよく使う組み合わせを適用。細部は「詳細設定」（~/.zagens/config.toml に保存）。',
+    sectionWorkMode: '作業モード',
+    workModeIntro: 'クリックで適用・保存。全庫監査は Composer LHT 上書きもオフにします。',
+    presetActive: '現在',
+    customPreset: 'カスタム',
+    currentSummary:
+      '有効: {{mode}} · Composer {{composer}} · LHT {{lht}} · マクロ {{macro}} · ゲート {{gate}}',
+    sectionComposerOverride: 'Composer セッション上書き',
+    composerOverrideIntro: 'このセッションの次ターンに適用。Composer の LHT チップと同期。',
+    composerModeAuto: '設定に従う',
+    composerModeStrict: '厳格',
+    composerModeOff: 'オフ',
+    composerModeShort_auto: '従う',
+    composerModeShort_strict: '厳格',
+    composerModeShort_off: 'オフ',
+    composerOverrideOffShort: 'このセッションで LHT harness オフ — 全庫監査向け。',
+    composerOverrideStrictShort: 'このセッションで厳格モードと enforce 子門を強制。',
+    advancedSettings: '詳細設定',
+    advancedSettingsHint: 'nudge 回数・完了ゲート・マクロループなど。通常は変更不要。',
+    saveAdvanced: '詳細設定を保存',
+    saveAdvancedHint: '詳細項目の変更後に保存。作業モードは自動で config に書き込み。',
+    summaryLht_auto: 'オン·自動',
+    summaryLht_strict: 'オン·厳格',
+    summaryLht_off: 'オフ',
+    summaryMacro_on: 'オン',
+    summaryMacro_off: 'オフ',
+    summaryGate_off: 'オフ',
+    summaryGate_observe: 'observe',
+    summaryGate_enforce: 'enforce',
+    summaryGate_mixed: '混合',
     composerOverrideOff:
       'Composer は LHT·オフ — settings と config.toml を同期して無効化。設定で再有効化するか厳格に切るまで harness はオフ。',
     composerOverrideStrict:

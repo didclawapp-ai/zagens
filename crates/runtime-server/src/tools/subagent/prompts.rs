@@ -197,6 +197,7 @@ fn salvage_structured_findings(partial_json: &str) -> Option<StructuredFindings>
         area_id,
         area_path,
         items,
+        dimensions: None,
         summary,
     })
 }

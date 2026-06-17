@@ -793,6 +793,7 @@ async fn resume_clears_structured_output() {
             claim: "test".into(),
             evidence: None,
         }],
+        dimensions: None,
         summary: None,
     });
     let agent_id = agent.id.clone();
@@ -2228,6 +2229,7 @@ fn get_result_with_fallback_reads_structured_findings_from_blackboard() {
             claim: "weak rng".into(),
             evidence: Some("use rand".into()),
         }],
+        dimensions: None,
         summary: None,
     };
 

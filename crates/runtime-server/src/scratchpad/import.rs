@@ -189,12 +189,42 @@ fn import_structured_findings(
         out.push(store.append_note(json!({
             "area_id": area_id,
             "kind": "cleared",
-            "claim": findings.summary.clone().unwrap_or_else(|| "No findings".to_string()),
+            "claim": build_import_cleared_claim(findings),
             "status": "open",
             "source": source,
         }))?);
     }
     Ok(out)
+}
+
+fn build_import_cleared_claim(findings: &StructuredFindings) -> String {
+    let dim_tags = findings
+        .dimensions
+        .as_ref()
+        .filter(|dims| !dims.is_empty())
+        .map(|dims| {
+            dims.iter()
+                .map(|d| {
+                    let t = d.trim();
+                    if t.starts_with('[') {
+                        t.to_string()
+                    } else {
+                        format!("[{t}]")
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_else(|| "[D3]".to_string());
+    let summary = findings
+        .summary
+        .as_deref()
+        .unwrap_or("no actionable findings after read/grep");
+    let path = findings
+        .area_path
+        .as_deref()
+        .unwrap_or(findings.area_id.as_str());
+    format!("{dim_tags} agent import for {path} — examined files; {summary}")
 }
 
 fn import_verdict_as_findings(
@@ -374,7 +404,8 @@ mod import_gate_tests {
                 area_id: "workspace".into(),
                 area_path: None,
                 items: vec![],
-                summary: Some("no findings".into()),
+                dimensions: Some(vec!["D2".into(), "D3".into()]),
+                summary: Some("no actionable findings after read/grep".into()),
             }),
             structured_verdict: None,
             completion_reason: reason,

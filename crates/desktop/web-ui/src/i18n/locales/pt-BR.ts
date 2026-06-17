@@ -1358,6 +1358,37 @@ const ptBr: TranslationMap = {
   lhtSettings: {
     intro:
       'Grava [long_horizon] em ~/.zagens/config.toml. Tri-estado do Composer (LHT / LHT·estrito / LHT·off) sobrescreve campos no próximo turno.',
+    introShort:
+      'Escolha um modo de trabalho para combinações comuns; ajustes finos ficam em Configurações avançadas.',
+    sectionWorkMode: 'Modo de trabalho',
+    workModeIntro: 'Clique para aplicar e salvar. Auditoria de repositório também desliga o override LHT do Composer.',
+    presetActive: 'Ativo',
+    customPreset: 'Personalizado',
+    currentSummary:
+      'Efetivo: {{mode}} · Composer {{composer}} · LHT {{lht}} · Macro {{macro}} · Portões {{gate}}',
+    sectionComposerOverride: 'Override de sessão do Composer',
+    composerOverrideIntro: 'Vale no próximo turno desta sessão; sincronizado com o chip LHT do composer.',
+    composerModeAuto: 'Seguir config',
+    composerModeStrict: 'Estrito',
+    composerModeOff: 'Desligado',
+    composerModeShort_auto: 'seguir',
+    composerModeShort_strict: 'estrito',
+    composerModeShort_off: 'off',
+    composerOverrideOffShort: 'Harness LHT desligado nesta sessão — ideal para auditoria de repositório.',
+    composerOverrideStrictShort: 'Força modo estrito e sub-portões enforce nesta sessão.',
+    advancedSettings: 'Configurações avançadas',
+    advancedSettingsHint: 'Limites de nudge, portões de conclusão, loop macro — em geral deixe o padrão.',
+    saveAdvanced: 'Salvar configurações avançadas',
+    saveAdvancedHint: 'Necessário após editar itens avançados; modos de trabalho salvam automaticamente.',
+    summaryLht_auto: 'ligado·auto',
+    summaryLht_strict: 'ligado·estrito',
+    summaryLht_off: 'desligado',
+    summaryMacro_on: 'ligado',
+    summaryMacro_off: 'desligado',
+    summaryGate_off: 'off',
+    summaryGate_observe: 'observe',
+    summaryGate_enforce: 'enforce',
+    summaryGate_mixed: 'misto',
     composerOverrideOff:
       'Composer em LHT·off — settings e config.toml sincronizados; harness permanece off até reativar em Configurações ou mudar para estrito.',
     composerOverrideStrict:

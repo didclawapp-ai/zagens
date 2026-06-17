@@ -10,6 +10,7 @@ pub mod coverage;
 pub mod import;
 mod init;
 pub mod inventory_template;
+pub mod note_quality;
 mod schema;
 mod summary;
 pub mod ui_status;
@@ -310,6 +311,25 @@ impl ScratchpadStore {
             }
         }
 
+        let claim = line
+            .get("claim")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        if kind == "cleared" {
+            if let Err(msg) = coverage::validate_cleared_claim(&claim) {
+                return Err(ToolError::invalid_input(msg));
+            }
+        }
+
+        let is_area_defer_meta = kind == "meta" && area_id != "_global";
+        if is_area_defer_meta {
+            if let Err(msg) = coverage::validate_deferred_meta_claim(&claim) {
+                return Err(ToolError::invalid_input(msg));
+            }
+        }
+
         if kind == "finding"
             && line.get("status").is_none()
             && let Some(obj) = line.as_object_mut()
@@ -560,6 +580,8 @@ impl ScratchpadStore {
                 notes.len(),
                 &coverage,
                 &coverage_cfg,
+                &inventory,
+                &notes,
             ),
         }))
     }
@@ -572,37 +594,43 @@ fn build_contract_hints(
     notes_total: usize,
     coverage: &coverage::CoverageStats,
     config: &ScratchpadConfig,
-) -> Vec<&'static str> {
+    inventory: &Inventory,
+    notes: &[NoteLine],
+) -> Vec<String> {
     let mut hints = Vec::new();
     if areas_pending > 0 && notes_total > 0 {
         hints.push(
-            "P2 blocked: every pending area needs scratchpad_set_area(done|deferred) before write_file audit report",
+            "P2 blocked: every pending area needs scratchpad_set_area(done|deferred) before write_file audit report".into(),
         );
         hints.push(
-            "defer rule: ONE area per step — scratchpad_append(meta) then scratchpad_set_area(deferred); never batch multiple deferred calls",
+            "defer rule: ONE area per step — scratchpad_append(meta) then scratchpad_set_area(deferred); never batch multiple deferred calls".into(),
         );
     }
     if areas_pending > 0 && notes_total > 0 && areas_done + areas_deferred == 0 {
         hints.push(
-            "checklist completed rows must match inventory — use scratchpad_set_area, not checklist alone",
+            "checklist completed rows must match inventory — use scratchpad_set_area, not checklist alone".into(),
         );
+    }
+    if let Some(dim_hint) = coverage::build_dimension_balance_hint(inventory, notes) {
+        hints.push(dim_hint);
     }
     if areas_pending == 0 && areas_done + areas_deferred > 0 && notes_total > 0 {
         if coverage.accounted_ratio < config.coverage_hard_ratio
             && config.coverage_hard_block_enabled
         {
             hints.push(
-                "P2 blocked: accounted_ratio below 60% — done areas need kind=finding or kind=cleared (meta-only does not count); see areas_failing_quality_gate",
+                "P2 blocked: accounted_ratio below 60% — done areas need kind=finding or kind=cleared with [D#] evidence (meta-only does not count); see areas_failing_quality_gate".into(),
             );
         } else if config.coverage_reviewed_hard_block_enabled
             && coverage.reviewed_ratio < config.coverage_reviewed_hard_ratio
         {
             hints.push(
-                "P2 blocked: reviewed_ratio below 40% — deferred areas do not count; continue P1 or append _global meta partial_closeout if user approved partial report",
+                "P2 blocked: reviewed_ratio below 40% — deferred areas do not count; continue P1 or append _global meta partial_closeout if user approved partial report".into(),
             );
         } else {
-            hints
-                .push("inventory closed — synthesize report from verified findings via write_file");
+            hints.push(
+                "inventory closed — synthesize report from verified findings via write_file".into(),
+            );
         }
     }
     hints
@@ -679,6 +707,17 @@ mod tests {
     }
 
     #[test]
+    fn append_rejects_trivial_cleared() {
+        let (_dir, ctx) = temp_workspace();
+        write_fixture(&ctx, "test-run-cleared");
+        let store = ScratchpadStore::open(&ctx, "test-run-cleared").expect("open");
+        let err = store
+            .append_note(json!({"area_id": "area-a", "kind": "cleared", "claim": "无"}))
+            .expect_err("trivial cleared");
+        assert!(err.to_string().contains("cleared claim"));
+    }
+
+    #[test]
     fn set_done_requires_notes() {
         let (_dir, ctx) = temp_workspace();
         write_fixture(&ctx, "test-run-2");
@@ -689,7 +728,11 @@ mod tests {
             .expect_err("need notes");
         assert!(err.to_string().contains("require_min_notes"));
         store
-            .append_note(json!({"area_id": "area-a", "kind": "cleared", "claim": "ok"}))
+            .append_note(json!({
+                "area_id": "area-a",
+                "kind": "cleared",
+                "claim": "[D2] grep/read_file area-a — no concurrency or error-path regressions found in examined files"
+            }))
             .expect("append");
         store
             .set_area_status("area-a", AreaStatus::Done, None, 1, &cfg)
@@ -721,7 +764,11 @@ mod tests {
         let store = ScratchpadStore::open(&ctx, "test-run-deferred").expect("open");
         let cfg = ScratchpadConfig::default();
         store
-            .append_note(json!({"area_id": "area-a", "kind": "cleared", "claim": "placeholder"}))
+            .append_note(json!({
+                "area_id": "area-a",
+                "kind": "cleared",
+                "claim": "[D3] placeholder cleared note for deferred transition test — tests sampled, none missing"
+            }))
             .expect("append");
         let err = store
             .set_area_status("area-a", AreaStatus::Deferred, None, 1, &cfg)

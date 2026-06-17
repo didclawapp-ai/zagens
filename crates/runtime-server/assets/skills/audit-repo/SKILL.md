@@ -11,7 +11,7 @@ Use this skill for **repo-wide code audit**. Pair with `base.md` § Full-reposit
 
 **Do not use** for one module, a single PR, or a quick skim.
 
-**Priority:** **verified findings first**, then coverage honesty. Optional `[D1]`–`[D10]` tags on `claim` when helpful — not required on every line.
+**Priority:** **verified findings first**, then **multi-dimension coverage honesty** (security is one dimension, not the whole audit). Tag `claim` with `[D1]`–`[D10]` on `cleared` notes and substantive defer reasons. Security findings should stay **≤ ~60%** of report entries when other dimensions were in scope.
 
 ## Read-only audit (mandatory — parent and children)
 
@@ -33,35 +33,41 @@ Full-repo audit is **review and report only**. You are **not** the implementer f
 
 ## Coverage dimensions (guidance — not a checkbox form)
 
-Areas slice by **path**; dimensions slice by **concern**. You do **not** need all 10 dimensions closed — but **D1, D2, D6 must be examined** in every full-repo run (grep + read_file in the relevant paths).
+Areas slice by **path**; dimensions slice by **concern**. **D1, D2, D6 must be examined** in every full-repo run. **At least two non-D1 dimensions (D2–D5 or D7–D10)** must appear in `cleared` notes or verified findings before P2 — not security alone.
 
 | ID | Dimension | Must-hit paths (grep/read) |
 |----|-----------|----------------------------|
 | **D1** | Trust & security | `desktop/`, `runtime-server/src/tools/`, `windows-sandbox/`, `secrets/` |
 | **D2** | Correctness & concurrency | `core/src/engine/`, `runtime-orchestrator/` |
 | **D6** | Release & signing | `updater.key`, `tauri.conf.json`, `*.pub`, signing config |
-| D3–D5, D7–D10 | Architecture, tests, supply chain, maintainability, observability, cross-platform, docs | Cover when areas are `done`; one-line defer in report is OK |
+| **D3** | Tests & quality gates | `**/tests/`, `#[test]`, `cargo test` / `cargo check` samples |
+| **D5** | Maintainability & scale | files **>1000** lines, module boundaries, `deny.toml` / `cargo-deny` |
+| D4, D7–D10 | Architecture, supply chain, observability, cross-platform, docs | Cover when areas are `done`; one-line defer in report is OK |
 
 **Severity** (per `base.md`): use **BLOCKER/CRITICAL** only for indefensible exposures. Do **not** label HIGH findings as "阻塞级" in prose unless severity is BLOCKER/CRITICAL. P0 actions may reference HIGH items — keep counts consistent.
 
 ## Regression probes (P0 — before area spawns)
 
-Run these **every** full-repo audit; append hits as verified findings or `kind=cleared`:
+Run these **every** full-repo audit; append hits as verified findings or `kind=cleared` (**each cleared must cite `[D#]` + what you checked — runtime rejects `无`/`ok`/stub claims**):
 
-| Probe | Command / action |
-|-------|------------------|
-| Signing key in tree | `grep_files` / `file_search`: `updater.key`, `*.pem`, private key filenames under `crates/desktop/` |
-| Hardcoded API keys | `grep_files`: `api_key`, `API_KEY`, `mk-`, `sk-` in `crates/` |
-| `trust_mode` from client | `grep_files`: `trust_mode` in `runtime-api`, `stream.rs`, `spec.rs` |
-| LoopGuard concurrency | `read_file`: `core/src/engine/loop_guard.rs` if engine area in scope |
-| Baseline (3 bullets) | Zero-test crates (grep `#[test]` per crate); `deny.toml` / `cargo-deny` exists?; files **>1000** lines (top 5) — append as `_global` `kind=meta` or report §基线指标 |
+| Probe | Command / action | Dimension |
+|-------|------------------|-----------|
+| Signing key in tree | `grep_files` / `file_search`: `updater.key`, `*.pem`, private key filenames under `crates/desktop/` | D6 |
+| Hardcoded API keys | `grep_files`: `api_key`, `API_KEY`, `mk-`, `sk-` in `crates/` | D1 |
+| `trust_mode` from client | `grep_files`: `trust_mode` in `runtime-api`, `stream.rs`, `spec.rs` | D1 |
+| LoopGuard concurrency | `read_file`: `core/src/engine/loop_guard.rs` if engine area in scope | D2 |
+| Zero-test crates | Per-crate `grep_files` `#[test]` under `crates/*/` — list crates with 0 tests | D3 |
+| Build smoke | **One** scoped `cargo check -p <representative-crate>`; record exit code (do not fix) | D3 |
+| Large files / deny policy | Top 5 files **>1000** lines; `deny.toml` / `cargo-deny` present? | D5 |
+| Baseline (3 bullets) | Append scale + test distribution + deny/large-file summary as `_global` `kind=meta` | D5 |
 
 ## Runtime gates (know before P2)
 
 | Gate | Rule |
 |------|------|
-| `accounted_ratio` | ≥ 60% — each `done` needs `finding` or `cleared`; each `deferred` needs `meta` reason |
+| `accounted_ratio` | ≥ 60% — each `done` needs `finding` or **`cleared` with `[D#]` + ≥20 char evidence**; each `deferred` needs substantive `meta` reason (not security-risk-only stub) |
 | **`reviewed_ratio`** | **≥ 40%** — only **`done`** areas with `finding`/`cleared` count; **mass `deferred` does not substitute for review** |
+| Dimension balance | Before P2, `scratchpad_status` `contract_hints` should not warn that all done areas are D1-only |
 | Partial report | If user explicitly approves partial close-out: `scratchpad_append({ kind:"meta", area_id:"_global", claim:"partial_closeout: …" })` then title must include **「部分审核」** |
 
 If `write_file` to audit deliverables is blocked, call `scratchpad_status` — do not fake a full-repo report in chat only.
@@ -99,7 +105,7 @@ scratchpad_init({ "template": "workspace_audit", "scope": "…" })
 | 21–40 | 1200000 |
 | >40 or `runtime-server/src/tools` | 1800000 |
 
-- Assignment: exact **`area_id`**, **`path`**, dimensions to stress (from table), `file`+`line` + caller-trace for security claims.
+- Assignment: exact **`area_id`**, **`path`**, **≥2 non-D1 dimensions** to stress (e.g. D2 correctness + D3 tests), plus D1/D6 when paths match. Include `file`+`line` + caller-trace for security claims only.
 - Join: `agent_wait` → import → verify HIGH/BLOCKER → `scratchpad_set_area(done|deferred)`.
 - **Outlier rule:** cancel + defer agents stuck past `2× median` duration.
 - **`StepLimitReached` ≠ done** — re-spawn narrower scope.
@@ -109,8 +115,10 @@ scratchpad_init({ "template": "workspace_audit", "scope": "…" })
 
 ```
 <!-- audit-findings -->
-{ "area_id", "area_path", "items": [{ "severity", "file", "line", "claim", "evidence" }], "summary" }
+{ "area_id", "area_path", "dimensions": ["D2","D3"], "items": [{ "severity", "file", "line", "claim", "evidence" }], "summary" }
 ```
+
+`dimensions` lists which coverage dimensions this area examined (≥2 non-D1 when path allows).
 
 ### `notes.jsonl`
 
@@ -120,9 +128,9 @@ scratchpad_init({ "template": "workspace_audit", "scope": "…" })
 | `status` | Report uses **`verified`** findings only |
 | HIGH/BLOCKER | `file` + `line` required |
 
-`done` without findings → `kind=cleared` before `scratchpad_set_area(done)`.
+`done` without findings → `kind=cleared` **with `[D#]` tag and concrete check evidence (≥20 chars)** before `scratchpad_set_area(done)`. **Forbidden:** `claim: "无"`, `"ok"`, `"no issues"`.
 
-**Defer many pending areas:** never batch `scratchpad_set_area(deferred)` in one step. Per area, in **separate** model steps: `scratchpad_append` (`kind=meta`, non-empty defer `claim`) → `scratchpad_set_area(deferred)` for that `area_id` only.
+**Defer many pending areas:** never batch `scratchpad_set_area(deferred)` in one step. Per area, in **separate** model steps: `scratchpad_append` (`kind=meta`, defer `claim` naming **unreviewed dimensions / time / scope** — not「低安全风险」alone) → `scratchpad_set_area(deferred)` for that `area_id` only.
 
 ## P2 — Synthesize (finding-first report)
 
@@ -170,10 +178,38 @@ Title: `# Zagens 全库代码审核报告` — add **`（部分审核）`** when
 
 ---
 
-## 基线指标
+## 基线指标（D3/D5）
 
-- 规模、测试分布、**deny.toml / cargo-deny**、**>1000 行文件 Top 5**
+- 规模、**零测试 crate 列表**、测试分布、**deny.toml / cargo-deny**、**>1000 行文件 Top 5**
 - 与 finding 矛盾时以探针/finding 为准（勿写「无硬编码密钥」同时又报 `.env` key）
+
+---
+
+## 测试与质量（D3）
+
+| 检查项 | 结果 | 备注 |
+|--------|------|------|
+| 零测试 crate | 列表 / cleared | per-crate `#[test]` grep |
+| `cargo check` 抽样 | exit code | 命令与 crate |
+| Clippy / CI 缺口 | finding / cleared | 若未跑则说明原因 |
+
+---
+
+## 可维护性与规模（D5）
+
+- 超大文件、模块耦合、重复逻辑、deny/供应链配置缺口（**非安全**向）
+
+---
+
+## 架构与供应链（D4/D7 — 非安全）
+
+- 分层边界、依赖方向、生成物/锁文件策略（与 D1 安全 finding 分开叙述）
+
+---
+
+## NOTABLE 非安全项
+
+- 正确性、测试空洞、发布流程、可维护性 — **至少 3 条**或明确写「本 run 未检出」并附 `[D#]` cleared 证据
 
 ---
 
@@ -213,14 +249,16 @@ Title: `# Zagens 全库代码审核报告` — add **`（部分审核）`** when
 ---
 
 ## 亮点与已验证无问题
-`kind=cleared` + 正向探针（SSRF、路径 canonicalize 等），每项附 **`位置`** 或模块路径。
+`kind=cleared` + 正向探针 — **安全与非安全均可**（SSRF 防护、路径 canonicalize、测试覆盖、清晰模块边界等）。每项附 **`位置`** 或模块路径 + **`[D#]`**；禁止只写「无」。
 
 ---
 
 ## 各 Area 审核摘要
 
-| area_id | status | 主要发现 |
-|---------|--------|----------|
+| area_id | status | 维度 | 主要发现 |
+|---------|--------|------|----------|
+
+> Area 表「主要发现」不得全部为「无」——`done` 行须反映 finding 或 `[D#]` cleared 摘要。
 
 > 完整 inventory 见 scratchpad `inventory.json`（N 行）；上表可为合并视图，须脚注说明。
 

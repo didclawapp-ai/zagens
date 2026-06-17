@@ -1,23 +1,31 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '../i18n';
 import {
   applyLhtPreset,
   fetchLhtComposerMode,
   fetchLhtSettings,
+  saveLhtComposerMode,
   saveLhtSettings,
   type LhtGateMode,
   type LhtPresetId,
   type LhtSettings,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
+import {
+  COMPOSER_MODE_FOR_PRESET,
+  effectiveLhtEnabled,
+  effectiveLhtMode,
+  matchPresetFromSettings,
+  rememberLastPreset,
+  summarizeGateModes,
+} from '../lib/lhtPresetMatch';
+import LhtSettingsAdvancedSections from './LhtSettingsAdvancedSections';
 import { LHT_COMPOSER_MODE_CHANGED_EVENT, type LhtComposerMode } from './LhtModeToggle';
 
 interface Props {
   desktopHost: boolean;
   streaming?: boolean;
 }
-
-const GATE_OPTIONS: LhtGateMode[] = ['off', 'observe', 'enforce'];
 
 const LHT_PRESETS: { id: LhtPresetId; labelKey: string; descKey: string }[] = [
   { id: 'code-default', labelKey: 'lhtSettings.presetCodeDefault', descKey: 'lhtSettings.presetCodeDefaultDesc' },
@@ -26,12 +34,25 @@ const LHT_PRESETS: { id: LhtPresetId; labelKey: string; descKey: string }[] = [
   { id: 'craft-audit', labelKey: 'lhtSettings.presetCraftAudit', descKey: 'lhtSettings.presetCraftAuditDesc' },
 ];
 
+const COMPOSER_MODES: { id: LhtComposerMode; labelKey: string }[] = [
+  { id: 'auto', labelKey: 'lhtSettings.composerModeAuto' },
+  { id: 'strict', labelKey: 'lhtSettings.composerModeStrict' },
+  { id: 'off', labelKey: 'lhtSettings.composerModeOff' },
+];
+
+function presetLabelKey(presetId: LhtPresetId): string {
+  const row = LHT_PRESETS.find((p) => p.id === presetId);
+  return row?.labelKey ?? 'lhtSettings.presetCodeDefault';
+}
+
 export default function LhtSettingsPanel({ desktopHost, streaming = false }: Props) {
   const { t } = useT();
   const [settings, setSettings] = useState<LhtSettings | null>(null);
   const [composerMode, setComposerMode] = useState<LhtComposerMode>('auto');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [activePreset, setActivePreset] = useState<LhtPresetId | 'custom'>('code-default');
 
   useEffect(() => {
     if (!desktopHost) {
@@ -44,6 +65,7 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
         if (!cancelled) {
           setSettings(s);
           setComposerMode(mode);
+          setActivePreset(matchPresetFromSettings(s));
         }
       })
       .catch(() => {})
@@ -63,7 +85,10 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
         setComposerMode(detail);
       }
       void fetchLhtSettings()
-        .then((s) => setSettings(s))
+        .then((s) => {
+          setSettings(s);
+          setActivePreset(matchPresetFromSettings(s));
+        })
         .catch(() => {});
     };
     window.addEventListener(LHT_COMPOSER_MODE_CHANGED_EVENT, onComposerModeChanged);
@@ -71,7 +96,21 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
   }, [desktopHost]);
 
   const update = useCallback(<K extends keyof LhtSettings>(key: K, value: LhtSettings[K]) => {
-    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, [key]: value };
+      setActivePreset(matchPresetFromSettings(next));
+      return next;
+    });
+  }, []);
+
+  const syncComposerMode = useCallback(async (mode: LhtComposerMode) => {
+    await saveLhtComposerMode(mode);
+    setComposerMode(mode);
+    window.dispatchEvent(new CustomEvent(LHT_COMPOSER_MODE_CHANGED_EVENT, { detail: mode }));
+    const refreshed = await fetchLhtSettings();
+    setSettings(refreshed);
+    setActivePreset(matchPresetFromSettings(refreshed));
   }, []);
 
   const handleApplyPreset = useCallback(
@@ -84,11 +123,33 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
       try {
         const next = await applyLhtPreset(presetId);
         setSettings(next);
+        rememberLastPreset(presetId);
+        setActivePreset(presetId);
+        const pairedComposer = COMPOSER_MODE_FOR_PRESET[presetId];
+        if (pairedComposer !== composerMode) {
+          await syncComposerMode(pairedComposer);
+        }
       } finally {
         setSaving(false);
       }
     },
-    [desktopHost, streaming, t],
+    [desktopHost, streaming, t, composerMode, syncComposerMode],
+  );
+
+  const handleComposerModeChange = useCallback(
+    async (mode: LhtComposerMode) => {
+      if (!desktopHost || mode === composerMode) return;
+      if (streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
+        return;
+      }
+      setSaving(true);
+      try {
+        await syncComposerMode(mode);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [desktopHost, composerMode, streaming, t, syncComposerMode],
   );
 
   const handleSave = useCallback(async () => {
@@ -106,6 +167,7 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
     setSaving(true);
     try {
       await saveLhtSettings(settings);
+      setActivePreset(matchPresetFromSettings(settings));
     } finally {
       setSaving(false);
     }
@@ -119,28 +181,30 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
 
   const gateLabel = (mode: LhtGateMode) => t(`lhtSettings.gate_${mode}` as 'lhtSettings.gate_off');
 
-  const harnessFieldsDisabled = composerMode === 'off' || composerMode === 'strict';
-  const macroFieldsDisabled =
-    composerMode === 'off' ||
-    !settings?.macro_loop_enabled ||
-    (composerMode !== 'strict' && settings?.mode !== 'strict');
+  const summaryLine = useMemo(() => {
+    if (!settings) return '';
+    const lhtOn = effectiveLhtEnabled(settings, composerMode);
+    const lhtMode = effectiveLhtMode(settings, composerMode);
+    const gate = summarizeGateModes(settings);
+    const gateKey =
+      gate === 'mixed' ? 'lhtSettings.summaryGateMixed' : (`lhtSettings.summaryGate_${gate}` as const);
+    return t('lhtSettings.currentSummary', {
+      mode:
+        activePreset === 'custom'
+          ? t('lhtSettings.customPreset')
+          : t(presetLabelKey(activePreset)),
+      composer: t(`lhtSettings.composerModeShort_${composerMode}` as 'lhtSettings.composerModeShort_auto'),
+      lht: lhtOn ? t(`lhtSettings.summaryLht_${lhtMode}` as 'lhtSettings.summaryLht_auto') : t('lhtSettings.summaryLht_off'),
+      macro: settings.macro_loop_enabled ? t('lhtSettings.summaryMacro_on') : t('lhtSettings.summaryMacro_off'),
+      gate: t(gateKey),
+    });
+  }, [settings, composerMode, activePreset, t]);
 
   return (
     <div className="p-4 space-y-5 overflow-y-auto h-full">
       <p className="text-xs text-t-text-muted leading-relaxed border-b border-divider pb-3">
-        {t('lhtSettings.intro')}
+        {t('lhtSettings.introShort')}
       </p>
-
-      {composerMode === 'off' && (
-        <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-          {t('lhtSettings.composerOverrideOff')}
-        </p>
-      )}
-      {composerMode === 'strict' && (
-        <p className="text-xs text-accent leading-relaxed rounded-lg border border-accent/30 bg-accent/10 px-3 py-2">
-          {t('lhtSettings.composerOverrideStrict')}
-        </p>
-      )}
 
       {!desktopHost && (
         <p className="text-xs text-t-text-muted leading-relaxed">{t('settings.notAvailable')}</p>
@@ -151,341 +215,117 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
       {settings && (
         <>
           <section className="space-y-3">
-            <p className={sectionCls}>{t('lhtSettings.sectionPresets')}</p>
-            <p className={descCls}>{t('lhtSettings.presetsIntro')}</p>
-            <div className="grid gap-2">
-              {LHT_PRESETS.map(({ id, labelKey, descKey }) => (
+            <p className={sectionCls}>{t('lhtSettings.sectionWorkMode')}</p>
+            <p className={descCls}>{t('lhtSettings.workModeIntro')}</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {LHT_PRESETS.map(({ id, labelKey, descKey }) => {
+                const selected = activePreset === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleApplyPreset(id)}
+                    className={`rounded-lg border px-3 py-2.5 text-left transition-colors disabled:opacity-50 ${
+                      selected
+                        ? 'border-accent bg-accent/10 ring-1 ring-accent/40'
+                        : 'border-divider bg-canvas hover:border-accent/50 hover:bg-canvas-alt'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className={`${labelCls} block`}>{t(labelKey)}</span>
+                      {selected && (
+                        <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-accent">
+                          {t('lhtSettings.presetActive')}
+                        </span>
+                      )}
+                    </div>
+                    <span className={`${descCls} block mt-1`}>{t(descKey)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-t-text-muted leading-relaxed rounded-lg border border-divider bg-canvas-alt/60 px-3 py-2">
+              {summaryLine}
+            </p>
+          </section>
+
+          <section className="space-y-2">
+            <p className={sectionCls}>{t('lhtSettings.sectionComposerOverride')}</p>
+            <p className={descCls}>{t('lhtSettings.composerOverrideIntro')}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {COMPOSER_MODES.map(({ id, labelKey }) => (
                 <button
                   key={id}
                   type="button"
                   disabled={saving}
-                  onClick={() => void handleApplyPreset(id)}
-                  className="rounded-lg border border-divider bg-canvas px-3 py-2 text-left hover:border-accent/50 hover:bg-canvas-alt transition-colors disabled:opacity-50"
+                  onClick={() => void handleComposerModeChange(id)}
+                  className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                    composerMode === id
+                      ? 'bg-accent text-white'
+                      : 'border border-divider bg-canvas text-t-text-secondary hover:border-accent/40'
+                  }`}
                 >
-                  <span className={`${labelCls} block`}>{t(labelKey)}</span>
-                  <span className={`${descCls} block mt-0.5`}>{t(descKey)}</span>
+                  {t(labelKey)}
                 </button>
               ))}
             </div>
-          </section>
-
-          <section className="space-y-3">
-            <p className={sectionCls}>{t('lhtSettings.sectionHarness')}</p>
-
-            <label className="flex items-center justify-between gap-2 py-1">
-              <div className="flex-1 min-w-0">
-                <span className={labelCls}>{t('lhtSettings.enabled')}</span>
-                <p className={descCls}>{t('lhtSettings.enabledDesc')}</p>
-              </div>
-              <input
-                type="checkbox"
-                className="shrink-0 w-4 h-4 accent-accent rounded"
-                checked={settings.enabled}
-                disabled={composerMode === 'off'}
-                onChange={(e) => update('enabled', e.target.checked)}
-              />
-            </label>
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.mode')}</span>
-              <p className={descCls}>{t('lhtSettings.modeDesc')}</p>
-              <select
-                className={selectCls}
-                value={settings.mode}
-                disabled={harnessFieldsDisabled}
-                onChange={(e) => update('mode', e.target.value as LhtSettings['mode'])}
-              >
-                <option value="auto">{t('lhtSettings.modeAuto')}</option>
-                <option value="strict">{t('lhtSettings.modeStrict')}</option>
-              </select>
-            </label>
-
-            <label className="flex items-center justify-between gap-2 py-1">
-              <div className="flex-1 min-w-0">
-                <span className={labelCls}>{t('lhtSettings.progressViaGit')}</span>
-                <p className={descCls}>{t('lhtSettings.progressViaGitDesc')}</p>
-              </div>
-              <input
-                type="checkbox"
-                className="shrink-0 w-4 h-4 accent-accent rounded"
-                checked={settings.progress_via_git}
-                onChange={(e) => update('progress_via_git', e.target.checked)}
-              />
-            </label>
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.maxNudges')}</span>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                className={selectCls}
-                value={settings.max_nudges_per_item}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (v >= 1 && v <= 20) update('max_nudges_per_item', v);
-                }}
-              />
-            </label>
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.blockedNudges')}</span>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                className={selectCls}
-                value={settings.blocked_nudges_without_progress}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (v >= 1 && v <= 10) update('blocked_nudges_without_progress', v);
-                }}
-              />
-            </label>
-
-            <label className="flex items-center justify-between gap-2 py-1">
-              <div className="flex-1 min-w-0">
-                <span className={labelCls}>{t('lhtSettings.autoContinue')}</span>
-                <p className={descCls}>{t('lhtSettings.autoContinueDesc')}</p>
-              </div>
-              <input
-                type="checkbox"
-                className="shrink-0 w-4 h-4 accent-accent rounded"
-                checked={settings.auto_continue}
-                onChange={(e) => update('auto_continue', e.target.checked)}
-              />
-            </label>
-
-            {settings.auto_continue && (
-              <label className="block space-y-1">
-                <span className={labelCls}>{t('lhtSettings.maxAutoContinue')}</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={64}
-                  className={selectCls}
-                  value={settings.max_auto_continue_rounds}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (v >= 1 && v <= 64) update('max_auto_continue_rounds', v);
-                  }}
-                />
-              </label>
-            )}
-          </section>
-
-          <section className="space-y-3">
-            <p className={sectionCls}>{t('lhtSettings.sectionCompletionGate')}</p>
-            <p className={descCls}>{t('lhtSettings.completionGateIntro')}</p>
-
-            {(
-              [
-                ['auto_verify_replay', 'autoVerifyReplay', 'autoVerifyReplayDesc'],
-                ['toolchain_gate', 'toolchainGate', 'toolchainGateDesc'],
-                ['stub_gate', 'stubGate', 'stubGateDesc'],
-              ] as const
-            ).map(([key, titleKey, descKey]) => (
-              <label key={key} className="block space-y-1">
-                <span className={labelCls}>{t(`lhtSettings.${titleKey}`)}</span>
-                <p className={descCls}>{t(`lhtSettings.${descKey}`)}</p>
-                <select
-                  className={selectCls}
-                  value={settings[key]}
-                  onChange={(e) => update(key, e.target.value as LhtGateMode)}
-                >
-                  {GATE_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {gateLabel(opt)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.maxManifestRounds')}</span>
-              <input
-                type="number"
-                min={1}
-                max={32}
-                className={selectCls}
-                value={settings.max_manifest_rounds}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (v >= 1 && v <= 32) update('max_manifest_rounds', v);
-                }}
-              />
-            </label>
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.maxAuditRounds')}</span>
-              <input
-                type="number"
-                min={1}
-                max={32}
-                className={selectCls}
-                value={settings.max_audit_rounds}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (v >= 1 && v <= 32) update('max_audit_rounds', v);
-                }}
-              />
-            </label>
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.maxInfraStrikes')}</span>
-              <input
-                type="number"
-                min={1}
-                max={16}
-                className={selectCls}
-                value={settings.max_infra_strikes}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (v >= 1 && v <= 16) update('max_infra_strikes', v);
-                }}
-              />
-            </label>
-
-            {(settings.custom_verify_count > 0 || settings.custom_deliverable_count > 0) && (
+            {composerMode === 'off' && (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
-                {t('lhtSettings.customManifestHint', {
-                  verify: String(settings.custom_verify_count),
-                  deliverable: String(settings.custom_deliverable_count),
-                })}
+                {t('lhtSettings.composerOverrideOffShort')}
+              </p>
+            )}
+            {composerMode === 'strict' && (
+              <p className="text-[10px] text-accent leading-relaxed">
+                {t('lhtSettings.composerOverrideStrictShort')}
               </p>
             )}
           </section>
 
-          <section className="space-y-3">
-            <p className={sectionCls}>{t('lhtSettings.sectionMacroLoop')}</p>
-            <p className={descCls}>{t('lhtSettings.macroLoopIntro')}</p>
-            {composerMode !== 'strict' && settings.mode !== 'strict' && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
-                {t('lhtSettings.macroLoopStrictHint')}
-              </p>
-            )}
-
-            <label className="flex items-center justify-between gap-2 py-1">
-              <div className="flex-1 min-w-0">
-                <span className={labelCls}>{t('lhtSettings.macroLoopEnabled')}</span>
-                <p className={descCls}>{t('lhtSettings.macroLoopEnabledDesc')}</p>
-              </div>
-              <input
-                type="checkbox"
-                className="shrink-0 w-4 h-4 accent-accent rounded"
-                checked={settings.macro_loop_enabled}
-                disabled={composerMode === 'off' || (composerMode !== 'strict' && settings.mode !== 'strict')}
-                onChange={(e) => update('macro_loop_enabled', e.target.checked)}
-              />
-            </label>
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.macroLoopAutoEnter')}</span>
-              <p className={descCls}>{t('lhtSettings.macroLoopAutoEnterDesc')}</p>
-              <select
-                className={selectCls}
-                value={settings.macro_loop_auto_enter_craft}
-                disabled={macroFieldsDisabled}
-                onChange={(e) =>
-                  update(
-                    'macro_loop_auto_enter_craft',
-                    e.target.value as LhtSettings['macro_loop_auto_enter_craft'],
-                  )
-                }
-              >
-                <option value="user_confirm">{t('lhtSettings.macroLoopAutoUserConfirm')}</option>
-                <option value="on_graph_complete">{t('lhtSettings.macroLoopAutoOnGraphComplete')}</option>
-                <option value="on_manifest_exhausted">
-                  {t('lhtSettings.macroLoopAutoOnManifestExhausted')}
-                </option>
-                <option value="on_micro_pass">{t('lhtSettings.macroLoopAutoOnMicroPass')}</option>
-                <option value="off">{t('lhtSettings.macroLoopAutoOff')}</option>
-              </select>
-            </label>
-
-            {settings.macro_loop_enabled && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-relaxed">
-                {t('lhtSettings.macroLoopCostWarning')}
-              </p>
-            )}
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.macroLoopMaxCycles')}</span>
-              <input
-                type="number"
-                min={1}
-                max={8}
-                className={selectCls}
-                value={settings.macro_loop_max_cycles}
-                disabled={macroFieldsDisabled}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (v >= 1 && v <= 8) update('macro_loop_max_cycles', v);
-                }}
-              />
-            </label>
-
-            <label className="block space-y-1">
-              <span className={labelCls}>{t('lhtSettings.macroLoopMaxCraftRounds')}</span>
-              <input
-                type="number"
-                min={1}
-                max={4}
-                className={selectCls}
-                value={settings.macro_loop_max_craft_rounds}
-                disabled={macroFieldsDisabled}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  if (v >= 1 && v <= 4) update('macro_loop_max_craft_rounds', v);
-                }}
-              />
-            </label>
-
-            <label className="flex items-center justify-between gap-2 py-1">
-              <div className="flex-1 min-w-0">
-                <span className={labelCls}>{t('lhtSettings.macroLoopSmallTasks')}</span>
-                <p className={descCls}>{t('lhtSettings.macroLoopSmallTasksDesc')}</p>
-              </div>
-              <input
-                type="checkbox"
-                className="shrink-0 w-4 h-4 accent-accent rounded"
-                checked={settings.macro_loop_craft_on_small_tasks}
-                disabled={macroFieldsDisabled}
-                onChange={(e) => update('macro_loop_craft_on_small_tasks', e.target.checked)}
-              />
-            </label>
-
-            {!settings.macro_loop_craft_on_small_tasks && (
-              <label className="block space-y-1">
-                <span className={labelCls}>{t('lhtSettings.macroLoopMinChecklist')}</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={32}
-                  className={selectCls}
-                  value={settings.macro_loop_min_checklist_items}
-                  disabled={macroFieldsDisabled}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (v >= 1 && v <= 32) update('macro_loop_min_checklist_items', v);
-                  }}
-                />
-              </label>
-            )}
-          </section>
-
-          <div className="pt-3 border-t border-divider">
+          <section className="border-t border-divider pt-3">
             <button
               type="button"
-              onClick={() => void handleSave()}
-              disabled={saving}
-              className="w-full py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
+              onClick={() => setAdvancedOpen((open) => !open)}
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-1 py-1 text-left hover:bg-canvas-alt/80 transition-colors"
+              aria-expanded={advancedOpen}
             >
-              {saving ? t('settings.saving') : t('settings.save')}
+              <span className={`${labelCls} text-t-text`}>{t('lhtSettings.advancedSettings')}</span>
+              <span className="text-t-text-muted text-xs" aria-hidden>
+                {advancedOpen ? '▾' : '▸'}
+              </span>
             </button>
-            <p className="text-[10px] text-t-text-muted mt-1.5 text-center">{t('settings.saveHint')}</p>
-          </div>
+            {!advancedOpen && (
+              <p className={`${descCls} mt-1 px-1`}>{t('lhtSettings.advancedSettingsHint')}</p>
+            )}
+            {advancedOpen && (
+              <div className="mt-4 space-y-5">
+                <LhtSettingsAdvancedSections
+                  settings={settings}
+                  composerMode={composerMode}
+                  update={update}
+                  selectCls={selectCls}
+                  labelCls={labelCls}
+                  descCls={descCls}
+                  sectionCls={sectionCls}
+                  gateLabel={gateLabel}
+                  t={t}
+                />
+                <div className="pt-3 border-t border-divider">
+                  <button
+                    type="button"
+                    onClick={() => void handleSave()}
+                    disabled={saving}
+                    className="w-full py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-colors"
+                  >
+                    {saving ? t('settings.saving') : t('lhtSettings.saveAdvanced')}
+                  </button>
+                  <p className="text-[10px] text-t-text-muted mt-1.5 text-center">
+                    {t('lhtSettings.saveAdvancedHint')}
+                  </p>
+                </div>
+              </div>
+            )}
+          </section>
         </>
       )}
     </div>
