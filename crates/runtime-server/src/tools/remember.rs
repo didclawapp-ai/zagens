@@ -11,7 +11,7 @@
 //! model at all, so prompts that mention `remember` simply fall through.
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::misc_inputs::remember_input_schema;
 use super::spec::{
@@ -75,6 +75,7 @@ impl ToolSpec for RememberTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::path::PathBuf;
     use tempfile::tempdir;
 

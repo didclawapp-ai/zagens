@@ -9,7 +9,7 @@ use std::process::Command;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::misc_inputs::diagnostics_input_schema;
 use super::spec::{
@@ -349,6 +349,7 @@ fn run_command(program: &str, args: &[&str], cwd: &Path) -> CommandProbe {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::fs;
     use std::path::Path;
     use std::process::Command;

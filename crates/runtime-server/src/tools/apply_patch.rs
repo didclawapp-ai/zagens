@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use thiserror::Error;
 
 use super::misc_inputs::apply_patch_input_schema;
@@ -1035,6 +1035,7 @@ fn matches_at_position(lines: &[String], old_lines: &[&str], pos: usize) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::tempdir;
 
     fn parse_patch_result(result: ToolResult) -> PatchResult {

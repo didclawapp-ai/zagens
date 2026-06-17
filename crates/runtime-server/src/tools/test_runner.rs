@@ -7,7 +7,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::misc_inputs::run_tests_input_schema;
 use super::spec::{
@@ -207,6 +207,7 @@ fn char_boundary_index(text: &str, max_chars: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::fs;
     use std::process::Command;
     use tempfile::tempdir;

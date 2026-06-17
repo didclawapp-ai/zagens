@@ -34,7 +34,7 @@ pub enum InterpretOutcome {
 }
 
 /// Mutable v3 step IO context while interpreting a [`plan_v3_step_effects`] chain.
-struct V3StepInterpretContext<'a> {
+pub(crate) struct V3StepInterpretContext<'a> {
     turn: &'a mut TurnContext,
     client: &'a dyn LlmClient,
     mode: TurnLoopMode,

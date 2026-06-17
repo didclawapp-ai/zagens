@@ -133,7 +133,7 @@ pub async fn run_and_merge_lsp_diag(workspace: &Path, mut board: Value) -> (Valu
 /// Reads the existing board, runs cargo check, merges, and atomically writes
 /// back. Silently skips when cargo is not in PATH or the blackboard is missing.
 pub async fn write_lsp_diagnostics_to_blackboard(workspace: &Path, task_id: &str) {
-    use crate::tools::subagent::blackboard::{implementer_round_count, read_blackboard_raw};
+    use crate::tools::subagent::blackboard::implementer_round_count;
     use zagens_config::workspace_meta_file_write;
 
     // Only run when there's at least one implementer round to check

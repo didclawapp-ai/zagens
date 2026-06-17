@@ -13,8 +13,7 @@
 use std::sync::Arc;
 
 use zagens_core::engine::{
-    BudgetPolicy, ContextCompiler, ContextLayer, ContextProjection, ContextSource, RenderedBlock,
-    SourceId,
+    BudgetPolicy, ContextCompiler, ContextLayer, ContextSource, RenderedBlock, SourceId,
 };
 use zagens_core::session::Session;
 

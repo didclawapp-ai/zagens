@@ -9,7 +9,7 @@
 //! Approval is `Required` because this mutates the workspace.
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::misc_inputs::revert_turn_input_schema;
 use super::spec::{
@@ -113,6 +113,7 @@ fn short_sha(sha: &str) -> &str {
 mod tests {
     use super::*;
     use crate::test_support::lock_test_env;
+    use serde_json::json;
     use std::sync::MutexGuard;
     use tempfile::tempdir;
 
