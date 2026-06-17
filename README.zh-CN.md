@@ -2,13 +2,13 @@
   <img src="assets/screenshot.png" alt="Zagens 截图" width="800" />
 </p>
 
-# Zagens — DeepSeek V4 生态 AI Agent 平台
+# Zagens — 面向 DeepSeek V4 的开源 Agent harness
 
 **[English](README.md)** · **[日本語](README.ja.md)** · **[Português (BR)](README.pt-BR.md)** | 中文
 
 长程 Agent 任务容易**半途停下或过早「声称完成」**；写代码和改 Office 往往**各用一套工具**；本地执行还需要**回放、审批和可审计性**——而不只是多开一个聊天窗口。
 
-**Zagens** 是面向 **[DeepSeek V4](https://deepseek.com/) 生态**的 **AI Agent 平台**——针对 DeepSeek API、推理链与工具调用深度适配，默认开箱即用 DeepSeek Pro / Flash。提供 **Tauri 桌面**、全屏 **`zagens-tui` 终端**、无 GUI 的 **`zagens` CLI** 三种入口，共用 **Kernel V3** runtime；支持 Code / Office 工作区、按轮**会话回放**、长程**分层完成门禁**，以及桌面侧的托盘、通知、嵌入式 PTY 等能力（亦支持其他 OpenAI 兼容端点作为备选）。
+**Zagens** 是面向 **[DeepSeek V4](https://deepseek.com/)** 的开源 Agent harness。
 
 > **作者语：** 不要相信 AI Agent 能做任何事情，它是有边界的；我们能做的，就是拓展这种边界。
 

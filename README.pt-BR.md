@@ -2,13 +2,13 @@
   <img src="assets/screenshot.png" alt="Captura de tela do Zagens" width="800" />
 </p>
 
-# Zagens — Plataforma de Agent de IA para DeepSeek V4
+# Zagens — Agent harness open source para DeepSeek V4
 
 **[English](README.md)** · **[中文](README.zh-CN.md)** · **[日本語](README.ja.md)** | Português (BR)
 
 Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo demais**. Código e arquivos Office costumam ficar em **ferramentas separadas**. Agents locais precisam de **replay, aprovação e auditabilidade** — não só mais uma janela de chat.
 
-**Zagens** é uma **plataforma de Agent de IA** para o **ecossistema [DeepSeek V4](https://deepseek.com/)**: otimizada para API DeepSeek, fluxos de raciocínio e chamadas de ferramentas (DeepSeek Pro / Flash por padrão). **Desktop** (Tauri), **terminal** (`zagens-tui`) e **CLI** (`zagens`) compartilham runtime **Kernel V3** para workspaces Code e Office, **replay de sessão** turno a turno, **portões de conclusão** em camadas e recursos nativos quando aplicável (bandeja, notificações, PTY). Endpoints OpenAI-compatíveis seguem disponíveis como alternativa.
+**Zagens** é um agent harness open source para **[DeepSeek V4](https://deepseek.com/)**.
 
 > **Nota dos autores:** Não acredite que um Agent de IA pode fazer qualquer coisa — ele tem limites. O que podemos fazer é ampliar esses limites.
 

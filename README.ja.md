@@ -2,13 +2,13 @@
   <img src="assets/screenshot.png" alt="Zagens スクリーンショット" width="800" />
 </p>
 
-# Zagens — DeepSeek V4 向け AI Agent プラットフォーム
+# Zagens — DeepSeek V4 向けオープンソース Agent harness
 
 **[English](README.md)** · **[中文](README.zh-CN.md)** · **[Português (BR)](README.pt-BR.md)** | 日本語
 
 長時間の Agent 作業は**途中で止まったり、早すぎる「完了」宣言**をしがちです。コードと Office ファイルは**別ツール**に分かれがちです。ローカル Agent には、チャット窓だけでなく**リプレイ・承認・監査可能性**が必要です。
 
-**Zagens** は **[DeepSeek V4](https://deepseek.com/) エコシステム**向けの **AI Agent プラットフォーム**です。DeepSeek API・推論ストリーム・ツール呼び出しに最適化され、既定で DeepSeek Pro / Flash を利用できます。**Tauri デスクトップ**、全画面 **`zagens-tui`**、ヘッドレス **`zagens` CLI** の 3 入口が **Kernel V3** runtime を共有し、Code / Office ワークスペース、ターン単位の**セッションリプレイ**、長時間タスク向け**段階的完了ゲート**、およびデスクトップ向けトレイ・通知・PTY などを提供します（OpenAI 互換エンドポイントもフォールバックとして利用可能）。
+**Zagens** は **[DeepSeek V4](https://deepseek.com/)** 向けのオープンソース Agent harness です。
 
 > **作者より：** AI Agent が何でもできるわけではない — 境界がある。私たちにできるのは、その境界を広げることだ。
 

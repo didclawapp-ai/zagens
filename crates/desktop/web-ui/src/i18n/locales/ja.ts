@@ -4,7 +4,7 @@ import type { TranslationMap } from '../keys';
 const ja: TranslationMap = {
   app: {
     title: 'Zagens',
-    subtitle: 'デスクトップ agent コンソール',
+    subtitle: 'DeepSeek V4 向けオープンソース Agent harness',
     heroTagline: 'AI コーディングアシスタント',
     emptyPrompt: '下の入力欄から会話を始めましょう',
   },
@@ -292,7 +292,7 @@ const ja: TranslationMap = {
   },
   about: {
     description:
-      'DeepSeek V4 エコシステム向けの Agent Harness デスクトップ版。長期コーディング、オフィスワークフロー、ワークスペース認識の Agent タスクに特化。',
+      'DeepSeek V4 向けオープンソース Agent harness。本デスクトップアプリは zagens-tui および zagens CLI と同じ Kernel V3 runtime を共有します。',
     emailLabel: 'メール',
     websiteLabel: '公式サイト',
     thirdPartyTitle: 'サードパーティライセンス',

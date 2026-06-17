@@ -4,13 +4,13 @@
 
 # Zagens
 
-*AI agent platform for the [DeepSeek V4](https://deepseek.com/) ecosystem — desktop · TUI · CLI.*
+*Open-source agent harness for [DeepSeek V4](https://deepseek.com/).*
 
 **[中文](README.zh-CN.md)** · **[日本語](README.ja.md)** · **[Português (BR)](README.pt-BR.md)** | English
 
 Long-horizon agent work tends to **stall or “claim done” too early**. Code and office files often live in **separate tools**. Local agents need **replay, approval, and auditability** — not just another chat window.
 
-**Zagens** is an **AI agent platform** for the **[DeepSeek V4](https://deepseek.com/) ecosystem**: tuned for DeepSeek API, reasoning streams, and tool calling out of the box (DeepSeek Pro / Flash by default). **Desktop** (Tauri), **terminal** (`zagens-tui`), and **CLI** (`zagens`) share one **Kernel V3** runtime for Code and Office workspaces, turn-by-turn **session replay**, layered **completion gates** for long tasks, and native shell features where applicable (tray, notifications, embedded PTY). Other OpenAI-compatible endpoints remain supported as a fallback.
+**Zagens** is an open-source agent harness for **[DeepSeek V4](https://deepseek.com/)**.
 
 > **From the authors:** Don’t believe an AI agent can do anything — it has boundaries. What we can do is expand those boundaries.
 

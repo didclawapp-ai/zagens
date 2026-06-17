@@ -28,10 +28,10 @@ assert.equal(
 );
 
 const githubHtml =
-  '<a href="https://github.com/didclawapp-ai/zagens">didclawapp-ai/zagens: Zagens — desktop agent harness</a>';
+  '<a href="https://github.com/didclawapp-ai/zagens">didclawapp-ai/zagens: Zagens — open-source agent harness for DeepSeek V4</a>';
 assert.equal(
   extractPastedUrl(
-    'didclawapp-ai/zagens: Zagens — desktop agent harness',
+    'didclawapp-ai/zagens: Zagens — open-source agent harness for DeepSeek V4',
     githubHtml,
   ),
   'https://github.com/didclawapp-ai/zagens',

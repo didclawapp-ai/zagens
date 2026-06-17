@@ -3,7 +3,7 @@ name = "zagens-desktop"
 # Aligned with workspace runtime line at 0.7.4 — see CHANGELOG.md.
 version = "0.7.5"
 edition.workspace = true
-description = "Zagens — Desktop agent harness (Tauri shell + embedded runtime sidecar)"
+description = "Zagens — Open-source agent harness for DeepSeek V4 (Tauri desktop + embedded runtime sidecar)"
 license.workspace = true
 rust-version.workspace = true
 

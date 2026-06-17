@@ -4,7 +4,7 @@ import type { TranslationMap } from '../keys';
 const ptBr: TranslationMap = {
   app: {
     title: 'Zagens',
-    subtitle: 'Harness de agente para desktop',
+    subtitle: 'Agent harness open source para DeepSeek V4',
     heroTagline: 'Seu assistente de código com IA',
     emptyPrompt: 'Comece uma conversa abaixo',
   },
@@ -292,7 +292,7 @@ const ptBr: TranslationMap = {
   },
   about: {
     description:
-      'Agent Harness para desktop no ecossistema DeepSeek V4 — codificação de longo prazo, fluxos de escritório e tarefas de agente com contexto do workspace.',
+      'Agent harness open source para DeepSeek V4. Este app desktop compartilha o mesmo runtime Kernel V3 do zagens-tui e do CLI zagens.',
     emailLabel: 'E-mail',
     websiteLabel: 'Site',
     thirdPartyTitle: 'Licenças de terceiros',

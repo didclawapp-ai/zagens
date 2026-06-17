@@ -2,7 +2,7 @@
 const zhHans = {
   app: {
     title: 'Zagens',
-    subtitle: '桌面 Agent 控制台',
+    subtitle: '面向 DeepSeek V4 的开源 Agent harness',
     heroTagline: '你的 AI 编码助手',
     emptyPrompt: '在下方输入问题开始对话',
   },
@@ -289,7 +289,7 @@ const zhHans = {
   },
   about: {
     description:
-      '面向 DeepSeek V4 生态的 Agent Harness 桌面端，专注长程编程、办公工作流与工作区感知的 Agent 任务。',
+      '面向 DeepSeek V4 的开源 Agent harness。本桌面应用与 zagens-tui、zagens CLI 共用同一 Kernel V3 runtime。',
     emailLabel: '邮箱',
     websiteLabel: '官网',
     thirdPartyTitle: '第三方许可证',
