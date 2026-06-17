@@ -456,36 +456,35 @@ pub async fn maybe_continue_incomplete_code_task(
             // §6.7 adversarial audit: only runs when macro loop is inactive and
             // machine gates are green.  No release/veto power — observe mode just
             // emits telemetry; enforce mode adds gap candidates as checklist items.
-            if input.config.adversarial_audit.enabled {
-                if let Some(client) = input.llm_client.as_deref() {
-                    if let Some(audit_result) = adversarial_audit::run_adversarial_audit(
-                        &input.config.adversarial_audit,
-                        input.session,
-                        client,
-                        input.llm_model,
-                        input.workspace,
-                        &checklist,
+            if input.config.adversarial_audit.enabled
+                && let Some(client) = input.llm_client.as_deref()
+                && let Some(audit_result) = adversarial_audit::run_adversarial_audit(
+                    &input.config.adversarial_audit,
+                    input.session,
+                    client,
+                    input.llm_model,
+                    input.workspace,
+                    &checklist,
+                    input.lang,
+                )
+                .await
+            {
+                use serde_json;
+                let payload_json = serde_json::to_string(&audit_result).unwrap_or_default();
+                input
+                    .session
+                    .pending_gate_events
+                    .push(gate_telemetry::CompletionGateEvent::AdversarialAudit { payload_json });
+                if !audit_result.was_bounded
+                    && !audit_result.gap_candidates.is_empty()
+                    && input.config.adversarial_audit.mode
+                        == zagens_core::long_horizon::CompletionGateMode::Enforce
+                {
+                    let msg = adversarial_audit::build_gap_reinject_message(
+                        &audit_result.gap_candidates,
                         input.lang,
-                    )
-                    .await
-                    {
-                        use serde_json;
-                        let payload_json = serde_json::to_string(&audit_result).unwrap_or_default();
-                        input.session.pending_gate_events.push(
-                            gate_telemetry::CompletionGateEvent::AdversarialAudit { payload_json },
-                        );
-                        if !audit_result.was_bounded
-                            && !audit_result.gap_candidates.is_empty()
-                            && input.config.adversarial_audit.mode
-                                == zagens_core::long_horizon::CompletionGateMode::Enforce
-                        {
-                            let msg = adversarial_audit::build_gap_reinject_message(
-                                &audit_result.gap_candidates,
-                                input.lang,
-                            );
-                            return LhtGateOutcome::NudgeAdversarialGaps(msg);
-                        }
-                    }
+                    );
+                    return LhtGateOutcome::NudgeAdversarialGaps(msg);
                 }
             }
             return LhtGateOutcome::Skip("graph_complete");

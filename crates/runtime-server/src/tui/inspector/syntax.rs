@@ -532,10 +532,9 @@ fn tokenize_mermaid(line: &str, trimmed: &str) -> Vec<Span<'static>> {
                 i += 1;
             }
             let ident: String = chars[start..i].iter().collect();
-            if MERMAID_DIAGRAM_KW.contains(&ident.as_str()) {
-                flush!();
-                spans.push(Span::styled(ident, keyword()));
-            } else if MERMAID_STRUCT_KW.contains(&ident.as_str()) {
+            if MERMAID_DIAGRAM_KW.contains(&ident.as_str())
+                || MERMAID_STRUCT_KW.contains(&ident.as_str())
+            {
                 flush!();
                 spans.push(Span::styled(ident, keyword()));
             } else if MERMAID_DIR_KW.contains(&ident.as_str()) {

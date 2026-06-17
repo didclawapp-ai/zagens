@@ -483,14 +483,13 @@ impl TurnMachine for ReplayTurnMachine {
                         None,
                     )
                 {
-                    if let Effect::QueryMemory { query_key, .. } = &effect {
-                        if projection
+                    if let Effect::QueryMemory { query_key, .. } = &effect
+                        && projection
                             .memory_plane_queried_keys_this_step
                             .contains(query_key)
                         {
                             continue;
                         }
-                    }
                     out.effects.push(effect);
                 }
                 out.effects.push(Effect::CallModel {
@@ -505,7 +504,7 @@ impl TurnMachine for ReplayTurnMachine {
             KernelEvent::ScratchpadReminderInjected { .. }
             | KernelEvent::ScratchpadSummaryInjected { .. } => {
                 out.effects.extend(
-                    crate::engine::turn_loop::memory_artifact_policy::memory_plane_emit_artifact_effects_from_events(&[event.clone()]),
+                    crate::engine::turn_loop::memory_artifact_policy::memory_plane_emit_artifact_effects_from_events(std::slice::from_ref(&event)),
                 );
             }
             KernelEvent::CycleBriefingInjected { .. } => {
@@ -541,10 +540,10 @@ impl TurnMachine for ReplayTurnMachine {
                 }
             }
             KernelEvent::CapacityCheckpoint {
-                action,
+                action: CapacityAction::Continue,
                 cooldown_blocked: true,
                 ..
-            } if matches!(action, CapacityAction::Continue) => {
+            } => {
                 out.effects.push(Effect::Sleep {
                     millis: capacity_cooldown_backoff_millis(),
                 });
@@ -625,7 +624,7 @@ pub fn verify_effect_replay_chain(events: &[KernelEvent]) -> Option<String> {
             _ => {}
         }
         let out = machine.step(&projection, event.clone());
-        projection.apply(&event);
+        projection.apply(event);
         for effect in &out.effects {
             match effect {
                 Effect::CallModel { .. } => call_model_effects += 1,
@@ -745,12 +744,11 @@ pub fn verify_guard_projection_chain(events: &[KernelEvent]) -> Option<String> {
     if let (Some(proj_last), Some(log_last)) = (
         projection.last_capacity_action.as_ref(),
         last_capacity.as_ref(),
-    ) {
-        if proj_last != log_last {
-            diffs.push(format!(
-                "last_capacity_action proj={proj_last:?} log={log_last:?}"
-            ));
-        }
+    ) && proj_last != log_last
+    {
+        diffs.push(format!(
+            "last_capacity_action proj={proj_last:?} log={log_last:?}"
+        ));
     }
     if diffs.is_empty() {
         None
@@ -891,14 +889,13 @@ pub fn verify_turn_replay_coherence(
         diffs.push(format!("guard: {summary}"));
     }
     let projection = TurnKernelProjection::from_events(events);
-    if let Some(mode) = projection.mode {
-        if let Some(summary) =
+    if let Some(mode) = projection.mode
+        && let Some(summary) =
             crate::engine::turn_loop::outer_boundary_replay_policy::verify_outer_boundary_event_caps(
                 events, mode,
             )
-        {
-            diffs.push(format!("outer_boundary_caps: {summary}"));
-        }
+    {
+        diffs.push(format!("outer_boundary_caps: {summary}"));
     }
     if let Some(summary) =
         crate::engine::turn_loop::loop_guard_replay_policy::verify_loop_guard_replay_coherence(
@@ -1674,9 +1671,9 @@ fn count_memory_plane_replay_inject_effects(events: &[KernelEvent]) -> usize {
     let mut projection = TurnKernelProjection::default();
     let mut count = 0;
     for event in events {
-        let is_memory_plane = is_memory_plane_injection_kernel_event(&event);
+        let is_memory_plane = is_memory_plane_injection_kernel_event(event);
         let out = machine.step(&projection, event.clone());
-        projection.apply(&event);
+        projection.apply(event);
         if is_memory_plane {
             count += out
                 .effects
@@ -1771,9 +1768,9 @@ fn count_compaction_replay_run_effects(events: &[KernelEvent]) -> usize {
     let mut projection = TurnKernelProjection::default();
     let mut count = 0;
     for event in events {
-        let is_compaction = is_compaction_run_kernel_event(&event);
-        let out = machine.step(&mut projection, event.clone());
-        projection.apply(&event);
+        let is_compaction = is_compaction_run_kernel_event(event);
+        let out = machine.step(&projection, event.clone());
+        projection.apply(event);
         if is_compaction {
             count += out
                 .effects
@@ -2129,7 +2126,7 @@ pub fn build_session_message_timeline_coverage(
         verify_message_timeline_vs_session(session_message_count, timeline).is_none();
     let timeline_vs_requests_ok = verify_timeline_vs_request_count(stats, timeline).is_none();
     let plane_depth_ok =
-        verify_session_message_plane_depth(session_message_count, &plane_index).is_none();
+        verify_session_message_plane_depth(session_message_count, plane_index).is_none();
     let role_index_ok = role_index
         .map(|idx| verify_session_role_index(idx, &role_estimate).is_none())
         .unwrap_or(true);
@@ -2214,37 +2211,32 @@ pub fn build_session_message_timeline_coverage(
         }
     }
 
-    if let Some(session) = session_compaction {
-        if let Some(s) =
+    if let Some(session) = session_compaction
+        && let Some(s) =
             verify_compaction_artifacts_vs_kernel_timeline(&projection.compaction_timeline, session)
-        {
-            summaries.push(s);
-        }
+    {
+        summaries.push(s);
     }
-    if !continuation_anchor_ok {
-        if let Some(s) = projection.continuation_anchor_summary.clone() {
-            summaries.push(s);
-        }
+    if !continuation_anchor_ok && let Some(s) = projection.continuation_anchor_summary.clone() {
+        summaries.push(s);
     }
-    if !request_approval_anchor_ok {
-        if let Some(s) = projection.request_approval_anchor_summary.clone() {
-            summaries.push(s);
-        }
+    if !request_approval_anchor_ok
+        && let Some(s) = projection.request_approval_anchor_summary.clone()
+    {
+        summaries.push(s);
     }
-    if !notify_lsp_anchor_ok {
-        if let Some(s) = projection.notify_lsp_anchor_summary.clone() {
-            summaries.push(s);
-        }
+    if !notify_lsp_anchor_ok && let Some(s) = projection.notify_lsp_anchor_summary.clone() {
+        summaries.push(s);
     }
-    if !memory_plane_replay_anchor_ok {
-        if let Some(s) = projection.memory_plane_replay_anchor_summary.clone() {
-            summaries.push(s);
-        }
+    if !memory_plane_replay_anchor_ok
+        && let Some(s) = projection.memory_plane_replay_anchor_summary.clone()
+    {
+        summaries.push(s);
     }
-    if !compaction_replay_anchor_ok {
-        if let Some(s) = projection.compaction_replay_anchor_summary.clone() {
-            summaries.push(s);
-        }
+    if !compaction_replay_anchor_ok
+        && let Some(s) = projection.compaction_replay_anchor_summary.clone()
+    {
+        summaries.push(s);
     }
     if let Some(s) = crate::engine::turn_loop::message_body_rebuild_policy::verify_session_transcript_preview_count(
         session_message_count,
@@ -2252,15 +2244,14 @@ pub fn build_session_message_timeline_coverage(
     ) {
         summaries.push(s);
     }
-    if let (Some(messages), Some(events)) = (session_messages, turn_events) {
-        if let Some(s) =
+    if let (Some(messages), Some(events)) = (session_messages, turn_events)
+        && let Some(s) =
             crate::engine::turn_loop::message_body_rebuild_policy::verify_session_transcript_preview_bodies(
                 messages, events,
             )
         {
             summaries.push(s);
         }
-    }
 
     Some(SessionMessageTimelineCoverage {
         session_message_count,

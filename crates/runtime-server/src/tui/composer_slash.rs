@@ -518,6 +518,7 @@ pub fn selected_model(composer: &str, selected: usize, catalog: &[String]) -> Op
     filter_models(composer, catalog).into_iter().nth(selected)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_palette(
     locale: Locale,
     composer: &str,

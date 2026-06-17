@@ -75,6 +75,7 @@ fn pad_lines_leading(
 }
 
 /// Draw a titled pane: ratatui `Block` for chrome (bordered themes), buffer fill for inner text.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_pane(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -114,6 +115,7 @@ pub fn paint_pane(
 }
 
 /// Classic bordered chrome + cell paint (sidebar ghost fix path).
+#[allow(clippy::too_many_arguments)]
 fn paint_pane_bordered(
     frame: &mut Frame<'_>,
     area: Rect,

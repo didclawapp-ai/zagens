@@ -220,9 +220,7 @@ fn check_craft_verdict(workspace: &Path, task_id: Option<&str>) -> Option<GateCh
         records.last()
     };
 
-    let Some(record) = record else {
-        return None;
-    };
+    let record = record?;
 
     let ms = t.elapsed().as_millis() as u64;
     let verdict = record
@@ -317,7 +315,6 @@ pub fn run(args: CoverageGateArgs) -> Result<ExitCode> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn tmp_workspace() -> TempDir {
@@ -327,9 +324,9 @@ mod tests {
             .expect("tempdir")
     }
 
-    fn default_args(workspace: &PathBuf) -> CoverageGateArgs {
+    fn default_args(workspace: &std::path::Path) -> CoverageGateArgs {
         CoverageGateArgs {
-            workspace: Some(workspace.clone()),
+            workspace: Some(workspace.to_path_buf()),
             require_checklist_complete: false,
             run_tests: false,
             json: false,

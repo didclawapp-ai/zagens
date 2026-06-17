@@ -2,10 +2,6 @@
 
 use super::transcript::TranscriptState;
 
-#[cfg(test)]
-use super::transcript::apply_event;
-use crate::core::events::Event;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubmitDisposition {
     /// Engine idle — start a new turn.
@@ -38,6 +34,7 @@ pub fn decide(transcript: &TranscriptState, force_steer: bool) -> SubmitDisposit
 mod tests {
     use super::*;
     use crate::tui::transcript::{TranscriptState, apply_event};
+    use zagens_core::events::Event;
 
     #[test]
     fn idle_is_immediate() {

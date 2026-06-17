@@ -11,6 +11,7 @@ use super::*;
 
 impl Engine {
     /// Log planned vs interpreted capacity hold tails when v3 outer loop holds.
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::core::engine) fn log_v3_capacity_hold_planner_effect(
         &self,
         boundary: OuterBoundaryKind,

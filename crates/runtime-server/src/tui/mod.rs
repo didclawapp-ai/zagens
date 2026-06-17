@@ -238,24 +238,26 @@ pub async fn run_tui(cli: Cli) -> Result<()> {
                 // drain all buffered keyboard events so the user never experiences a
                 // noticeable input delay even when thinking produces large token batches.
                 let mut drain_quit = false;
-                loop {
-                    match input.try_recv() {
-                        Some(event) => {
-                            match handle_input_event(
-                                &event,
-                                &mut ctx,
-                                &mut host,
-                                &mut app,
-                                &mut ctrl_c_streak,
-                                &mut ctrl_c_last,
-                                &shell_tx,
-                            ).await {
-                                Ok(true) => { drain_quit = true; break; }
-                                Ok(false) => { dirty = true; }
-                                Err(e) => return Err(e),
-                            }
+                while let Some(event) = input.try_recv() {
+                    match handle_input_event(
+                        &event,
+                        &mut ctx,
+                        &mut host,
+                        &mut app,
+                        &mut ctrl_c_streak,
+                        &mut ctrl_c_last,
+                        &shell_tx,
+                    )
+                    .await
+                    {
+                        Ok(true) => {
+                            drain_quit = true;
+                            break;
                         }
-                        None => break,
+                        Ok(false) => {
+                            dirty = true;
+                        }
+                        Err(e) => return Err(e),
                     }
                 }
                 if drain_quit { break; }
@@ -921,24 +923,23 @@ fn save_automation_edit(app: &mut AppState) {
     }
 
     if let Some(id) = editing_id {
-        if let Some(rule) = built_rule_for_update {
-            if let Some(existing) = app
+        if let Some(rule) = built_rule_for_update
+            && let Some(existing) = app
                 .automation_engine
                 .config
                 .rules
                 .iter_mut()
                 .find(|r| r.id == id)
-            {
-                existing.name = rule.name;
-                existing.trigger = rule.trigger;
-                // Preserve extra actions the user may have added via direct TOML
-                // editing; only overwrite the first (primary) action.
-                if !rule.actions.is_empty() {
-                    if existing.actions.is_empty() {
-                        existing.actions = rule.actions;
-                    } else {
-                        existing.actions[0] = rule.actions.into_iter().next().unwrap();
-                    }
+        {
+            existing.name = rule.name;
+            existing.trigger = rule.trigger;
+            // Preserve extra actions the user may have added via direct TOML
+            // editing; only overwrite the first (primary) action.
+            if !rule.actions.is_empty() {
+                if existing.actions.is_empty() {
+                    existing.actions = rule.actions;
+                } else {
+                    existing.actions[0] = rule.actions.into_iter().next().unwrap();
                 }
             }
         }
@@ -1310,7 +1311,7 @@ async fn execute_slash_action(
             };
             for result in fired {
                 for action in result.actions {
-                    fire_automation_action(&host, &mut *app, action, &event_ctx, shell_tx).await;
+                    fire_automation_action(host, &mut *app, action, &event_ctx, shell_tx).await;
                 }
             }
             app.push_system_line("new session".to_string());

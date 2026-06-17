@@ -164,13 +164,11 @@ impl KernelTurnHost for Engine {
             ext.kernel_turn_events.finish_turn(live);
             (events, writer, do_replay_verify)
         };
-        if do_replay_verify {
-            if let Some(writer) = writer {
-                self.runtime_ext()
-                    .kernel_turn_replay
-                    .verify_turn_persisted(writer.as_ref(), &live.turn_id, &events)
-                    .await;
-            }
+        if do_replay_verify && let Some(writer) = writer {
+            self.runtime_ext()
+                .kernel_turn_replay
+                .verify_turn_persisted(writer.as_ref(), &live.turn_id, &events)
+                .await;
         }
     }
 

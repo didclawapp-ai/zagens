@@ -167,17 +167,13 @@ pub fn parse_all_req_tags(content: &str) -> Vec<String> {
 #[must_use]
 pub fn strip_req_tags(content: &str) -> String {
     let mut result = content.to_string();
-    loop {
-        if let Some(start) = result.find("[req:") {
-            if let Some(end) = result[start..].find(']') {
-                result = format!(
-                    "{}{}",
-                    &result[..start],
-                    result[start + end + 1..].trim_start()
-                );
-            } else {
-                break;
-            }
+    while let Some(start) = result.find("[req:") {
+        if let Some(end) = result[start..].find(']') {
+            result = format!(
+                "{}{}",
+                &result[..start],
+                result[start + end + 1..].trim_start()
+            );
         } else {
             break;
         }

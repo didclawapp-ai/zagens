@@ -79,10 +79,10 @@ fn patch_github_comment_evidence(schema: &mut Value) {
 }
 
 fn patch_github_close_issue_schema(schema: &mut Value) {
-    if let Some(criteria) = schema.pointer_mut("/properties/acceptance_criteria") {
-        if let Some(obj) = criteria.as_object_mut() {
-            obj.insert("minItems".into(), json!(1));
-        }
+    if let Some(criteria) = schema.pointer_mut("/properties/acceptance_criteria")
+        && let Some(obj) = criteria.as_object_mut()
+    {
+        obj.insert("minItems".into(), json!(1));
     }
     if let Some(evidence) = schema
         .pointer_mut("/properties/evidence")

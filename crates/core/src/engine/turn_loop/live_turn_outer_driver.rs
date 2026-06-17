@@ -45,9 +45,7 @@ pub struct OuterBoundaryGrant {
 /// Verify a live grant matches replay-aligned boundary expectations (TurnMachine substrate).
 #[must_use]
 pub fn verify_outer_boundary_grant_replay_coherence(grant: &OuterBoundaryGrant) -> Option<String> {
-    let Some(kind) = grant.boundary_kind else {
-        return None;
-    };
+    let kind = grant.boundary_kind?;
     let planned_effect = plan_outer_boundary_replay_effect(kind);
     match planned_effect {
         None => {

@@ -51,10 +51,10 @@ pub(crate) fn detect_shell_failure_hints(
     exit_code: Option<i32>,
     status: &ShellStatus,
 ) -> Vec<ShellFailureHint> {
-    if matches!(status, ShellStatus::Completed | ShellStatus::Running) {
-        if exit_code.unwrap_or(0) == 0 {
-            return Vec::new();
-        }
+    if matches!(status, ShellStatus::Completed | ShellStatus::Running)
+        && exit_code.unwrap_or(0) == 0
+    {
+        return Vec::new();
     }
 
     let output = combined_output(stdout, stderr);

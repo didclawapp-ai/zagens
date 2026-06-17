@@ -39,46 +39,52 @@ pub fn inline_spans(text: &str, base: Style, code: Style) -> Vec<Span<'static>> 
         let b = bytes[i];
 
         // ── `code` ──────────────────────────────────────────────────────────
-        if b == b'`' {
-            if let Some(close) = find_byte(bytes, i + 1, b'`') {
-                flush!(i);
-                spans.push(Span::styled(text[i + 1..close].to_string(), code));
-                i = close + 1;
-                seg_start = i;
-                continue;
-            }
+        if b == b'`'
+            && let Some(close) = find_byte(bytes, i + 1, b'`')
+        {
+            flush!(i);
+            spans.push(Span::styled(text[i + 1..close].to_string(), code));
+            i = close + 1;
+            seg_start = i;
+            continue;
         }
 
         // ── **bold** or __bold__ ─────────────────────────────────────────────
-        if b == b'*' && i + 1 < len && bytes[i + 1] == b'*' {
-            if let Some(close) = find_str(text, i + 2, "**") {
-                flush!(i);
-                spans.push(Span::styled(text[i + 2..close].to_string(), bold));
-                i = close + 2;
-                seg_start = i;
-                continue;
-            }
+        if b == b'*'
+            && i + 1 < len
+            && bytes[i + 1] == b'*'
+            && let Some(close) = find_str(text, i + 2, "**")
+        {
+            flush!(i);
+            spans.push(Span::styled(text[i + 2..close].to_string(), bold));
+            i = close + 2;
+            seg_start = i;
+            continue;
         }
-        if b == b'_' && i + 1 < len && bytes[i + 1] == b'_' {
-            if let Some(close) = find_str(text, i + 2, "__") {
-                flush!(i);
-                spans.push(Span::styled(text[i + 2..close].to_string(), bold));
-                i = close + 2;
-                seg_start = i;
-                continue;
-            }
+        if b == b'_'
+            && i + 1 < len
+            && bytes[i + 1] == b'_'
+            && let Some(close) = find_str(text, i + 2, "__")
+        {
+            flush!(i);
+            spans.push(Span::styled(text[i + 2..close].to_string(), bold));
+            i = close + 2;
+            seg_start = i;
+            continue;
         }
 
         // ── *italic* ─────────────────────────────────────────────────────────
         // Only trigger if the next char is not another `*` (to avoid eating `**`).
-        if b == b'*' && i + 1 < len && bytes[i + 1] != b'*' {
-            if let Some(close) = find_byte(bytes, i + 1, b'*') {
-                flush!(i);
-                spans.push(Span::styled(text[i + 1..close].to_string(), italic));
-                i = close + 1;
-                seg_start = i;
-                continue;
-            }
+        if b == b'*'
+            && i + 1 < len
+            && bytes[i + 1] != b'*'
+            && let Some(close) = find_byte(bytes, i + 1, b'*')
+        {
+            flush!(i);
+            spans.push(Span::styled(text[i + 1..close].to_string(), italic));
+            i = close + 1;
+            seg_start = i;
+            continue;
         }
 
         i += 1;

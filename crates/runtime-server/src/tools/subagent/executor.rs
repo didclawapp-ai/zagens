@@ -216,50 +216,48 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     // has not been reached yet. Closes the "靠模型自觉" gap: the harness
     // triggers remediation without waiting for the parent model to parse
     // the `<deepseek:craft.fix_loop>` sentinel and decide to act.
-    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref()) {
-        if let Some(verdict) = res.structured_verdict.as_ref()
-            && craft::fix_loop_required(&verdict.verdict)
-            && craft::fix_loop_retry_role(&res.agent_type).is_some()
-        {
-            let workspace = task.runtime.context.workspace.as_path();
-            let fix_round = super::blackboard::implementer_round_count(workspace, task_id) + 1;
-            if fix_round <= craft::MAX_CRAFT_FIX_LOOPS_PER_TASK {
-                let prompt = craft::build_fix_loop_implementer_prompt(
-                    verdict,
-                    res.agent_type.as_str(),
-                    task_id,
-                    fix_round,
+    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref())
+        && let Some(verdict) = res.structured_verdict.as_ref()
+        && craft::fix_loop_required(&verdict.verdict)
+        && craft::fix_loop_retry_role(&res.agent_type).is_some()
+    {
+        let workspace = task.runtime.context.workspace.as_path();
+        let fix_round = super::blackboard::implementer_round_count(workspace, task_id) + 1;
+        if fix_round <= craft::MAX_CRAFT_FIX_LOOPS_PER_TASK {
+            let prompt = craft::build_fix_loop_implementer_prompt(
+                verdict,
+                res.agent_type.as_str(),
+                task_id,
+                fix_round,
+            );
+            let implementer_runtime = task.runtime.background_runtime();
+            let assignment = zagens_core::subagent::SubAgentAssignment::new(prompt.clone(), None);
+            let options = super::types::SubAgentSpawnOptions {
+                task_id: Some(task_id.to_string()),
+                nickname: Some(format!("auto-fix round {fix_round}")),
+                // C10: honour [subagents] implementer_model / default_model for
+                // programmatic auto-spawns (same as agent_spawn tool lookup).
+                model: task.runtime.role_model_override(&SubAgentType::Implementer),
+                ..Default::default()
+            };
+            {
+                let mut mgr = task.manager_handle.write().await;
+                let _ = mgr.spawn_background_with_assignment_options(
+                    Arc::clone(&task.manager_handle),
+                    implementer_runtime,
+                    SubAgentType::Implementer,
+                    prompt,
+                    assignment,
+                    None,
+                    options,
                 );
-                let implementer_runtime = task.runtime.background_runtime();
-                let assignment =
-                    zagens_core::subagent::SubAgentAssignment::new(prompt.clone(), None);
-                let options = super::types::SubAgentSpawnOptions {
-                    task_id: Some(task_id.to_string()),
-                    nickname: Some(format!("auto-fix round {fix_round}")),
-                    // C10: honour [subagents] implementer_model / default_model for
-                    // programmatic auto-spawns (same as agent_spawn tool lookup).
-                    model: task.runtime.role_model_override(&SubAgentType::Implementer),
-                    ..Default::default()
-                };
-                {
-                    let mut mgr = task.manager_handle.write().await;
-                    let _ = mgr.spawn_background_with_assignment_options(
-                        Arc::clone(&task.manager_handle),
-                        implementer_runtime,
-                        SubAgentType::Implementer,
-                        prompt,
-                        assignment,
-                        None,
-                        options,
-                    );
-                }
-                if let Some(ref event_tx) = task.runtime.event_tx {
-                    let _ = event_tx.try_send(Event::status(format!(
+            }
+            if let Some(ref event_tx) = task.runtime.event_tx {
+                let _ = event_tx.try_send(Event::status(format!(
                         "craft.fix_loop_auto_spawn: {{\"task_id\":\"{task_id}\",\"fix_round\":{fix_round},\"verdict\":\"{}\",\"source_role\":\"{}\"}}",
                         craft::verdict_level_str(&verdict.verdict),
                         res.agent_type.as_str(),
                     )));
-                }
             }
         }
     }
@@ -269,54 +267,51 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     // new Implementer (same cap as C1) rather than letting a broken state
     // proceed to the Reviewer. This eliminates the "model ships broken code
     // then reviewer flags style/lint issues" cycle described in §5.5.
-    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref()) {
-        if res.agent_type == SubAgentType::Implementer {
-            let workspace = task.runtime.context.workspace.as_path();
-            let fix_round = super::blackboard::implementer_round_count(workspace, task_id) + 1;
-            if fix_round <= craft::MAX_CRAFT_FIX_LOOPS_PER_TASK {
-                if let Some(gate) = craft::run_pre_review_gate(workspace).await {
-                    if !gate.passed() {
-                        let prompt =
-                            craft::build_gate_fail_implementer_prompt(&gate, task_id, fix_round);
-                        let gate_runtime = task.runtime.background_runtime();
-                        let assignment =
-                            zagens_core::subagent::SubAgentAssignment::new(prompt.clone(), None);
-                        let options = super::types::SubAgentSpawnOptions {
-                            task_id: Some(task_id.to_string()),
-                            nickname: Some(format!("gate-fix round {fix_round}")),
-                            // C10: honour role-specific model for gate-triggered re-implements.
-                            model: task.runtime.role_model_override(&SubAgentType::Implementer),
-                            ..Default::default()
-                        };
-                        {
-                            let mut mgr = task.manager_handle.write().await;
-                            let _ = mgr.spawn_background_with_assignment_options(
-                                Arc::clone(&task.manager_handle),
-                                gate_runtime,
-                                SubAgentType::Implementer,
-                                prompt,
-                                assignment,
-                                None,
-                                options,
-                            );
-                        }
-                        if let Some(ref event_tx) = task.runtime.event_tx {
-                            let failures_summary = gate
-                                .failures
-                                .iter()
-                                .map(|f| f.lines().next().unwrap_or("failure"))
-                                .collect::<Vec<_>>()
-                                .join("; ");
-                            let _ = event_tx.try_send(Event::status(format!(
-                                "craft.pre_review_gate_fail: \
+    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref())
+        && res.agent_type == SubAgentType::Implementer
+    {
+        let workspace = task.runtime.context.workspace.as_path();
+        let fix_round = super::blackboard::implementer_round_count(workspace, task_id) + 1;
+        if fix_round <= craft::MAX_CRAFT_FIX_LOOPS_PER_TASK
+            && let Some(gate) = craft::run_pre_review_gate(workspace).await
+            && !gate.passed()
+        {
+            let prompt = craft::build_gate_fail_implementer_prompt(&gate, task_id, fix_round);
+            let gate_runtime = task.runtime.background_runtime();
+            let assignment = zagens_core::subagent::SubAgentAssignment::new(prompt.clone(), None);
+            let options = super::types::SubAgentSpawnOptions {
+                task_id: Some(task_id.to_string()),
+                nickname: Some(format!("gate-fix round {fix_round}")),
+                // C10: honour role-specific model for gate-triggered re-implements.
+                model: task.runtime.role_model_override(&SubAgentType::Implementer),
+                ..Default::default()
+            };
+            {
+                let mut mgr = task.manager_handle.write().await;
+                let _ = mgr.spawn_background_with_assignment_options(
+                    Arc::clone(&task.manager_handle),
+                    gate_runtime,
+                    SubAgentType::Implementer,
+                    prompt,
+                    assignment,
+                    None,
+                    options,
+                );
+            }
+            if let Some(ref event_tx) = task.runtime.event_tx {
+                let failures_summary = gate
+                    .failures
+                    .iter()
+                    .map(|f| f.lines().next().unwrap_or("failure"))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                let _ = event_tx.try_send(Event::status(format!(
+                    "craft.pre_review_gate_fail: \
                                  {{\"task_id\":\"{task_id}\",\"fix_round\":{fix_round},\
                                  \"failures_count\":{},\"summary\":\"{}\"}}",
-                                gate.failures.len(),
-                                failures_summary.replace('"', "'"),
-                            )));
-                        }
-                    }
-                }
+                    gate.failures.len(),
+                    failures_summary.replace('"', "'"),
+                )));
             }
         }
     }
@@ -335,15 +330,14 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
     // gate passed), detected by checking that we are NOT in the middle of a
     // gate-fail spawn (fix_round <= cap means the code compiled cleanly
     // enough to reach here).
-    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref()) {
-        if res.agent_type == SubAgentType::Implementer {
-            let workspace = task.runtime.context.workspace.clone();
-            let task_id = task_id.to_string();
-            tokio::spawn(async move {
-                craft::lsp_post_hook::write_lsp_diagnostics_to_blackboard(&workspace, &task_id)
-                    .await;
-            });
-        }
+    if let (Ok(res), Some(task_id)) = (&result, task.task_id.as_deref())
+        && res.agent_type == SubAgentType::Implementer
+    {
+        let workspace = task.runtime.context.workspace.clone();
+        let task_id = task_id.to_string();
+        tokio::spawn(async move {
+            craft::lsp_post_hook::write_lsp_diagnostics_to_blackboard(&workspace, &task_id).await;
+        });
     }
 
     // C9: A/B metrics — append a record when a CRAFT task reaches a terminal
@@ -402,14 +396,12 @@ fn apply_reviewer_evidence_gate(
     };
     let (new_sv, downgraded) = craft::enforce_reviewer_evidence_gate(sv);
     res.structured_verdict = Some(new_sv);
-    if downgraded {
-        if let Some(tx) = event_tx {
-            let _ = tx.try_send(Event::status(
-                "craft.reviewer_evidence_downgrade: \
+    if downgraded && let Some(tx) = event_tx {
+        let _ = tx.try_send(Event::status(
+            "craft.reviewer_evidence_downgrade: \
                  {\"reason\":\"no_verify_cmd\",\"from\":\"BLOCKER\",\"to\":\"MAJOR\"}"
-                    .to_string(),
-            ));
-        }
+                .to_string(),
+        ));
     }
     result
 }

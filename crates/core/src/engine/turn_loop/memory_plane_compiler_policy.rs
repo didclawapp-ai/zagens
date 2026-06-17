@@ -70,7 +70,7 @@ pub fn compiler_budget_overrides_for_queried_sources(
     let mut out = Vec::new();
     if queried.contains("working_set") {
         out.push(BudgetOverride {
-            source_id: SourceId("working_set".into()),
+            source_id: SourceId("working_set"),
             new_budget: BudgetPolicy::Elastic {
                 min: 800,
                 max: 1500,
@@ -79,7 +79,7 @@ pub fn compiler_budget_overrides_for_queried_sources(
     }
     if queried.contains("memory.compaction") {
         out.push(BudgetOverride {
-            source_id: SourceId("memory.compaction".into()),
+            source_id: SourceId("memory.compaction"),
             new_budget: BudgetPolicy::Elastic {
                 min: 512,
                 max: 4000,
@@ -158,10 +158,10 @@ pub fn compiler_sources_from_projection_at_step(
 ) -> BTreeSet<String> {
     let mut projection = crate::engine::turn_machine::TurnKernelProjection::default();
     for event in events {
-        if let KernelEvent::ModelRequestIssued { step_idx: s, .. } = event {
-            if *s == step_idx {
-                break;
-            }
+        if let KernelEvent::ModelRequestIssued { step_idx: s, .. } = event
+            && *s == step_idx
+        {
+            break;
         }
         projection.apply(event);
     }
@@ -213,8 +213,10 @@ mod tests {
 
     #[test]
     fn projection_material_gate() {
-        let mut projection = crate::engine::turn_machine::TurnKernelProjection::default();
-        projection.working_set_path_touch_count = 2;
+        let projection = crate::engine::turn_machine::TurnKernelProjection {
+            working_set_path_touch_count: 2,
+            ..Default::default()
+        };
         assert!(query_key_has_projection_material(
             &projection,
             QUERY_WORKING_SET

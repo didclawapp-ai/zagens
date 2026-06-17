@@ -64,12 +64,10 @@ pub fn verify_capacity_checkpoint_field_coherence(events: &[KernelEvent]) -> Opt
         if *token_budget == 0 {
             diffs.push(format!("checkpoint[{idx}] token_budget is zero"));
         }
-        if *cooldown_blocked {
-            if !matches!(action, CapacityAction::Continue) {
-                diffs.push(format!(
-                    "checkpoint[{idx}] cooldown_blocked with action={action:?}"
-                ));
-            }
+        if *cooldown_blocked && !matches!(action, CapacityAction::Continue) {
+            diffs.push(format!(
+                "checkpoint[{idx}] cooldown_blocked with action={action:?}"
+            ));
         }
         if matches!(action, CapacityAction::Trim | CapacityAction::Handoff) && *cooldown_blocked {
             diffs.push(format!(

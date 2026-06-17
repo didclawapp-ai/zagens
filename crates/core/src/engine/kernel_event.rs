@@ -627,10 +627,9 @@ mod tests {
             if let KernelEvent::DeferredToolActivated {
                 turn_id, tool_name, ..
             } = ev
+                && turn_id == turn
             {
-                if turn_id == turn {
-                    active.insert(tool_name.clone());
-                }
+                active.insert(tool_name.clone());
             }
         }
         active
@@ -796,7 +795,7 @@ mod tests {
         // Rule: steer is consumed if a SteerInjected event exists at or before
         // the current step. This is a boolean projection.
         let tid = "t5".to_string();
-        let events = vec![KernelEvent::SteerInjected {
+        let events = [KernelEvent::SteerInjected {
             turn_id: tid.clone(),
             step_idx: 3,
             text: "change approach".into(),
@@ -812,7 +811,7 @@ mod tests {
         // Rule: the most recent CapacityCheckpoint.action for the turn determines
         // capacity state. If it's Abort, the turn should have ended.
         let tid = "t6".to_string();
-        let events = vec![
+        let events = [
             KernelEvent::CapacityCheckpoint {
                 turn_id: tid.clone(),
                 step_idx: 1,
@@ -838,14 +837,13 @@ mod tests {
                 if let KernelEvent::CapacityCheckpoint {
                     turn_id, action, ..
                 } = ev
+                    && turn_id == &tid
                 {
-                    if turn_id == &tid {
-                        return Some(action.clone());
-                    }
+                    return Some(action.clone());
                 }
                 None
             })
-            .last();
+            .next_back();
         assert_eq!(last_action, Some(CapacityAction::Trim));
     }
 

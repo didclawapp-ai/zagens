@@ -401,7 +401,7 @@ mod tests {
             plan_at(0, "read_file", json!({"path": "a"}), true),
             plan_with_approval(1, "write_file", json!({"path": "b"}), false),
         ];
-        let sub = split_wave_execution_subgroups(&plans, &vec![0, 1], &ENFORCED);
+        let sub = split_wave_execution_subgroups(&plans, &[0, 1], &ENFORCED);
         assert_eq!(sub, vec![vec![0], vec![1]]);
     }
 }

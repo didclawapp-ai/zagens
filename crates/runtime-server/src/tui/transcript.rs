@@ -368,7 +368,7 @@ impl TranscriptState {
             turn.tools_collapsed = false;
             return;
         }
-        if visible_harness_lines(turn).len() > 0 && turn.harness_collapsed {
+        if !visible_harness_lines(turn).is_empty() && turn.harness_collapsed {
             turn.harness_collapsed = false;
             return;
         }
@@ -430,10 +430,11 @@ impl TranscriptState {
     }
 
     fn wrapped_physical_lines(&mut self, max_cols: usize) -> Vec<LogicalLine> {
-        if let Some(cache) = &self.wrap_cache {
-            if cache.max_cols == max_cols && cache.epoch == self.render_epoch {
-                return cache.lines.clone();
-            }
+        if let Some(cache) = &self.wrap_cache
+            && cache.max_cols == max_cols
+            && cache.epoch == self.render_epoch
+        {
+            return cache.lines.clone();
         }
         let logical = dedupe_consecutive_tool_lines(self.flatten_logical_lines());
         let mut wrapped: Vec<LogicalLine> = Vec::new();
@@ -1406,7 +1407,7 @@ mod tests {
         state.begin_turn(user.to_string());
     }
 
-    fn active_turn<'a>(state: &'a TranscriptState) -> &'a TranscriptTurn {
+    fn active_turn(state: &TranscriptState) -> &TranscriptTurn {
         match state.items.last() {
             Some(TranscriptItem::Turn(turn)) => turn,
             _ => panic!("expected open turn"),
@@ -1854,10 +1855,10 @@ pub(crate) fn extract_last_mermaid(content: &str) -> Option<String> {
     let mut last: Option<String> = None;
     let blocks = super::markdown_table::split_assistant_blocks(content);
     for block in blocks {
-        if let super::markdown_table::AssistantBlock::Code { lang, lines } = block {
-            if lang.eq_ignore_ascii_case("mermaid") {
-                last = Some(lines.join("\n"));
-            }
+        if let super::markdown_table::AssistantBlock::Code { lang, lines } = block
+            && lang.eq_ignore_ascii_case("mermaid")
+        {
+            last = Some(lines.join("\n"));
         }
     }
     last

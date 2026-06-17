@@ -232,7 +232,7 @@ impl SessionManager {
     ) -> std::io::Result<Vec<zagens_core::compaction::CompactionArtifact>> {
         if let Some(ref db) = self.db {
             return crate::persist::load_compaction_artifacts(&db.lock().unwrap(), session_id)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                .map_err(std::io::Error::other);
         }
         Ok(Vec::new())
     }

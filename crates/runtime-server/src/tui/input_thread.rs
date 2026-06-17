@@ -15,14 +15,9 @@ impl TerminalInput {
     pub fn spawn() -> Self {
         let (tx, rx) = mpsc::channel(256);
         let thread = thread::spawn(move || {
-            loop {
-                match event::read() {
-                    Ok(ev) => {
-                        if tx.blocking_send(ev).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
+            while let Ok(ev) = event::read() {
+                if tx.blocking_send(ev).is_err() {
+                    break;
                 }
             }
         });

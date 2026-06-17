@@ -240,9 +240,7 @@ impl LiveTurnMachine {
         if let Some(summary) = verify_outer_boundary_grant_replay_coherence(grant) {
             return Some(summary);
         }
-        let Some(kind) = grant.boundary_kind else {
-            return None;
-        };
+        let kind = grant.boundary_kind?;
         let planned = plan_outer_boundary_replay_effect(kind);
         let confirmation = self.boundary_confirmation_effects(kind);
         match (planned, confirmation.as_slice()) {
@@ -615,6 +613,7 @@ pub async fn run_outer_pre_inner_step_via_machine<H: OuterLoopHost>(
     OuterPreInnerStepOutcome::ProceedToInnerStep
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_outer_post_inner_step_via_machine<H: OuterLoopHost>(
     host: &mut H,
     turn: &mut TurnContext,
@@ -920,9 +919,11 @@ mod tests {
 
     #[test]
     fn loop_state_boundary_counters_roundtrip() {
-        let mut state = LiveOuterLoopState::default();
-        state.step_limit_continuations = 2;
-        state.in_turn_cycle_advances = 1;
+        let state = LiveOuterLoopState {
+            step_limit_continuations: 2,
+            in_turn_cycle_advances: 1,
+            ..Default::default()
+        };
         let counters = state.boundary_counters();
         assert_eq!(counters.step_limit_continuations, 2);
         assert_eq!(counters.in_turn_cycle_advances, 1);

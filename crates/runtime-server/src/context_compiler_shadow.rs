@@ -328,6 +328,7 @@ pub fn render_cycle_briefings(briefings: &[zagens_core::cycle::CycleBriefing]) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zagens_core::engine::ContextProjection;
 
     #[test]
     fn build_compiler_from_snapshot_registers_expected_sources() {

@@ -35,10 +35,10 @@ impl ComposerPasteGuard {
     pub fn note_char(&mut self) {
         let now = Instant::now();
         self.end_idle_session(now);
-        if let Some(last) = self.last_char_at {
-            if now.duration_since(last) > CHAR_GAP {
-                self.burst_chars = 0;
-            }
+        if let Some(last) = self.last_char_at
+            && now.duration_since(last) > CHAR_GAP
+        {
+            self.burst_chars = 0;
         }
         self.burst_chars = self.burst_chars.saturating_add(1);
         self.last_char_at = Some(now);
@@ -72,10 +72,10 @@ impl ComposerPasteGuard {
         if self.armed_until.is_some_and(|until| now < until) {
             return true;
         }
-        match (self.last_char_at, self.burst_chars) {
-            (Some(last), n) if n >= 1 && now.duration_since(last) < ENTER_AFTER_CHAR => true,
-            _ => false,
-        }
+        matches!(
+            (self.last_char_at, self.burst_chars),
+            (Some(last), n) if n >= 1 && now.duration_since(last) < ENTER_AFTER_CHAR
+        )
     }
 
     pub fn note_enter_as_newline(&mut self, now: Instant) {

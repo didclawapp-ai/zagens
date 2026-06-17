@@ -73,10 +73,10 @@ pub fn simulate_working_layer_signals(events: &[KernelEvent]) -> WorkingLayerRep
                 ..
             } => {
                 if matches!(outcome, ToolOutcome::Success) {
-                    if let Some((planned_tool, input_json)) = planned.get(call_id) {
-                        if path_touch_from_planned(planned_tool, input_json) {
-                            path_touches += 1;
-                        }
+                    if let Some((planned_tool, input_json)) = planned.get(call_id)
+                        && path_touch_from_planned(planned_tool, input_json)
+                    {
+                        path_touches += 1;
                     }
                     if *wrote_state && tool_name.starts_with("scratchpad_") {
                         step.scratchpad_writes_this_step += 1;

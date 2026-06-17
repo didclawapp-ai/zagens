@@ -6,7 +6,6 @@
 mod palette;
 mod surfaces;
 
-pub use palette::*;
 pub use surfaces::{TuiTheme, TuiThemeId, current, current_id, install, pane_chrome_rows};
 
 use ratatui::style::{Color, Modifier, Style};
@@ -555,10 +554,10 @@ pub fn transcript_line(
     if let Some(rest) = text.strip_prefix(USER_TAG) {
         return tagged_line(USER_TAG, rest, kind, live);
     }
-    if kind == TranscriptLineKind::User {
-        if let Some(rest) = text.strip_prefix("+ ") {
-            return tagged_line("+ ", rest, kind, live);
-        }
+    if kind == TranscriptLineKind::User
+        && let Some(rest) = text.strip_prefix("+ ")
+    {
+        return tagged_line("+ ", rest, kind, live);
     }
     if let Some(rest) = text.strip_prefix(AI_TAG) {
         // First assistant line: apply inline markdown to the body after the tag.

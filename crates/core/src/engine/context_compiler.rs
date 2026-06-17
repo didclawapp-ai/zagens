@@ -492,13 +492,13 @@ impl ContextCompiler {
                     .find(|o| o.source_id == sorted[i].id)
                     .map(|o| o.new_budget)
                     .unwrap_or(sorted[i].budget);
-                if let BudgetPolicy::Elastic { min, .. } = budget_policy {
-                    if effective_tokens[i] > min {
-                        let freed = effective_tokens[i].saturating_sub(min);
-                        remaining = remaining.saturating_sub(freed);
-                        effective_tokens[i] = min;
-                        overflow_recovered = true;
-                    }
+                if let BudgetPolicy::Elastic { min, .. } = budget_policy
+                    && effective_tokens[i] > min
+                {
+                    let freed = effective_tokens[i].saturating_sub(min);
+                    remaining = remaining.saturating_sub(freed);
+                    effective_tokens[i] = min;
+                    overflow_recovered = true;
                 }
             }
         }

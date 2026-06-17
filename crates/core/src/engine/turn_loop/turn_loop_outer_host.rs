@@ -107,11 +107,7 @@ mod tests {
 
     fn _v3_turn_host_is_outer_loop_host<H: V3TurnHost>() {}
 
-    fn _outer_loop_host_implies_kernel<H: OuterLoopHost>()
-    where
-        H: KernelTurnHost,
-    {
-    }
+    fn _outer_loop_host_implies_kernel<H: OuterLoopHost + KernelTurnHost>() {}
     const OUTER_HOST_METHOD_BASELINE: usize = 18;
 
     #[test]

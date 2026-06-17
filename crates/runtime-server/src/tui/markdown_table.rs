@@ -92,10 +92,10 @@ fn fence_open_lang(line: &str) -> Option<&str> {
             return Some(rest.trim());
         }
     }
-    if let Some(rest) = t.strip_prefix("~~~") {
-        if !rest.contains('~') {
-            return Some(rest.trim());
-        }
+    if let Some(rest) = t.strip_prefix("~~~")
+        && !rest.contains('~')
+    {
+        return Some(rest.trim());
     }
     None
 }

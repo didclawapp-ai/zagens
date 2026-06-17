@@ -31,19 +31,17 @@ pub fn verify_inner_step_slice_replay_coherence(
     turn_events: &[KernelEvent],
     step_idx: u32,
 ) -> Option<String> {
-    if model_request_issued_for_step(turn_events, step_idx).is_none() {
-        return None;
-    }
+    model_request_issued_for_step(turn_events, step_idx)?;
     let executed = executed_tool_count_for_step(turn_events, step_idx);
     verify_step_effect_parity(turn_events, step_idx, executed)
 }
 
 /// Locate the observed `ModelRequestIssued` for one step in a turn log.
 #[must_use]
-pub fn model_request_issued_for_step<'a>(
-    turn_events: &'a [KernelEvent],
+pub fn model_request_issued_for_step(
+    turn_events: &[KernelEvent],
     step_idx: u32,
-) -> Option<&'a KernelEvent> {
+) -> Option<&KernelEvent> {
     turn_events.iter().find(|event| {
         matches!(
             event,

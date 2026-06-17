@@ -413,10 +413,10 @@ fn tool_result_content(
             if is_error { Some(true) } else { None },
         );
     }
-    if let ToolOutcome::ToolError { message } = outcome {
-        if !message.is_empty() {
-            return (format!("Error: {message}"), Some(true));
-        }
+    if let ToolOutcome::ToolError { message } = outcome
+        && !message.is_empty()
+    {
+        return (format!("Error: {message}"), Some(true));
     }
     if !result_preview.is_empty() {
         return (result_preview.to_string(), None);

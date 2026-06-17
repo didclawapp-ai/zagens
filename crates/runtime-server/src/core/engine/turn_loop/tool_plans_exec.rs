@@ -299,7 +299,7 @@ async fn execute_tool_plans_batch(
             let use_parallel_lock = plan.supports_parallel || wave_parallel;
             let lock_ctx = if fine_grained_locks {
                 lock_registry.as_ref().map(|registry| {
-                    fine_grained_lock_ctx(Arc::clone(registry), &plan, &schedule_ctx)
+                    fine_grained_lock_ctx(Arc::clone(registry), plan, &schedule_ctx)
                 })
             } else {
                 None
@@ -371,12 +371,12 @@ async fn execute_tool_plans_batch(
             }
         }
         if engine.cancel_token.is_cancelled() {
-            fill_unexecuted_cancelled_outcomes(&mut outcomes, &plans, &local_slot);
+            fill_unexecuted_cancelled_outcomes(&mut outcomes, &plans, local_slot);
         }
     } else {
         for plan in &plans {
             if engine.cancel_token.is_cancelled() {
-                fill_unexecuted_cancelled_outcomes(&mut outcomes, &plans, &local_slot);
+                fill_unexecuted_cancelled_outcomes(&mut outcomes, &plans, local_slot);
                 break;
             }
             let tool_id = plan.id.clone();
@@ -693,7 +693,7 @@ async fn execute_tool_plans_batch(
             } else {
                 let lock_ctx = if fine_grained_locks {
                     lock_registry.as_ref().map(|registry| {
-                        fine_grained_lock_ctx(Arc::clone(registry), &plan, &schedule_ctx)
+                        fine_grained_lock_ctx(Arc::clone(registry), plan, &schedule_ctx)
                     })
                 } else {
                     None

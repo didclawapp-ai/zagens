@@ -103,8 +103,7 @@ pub(crate) async fn rebuild_symbol_index(
     State(_state): State<RuntimeApiState>,
     Query(q): Query<RebuildSymbolIndexQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    let ws =
-        zagens_config::user_scoped_workspace(&q.workspace).map_err(|e| ApiError::bad_request(e))?;
+    let ws = zagens_config::user_scoped_workspace(&q.workspace).map_err(ApiError::bad_request)?;
     let ws_for_build = ws.clone();
     let path = zagens_config::workspace_meta_file_write(&ws, "symbols.json");
     let index = tokio::task::spawn_blocking(move || {

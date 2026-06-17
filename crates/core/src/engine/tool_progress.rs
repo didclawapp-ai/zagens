@@ -13,7 +13,11 @@ fn truncate_progress_preview(text: &str, max_bytes: usize) -> &str {
     if text.len() <= max_bytes {
         return text;
     }
-    &text[..text.floor_char_boundary(max_bytes)]
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
 }
 
 /// Append one JSON line to `DEEPSEEK_TOOL_AUDIT_LOG` when the env var is set.

@@ -131,14 +131,13 @@ pub fn replay_query_memory_count_at_step(turn_events: &[KernelEvent], step_idx: 
             step_idx: event_step,
             ..
         } = event
+            && *event_step == step_idx
         {
-            if *event_step == step_idx {
-                count = crate::engine::turn_loop::memory_plane_query_policy::query_memory_effects_before_model_call(
+            count = crate::engine::turn_loop::memory_plane_query_policy::query_memory_effects_before_model_call(
                     &projection,
                     None,
                 )
                 .len() as u32;
-            }
         }
         projection.apply(event);
     }

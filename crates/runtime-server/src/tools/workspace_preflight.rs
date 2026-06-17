@@ -40,10 +40,8 @@ pub fn apply_windows_node_preflight(workspace: &Path) -> WindowsNodePreflightRep
     let mut report = WindowsNodePreflightReport::default();
 
     let npmrc = workspace.join(".npmrc");
-    if !npmrc.is_file() {
-        if write_new_file(&npmrc, NPMRC_BODY).is_ok() {
-            report.npmrc_created = true;
-        }
+    if !npmrc.is_file() && write_new_file(&npmrc, NPMRC_BODY).is_ok() {
+        report.npmrc_created = true;
     }
 
     let has_jest =
@@ -52,10 +50,12 @@ pub fn apply_windows_node_preflight(workspace: &Path) -> WindowsNodePreflightRep
         let jest_cfg = workspace.join("jest.config.js");
         let jest_cfg_ts = workspace.join("jest.config.ts");
         let jest_cfg_mjs = workspace.join("jest.config.mjs");
-        if !jest_cfg.is_file() && !jest_cfg_ts.is_file() && !jest_cfg_mjs.is_file() {
-            if write_new_file(&jest_cfg, JEST_CONFIG_BODY).is_ok() {
-                report.jest_config_created = true;
-            }
+        if !jest_cfg.is_file()
+            && !jest_cfg_ts.is_file()
+            && !jest_cfg_mjs.is_file()
+            && write_new_file(&jest_cfg, JEST_CONFIG_BODY).is_ok()
+        {
+            report.jest_config_created = true;
         }
     }
 

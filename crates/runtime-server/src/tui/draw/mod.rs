@@ -58,18 +58,16 @@ pub fn draw(
         seal_panel_edge_columns(frame.buffer_mut(), regions);
     }
 
-    if !borderless {
-        if let Some(styles) = styles {
-            paint_column_dividers(
-                frame.buffer_mut(),
-                regions,
-                &DividerStyles {
-                    left_center: styles.left,
-                    center_right: styles.right,
-                    center_outer: styles.center,
-                },
-            );
-        }
+    if !borderless && let Some(styles) = styles {
+        paint_column_dividers(
+            frame.buffer_mut(),
+            regions,
+            &DividerStyles {
+                left_center: styles.left,
+                center_right: styles.right,
+                center_outer: styles.center,
+            },
+        );
     }
 
     if app.show_help {

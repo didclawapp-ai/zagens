@@ -110,10 +110,10 @@ fn normalize_tool_property_schema(prop: &mut Value) {
     let Some(obj) = prop.as_object_mut() else {
         return;
     };
-    if let Some(types) = obj.get("type").and_then(|t| t.as_array()) {
-        if let Some(non_null) = types.iter().find(|t| t.as_str() != Some("null")) {
-            obj.insert("type".into(), non_null.clone());
-        }
+    if let Some(types) = obj.get("type").and_then(|t| t.as_array())
+        && let Some(non_null) = types.iter().find(|t| t.as_str() != Some("null"))
+    {
+        obj.insert("type".into(), non_null.clone());
     }
     if let Some(enums) = obj.get_mut("enum").and_then(|v| v.as_array_mut()) {
         enums.retain(|v| !v.is_null());

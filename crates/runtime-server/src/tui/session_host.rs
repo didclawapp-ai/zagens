@@ -390,16 +390,13 @@ impl TuiSessionHost {
                 .title
                 .as_ref()
                 .is_none_or(|title| title.trim().is_empty())
+                && let Ok(turns) = self.manager.store.list_turns_for_thread(&thread.id)
+                && let Some(summary) = turns
+                    .last()
+                    .map(|turn| turn.input_summary.as_str())
+                    .filter(|summary| !summary.trim().is_empty())
             {
-                if let Ok(turns) = self.manager.store.list_turns_for_thread(&thread.id) {
-                    if let Some(summary) = turns
-                        .last()
-                        .map(|turn| turn.input_summary.as_str())
-                        .filter(|summary| !summary.trim().is_empty())
-                    {
-                        turn_summaries.insert(thread.id.clone(), summary.to_string());
-                    }
-                }
+                turn_summaries.insert(thread.id.clone(), summary.to_string());
             }
         }
         SessionList::from_threads_with_summaries(threads, active_id, &turn_summaries, locale)

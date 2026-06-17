@@ -57,12 +57,11 @@ impl Engine {
             })
             .await
             .ok();
-            if let Some(report) = report {
-                if let Some(status) =
+            if let Some(report) = report
+                && let Some(status) =
                     crate::tools::workspace_preflight::format_preflight_status(&report)
-                {
-                    let _ = self.tx_event.send(Event::status(status)).await;
-                }
+            {
+                let _ = self.tx_event.send(Event::status(status)).await;
             }
             self.runtime_ext_mut().workspace_preflight_done = true;
         }

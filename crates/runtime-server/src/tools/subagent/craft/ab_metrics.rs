@@ -137,7 +137,6 @@ impl CraftAbRecord {
         // Use OpenOptions with write + create + append for cross-platform safety.
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new()
-            .write(true)
             .create(true)
             .append(true)
             .open(&path)
@@ -187,7 +186,7 @@ fn unix_ts_str() -> String {
 }
 
 fn is_leap(year: u32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 /// Read all records from the metrics file (for analysis / testing).

@@ -273,7 +273,7 @@ fn apply_engine_meta(description: String, engine: PolicyPlanMeta) -> ToolPlanApp
 /// - `Legacy`  → full pre-M3 heuristic path (kill-switch only).
 /// - `Shadow`  → `Engine` (bake complete; shadow comparison removed).
 /// - `Engine`  → `PolicyEngine` controls approval/parallelism/sandbox;
-///               description sourced from `build_approval_description`.
+///   description sourced from `build_approval_description`.
 #[must_use]
 pub fn resolve_tool_plan_approval_meta(
     policy_mode: ToolsPolicyMode,

@@ -10,7 +10,7 @@ use serde_json::Value;
 /// Alternate keys models use for the file path (aligned with `schedule_bridge`).
 const PATH_ALIASES: &[&str] = &["file", "file_path", "filename", "target_path"];
 
-fn path_from_aliases<'a>(input: &'a Value) -> Option<&'a str> {
+fn path_from_aliases(input: &Value) -> Option<&str> {
     for key in std::iter::once("path").chain(PATH_ALIASES.iter().copied()) {
         if let Some(v) = input.get(key).and_then(Value::as_str) {
             let trimmed = v.trim();
@@ -77,9 +77,7 @@ mod tests {
     #[test]
     fn optional_path_field_hints_on_alias() {
         assert_eq!(
-            optional_path_field(&json!({"file": "src"}), "list_dir")
-                .unwrap()
-                .as_deref(),
+            optional_path_field(&json!({"file": "src"}), "list_dir").unwrap(),
             Some("src")
         );
     }
