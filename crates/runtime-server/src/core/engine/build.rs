@@ -37,8 +37,7 @@ fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
         return None;
     }
 
-    let provider = api_config.api_provider();
-    let env_var = match provider {
+    let env_var = match api_config.api_provider() {
         ApiProvider::Deepseek | ApiProvider::DeepseekCN => "DEEPSEEK_API_KEY",
         ApiProvider::NvidiaNim => "NVIDIA_API_KEY/NVIDIA_NIM_API_KEY",
         ApiProvider::Openai => "OPENAI_API_KEY",
@@ -52,9 +51,8 @@ fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
 
     Some(format!(
         "The rejected key came from {env_var}; no saved config key is present.\n\
-         Run `deepseek auth set --provider {provider}` to save a valid key in ~/.deepseek/config.toml, \
-         or remove the stale export and open a fresh shell.",
-        provider = provider.as_str()
+         Run `zagens login --api-key <your-key>` to save a valid key in ~/.zagens/config.toml, \
+         or remove the stale export and open a fresh shell."
     ))
 }
 

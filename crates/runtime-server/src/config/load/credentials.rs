@@ -53,7 +53,7 @@ impl SavedCredential {
 
 /// Save the active provider's API key.
 ///
-/// **Dual-write strategy (#593):** writes to `~/.deepseek/config.toml`
+/// **Dual-write strategy (#593):** writes to `~/.zagens/config.toml`
 /// (always) and to the OS keyring via [`zagens_secrets::Secrets`]
 /// (when a backend is reachable). The runtime resolves credentials in
 /// `keyring → env → config-file` order; writing to the config file
@@ -200,7 +200,7 @@ reasoning_effort = "max"
 /// Platform credential stores are intentionally not queried here.
 /// Startup/onboarding checks must be cheap and prompt-free, so v0.8.8
 /// keeps the default auth path to environment variables and
-/// `~/.deepseek/config.toml`.
+/// `~/.zagens/config.toml`.
 ///
 /// Used by [`crate::tui::app::App::new`] to decide whether to gate
 /// the user behind the in-TUI api-key onboarding screen — getting
@@ -323,7 +323,7 @@ pub fn has_api_key_for(config: &Config, provider: ApiProvider) -> bool {
 
 /// Save an API key to the appropriate place for the given provider.
 /// DeepSeek goes through [`save_api_key`]. Other providers write
-/// `[providers.<name>] api_key = "..."` to `~/.deepseek/config.toml`.
+/// `[providers.<name>] api_key = "..."` to `~/.zagens/config.toml`.
 /// Returns the config file path.
 pub fn save_api_key_for(provider: ApiProvider, api_key: &str) -> Result<PathBuf> {
     if matches!(provider, ApiProvider::Deepseek | ApiProvider::DeepseekCN) {

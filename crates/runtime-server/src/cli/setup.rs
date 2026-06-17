@@ -341,7 +341,7 @@ pub(crate) fn merge_project_config(config: &mut crate::config::Config, workspace
         if table.contains_key(*key) {
             eprintln!(
                 "warning: project-scope config key `{key}` is ignored — \
-                 set it in `~/.deepseek/config.toml` instead. \
+                 set it in `~/.zagens/config.toml` instead. \
                  (See #417 for the deny-list rationale.)"
             );
         }

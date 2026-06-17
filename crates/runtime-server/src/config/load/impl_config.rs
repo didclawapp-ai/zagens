@@ -354,7 +354,7 @@ impl Config {
         }
 
         // 1. Config file (provider-scoped slot). This intentionally wins
-        // over ambient env so `deepseek auth set` fixes stale shell exports.
+        // over ambient env so `zagens login` fixes stale shell exports.
         if let Some(configured) = self
             .provider_config_for(provider)
             .and_then(|provider| provider.api_key.clone())
@@ -377,34 +377,34 @@ impl Config {
                  \n\
                  1. Get a key:  https://platform.deepseek.com/api_keys\n\
                  2. Save it (works in every folder, no OS prompts):\n\
-                        deepseek auth set --provider deepseek\n\
+                        zagens login --api-key <your-key>\n\
                  \n\
                  Alternatives:\n\
                    • export DEEPSEEK_API_KEY=<your-key>      (current shell only;\n\
                      also note: zsh users — exports in ~/.zshrc only reach interactive\n\
                      shells, prefer ~/.zshenv for everything)\n\
-                   • api_key = \"<your-key>\"  in ~/.deepseek/config.toml"
+                   • api_key = \"<your-key>\"  in ~/.zagens/config.toml\n\
+                   • In zagens-tui: /api-key or complete first-run onboarding"
             ),
             ApiProvider::NvidiaNim => anyhow::bail!(
-                "NVIDIA NIM API key not found. Run 'deepseek auth set --provider nvidia-nim', \
-                 set NVIDIA_API_KEY/NVIDIA_NIM_API_KEY, or save api_key in ~/.deepseek/config.toml \
-                 with provider = \"nvidia-nim\"."
+                "NVIDIA NIM API key not found. Set NVIDIA_API_KEY/NVIDIA_NIM_API_KEY, \
+                 or save api_key in ~/.zagens/config.toml with provider = \"nvidia-nim\"."
             ),
             ApiProvider::Openai => anyhow::bail!(
-                "OpenAI API key not found. Run 'deepseek auth set --provider openai', \
-                 set OPENAI_API_KEY, or add [providers.openai] api_key in ~/.deepseek/config.toml."
+                "OpenAI API key not found. Set OPENAI_API_KEY, \
+                 or add [providers.openai] api_key in ~/.zagens/config.toml."
             ),
             ApiProvider::Openrouter => anyhow::bail!(
-                "OpenRouter API key not found. Run 'deepseek auth set --provider openrouter', \
-                 set OPENROUTER_API_KEY, or add [providers.openrouter] api_key in ~/.deepseek/config.toml."
+                "OpenRouter API key not found. Set OPENROUTER_API_KEY, \
+                 or add [providers.openrouter] api_key in ~/.zagens/config.toml."
             ),
             ApiProvider::Novita => anyhow::bail!(
-                "Novita API key not found. Run 'deepseek auth set --provider novita', \
-                 set NOVITA_API_KEY, or add [providers.novita] api_key in ~/.deepseek/config.toml."
+                "Novita API key not found. Set NOVITA_API_KEY, \
+                 or add [providers.novita] api_key in ~/.zagens/config.toml."
             ),
             ApiProvider::Fireworks => anyhow::bail!(
-                "Fireworks AI API key not found. Run 'deepseek auth set --provider fireworks', \
-                 set FIREWORKS_API_KEY, or add [providers.fireworks] api_key in ~/.deepseek/config.toml."
+                "Fireworks AI API key not found. Set FIREWORKS_API_KEY, \
+                 or add [providers.fireworks] api_key in ~/.zagens/config.toml."
             ),
             // Self-hosted deployments commonly run without auth on localhost.
             // Return an empty key and let the client omit the Authorization header.

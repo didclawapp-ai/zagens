@@ -123,7 +123,7 @@ Instale via **binários pré-compilados** ([Releases `zagens-v0.8.0`](https://gi
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential curl pkg-config libssl-dev
+sudo apt install -y build-essential curl pkg-config libssl-dev libdbus-1-dev
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 

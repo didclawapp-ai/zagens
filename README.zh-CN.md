@@ -123,7 +123,7 @@
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential curl pkg-config libssl-dev
+sudo apt install -y build-essential curl pkg-config libssl-dev libdbus-1-dev
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
@@ -194,7 +194,7 @@ cargo build -p zagens-cli --features tui --bin zagens-tui
 ./target/debug/zagens-tui          # 恢复上次会话；--fresh 新建会话
 ```
 
-**API Key：** `DEEPSEEK_API_KEY`、`~/.zagens/config.toml`，或 TUI 内 `/api-key` / 首次引导。
+**API Key：** `DEEPSEEK_API_KEY`、`~/.zagens/config.toml`、TUI 内 `/api-key` / 首次引导，或 `zagens login --api-key <key>`。旧版 `~/.deepseek/config.toml` 仍可读取，新安装默认使用 `~/.zagens/`。
 
 **CLI 示例：**
 

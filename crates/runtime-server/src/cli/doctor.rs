@@ -34,7 +34,7 @@ pub(crate) fn doctor_timeout_recovery_lines(config: &Config) -> Vec<String> {
                 && !target.base_url.contains("api.deepseeki.com") =>
         {
             lines.push(
-                "If you are in mainland China, set `provider = \"deepseek-cn\"` or `base_url = \"https://api.deepseeki.com\"` in ~/.deepseek/config.toml, then rerun `deepseek doctor`."
+                "If you are in mainland China, set `provider = \"deepseek-cn\"` or `base_url = \"https://api.deepseek.com\"` in ~/.zagens/config.toml, then rerun `zagens doctor`."
                     .to_string(),
             );
         }

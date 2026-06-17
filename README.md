@@ -125,7 +125,7 @@ Install via **pre-built binaries** ([Releases `zagens-v0.8.0`](https://github.co
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential curl pkg-config libssl-dev
+sudo apt install -y build-essential curl pkg-config libssl-dev libdbus-1-dev
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
@@ -196,7 +196,7 @@ cargo build -p zagens-cli --features tui --bin zagens-tui
 ./target/debug/zagens-tui          # restore last session; --fresh for new session
 ```
 
-**API key:** `DEEPSEEK_API_KEY`, `~/.zagens/config.toml`, or TUI `/api-key` / first-run onboarding.
+**API key:** `DEEPSEEK_API_KEY`, `~/.zagens/config.toml`, TUI `/api-key` / first-run onboarding, or `zagens login --api-key <key>`. Legacy `~/.deepseek/config.toml` is read if present but new installs use `~/.zagens/`.
 
 **Headless CLI examples:**
 
