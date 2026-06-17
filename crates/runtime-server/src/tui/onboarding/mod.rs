@@ -67,7 +67,7 @@ pub fn api_key_configured(config: &Config) -> bool {
 fn keyring_has_deepseek_key() -> bool {
     #[cfg(test)]
     {
-        return false;
+        false
     }
     #[cfg(not(test))]
     {
