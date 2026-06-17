@@ -103,18 +103,17 @@ pub fn derive_conservative_footprint(
     let executes = caps.contains(&ToolCapability::ExecutesCode);
     let network = caps.contains(&ToolCapability::Network);
 
-    let mut writes = ResourceSet::default();
-    if unified_writes_state || writes_files || executes {
-        writes.workspace_write = true;
-    }
-    // Network tools that are not explicitly read-only may mutate remote state.
-    if network && !read_only {
-        writes.network_write = true;
-    }
+    let writes = ResourceSet {
+        workspace_write: unified_writes_state || writes_files || executes,
+        network_write: network && !read_only,
+        ..Default::default()
+    };
 
-    let mut reads = ResourceSet::default();
-    reads.workspace_read = read_only || writes_files || executes || !network;
-    reads.network_read = network;
+    let reads = ResourceSet {
+        workspace_read: read_only || writes_files || executes || !network,
+        network_read: network,
+        ..Default::default()
+    };
 
     let spawns = if executes {
         SpawnClass::Sandboxed
