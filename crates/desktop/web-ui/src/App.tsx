@@ -344,6 +344,7 @@ export default function App() {
     setSelectedWorkspace,
     setActiveInspector,
     setRightPanelCollapsed,
+    setAuditGridDismissed,
   });
 
   const { handleSend, resetTurnPersistState } = useTurnSend({

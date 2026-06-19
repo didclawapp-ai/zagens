@@ -20,6 +20,7 @@ export type UseWorkspacePanelParams = {
   setSelectedWorkspace: React.Dispatch<React.SetStateAction<string>>;
   setActiveInspector: React.Dispatch<React.SetStateAction<RightPanelView>>;
   setRightPanelCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+  setAuditGridDismissed: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 export function useWorkspacePanel({
@@ -32,6 +33,7 @@ export function useWorkspacePanel({
   setSelectedWorkspace,
   setActiveInspector,
   setRightPanelCollapsed,
+  setAuditGridDismissed,
 }: UseWorkspacePanelParams) {
   const [panelPreview, setPanelPreview] = useState<PreviewState | null>(null);
   const [focusWorkspaceFilesNonce, setFocusWorkspaceFilesNonce] = useState(0);
@@ -64,10 +66,12 @@ export function useWorkspacePanel({
       const rel = normalizeWorkspaceRelPath(relPath);
       if (!rel) return;
       setActiveInspector('workspace');
+      setAuditGridDismissed(true);
+      setRightPanelCollapsed(false);
       setFocusWorkspaceFilesRelPath(rel);
       setFocusWorkspaceFilesNonce((n) => n + 1);
     },
-    [setActiveInspector],
+    [setActiveInspector, setAuditGridDismissed, setRightPanelCollapsed],
   );
 
   const openWorkspaceFileForPreview = useCallback(
@@ -108,10 +112,6 @@ export function useWorkspacePanel({
 
   const handleOfficeDeliverableReady = useCallback(
     async (relPath: string) => {
-      setActiveInspector('workspace');
-      setRightPanelCollapsed(false);
-      setFocusWorkspaceFilesRelPath(relPath);
-      setFocusWorkspaceFilesNonce((n) => n + 1);
       setFilesRefreshNonce((n) => n + 1);
       try {
         await openWorkspaceFileForPreview(relPath);
@@ -119,11 +119,7 @@ export function useWorkspacePanel({
         // files tab still reveals path; office formats open via system app
       }
     },
-    [
-      setActiveInspector,
-      setRightPanelCollapsed,
-      openWorkspaceFileForPreview,
-    ],
+    [openWorkspaceFileForPreview],
   );
 
   const handleChatOpenWorkspacePath = useCallback(
@@ -139,9 +135,10 @@ export function useWorkspacePanel({
 
   const openDiffInPanel = useCallback(() => {
     setActiveInspector('workspace');
+    setAuditGridDismissed(true);
     setRightPanelCollapsed(false);
     setFocusWorkspaceDiffNonce((n) => n + 1);
-  }, [setActiveInspector, setRightPanelCollapsed]);
+  }, [setActiveInspector, setAuditGridDismissed, setRightPanelCollapsed]);
 
   const handleRequestDiffPanel = useCallback(() => {
     openDiffInPanel();
