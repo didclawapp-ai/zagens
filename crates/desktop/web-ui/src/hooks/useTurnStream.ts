@@ -59,10 +59,16 @@ export function useTurnStream({
   const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(() => new Set());
   const [pendingComposerStream, setPendingComposerStream] = useState(false);
 
+  // Composer lock applies only to the active view's thread — background streams
+  // must not disable input on a different session (multi-session P0.4).
   const streaming = useMemo(() => {
-    if (pendingComposerStream) return true;
     const tid = resumedThreadId;
-    return Boolean(tid && streamingThreadIds.has(tid));
+    if (!tid) {
+      // Brand-new session (no thread yet): lock only while awaiting turn_started here.
+      return pendingComposerStream;
+    }
+    if (pendingComposerStream && streamingThreadIds.has(tid)) return true;
+    return streamingThreadIds.has(tid);
   }, [pendingComposerStream, resumedThreadId, streamingThreadIds]);
 
   const streamControllersRef = useRef<Map<string, AbortController>>(new Map());
@@ -77,17 +83,22 @@ export function useTurnStream({
     streamingRef.current = streaming;
   }, [streaming, streamingRef]);
 
-  const abortThreadStream = useCallback((threadId: string | null | undefined) => {
-    if (!threadId) return;
-    streamControllersRef.current.get(threadId)?.abort();
-    streamControllersRef.current.delete(threadId);
-    setStreamingThreadIds((prev) => {
-      const next = new Set(prev);
-      next.delete(threadId);
-      return next;
-    });
-    setPendingComposerStream(false);
-  }, []);
+  const abortThreadStream = useCallback(
+    (threadId: string | null | undefined, opts?: { clearComposerLock?: boolean }) => {
+      if (!threadId) return;
+      streamControllersRef.current.get(threadId)?.abort();
+      streamControllersRef.current.delete(threadId);
+      setStreamingThreadIds((prev) => {
+        const next = new Set(prev);
+        next.delete(threadId);
+        return next;
+      });
+      if (opts?.clearComposerLock !== false) {
+        setPendingComposerStream(false);
+      }
+    },
+    [],
+  );
 
   const onCancelSideEffectsRef = useRef(onCancelSideEffects);
   onCancelSideEffectsRef.current = onCancelSideEffects;

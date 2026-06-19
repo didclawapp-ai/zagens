@@ -1,7 +1,8 @@
 /**
  * D9 — Two-layer turn stop contract (desktop shell).
  *
- * Layer 1 (`disconnectThreadEventStream`): abort local SSE / poll consumption + `runtime_cancel_sse`.
+ * Layer 1 (`disconnectThreadEventStream`): abort local SSE / poll consumption +
+ * `runtime_cancel_sse` (scoped to `threadId` when provided — P0.1 multi-session).
  * Layer 2 (`interruptThreadTurn` HTTP): `Op::Interrupt` on the runtime — stops LLM/tools.
  *
  * UI **Stop** must call `stopThreadTurn` (layer 2 then layer 1). Layer 1 alone leaves the turn running.
@@ -14,16 +15,27 @@ import { interruptThreadTurn as interruptThreadTurnHttp } from './client';
 
 export type { TurnRecord };
 
-/** Layer 1 only — disconnect WebView ↔ sidecar event pipe; does not stop the runtime turn. */
-export function disconnectThreadEventStream(streamControl?: AbortController | AbortSignal): void {
+/**
+ * Layer 1 only — disconnect WebView ↔ sidecar event pipe; does not stop the runtime turn.
+ *
+ * `threadId` (P0.1): when provided, only the SSE consumer for that thread is
+ * cancelled in the Rust proxy; other concurrently-streaming threads in the
+ * same window are left alone. Omitting it cancels every in-flight SSE for the
+ * window (legacy global-stop behaviour).
+ */
+export function disconnectThreadEventStream(
+  streamControl?: AbortController | AbortSignal,
+  threadId?: string,
+): void {
   if (streamControl instanceof AbortController) {
     streamControl.abort();
   }
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
     return;
   }
+  const tid = threadId?.trim() || undefined;
   void import('@tauri-apps/api/core')
-    .then(({ invoke }) => invoke('runtime_cancel_sse'))
+    .then(({ invoke }) => invoke('runtime_cancel_sse', { threadId: tid }))
     .catch(() => {
       /* sidecar may already be done */
     });
@@ -51,6 +63,6 @@ export async function stopThreadTurn(params: {
       }
     }
   }
-  disconnectThreadEventStream(params.streamControl);
+  disconnectThreadEventStream(params.streamControl, threadId || undefined);
   return interruptResult;
 }

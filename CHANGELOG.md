@@ -20,7 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop runtime proxy (multi-session P0.1):** `runtime_get_sse` and `runtime_cancel_sse` now accept an optional `thread_id`. The SSE cancel map is keyed per `(window, thread)` instead of per-window, so opening a second thread's SSE consumer in the same window no longer cancels the first. `runtime://events-*` payloads are wrapped in `{ thread_id, data }` so the WebView can route concurrent streams to their owners. `thread_id` omitted ⇒ legacy per-window cancel (backwards-compatible with the global Stop path).
+- **Desktop web UI (multi-session parallel, P0):** Per-thread `StreamContext` registry; background turns keep running when switching sessions (detach instead of abort); SSE events for non-active threads route into isolated context; reattach on session switch rebuilds transcript and restores composer lock / pending approval; background approval surfaces a persistent toast.
+- **Desktop web UI (multi-session, P1):** Session strip shows a pulsing indicator on sessions with in-flight turns; switching back to a streaming session restores checklist/LHT/context panel state from the per-thread registry; stream recovery no longer hijacks `threadTurnRef` for non-active threads; tool deltas rebind to the last assistant bubble after reattach.
+- **Desktop web UI (session strip):** Sidebar sessions grouped by date (`yyyy/MM/dd`); up to five rows per day with **More** to expand; completed sessions show a checkmark, in-flight turns show a spinner.
+
 ### Fixed
+
+- **Desktop web UI (multi-session):** New session composer no longer stays locked while another session streams in the background; navigation detach no longer aborts in-flight SSE before `turn_started` registers the thread; session strip shows a spinning indicator at the title when a session has an active turn; switching away and back preserves the background stream instead of stopping it.
+- **Desktop web UI (multi-session):** Background sessions appear in the sidebar after `turn_started` (early persist) and when navigating away from a streaming session (persist + refresh list); streaming checkpoint now covers all in-flight threads, not only the active view.
+- **Desktop web UI (multi-session):** Session strip spinner clears when a background turn completes without requiring a click (registry + `streamingThreadIds` stay in sync).
 
 - **TUI (`zagens-tui`):** Restore Tab / Shift+Tab pane focus cycling while the composer is focused; only swallow Tab during active multiline paste bursts (Windows conhost).
 - **Desktop web UI:** Clear stuck「生成中」after a turn ends — trust `turn.completed`/`done` for UI unlock, clear streaming on all assistant bubbles (not only the live stream target id), and periodically reconcile when the backend turn is no longer active.

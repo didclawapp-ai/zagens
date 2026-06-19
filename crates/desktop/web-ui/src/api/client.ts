@@ -1219,14 +1219,28 @@ function sessionWorkspaceField(raw: unknown): string | undefined {
 
 export async function getSessions(): Promise<SessionInfo[]> {
   const data = await fetchJson<{
-    sessions: Array<{ id: string; title: string; workspace?: unknown }>;
+    sessions: Array<{
+      id: string;
+      title: string;
+      workspace?: unknown;
+      created_at?: string;
+      updated_at?: string;
+    }>;
   }>('/v1/sessions');
   const rows = data.sessions ?? [];
   return rows.map((s) => ({
     id: s.id,
     name: s.title,
     workspace: sessionWorkspaceField(s.workspace),
+    created_at: parseSessionIsoTimestamp(s.created_at),
+    updated_at: parseSessionIsoTimestamp(s.updated_at),
   }));
+}
+
+function parseSessionIsoTimestamp(iso: string | undefined): number | undefined {
+  if (!iso?.trim()) return undefined;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : undefined;
 }
 
 /** Restore saved session into a runtime thread (Phase 2: seeds server-side history). */
@@ -1338,7 +1352,7 @@ async function pollThreadTurnEventsViaTauriProxy(
           }
           onEvent(ev);
         },
-        { signal: localAbort.signal },
+        { signal: localAbort.signal, threadId },
       );
       if (sawTerminal || localAbort.signal.aborted) {
         return;
@@ -1469,6 +1483,7 @@ export async function replayThreadEvents(
       await consumeThreadEventsSse(path, onEvent, {
         signal: controller.signal,
         onChunk: markActivity,
+        threadId,
       });
     } else {
       const res = await fetch(`${runtimeBase}${path}`, {
@@ -1519,14 +1534,24 @@ export async function replayThreadEvents(
 /**
  * Subscribe to thread event stream (GET SSE). Updates `sinceSeq` from payload `seq` when present.
  * Stays open for live events until the connection closes or `signal` aborts.
+ *
+ * Multi-session parallel streaming (P0.1): `threadId` routes the per-webview
+ * `runtime://events-*` envelope to this consumer only — other concurrent
+ * threads' chunks are ignored. The Rust proxy wraps each emit in
+ * `{ thread_id, data }`; listeners here compare against `threadId`.
  */
 async function consumeThreadEventsSse(
   path: string,
   onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
-  options?: { signal?: AbortSignal; onChunk?: () => void },
+  options?: { signal?: AbortSignal; onChunk?: () => void; threadId?: string },
 ): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core');
   const abort = options?.signal;
+  const threadId = options?.threadId?.trim();
+  const matchesThread = (envelopeThreadId: unknown): boolean => {
+    if (!threadId) return true;
+    return typeof envelopeThreadId === 'string' && envelopeThreadId === threadId;
+  };
   let buffer = '';
   const listeners = createListenerRegistry();
 
@@ -1558,7 +1583,7 @@ async function consumeThreadEventsSse(
     };
 
     const onAbort = () => {
-      void invoke('runtime_cancel_sse').catch(() => {
+      void invoke('runtime_cancel_sse', { threadId }).catch(() => {
         /* sidecar may already be done */
       });
       finish();
@@ -1569,44 +1594,59 @@ async function consumeThreadEventsSse(
     void (async () => {
       try {
         listeners.add(
-          await listenRuntimeSseEvent<string>('runtime://events-chunk', (payload) => {
-            if (abort?.aborted) return;
-            buffer += payload;
-            const { drained, rest } = drainSseBlocks(buffer);
-            buffer = rest;
-            for (const block of drained) {
-              let seq: number | undefined;
-              try {
-                const p = JSON.parse(block.data);
-                if (typeof p.seq === 'number') {
-                  seq = p.seq;
+          await listenRuntimeSseEvent<ThreadEventEnvelope<string>>(
+            'runtime://events-chunk',
+            (envelope) => {
+              if (abort?.aborted) return;
+              if (!matchesThread(envelope?.thread_id)) return;
+              buffer += envelope.data;
+              const { drained, rest } = drainSseBlocks(buffer);
+              buffer = rest;
+              for (const block of drained) {
+                let seq: number | undefined;
+                try {
+                  const p = JSON.parse(block.data);
+                  if (typeof p.seq === 'number') {
+                    seq = p.seq;
+                  }
+                } catch {
+                  /* ignore */
                 }
-              } catch {
-                /* ignore */
+                options?.onChunk?.();
+                onEvent({ ...block, seq });
               }
-              options?.onChunk?.();
-              onEvent({ ...block, seq });
-            }
-          }, { cancelled: listeners.isSettled }),
+            },
+            { cancelled: listeners.isSettled },
+          ),
         );
         listeners.add(
-          await listenRuntimeSseEvent<unknown>('runtime://events-done', () => {
-            flushTail();
-            finish();
-            resolve();
-          }, { cancelled: listeners.isSettled }),
+          await listenRuntimeSseEvent<ThreadEventEnvelope<unknown>>(
+            'runtime://events-done',
+            (envelope) => {
+              if (!matchesThread(envelope?.thread_id)) return;
+              flushTail();
+              finish();
+              resolve();
+            },
+            { cancelled: listeners.isSettled },
+          ),
         );
         listeners.add(
-          await listenRuntimeSseEvent<string>('runtime://events-error', (payload) => {
-            finish();
-            reject(new Error(payload));
-          }, { cancelled: listeners.isSettled }),
+          await listenRuntimeSseEvent<ThreadEventEnvelope<string>>(
+            'runtime://events-error',
+            (envelope) => {
+              if (!matchesThread(envelope?.thread_id)) return;
+              finish();
+              reject(new Error(envelope.data));
+            },
+            { cancelled: listeners.isSettled },
+          ),
         );
         if (listeners.isSettled()) {
           resolve();
           return;
         }
-        await invoke('runtime_get_sse', { path });
+        await invoke('runtime_get_sse', { path, threadId });
       } catch (err) {
         finish();
         reject(err instanceof Error ? err : new Error(String(err)));
@@ -1614,6 +1654,12 @@ async function consumeThreadEventsSse(
     })();
   });
 }
+
+/** Shape of the per-thread envelope emitted by `runtime_get_sse` (P0.1). */
+type ThreadEventEnvelope<T> = {
+  thread_id: string;
+  data: T;
+};
 
 export async function getThreadEvents(
   threadId: string,
@@ -1623,7 +1669,10 @@ export async function getThreadEvents(
 ): Promise<void> {
   const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${sinceSeq}`;
   if (useTauriRuntimeProxy) {
-    return consumeThreadEventsSse(path, onEvent, { signal: options?.signal });
+    return consumeThreadEventsSse(path, onEvent, {
+      signal: options?.signal,
+      threadId,
+    });
   }
   const res = await fetch(`${runtimeBase}${path}`, {
     headers: { 'Content-Type': 'application/json' },

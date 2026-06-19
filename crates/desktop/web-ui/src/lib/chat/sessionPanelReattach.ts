@@ -1,0 +1,38 @@
+import type { Dispatch, SetStateAction } from 'react';
+import type { PanelSlice } from '../../hooks/useStreamContextRegistry';
+import type { ThreadContextSnapshot } from '../contextUsage';
+import type { LhtChipState } from '../lhtChip';
+import {
+  dispatchPanelChecklist,
+  dispatchPanelContext,
+  dispatchPanelScratchpad,
+  dispatchPanelTaskGraph,
+  type ChecklistPanelPayload,
+} from '../panelChannel';
+
+/**
+ * Restore a background thread's panel slice into the active UI (multi-session P0.6).
+ */
+export function restorePanelSliceToUi(
+  slice: PanelSlice,
+  setLhtChip: Dispatch<SetStateAction<LhtChipState | null>>,
+  applyThreadContextSnapshot?: (threadId: string, snapshot: ThreadContextSnapshot) => void,
+  threadId?: string,
+): void {
+  if (slice.checklist) {
+    dispatchPanelChecklist(slice.checklist as ChecklistPanelPayload);
+  }
+  if (slice.taskGraph) {
+    dispatchPanelTaskGraph(slice.taskGraph);
+  }
+  if (slice.scratchpad) {
+    dispatchPanelScratchpad(slice.scratchpad);
+  }
+  if (slice.context) {
+    if (threadId && applyThreadContextSnapshot) {
+      applyThreadContextSnapshot(threadId, slice.context);
+    }
+    dispatchPanelContext(slice.context);
+  }
+  setLhtChip(slice.lhtChip);
+}

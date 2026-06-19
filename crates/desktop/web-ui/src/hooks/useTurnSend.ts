@@ -72,6 +72,7 @@ import {
   useTurnStreamRecovery,
   type StreamRecoveryContext,
 } from './useTurnStreamRecovery';
+import type { StreamContextRegistry } from './useStreamContextRegistry';
 
 export type TurnChatMessage = {
   id: string;
@@ -138,6 +139,14 @@ export type UseTurnSendParams = {
   streamingRef: MutableRefObject<boolean>;
   /** When user-data or workspace volume is critically low. */
   storagePauseTurns: boolean;
+  /**
+   * Multi-session P0.3: per-thread context registry. When provided, SSE events
+   * whose owner thread is not the active view are routed into that thread's
+   * background context (messages/panel) instead of polluting the active view.
+   * Omit to keep the legacy single-view behaviour.
+   */
+  streamRegistry?: StreamContextRegistry | null;
+  bindThreadSession?: (threadId: string, sessionId: string | null | undefined) => void;
 };
 
 export type UseTurnSendResult = {
@@ -192,10 +201,11 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     handleCancelStream,
     streamingRef,
     storagePauseTurns,
+    streamRegistry,
+    bindThreadSession,
   } = params;
 
-  const lastPersistedTurnRef = useRef('');
-  const toolProgressPendingRef = useRef('');
+  const lastPersistedTurnRef = useRef('');  const toolProgressPendingRef = useRef('');
   const toolProgressRafRef = useRef<number | null>(null);
   const streamRecoveryContextRef = useRef<StreamRecoveryContext | null>(null);
   const liveStreamDeliverRef = useRef<
@@ -245,11 +255,23 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
 
       userStopRequestedRef.current = false;
       setPendingComposerStream(true);
+      const knownThreadAtSend = resumedThreadIdRef.current;
+      if (knownThreadAtSend) {
+        setStreamingThreadIds((prev) => new Set(prev).add(knownThreadAtSend));
+        streamRegistry?.ensureContext(knownThreadAtSend, activeSessionIdRef.current);
+        bindThreadSession?.(knownThreadAtSend, activeSessionIdRef.current);
+      }
       const streamKey = resumedThreadIdRef.current ?? '__pending__';
       streamControllersRef.current.get(streamKey)?.abort();
       const controller = new AbortController();
       streamControllersRef.current.set(streamKey, controller);
       const signal = controller.signal;
+
+      // Multi-session P0.3: the thread this turn belongs to. Known up-front
+      // when resuming an existing thread; for new-thread `postStreamTurn` it
+      // is resolved from `turn_started`. Used by `applyNorm` to route events
+      // into the background context when this thread is not the active view.
+      let ownerThreadId: string | null = resumedThreadIdRef.current;
 
       const userMsg: TurnChatMessage = {
         id: nextId(),
@@ -291,13 +313,26 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           currentToolId: { current: null as string | null },
         };
 
+        const resolveStreamTargetId = (prev: TurnChatMessage[]): string => {
+          if (prev.some((m) => m.id === streamTarget.assistantId && m.role === 'assistant')) {
+            return streamTarget.assistantId;
+          }
+          const lastId = lastAssistantMessageId(prev);
+          if (lastId) {
+            streamTarget.assistantId = lastId;
+            return lastId;
+          }
+          return streamTarget.assistantId;
+        };
+
         const flushToolProgressToState = () => {
           const chunk = toolProgressPendingRef.current;
           if (!chunk) return;
           toolProgressPendingRef.current = '';
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id !== streamTarget.assistantId) return m;
+          setMessages((prev) => {
+            const targetId = resolveStreamTargetId(prev);
+            return prev.map((m) => {
+              if (m.id !== targetId) return m;
               const tools = [...(m.tools ?? [])];
               let idx = -1;
               if (ctx.currentToolId.current) {
@@ -318,8 +353,8 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 output: appendCappedToolOutput(tool.output ?? '', chunk),
               };
               return { ...m, tools };
-            }),
-          );
+            });
+          });
         };
 
         const scheduleToolProgressFlush = () => {
@@ -328,6 +363,26 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             toolProgressRafRef.current = null;
             flushToolProgressToState();
           });
+        };
+
+        const scheduleThreadSessionPersist = (threadId: string) => {
+          const tid = threadId.trim();
+          if (!tid) return;
+          const knownSessionId =
+            streamRegistry?.getContext(tid)?.sessionId ?? activeSessionIdRef.current;
+          void (async () => {
+            try {
+              const res = await persistThreadSession(tid, knownSessionId);
+              bindThreadSession?.(tid, res.session_id);
+              if (streamRegistry?.isActiveStreamView(tid)) {
+                setActiveSessionId(res.session_id);
+                saveStoredActiveSessionId(res.session_id);
+              }
+              await refreshSessions();
+            } catch {
+              /* streaming checkpoint / turn-complete will retry */
+            }
+          })();
         };
 
         let finished = false;
@@ -361,13 +416,79 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           void (async () => {
             try {
               const res = await persistThreadSession(threadId, activeSessionIdRef.current);
+              // Multi-session P0.7: only promote the persisted session to the
+              // stored active session when the user is actually viewing it.
+              // Background-turn completion must not hijack the active session.
+              if (
+                streamRegistry &&
+                ownerThreadId &&
+                !streamRegistry.isActiveStreamView(ownerThreadId)
+              ) {
+                await refreshSessions();
+                return;
+              }
               setActiveSessionId(res.session_id);
               saveStoredActiveSessionId(res.session_id);
+              bindThreadSession?.(threadId, res.session_id);
               await refreshSessions();
             } catch (e) {
               toast.error(t('banner.persistSessionFailed', { message: (e as Error).message }));
             }
           })();
+        };
+
+        // Multi-session P0.5: background turns complete without touching the
+        // active view's state. Only the owning thread's controller / streaming
+        // flag / registry context are cleaned up.
+        const maybePersistBackgroundTurn = () => {
+          const tid = ownerThreadId;
+          if (!tid) return;
+          const ctxTurnId =
+            streamRegistry?.getContext(tid)?.threadTurn.turnId ||
+            threadTurnRef.current.turnId;
+          if (!ctxTurnId || ctxTurnId === lastPersistedTurnRef.current) {
+            return;
+          }
+          lastPersistedTurnRef.current = ctxTurnId;
+          void (async () => {
+            try {
+              const sessionId =
+                streamRegistry?.getContext(tid)?.sessionId ?? activeSessionIdRef.current;
+              const res = await persistThreadSession(tid, sessionId);
+              if (streamRegistry?.isActiveStreamView(tid)) {
+                setActiveSessionId(res.session_id);
+                saveStoredActiveSessionId(res.session_id);
+              }
+              bindThreadSession?.(tid, res.session_id);
+              await refreshSessions();
+            } catch (e) {
+              toast.error(t('banner.persistSessionFailed', { message: (e as Error).message }));
+            }
+          })();
+        };
+
+        const completeBackgroundStream = () => {
+          if (finished) return;
+          finished = true;
+          userStopRequestedRef.current = false;
+          if (!signal.aborted) {
+            controller.abort();
+          }
+          const tid = ownerThreadId;
+          if (tid) {
+            streamRegistry?.patchContext(tid, {
+              isStreaming: false,
+              pendingApproval: null,
+            });
+            setStreamingThreadIds((prev) => {
+              if (!prev.has(tid)) return prev;
+              const next = new Set(prev);
+              next.delete(tid);
+              return next;
+            });
+            streamControllersRef.current.delete(tid);
+          }
+          streamControllersRef.current.delete('__pending__');
         };
 
         const completeStreamUi = () => {
@@ -385,7 +506,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           if (!signal.aborted) {
             controller.abort();
           }
-          const finishedThreadId = threadTurnRef.current.threadId;
+          const finishedThreadId = ownerThreadId || threadTurnRef.current.threadId;
           streamControllersRef.current.delete('__pending__');
           if (finishedThreadId) {
             setStreamingThreadIds((prev) => {
@@ -404,7 +525,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             }
             return next;
           });
-          const tid = threadTurnRef.current.threadId;
+          const tid = finishedThreadId || threadTurnRef.current.threadId;
           if (tid) {
             void refreshThreadContext(tid);
           }
@@ -413,6 +534,35 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
 
         const finishOnce = (options?: FinishOnceOptions) => {
           const terminalEvent = options?.terminal === true;
+          // Multi-session P0.5: background turns take a trimmed finish path so
+          // they never touch the active view's `setMessages` /
+          // `setPendingComposerStream` / `streamSessionRef`.
+          if (
+            streamRegistry &&
+            ownerThreadId &&
+            !streamRegistry.isActiveStreamView(ownerThreadId)
+          ) {
+            if (options?.force || userStopRequestedRef.current) {
+              completeBackgroundStream();
+              return;
+            }
+            if (terminalEvent) {
+              completeBackgroundStream();
+              maybePersistBackgroundTurn();
+              return;
+            }
+            void threadTurnStillActive(
+              ownerThreadId,
+              streamRegistry.getContext(ownerThreadId)?.threadTurn.turnId || undefined,
+            ).then((active) => {
+              if (finished) return;
+              if (!active) {
+                completeBackgroundStream();
+                maybePersistBackgroundTurn();
+              }
+            });
+            return;
+          }
           if (finished) {
             if (terminalEvent) {
               setPendingComposerStream(false);
@@ -501,14 +651,145 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         };
 
         const applyNorm = (norm: NormalizedStreamEvent) => {
+          // Multi-session P0.3: resolve the owning thread for this event.
+          // `turn_started` carries it explicitly; all subsequent events on the
+          // same SSE consumer inherit the `ownerThreadId` closure value.
+          const eventThreadId =
+            norm.kind === 'turn_started' ? norm.threadId : ownerThreadId;
+          const isBackground =
+            !!streamRegistry &&
+            !!eventThreadId &&
+            !streamRegistry.isActiveStreamView(eventThreadId);
+
+          // Background-turn event routing: state events (panel/approval/turn
+          // lifecycle) are recorded into the background context so the UI can
+          // show "still running" / "needs approval"; content deltas are skipped
+          // — the transcript is rebuilt from backend replay on reattach
+          // (P0.4 `rebuildMessagesFromThreadEvents`), avoiding dual-write
+          // complexity against the active view's `streamTarget.assistantId`.
+          if (isBackground && eventThreadId) {
+            switch (norm.kind) {
+              case 'turn_started':
+                streamRegistry.ensureContext(eventThreadId, activeSessionIdRef.current);
+                streamRegistry.patchContext(eventThreadId, {
+                  threadTurn: { threadId: eventThreadId, turnId: norm.turnId },
+                  isStreaming: true,
+                  sessionId: activeSessionIdRef.current,
+                });
+                bindThreadSession?.(eventThreadId, activeSessionIdRef.current);
+                scheduleThreadSessionPersist(eventThreadId);
+                setStreamingThreadIds((prev) => new Set(prev).add(eventThreadId));
+                break;
+              case 'approval_required':
+                streamRegistry.patchContext(eventThreadId, {
+                  pendingApproval: {
+                    toolCallId: norm.id,
+                    toolName: norm.toolName,
+                    description: norm.description,
+                  },
+                });
+                // Multi-session P0.8: surface background approvals with a
+                // persistent toast so the user can switch back to act on it.
+                toast.warning(
+                  t('composer.bgApprovalRequired', {
+                    thread: eventThreadId.slice(0, 8),
+                  }),
+                  {
+                    tag: `bg-approval-${eventThreadId}`,
+                    duration: 0,
+                  },
+                );                break;
+              case 'turn_completed':
+              case 'done':
+                toast.dismissByTag(`bg-approval-${eventThreadId}`);
+                finishOnce({ terminal: true });
+                if (norm.kind === 'done' || norm.kind === 'turn_completed') {
+                  notifyTurnCompleteIfAway(desktopHost);
+                }
+                break;
+              case 'error':
+                toast.dismissByTag(`bg-approval-${eventThreadId}`);
+                finishOnce({ terminal: true });
+                break;
+              case 'panel_checklist':
+                streamRegistry.patchContext(eventThreadId, {
+                  panelSlice: {
+                    ...streamRegistry.getContext(eventThreadId)!.panelSlice,
+                    checklist: normalizeChecklistPayload(norm.checklist),
+                  },
+                });
+                break;
+              case 'panel_task_graph':
+                streamRegistry.patchContext(eventThreadId, {
+                  panelSlice: {
+                    ...streamRegistry.getContext(eventThreadId)!.panelSlice,
+                    taskGraph: norm.task_graph as HarnessTaskGraph,
+                  },
+                });
+                break;
+              case 'panel_context': {
+                const panelCtx = norm.context as ThreadContextSnapshot;
+                if (panelCtx && typeof panelCtx.estimated_input_tokens === 'number') {
+                  streamRegistry.patchContext(eventThreadId, {
+                    panelSlice: {
+                      ...streamRegistry.getContext(eventThreadId)!.panelSlice,
+                      context: panelCtx,
+                    },
+                  });
+                }
+                break;
+              }
+              case 'panel_scratchpad': {
+                const raw = norm.scratchpad;
+                if (raw && typeof raw === 'object' && 'run_id' in (raw as Record<string, unknown>)) {
+                  streamRegistry.patchContext(eventThreadId, {
+                    panelSlice: {
+                      ...streamRegistry.getContext(eventThreadId)!.panelSlice,
+                      scratchpad: raw as ScratchpadStatus,
+                    },
+                  });
+                }
+                break;
+              }
+              case 'status': {
+                const chip = parseLhtStatusMessage(norm.message);
+                if (chip) {
+                  streamRegistry.patchContext(eventThreadId, {
+                    panelSlice: {
+                      ...streamRegistry.getContext(eventThreadId)!.panelSlice,
+                      lhtChip: chip,
+                    },
+                  });
+                }
+                break;
+              }
+              default:
+                // thinking_delta / message_delta / tool_* / agent_* / craft_* /
+                // harness_cycle_advanced: skipped for background turns.
+                break;
+            }
+            return;
+          }
+
           switch (norm.kind) {
             case 'turn_started':
+              ownerThreadId = norm.threadId;
+              if (norm.threadId && streamRegistry) {
+                streamRegistry.ensureContext(norm.threadId, activeSessionIdRef.current);
+                streamRegistry.patchContext(norm.threadId, {
+                  threadTurn: { threadId: norm.threadId, turnId: norm.turnId },
+                  sessionId: activeSessionIdRef.current,
+                  isStreaming: true,
+                });
+                bindThreadSession?.(norm.threadId, activeSessionIdRef.current);
+              }
               threadTurnRef.current = {
                 threadId: norm.threadId,
                 turnId: norm.turnId,
               };
               syncRecoveryContext();
               if (norm.threadId) {
+                scheduleThreadSessionPersist(norm.threadId);
                 setResumedThreadId(norm.threadId);
                 void registerWindowThread(norm.threadId);
                 setStreamingThreadIds((prev) => new Set(prev).add(norm.threadId));
@@ -521,35 +802,38 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               break;
             case 'thinking_delta':
-              setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id !== streamTarget.assistantId) return m;
+              setMessages((prev) => {
+                const targetId = resolveStreamTargetId(prev);
+                return prev.map((m) => {
+                  if (m.id !== targetId) return m;
                   return { ...m, thinking: (m.thinking ?? '') + norm.content };
-                }),
-              );
+                });
+              });
               break;
             case 'message_delta':
-              setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id !== streamTarget.assistantId) return m;
+              setMessages((prev) => {
+                const targetId = resolveStreamTargetId(prev);
+                return prev.map((m) => {
+                  if (m.id !== targetId) return m;
                   return { ...m, content: m.content + norm.content };
-                }),
-              );
+                });
+              });
               break;
             case 'tool_started': {
               ctx.currentToolId.current = norm.id;
               onAgentSpawnToolStarted(norm.id, norm.name, norm.input);
               const inputStr = stringifyToolInput(norm.input);
-              setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id !== streamTarget.assistantId) return m;
+              setMessages((prev) => {
+                const targetId = resolveStreamTargetId(prev);
+                return prev.map((m) => {
+                  if (m.id !== targetId) return m;
                   const tools = [
                     ...(m.tools ?? []),
                     { id: norm.id, name: norm.name, input: inputStr, status: 'running' as const },
                   ];
                   return { ...m, tools };
-                }),
-              );
+                });
+              });
               break;
             }
             case 'tool_progress':
@@ -563,9 +847,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               flushToolProgressToState();
               const outStr = capToolOutputForDisplay(toolOutputString(norm.output));
-              setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id !== streamTarget.assistantId) return m;
+              setMessages((prev) => {
+                const targetId = resolveStreamTargetId(prev);
+                return prev.map((m) => {
+                  if (m.id !== targetId) return m;
                   const tools = [...(m.tools ?? [])];
                   let idx = tools.findIndex((tool) => tool.id === norm.id);
                   if (idx < 0) {
@@ -591,8 +876,8 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                   onAgentSpawnToolCompleted(norm.id, tool.name, merged);
                   onToolCompleted?.(tool.name, norm.success, merged);
                   return { ...m, tools };
-                }),
-              );
+                });
+              });
               if (ctx.currentToolId.current === norm.id) {
                 ctx.currentToolId.current = null;
               }
@@ -921,6 +1206,8 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       showApprovalIfOwned,
       userStopRequestedRef,
       t,
+      streamRegistry,
+      bindThreadSession,
     ],
   );
 

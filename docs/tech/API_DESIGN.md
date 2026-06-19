@@ -59,8 +59,8 @@ Zagens uses a **dual-channel API** architecture: the WebView frontend and Rust b
 | `get_runtime_port` | — | `u16` | Sidecar listen port (default 7878) |
 | `runtime_http` | `request: { method, path, body? }` | `{ status, body }` | **H06 proxy:** REST `/v1/*`; Rust injects Bearer |
 | `runtime_post_stream` | `body: String` | `()` + SSE events | **H06 proxy:** `POST /v1/stream`; events pushed to WebView via Tauri |
-| `runtime_get_sse` | `path: String` | `()` + SSE events | **H06 proxy:** `GET …/events` and other SSE |
-| `runtime_cancel_sse` | — | `()` | Cancel in-flight `runtime_get_sse` |
+| `runtime_get_sse` | `path: String`, `thread_id?: String` | `()` + SSE events | **H06 proxy:** `GET …/events` and other SSE. `thread_id` (multi-session P0.1) isolates the consumer per `(window, thread)`; omit for legacy per-window behaviour |
+| `runtime_cancel_sse` | `thread_id?: String` | `()` | Cancel in-flight `runtime_get_sse`. With `thread_id`: cancel only that thread's consumer; without: cancel every in-flight SSE for the window (legacy global Stop) |
 | `get_platform_info` | — | `PlatformInfo` | `{ os, arch, version }` — `version` is **Zagens shell** SemVer (`CARGO_PKG_VERSION`), not OS version |
 | `get_os_theme` | — | `String` | **Placeholder:** currently fixed `"dark"`; system theme API not read |
 | `get_locale` | — | `String` | Read persisted app locale from `~/.deepseek/config.toml` (`zagens-config`) |

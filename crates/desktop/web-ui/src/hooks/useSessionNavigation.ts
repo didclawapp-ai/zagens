@@ -24,12 +24,15 @@ import {
   type CachedUiMessage,
 } from '../lib/chat/sessionUiCache';
 import { mapSessionDetailToMessages } from '../lib/chat/sessionMessages';
+import { applyStreamingReattach } from '../lib/chat/sessionStreamReattach';
 import {
   contextWindowTokensForModel,
   type ThreadContextSnapshot,
 } from '../lib/contextUsage';
 import type { PreviewState } from '../components/preview/types';
 import { toast } from '../lib/toast';
+import type { StreamContextRegistry } from './useStreamContextRegistry';
+import type { ApprovalState } from './useTurnApproval';
 import {
   registerWindowThread,
   saveStoredActiveSessionId,
@@ -37,6 +40,7 @@ import {
 } from '../lib/windowBridge';
 import { usageRecordCacheHitPercent } from '../lib/cacheUsage';
 import type { ComposerModelId, DesktopTaskTypeResolved } from '../types/desktop';
+import type { LhtChipState } from '../lib/lhtChip';
 
 type NavMessage = CachedUiMessage;
 
@@ -50,7 +54,27 @@ export type UseSessionNavigationParams = {
   threadContextCacheRef: MutableRefObject<Map<string, ThreadContextSnapshot>>;
   messagesRef: MutableRefObject<NavMessage[]>;
   sessionUiCacheRef: MutableRefObject<Map<string, CachedUiMessage[]>>;
-  abortThreadStream: (threadId: string | null | undefined) => void;
+  abortThreadStream: (
+    threadId: string | null | undefined,
+    opts?: { clearComposerLock?: boolean },
+  ) => void;
+  /**
+   * Multi-session P0.4: when provided, navigating away from a thread that is
+   * still in this set skips `abortThreadStream` so the turn keeps streaming in
+   * the background. Omit to keep the legacy "abort on navigate" behaviour.
+   */
+  streamingThreadIdsRef?: MutableRefObject<Set<string>>;
+  streamControllersRef?: MutableRefObject<Map<string, AbortController>>;
+  streamRegistry?: StreamContextRegistry | null;
+  /** threadId → sessionId for SessionStrip streaming indicators. */
+  bindThreadSession?: (threadId: string, sessionId: string | null | undefined) => void;
+  desktopHost?: boolean;
+  setPendingComposerStream?: Dispatch<SetStateAction<boolean>>;
+  setStreamingThreadIds?: Dispatch<SetStateAction<Set<string>>>;
+  showApprovalIfOwned?: (desktopHost: boolean, payload: ApprovalState) => void;
+  setLhtChip?: Dispatch<SetStateAction<LhtChipState | null>>;
+  applyThreadContextSnapshot?: (threadId: string, snapshot: ThreadContextSnapshot) => void;
+  refreshSessions?: () => Promise<void>;
   resetTurnPersistState: () => void;
   clearApproval: () => void;
   setMessages: Dispatch<SetStateAction<NavMessage[]>>;
@@ -94,6 +118,17 @@ export function useSessionNavigation({
   messagesRef,
   sessionUiCacheRef,
   abortThreadStream,
+  streamingThreadIdsRef,
+  streamControllersRef,
+  streamRegistry,
+  bindThreadSession,
+  desktopHost = false,
+  setPendingComposerStream,
+  setStreamingThreadIds,
+  showApprovalIfOwned,
+  setLhtChip,
+  applyThreadContextSnapshot,
+  refreshSessions,
   resetTurnPersistState,
   clearApproval,
   setMessages,
@@ -114,6 +149,87 @@ export function useSessionNavigation({
   notifyRuntimeTransient,
   resetAgentPanel,
 }: UseSessionNavigationParams): UseSessionNavigationResult {
+  // Multi-session P0.4: when the outgoing thread is still streaming, detach
+  // (keep its SSE alive in the background) instead of aborting. The thread's
+  // events route into its background `StreamContext` via `useTurnSend`'s
+  // `isBackground` guard.
+  const detachOrAbort = useCallback(
+    (threadId: string | null | undefined) => {
+      if (!threadId) return;
+      if (streamingThreadIdsRef?.current.has(threadId)) {
+        return;
+      }
+      // turn_started may not have fired yet; an armed controller still means detach.
+      if (streamControllersRef?.current.has(threadId)) {
+        return;
+      }
+      abortThreadStream(threadId, { clearComposerLock: false });
+    },
+    [abortThreadStream, streamControllersRef, streamingThreadIdsRef],
+  );
+
+  const persistOutgoingThread = useCallback(
+    (threadId: string | null | undefined, sessionId: string | null | undefined) => {
+      const tid = threadId?.trim();
+      if (!tid) return;
+      const knownSid =
+        sessionId ??
+        streamRegistry?.getContext(tid)?.sessionId ??
+        null;
+      void persistThreadSession(tid, knownSid)
+        .then(async (res) => {
+          bindThreadSession?.(tid, res.session_id);
+          await refreshSessions?.();
+        })
+        .catch(() => {
+          /* best-effort — turn_started persist or checkpoint will retry */
+        });
+    },
+    [bindThreadSession, refreshSessions, streamRegistry],
+  );
+
+  const reattachStreamingIfNeeded = useCallback(
+    async (
+      threadId: string,
+      messages: NavMessage[],
+      sessionId: string | null,
+    ): Promise<NavMessage[]> => {
+      if (!streamingThreadIdsRef) {
+        return messages;
+      }
+      const reattach = await applyStreamingReattach(threadId, messages, {
+        streamingThreadIdsRef,
+        streamRegistry,
+        setStreamingThreadIds,
+        setLhtChip,
+        applyThreadContextSnapshot,
+      });
+      if (reattach.composerLocked) {
+        setPendingComposerStream?.(true);
+      }
+      if (reattach.pendingApproval && showApprovalIfOwned) {
+        toast.dismissByTag(`bg-approval-${threadId}`);
+        showApprovalIfOwned(desktopHost, reattach.pendingApproval);
+        streamRegistry?.patchContext(threadId, { pendingApproval: null });
+      }
+      if (sessionId && reattach.messages.length > 0) {
+        cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, reattach.messages);
+      }
+      return reattach.messages;
+    },
+    [
+      desktopHost,
+      sessionUiCacheRef,
+      setPendingComposerStream,
+      showApprovalIfOwned,
+      setLhtChip,
+      applyThreadContextSnapshot,
+      streamRegistry,
+      streamingThreadIdsRef,
+      setStreamingThreadIds,
+    ],
+  );
+
   const selectSessionGenerationRef = useRef(0);
   const selectSessionAbortRef = useRef<AbortController | null>(null);
   const [sessionRestoreLoading, setSessionRestoreLoading] = useState(false);
@@ -167,20 +283,19 @@ export function useSessionNavigation({
       }
       const outgoingThreadId = resumedThreadIdRef.current;
       if (outgoingThreadId) {
-        void persistThreadSession(outgoingThreadId, outgoingSessionId).catch(() => {
-          /* best-effort — UI cache already saved above */
-        });
+        persistOutgoingThread(outgoingThreadId, outgoingSessionId);
       }
       const outgoingSnapshot = threadContextSnapshotRef.current;
       if (outgoingThreadId && outgoingSnapshot) {
         threadContextCacheRef.current.set(outgoingThreadId, outgoingSnapshot);
       }
       if (outgoingThreadId) {
-        abortThreadStream(outgoingThreadId);
+        detachOrAbort(outgoingThreadId);
       }
 
       toast.dismissAll();
       resetAgentPanel();
+      setPendingComposerStream?.(false);
       setActiveSessionId(sessionId);
       setResumedThreadId(null);
       setThreadTrustMode(false);
@@ -221,6 +336,7 @@ export function useSessionNavigation({
         }
         resumedThreadIdRef.current = resumed.thread_id;
         setResumedThreadId(resumed.thread_id);
+        bindThreadSession?.(resumed.thread_id, sessionId);
         setRuntimeSessionEstablished(true);
         restoreThreadContextFromCache(resumed.thread_id);
         try {
@@ -250,9 +366,23 @@ export function useSessionNavigation({
           picked = { messages: threadCandidate.messages, source: 'thread' };
         }
         if (picked.messages.length > 0) {
-          setMessages(picked.messages);
           setSessionRestoreSource(picked.source);
-          cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, picked.messages);
+        }
+
+        const reattachedMessages = await reattachStreamingIfNeeded(
+          resumed.thread_id,
+          picked.messages.length > 0 ? picked.messages : [],
+          sessionId,
+        );
+        if (gen !== selectSessionGenerationRef.current) {
+          return;
+        }
+        if (reattachedMessages.length > 0) {
+          setMessages(reattachedMessages);
+          if (picked.source) {
+            setSessionRestoreSource(picked.source);
+          }
+          cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, reattachedMessages);
         }
         threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
         try {
@@ -288,6 +418,7 @@ export function useSessionNavigation({
           reconcileRuntimeAfterFetchFailure();
         }
         saveStoredActiveSessionId(sessionId);
+        void refreshSessions?.();
       } catch (e) {
         if (gen !== selectSessionGenerationRef.current) {
           return;
@@ -312,7 +443,11 @@ export function useSessionNavigation({
       threadContextSnapshotRef,
       threadContextCacheRef,
       messagesRef,
-      abortThreadStream,
+      detachOrAbort,
+      reattachStreamingIfNeeded,
+      bindThreadSession,
+      persistOutgoingThread,
+      refreshSessions,
       resetAgentPanel,
       resetTurnPersistState,
       setMessages,
@@ -356,14 +491,14 @@ export function useSessionNavigation({
       }
       const outgoingThreadId = resumedThreadIdRef.current;
       if (outgoingThreadId) {
-        void persistThreadSession(outgoingThreadId, outgoingSessionId).catch(() => {});
+        persistOutgoingThread(outgoingThreadId, outgoingSessionId);
       }
       const outgoingSnapshot = threadContextSnapshotRef.current;
       if (outgoingThreadId && outgoingSnapshot) {
         threadContextCacheRef.current.set(outgoingThreadId, outgoingSnapshot);
       }
       if (outgoingThreadId) {
-        abortThreadStream(outgoingThreadId);
+        detachOrAbort(outgoingThreadId);
       }
 
       toast.dismissAll();
@@ -389,7 +524,19 @@ export function useSessionNavigation({
           return;
         }
         if (fromThread.length > 0) {
-          setMessages(fromThread);
+          const reattached = await reattachStreamingIfNeeded(trimmed, fromThread, null);
+          if (gen !== selectSessionGenerationRef.current) {
+            return;
+          }
+          setMessages(reattached);
+        } else {
+          const reattached = await reattachStreamingIfNeeded(trimmed, [], null);
+          if (gen !== selectSessionGenerationRef.current) {
+            return;
+          }
+          if (reattached.length > 0) {
+            setMessages(reattached);
+          }
         }
         const threadDetail = await getThreadDetail(trimmed);
         if (gen !== selectSessionGenerationRef.current) {
@@ -433,7 +580,8 @@ export function useSessionNavigation({
       threadContextCacheRef,
       messagesRef,
       sessionUiCacheRef,
-      abortThreadStream,
+      detachOrAbort,
+      reattachStreamingIfNeeded,
       resetTurnPersistState,
       resetAgentPanel,
       setMessages,
@@ -458,9 +606,15 @@ export function useSessionNavigation({
   );
 
   const handleNewSession = useCallback(() => {
-    abortThreadStream(resumedThreadIdRef.current);
+    const outgoingThreadId = resumedThreadIdRef.current;
+    const outgoingSessionId = activeSessionIdRef.current;
+    if (outgoingThreadId) {
+      persistOutgoingThread(outgoingThreadId, outgoingSessionId);
+    }
+    detachOrAbort(outgoingThreadId);
     selectSessionAbortRef.current?.abort();
     selectSessionGenerationRef.current += 1;
+    setPendingComposerStream?.(false);
     resetAgentPanel();
     setMessages([]);
     setResumedThreadId(null);
@@ -479,8 +633,11 @@ export function useSessionNavigation({
     setSessionRestoreLoading(false);
     setSessionRestoreSource(null);
   }, [
-    abortThreadStream,
+    detachOrAbort,
     clearApproval,
+    bindThreadSession,
+    persistOutgoingThread,
+    setPendingComposerStream,
     resetAgentPanel,
     resetTurnPersistState,
     resumedThreadIdRef,

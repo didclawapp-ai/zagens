@@ -12,32 +12,75 @@ use tauri::{AppHandle, Emitter};
 
 use crate::commands::AppContext;
 
-/// Per-webview cancel flag for in-flight `runtime_get_sse` (abort does not stop reqwest otherwise).
-static SSE_CANCEL_FLAGS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+/// Envelope for per-thread `runtime://events-*` emissions.
+///
+/// Multi-session parallel streaming (P0.1): the WebView listens to a single
+/// `runtime://events-chunk` channel per window, so when two threads stream
+/// concurrently each chunk must carry its `thread_id` for the front-end to
+/// route it to the right consumer. The legacy bare-string payload is wrapped
+/// in this struct; `threadId` is the bucket used by `arm_sse_cancel`.
+#[derive(Debug, Clone, Serialize)]
+struct ThreadEventEnvelope<T: Serialize> {
+    thread_id: String,
+    data: T,
+}
+
+/// Per-(webview, thread) cancel flag for in-flight `runtime_get_sse`.
+///
+/// Multi-session parallel streaming (P0.1): each (window, thread) pair gets its own
+/// cancel flag so that opening thread B's SSE no longer cancels thread A's consumer
+/// in the same window. The legacy `window_label`-only key is replaced by a composite
+/// `(window_label, thread_id)`; `runtime_cancel_sse` with `thread_id == None` cancels
+/// every in-flight SSE for that window (backwards-compatible with the global Stop path).
+static SSE_CANCEL_FLAGS: LazyLock<Mutex<HashMap<(String, String), Arc<AtomicBool>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-fn arm_sse_cancel(window_label: &str) -> Arc<AtomicBool> {
+fn arm_sse_cancel(window_label: &str, thread_id: &str) -> Arc<AtomicBool> {
     let flag = Arc::new(AtomicBool::new(false));
+    let key = (window_label.to_string(), thread_id.to_string());
     let mut guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
-    if let Some(prev) = guard.insert(window_label.to_string(), Arc::clone(&flag)) {
+    if let Some(prev) = guard.insert(key, Arc::clone(&flag)) {
         prev.store(true, Ordering::Relaxed);
     }
     flag
 }
 
-fn disarm_sse_cancel(window_label: &str) {
+fn disarm_sse_cancel(window_label: &str, thread_id: &str) {
+    let key = (window_label.to_string(), thread_id.to_string());
     let mut guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
-    guard.remove(window_label);
+    guard.remove(&key);
 }
 
 #[tauri::command]
-pub async fn runtime_cancel_sse(window: tauri::WebviewWindow) -> Result<(), String> {
+pub async fn runtime_cancel_sse(
+    window: tauri::WebviewWindow,
+    thread_id: Option<String>,
+) -> Result<(), String> {
     let label = window.label().to_string();
-    let guard = SSE_CANCEL_FLAGS.lock().map_err(|e| e.to_string())?;
-    if let Some(flag) = guard.get(&label) {
-        flag.store(true, Ordering::Relaxed);
+    let mut guard = SSE_CANCEL_FLAGS.lock().map_err(|e| e.to_string())?;
+    match thread_id {
+        Some(tid) => {
+            let tid = tid.trim().to_string();
+            if tid.is_empty() {
+                cancel_all_for_window(&mut guard, &label);
+            } else if let Some(flag) = guard.get(&(label.clone(), tid)) {
+                flag.store(true, Ordering::Relaxed);
+            }
+        }
+        None => cancel_all_for_window(&mut guard, &label),
     }
     Ok(())
+}
+
+fn cancel_all_for_window(
+    guard: &mut std::sync::MutexGuard<'_, HashMap<(String, String), Arc<AtomicBool>>>,
+    window_label: &str,
+) {
+    for (key, flag) in guard.iter() {
+        if key.0 == window_label {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -173,10 +216,20 @@ pub async fn runtime_get_sse(
     window: tauri::WebviewWindow,
     app: AppHandle,
     path: String,
+    thread_id: Option<String>,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
     let window_label = window.label().to_string();
     validate_runtime_path(&path)?;
+    // Derive the SSE cancel bucket from `thread_id` when provided so parallel
+    // turns in the same window do not clobber each other's consumer. Fall back
+    // to the path itself when omitted (legacy callers) — distinct paths still
+    // get isolated buckets, preserving the pre-P0.1 behaviour as a degenerate
+    // case.
+    let thread_bucket = thread_id
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| path.clone());
     let url = format!("http://127.0.0.1:{}{}", ctx.require_port()?, path.trim());
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3600))
@@ -196,12 +249,15 @@ pub async fn runtime_get_sse(
         let _ = app.emit_to(
             &window_label,
             "runtime://events-error",
-            format!("HTTP {status}: {text}"),
+            ThreadEventEnvelope {
+                thread_id: thread_bucket.clone(),
+                data: format!("HTTP {status}: {text}"),
+            },
         );
         return Err(format!("HTTP {status}: {text}"));
     }
 
-    let cancel = arm_sse_cancel(&window_label);
+    let cancel = arm_sse_cancel(&window_label, &thread_bucket);
     let mut stream = resp.bytes_stream();
     loop {
         if cancel.load(Ordering::Relaxed) {
@@ -213,22 +269,43 @@ pub async fn runtime_get_sse(
         match chunk {
             Ok(bytes) => {
                 let payload = String::from_utf8_lossy(&bytes).into_owned();
-                app.emit_to(&window_label, "runtime://events-chunk", payload)
-                    .map_err(|e| e.to_string())?;
+                app.emit_to(
+                    &window_label,
+                    "runtime://events-chunk",
+                    ThreadEventEnvelope {
+                        thread_id: thread_bucket.clone(),
+                        data: payload,
+                    },
+                )
+                .map_err(|e| e.to_string())?;
             }
             Err(e) => {
                 let msg = format!("读取 SSE 失败: {e}");
-                let _ = app.emit_to(&window_label, "runtime://events-error", msg.clone());
-                disarm_sse_cancel(&window_label);
+                let _ = app.emit_to(
+                    &window_label,
+                    "runtime://events-error",
+                    ThreadEventEnvelope {
+                        thread_id: thread_bucket.clone(),
+                        data: msg.clone(),
+                    },
+                );
+                disarm_sse_cancel(&window_label, &thread_bucket);
                 return Err(msg);
             }
         }
     }
 
-    disarm_sse_cancel(&window_label);
+    disarm_sse_cancel(&window_label, &thread_bucket);
     if !cancel.load(Ordering::Relaxed) {
-        app.emit_to(&window_label, "runtime://events-done", ())
-            .map_err(|e| e.to_string())?;
+        app.emit_to(
+            &window_label,
+            "runtime://events-done",
+            ThreadEventEnvelope {
+                thread_id: thread_bucket.clone(),
+                data: (),
+            },
+        )
+        .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -236,6 +313,8 @@ pub async fn runtime_get_sse(
 #[cfg(test)]
 mod tests {
     use super::validate_runtime_path;
+    use super::{SSE_CANCEL_FLAGS, arm_sse_cancel, disarm_sse_cancel};
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn allows_health_and_v1_prefix_paths() {
@@ -277,5 +356,66 @@ mod tests {
     fn trims_whitespace_before_validation() {
         validate_runtime_path("  /health  ").expect("trimmed /health");
         assert!(validate_runtime_path("  /evil  ").is_err());
+    }
+
+    fn purge_test_keys() {
+        let mut guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
+        guard.retain(|_, _| false);
+    }
+
+    #[test]
+    fn arm_sse_cancel_isolates_distinct_threads_in_same_window() {
+        purge_test_keys();
+        let _a = arm_sse_cancel("win1", "thr_a");
+        let _b = arm_sse_cancel("win1", "thr_b");
+        let guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
+        assert!(guard.contains_key(&("win1".to_string(), "thr_a".to_string())));
+        assert!(guard.contains_key(&("win1".to_string(), "thr_b".to_string())));
+        assert_eq!(guard.len(), 2, "two distinct threads must coexist");
+        drop(guard);
+        purge_test_keys();
+    }
+
+    #[test]
+    fn arm_sse_cancel_replaces_same_thread_in_same_window() {
+        purge_test_keys();
+        let prev = arm_sse_cancel("win1", "thr_a");
+        let _curr = arm_sse_cancel("win1", "thr_a");
+        assert!(
+            prev.load(Ordering::Relaxed),
+            "re-arming the same (window, thread) must cancel the previous consumer"
+        );
+        let guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
+        assert_eq!(guard.len(), 1, "only one entry per (window, thread) pair");
+        drop(guard);
+        purge_test_keys();
+    }
+
+    #[test]
+    fn arm_sse_cancel_isolates_across_windows() {
+        purge_test_keys();
+        let _w1 = arm_sse_cancel("win1", "thr_a");
+        let _w2 = arm_sse_cancel("win2", "thr_a");
+        let guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
+        assert_eq!(
+            guard.len(),
+            2,
+            "same thread in different windows must coexist"
+        );
+        drop(guard);
+        purge_test_keys();
+    }
+
+    #[test]
+    fn disarm_sse_cancel_removes_only_target_pair() {
+        purge_test_keys();
+        let _a = arm_sse_cancel("win1", "thr_a");
+        let _b = arm_sse_cancel("win1", "thr_b");
+        disarm_sse_cancel("win1", "thr_a");
+        let guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
+        assert!(!guard.contains_key(&("win1".to_string(), "thr_a".to_string())));
+        assert!(guard.contains_key(&("win1".to_string(), "thr_b".to_string())));
+        drop(guard);
+        purge_test_keys();
     }
 }

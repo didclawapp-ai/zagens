@@ -31,6 +31,10 @@ export type UseTurnSessionParams = {
   showAllSessions: boolean;
   selectedWorkspace: string;
   streamingRef: MutableRefObject<boolean>;
+  /** All in-flight thread ids (including background streams). */
+  streamingThreadIdsRef?: MutableRefObject<Set<string>>;
+  resolveThreadSessionId?: (threadId: string) => string | null | undefined;
+  bindThreadSession?: (threadId: string, sessionId: string | null | undefined) => void;
   setRuntimeSessionEstablished: Dispatch<SetStateAction<boolean>>;
   reconcileRuntimeAfterFetchFailure: () => void;
   notifyRuntimeTransient: (message: string) => void;
@@ -58,6 +62,9 @@ export function useTurnSession({
   showAllSessions,
   selectedWorkspace,
   streamingRef,
+  streamingThreadIdsRef,
+  resolveThreadSessionId,
+  bindThreadSession,
   setRuntimeSessionEstablished,
   reconcileRuntimeAfterFetchFailure,
   notifyRuntimeTransient,
@@ -118,25 +125,52 @@ export function useTurnSession({
   refreshSessionsRef.current = refreshSessions;
 
   useEffect(() => {
-    if (!streamingRef.current || !resumedThreadId) {
+    const tick = () => {
+      const threads =
+        streamingThreadIdsRef?.current.size
+          ? [...streamingThreadIdsRef.current]
+          : resumedThreadIdRef.current
+            ? [resumedThreadIdRef.current]
+            : [];
+      if (threads.length === 0) return;
+      for (const tid of threads) {
+        void (async () => {
+          try {
+            const knownSid =
+              tid === resumedThreadIdRef.current
+                ? activeSessionIdRef.current
+                : resolveThreadSessionId?.(tid) ?? null;
+            const res = await persistThreadSession(tid, knownSid);
+            bindThreadSession?.(tid, res.session_id);
+            if (tid === resumedThreadIdRef.current) {
+              setActiveSessionId(res.session_id);
+              saveStoredActiveSessionId(res.session_id);
+            }
+            await refreshSessions();
+          } catch {
+            /* avoid toast spam — turn_started / turn-complete persist will retry */
+          }
+        })();
+      }
+    };
+    if (
+      !streamingRef.current &&
+      (streamingThreadIdsRef?.current.size ?? 0) === 0 &&
+      !resumedThreadId
+    ) {
       return;
     }
-    const tid = resumedThreadId;
-    const tick = () => {
-      void (async () => {
-        try {
-          const res = await persistThreadSession(tid, activeSessionIdRef.current);
-          setActiveSessionId(res.session_id);
-          saveStoredActiveSessionId(res.session_id);
-          await refreshSessions();
-        } catch {
-          /* avoid toast spam — turn-complete persist will retry */
-        }
-      })();
-    };
+    tick();
     const id = window.setInterval(tick, SESSION_CHECKPOINT_STREAMING_MS);
     return () => window.clearInterval(id);
-  }, [resumedThreadId, refreshSessions, streamingRef]);
+  }, [
+    bindThreadSession,
+    refreshSessions,
+    resolveThreadSessionId,
+    resumedThreadId,
+    streamingRef,
+    streamingThreadIdsRef,
+  ]);
 
   useEffect(() => {
     const onVis = () => {

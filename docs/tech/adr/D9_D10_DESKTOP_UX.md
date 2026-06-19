@@ -36,3 +36,20 @@
 - Do not change runtime broadcast semantics
 - Do not add owner filter to historical `replayThreadEvents` (session load)
 - maintainer: `doc_Private/docs/tech/adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md` §1 check count unchanged (UX debt; progress still **7/10**)
+
+## Follow-up: P0.1 per-(window, thread) SSE cancel (2026-06-19)
+
+Multi-session parallel streaming requires that opening thread B's SSE in the
+same window **not** cancel thread A's consumer. The per-`window` cancel map
+(`SSE_CANCEL_FLAGS`) is now keyed per `(window, thread)`; `runtime_get_sse`
+and `runtime_cancel_sse` accept an optional `thread_id`. `runtime://events-*`
+emissions are wrapped in `{ thread_id, data }` so the WebView's single
+`listen()` per channel can route concurrent streams (`consumeThreadEventsSse`
+filters by `threadId`). `disconnectThreadEventStream(streamControl, threadId)`
+threads the id through for precise Layer-1 cancel; `thread_id` omitted ⇒
+per-window cancel (backwards-compatible with the global Stop path and with
+sidecar-restart `detachActiveStream`, which still calls
+`runtime_cancel_sse` without an id to tear down every consumer).
+
+This is the Rust + transport layer for `multi-session-streaming-plan.md` P0.1;
+the per-session front-end context (P0.2+) builds on top of it.

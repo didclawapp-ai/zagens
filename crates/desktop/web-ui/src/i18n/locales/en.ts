@@ -140,6 +140,7 @@ const en: TranslationMap = {
   sidebar: {
     showAllSessions: 'Show all sessions',
     showAllSessionsHint: 'Includes history from other workspaces',
+    sessionsMore: 'More',
     newSession: 'New Chat',
     workspace: 'Workspace',
     checklist: 'Checklist',
@@ -373,6 +374,7 @@ const en: TranslationMap = {
     turnInterrupted: 'Interrupted',
     turnStillRunning: 'A turn is still running on this thread — reconnected to it. Wait for it to finish or press Stop.',
     turnReconnecting: 'Reconnected to the background turn — syncing progress…',
+    bgApprovalRequired: 'Session {{thread}} needs approval — switch back to act on it.',
     runtimeSidecarRestart: 'Runtime restarted; generation stopped',
     runtimeSidecarRestartReconnecting: 'Local runtime restarted — reconnecting to the background turn…',
     runtimeOfflineReconnecting:
@@ -1351,6 +1353,7 @@ const en: TranslationMap = {
     retryConnection: 'Retry connection',
     noSessions: 'No sessions',
     sessions: 'Sessions',
+    sessionStreaming: 'Generating',
     runtimeChecking: 'Checking runtime…',
     runtimeReady: 'Runtime ready',
     connectionNormal: 'Connected',

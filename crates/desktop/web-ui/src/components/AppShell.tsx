@@ -65,6 +65,7 @@ export type AppShellProps = {
   showAllSessions: boolean;
   onToggleShowAllSessions: () => void;
   activeSessionId: string | null;
+  streamingSessionIds?: Set<string>;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
@@ -187,6 +188,7 @@ export default function AppShell({
   showAllSessions,
   onToggleShowAllSessions,
   activeSessionId,
+  streamingSessionIds,
   onNewSession,
   onSelectSession,
   onDeleteSession,
@@ -389,6 +391,7 @@ export default function AppShell({
           showAllSessions={showAllSessions}
           onToggleShowAllSessions={onToggleShowAllSessions}
           activeSessionId={activeSessionId}
+          streamingSessionIds={streamingSessionIds}
           onSelectSession={onSelectSession}
           onDeleteSession={onDeleteSession}
         />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useInspectorUnread } from './lib/useInspectorUnread';
 import {
   getThreadDetail,
@@ -38,6 +38,7 @@ import { useTurnSession } from './hooks/useTurnSession';
 import { useTurnApproval, type ApprovalState } from './hooks/useTurnApproval';
 import { useTurnStream } from './hooks/useTurnStream';
 import { useTurnSend, type TurnChatMessage } from './hooks/useTurnSend';
+import { useStreamContextRegistry } from './hooks/useStreamContextRegistry';
 import { parseWriteOfficeOutputPath } from './lib/officeDeliverable';
 import {
   type ComposerModelId,
@@ -120,6 +121,23 @@ export default function App() {
   const [lastCacheHitPercent, setLastCacheHitPercent] = useState<number | null>(null);
   const [lhtChip, setLhtChip] = useState<LhtChipState | null>(null);
 
+  const streamingThreadIdsRef = useRef<Set<string>>(new Set());
+  const resolveThreadSessionIdRef = useRef<(threadId: string) => string | null | undefined>(
+    () => null,
+  );
+  const bindThreadSessionRef = useRef<
+    (threadId: string, sessionId: string | null | undefined) => void
+  >(() => {});
+  const resolveThreadSessionIdForCheckpoint = useCallback(
+    (threadId: string) => resolveThreadSessionIdRef.current(threadId),
+    [],
+  );
+  const bindThreadSessionForCheckpoint = useCallback(
+    (threadId: string, sessionId: string | null | undefined) =>
+      bindThreadSessionRef.current(threadId, sessionId),
+    [],
+  );
+
   const {
     sessions,
     activeSessionId,
@@ -136,6 +154,9 @@ export default function App() {
     showAllSessions,
     selectedWorkspace,
     streamingRef,
+    streamingThreadIdsRef,
+    resolveThreadSessionId: resolveThreadSessionIdForCheckpoint,
+    bindThreadSession: bindThreadSessionForCheckpoint,
     setRuntimeSessionEstablished: (value) => {
       setRuntimeSessionEstablishedRef.current(value);
     },
@@ -171,6 +192,67 @@ export default function App() {
     t,
     onCancelSideEffects: onCancelStreamSideEffects,
   });
+
+  // Multi-session P0.4: ref mirror of `streamingThreadIds` so navigation can
+  // synchronously decide detach-vs-abort without re-subscribing to state.
+  useEffect(() => {
+    streamingThreadIdsRef.current = streamingThreadIds;
+  }, [streamingThreadIds]);
+
+  // Multi-session P0.2: per-thread StreamContext registry.
+  const streamRegistry = useStreamContextRegistry();
+  useEffect(() => {
+    streamRegistry.setActiveThreadId(resumedThreadId);
+  }, [resumedThreadId, streamRegistry]);
+
+  const bindThreadSession = useCallback(
+    (threadId: string, sessionId: string | null | undefined) => {
+      const tid = threadId.trim();
+      const sid = sessionId?.trim();
+      if (!tid || !sid) return;
+      streamRegistry.ensureContext(tid, sid);
+      streamRegistry.patchContext(tid, { sessionId: sid });
+    },
+    [streamRegistry],
+  );
+
+  resolveThreadSessionIdRef.current = (threadId: string) =>
+    streamRegistry.getContext(threadId)?.sessionId ?? null;
+  bindThreadSessionRef.current = bindThreadSession;
+
+  const streamingSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const threadId of streamingThreadIds) {
+      const ctx = streamRegistry.getContext(threadId);
+      // Registry may mark a background turn idle before `streamingThreadIds` prunes.
+      if (ctx?.isStreaming === false) continue;
+      const sid = ctx?.sessionId;
+      if (sid) ids.add(sid);
+    }
+    if (activeSessionId && resumedThreadId && streamingThreadIds.has(resumedThreadId)) {
+      const activeCtx = streamRegistry.getContext(resumedThreadId);
+      if (activeCtx?.isStreaming !== false) {
+        ids.add(activeSessionId);
+      }
+    }
+    return ids;
+  }, [streamingThreadIds, streamRegistry.version, activeSessionId, resumedThreadId, streamRegistry]);
+
+  // Drop stale thread ids once registry records the turn as idle.
+  useEffect(() => {
+    setStreamingThreadIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const tid of prev) {
+        const ctx = streamRegistry.getContext(tid);
+        if (ctx?.isStreaming === false) {
+          next.delete(tid);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [streamRegistry.version, setStreamingThreadIds, streamRegistry]);
 
   const {
     runtimeConn,
@@ -389,6 +471,8 @@ export default function App() {
     userStopRequestedRef,
     handleCancelStream,
     storagePauseTurns,
+    streamRegistry,
+    bindThreadSession,
     onToolCompleted: (toolName, success, output) => {
       if (!officeSession || !success || toolName !== 'write_office') return;
       const rel = parseWriteOfficeOutputPath(output);
@@ -414,6 +498,17 @@ export default function App() {
     messagesRef,
     sessionUiCacheRef,
     abortThreadStream,
+    streamingThreadIdsRef,
+    streamControllersRef,
+    streamRegistry,
+    bindThreadSession,
+    desktopHost,
+    setPendingComposerStream,
+    setStreamingThreadIds,
+    showApprovalIfOwned,
+    setLhtChip,
+    applyThreadContextSnapshot,
+    refreshSessions,
     resetTurnPersistState,
     clearApproval,
     setMessages,
@@ -888,6 +983,7 @@ export default function App() {
       showAllSessions={showAllSessions}
       onToggleShowAllSessions={() => setShowAllSessions((v) => !v)}
       activeSessionId={activeSessionId}
+      streamingSessionIds={streamingSessionIds}
       onNewSession={handleNewSessionPreserveMode}
       onSelectSession={handleSelectSession}
       onDeleteSession={handleDeleteSession}

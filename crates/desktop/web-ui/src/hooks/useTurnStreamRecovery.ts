@@ -179,6 +179,11 @@ export function useTurnStreamRecovery({
         return false;
       }
 
+      // Multi-session: only bind global recovery refs for the active view thread.
+      if (threadId !== resumedThreadIdRef.current) {
+        return false;
+      }
+
       rebindRecoveryAssistant();
 
       const detail = await getThreadDetail(threadId);
@@ -228,11 +233,15 @@ export function useTurnStreamRecovery({
           ? t('composer.runtimeSidecarRestartReconnecting')
           : t('composer.runtimeOfflineReconnecting');
 
-      for (const c of streamControllersRef.current.values()) {
-        disconnectThreadEventStream(c);
+      for (const [threadKey, c] of streamControllersRef.current.entries()) {
+        disconnectThreadEventStream(c, threadKey);
         c.abort();
       }
       streamControllersRef.current.clear();
+      // Sidecar restart / offline invalidates every in-flight SSE for this window.
+      // Call without a thread_id to cancel all remaining consumers (P0.1: the
+      // per-thread disconnect above may have already cleared most, but any
+      // consumer armed without a controllers entry still needs to be torn down).
       void import('@tauri-apps/api/core')
         .then(({ invoke }) => invoke('runtime_cancel_sse'))
         .catch(() => {});
@@ -376,6 +385,10 @@ export function useTurnStreamRecovery({
       return;
     }
     if (detachReasonRef.current) {
+      return;
+    }
+    // Skip if navigation raced ahead to a different active thread.
+    if (threadTurnRef.current.threadId && threadTurnRef.current.threadId !== threadId) {
       return;
     }
 

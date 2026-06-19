@@ -501,7 +501,7 @@ flowchart LR
 
 - `runtime_http` / `runtime_get_sse` / `runtime_post_stream` all inject `Authorization: Bearer {token}` on the Rust side; **token does not enter** WebView storage / DevTools.
 - Path whitelist ([`runtime_proxy::validate_runtime_path`](../../crates/desktop/src/runtime_proxy.rs)): only `/health` and `/v1/*` allowed; rejects `..` and non-`/v1` prefixes.
-- **Cancel/interrupt two layers (D9):** upper `runtime_cancel_sse` (`SSE_CANCEL_FLAGS` per `window.label()`; disconnects WebView ↔ sidecar SSE); lower `POST /v1/threads/{id}/turns/{turn_id}/interrupt` (actually cancels turn, sends `Op::Interrupt`). UI unified via `turnControl.ts`.
+- **Cancel/interrupt two layers (D9):** upper `runtime_cancel_sse` (`SSE_CANCEL_FLAGS` keyed per `(window.label(), thread_id)` — P0.1 multi-session; `thread_id` omitted ⇒ per-window cancel for the global Stop path); disconnects WebView ↔ sidecar SSE); lower `POST /v1/threads/{id}/turns/{turn_id}/interrupt` (actually cancels turn, sends `Op::Interrupt`). UI unified via `turnControl.ts`. `runtime://events-*` payloads are wrapped in `{ thread_id, data }` so concurrent SSE consumers in one window can route chunks to their owners.
 - **Cross-window SSE filtering (D10):** `filterThreadStreamEvents` filters by thread owner to avoid multi-window "ghost rendering".
 - Config changes ⇒ restart sidecar: `AppContext::sidecar_restart: Arc<Notify>`, after writing keys/settings `notify_one()`, listened by `sidecar::start_and_monitor` with `RESTART_DEBOUNCE_MS` debounce.
 - Handshake protocol: sidecar writes `DS_PICK_READY {...}` to stdout on start (includes `port`, `pid`, `token_fp`, `version`); supervisor uses this for readiness; runtime heartbeat/graceful exit via stdin `op: ping | drain`.

@@ -140,6 +140,7 @@ const ja: TranslationMap = {
   sidebar: {
     showAllSessions: 'すべてのセッションを表示',
     showAllSessionsHint: '他のワークスペースの履歴も含みます',
+    sessionsMore: 'さらに表示',
     newSession: '新しいチャット',
     workspace: 'ワークスペース',
     checklist: 'チェックリスト',
@@ -373,6 +374,7 @@ const ja: TranslationMap = {
     turnInterrupted: '中断されました',
     turnStillRunning: 'このスレッドではターンがまだ実行中です。再接続しました。完了を待つか、停止を押してください。',
     turnReconnecting: 'バックグラウンドのターンに再接続しました。進捗を同期中…',
+    bgApprovalRequired: 'セッション {{thread}} が承認待ちです — 当該セッションに戻って対応してください。',
     runtimeSidecarRestart: 'Runtime が再起動したため、生成を停止しました',
     runtimeSidecarRestartReconnecting: 'ローカル Runtime が再起動しました。バックグラウンドのターンに再接続しています…',
     runtimeOfflineReconnecting:
@@ -1351,6 +1353,7 @@ const ja: TranslationMap = {
     retryConnection: '接続を再試行',
     noSessions: 'セッションなし',
     sessions: 'Sessions',
+    sessionStreaming: '生成中',
     runtimeChecking: 'runtime を確認中…',
     runtimeReady: 'Runtime 準備完了',
     connectionNormal: '接続済み',

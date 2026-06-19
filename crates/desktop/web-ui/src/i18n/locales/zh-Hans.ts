@@ -138,6 +138,7 @@ const zhHans = {
   sidebar: {
     showAllSessions: '显示全部会话',
     showAllSessionsHint: '含其它工作区的历史会话',
+    sessionsMore: '更多',
     newSession: '新对话',
     workspace: '工作台',
     checklist: '清单',
@@ -369,6 +370,7 @@ const zhHans = {
     turnInterrupted: '已中断',
     turnStillRunning: '该线程仍有回合在进行——已为你重新接上。请等待其完成或点击停止。',
     turnReconnecting: '已重新连接后台回合，正在同步进度…',
+    bgApprovalRequired: '会话 {{thread}} 需要审批 — 请切回该会话处理。',
     runtimeSidecarRestart: '运行时已重启，生成已停止',
     runtimeSidecarRestartReconnecting: '本地运行时已重启，正在尝试重新连接后台回合…',
     runtimeOfflineReconnecting: '与本地运行时的连接已断开，正在尝试重连（后台回合可能仍在进行）',
@@ -1335,6 +1337,7 @@ const zhHans = {
     retryConnection: '重试连接',
     noSessions: '暂无会话',
     sessions: '会话',
+    sessionStreaming: '生成中',
     runtimeChecking: '检测运行时…',
     runtimeReady: '运行时就绪',
     connectionNormal: '连接正常',
