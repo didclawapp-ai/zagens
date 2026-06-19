@@ -62,3 +62,17 @@ export function markLastAssistantStreaming(messages: StreamUiMessage[]): {
     assistantId: lastId,
   };
 }
+
+export function anyAssistantStreaming(messages: StreamUiMessage[]): boolean {
+  return messages.some((m) => m.role === 'assistant' && m.isStreaming);
+}
+
+/** Clear isStreaming on all assistant rows (safe when streamTarget id drifted after replay). */
+export function clearStreamingAssistants(messages: StreamUiMessage[]): StreamUiMessage[] {
+  if (!anyAssistantStreaming(messages)) {
+    return messages;
+  }
+  return messages.map((m) =>
+    m.role === 'assistant' && m.isStreaming ? { ...m, isStreaming: false } : m,
+  );
+}

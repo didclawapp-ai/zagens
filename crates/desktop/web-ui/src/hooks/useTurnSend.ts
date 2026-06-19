@@ -57,12 +57,14 @@ import {
   type DesktopTaskTypePreference,
 } from '../types/desktop';
 import type { ApprovalState } from './useTurnApproval';
-import type { StreamSessionControl } from './useTurnStream';
+import type { FinishOnceOptions, StreamSessionControl } from './useTurnStream';
 import type { ScratchpadStatus } from '../api/client';
 import { saveStoredActiveSessionId } from '../lib/windowBridge';
 import { turnCacheHitPercent } from '../lib/cacheUsage';
 import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
 import {
+  anyAssistantStreaming,
+  clearStreamingAssistants,
   lastAssistantMessageId,
   rebindStreamingAssistant,
 } from '../lib/chat/activeTurnStreamUi';
@@ -395,9 +397,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           }
           setPendingComposerStream(false);
           setMessages((prev) => {
-            const next = prev.map((m) =>
-              m.id === streamTarget.assistantId ? { ...m, isStreaming: false } : m,
-            );
+            const next = clearStreamingAssistants(prev);
             const sid = activeSessionIdRef.current;
             if (sid) {
               cacheSessionUiMessages(sessionUiCacheRef.current, sid, next);
@@ -411,10 +411,29 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           maybePersistCompletedTurn();
         };
 
-        const finishOnce = (options?: { force?: boolean }) => {
-          if (finished) return;
+        const finishOnce = (options?: FinishOnceOptions) => {
+          const terminalEvent = options?.terminal === true;
+          if (finished) {
+            if (terminalEvent) {
+              setPendingComposerStream(false);
+              const tid = threadTurnRef.current.threadId;
+              if (tid) {
+                setStreamingThreadIds((prev) => {
+                  if (!prev.has(tid)) return prev;
+                  const next = new Set(prev);
+                  next.delete(tid);
+                  return next;
+                });
+              }
+              setMessages((prev) => {
+                if (!anyAssistantStreaming(prev)) return prev;
+                return clearStreamingAssistants(prev);
+              });
+            }
+            return;
+          }
           const forceStop = options?.force === true || userStopRequestedRef.current;
-          if (forceStop) {
+          if (forceStop || terminalEvent) {
             finishPending = false;
             completeStreamUi();
             return;
@@ -587,7 +606,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               });
               break;
             case 'turn_completed':
-              finishOnce();
+              finishOnce({ terminal: true });
               notifyTurnCompleteIfAway(desktopHost);
               if (norm.usage?.output_tokens != null && norm.usage.output_tokens > 0) {
                 setLastTurnOutputTokens(norm.usage.output_tokens);
@@ -598,18 +617,20 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               break;
             case 'done':
-              finishOnce();
+              finishOnce({ terminal: true });
               notifyTurnCompleteIfAway(desktopHost);
               break;
             case 'error':
-              finishOnce();
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === streamTarget.assistantId
-                    ? { ...m, content: m.content || `Error: ${norm.message}`, isStreaming: false }
+              finishOnce({ terminal: true });
+              setMessages((prev) => {
+                const next = clearStreamingAssistants(prev);
+                const lastId = lastAssistantMessageId(prev) ?? streamTarget.assistantId;
+                return next.map((m) =>
+                  m.id === lastId && m.role === 'assistant'
+                    ? { ...m, content: m.content || `Error: ${norm.message}` }
                     : m,
-                ),
-              );
+                );
+              });
               toast.error(norm.message ? norm.message : t('banner.streamError'));
               break;
             case 'agent_spawned':
@@ -702,13 +723,15 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           } else if (/api\s*key|DEEPSEEK_API_KEY|401|unauthorized/i.test(msg)) {
             notifyRuntimeTransient(t('banner.missingApiKey'));
           }
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === streamTarget.assistantId
-                ? { ...m, content: m.content || `Error: ${msg}`, isStreaming: false }
+          setMessages((prev) => {
+            const next = clearStreamingAssistants(prev);
+            const lastId = lastAssistantMessageId(prev) ?? streamTarget.assistantId;
+            return next.map((m) =>
+              m.id === lastId && m.role === 'assistant'
+                ? { ...m, content: m.content || `Error: ${msg}` }
                 : m,
-            ),
-          );
+            );
+          });
           finishOnce({ force: true });
         };
 

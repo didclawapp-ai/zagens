@@ -15,6 +15,8 @@ import { toast } from '../lib/toast';
 export type FinishOnceOptions = {
   /** Skip backend active-turn re-lock (user Stop or local start failure). */
   force?: boolean;
+  /** Trust `turn.completed` / `done` — finish UI without re-locking on active-turn poll. */
+  terminal?: boolean;
 };
 
 export type StreamSessionControl = {

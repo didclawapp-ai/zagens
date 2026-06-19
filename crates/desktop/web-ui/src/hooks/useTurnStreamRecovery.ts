@@ -21,6 +21,8 @@ import { subscribeCurrentWebviewEvent } from '../lib/tauriListen';
 import { dispatchSidecarReadyForPanels } from '../lib/sidecarPanelRecovery';
 import { RUNTIME_TRANSIENT_TAG, toast } from '../lib/toast';
 import {
+  anyAssistantStreaming,
+  clearStreamingAssistants,
   lastAssistantMessageId,
   markLastAssistantStreaming,
   rebindStreamingAssistant,
@@ -321,8 +323,8 @@ export function useTurnStreamRecovery({
     try {
       const stillActive = await runTurnEventPoll(threadId, turnId);
       if (!stillActive) {
-        streamRecoveryContextRef.current?.finishOnce();
-        streamSessionRef.current?.finishOnce();
+        streamRecoveryContextRef.current?.finishOnce({ terminal: true });
+        streamSessionRef.current?.finishOnce({ terminal: true });
       }
     } catch {
       /* best-effort */
@@ -339,17 +341,68 @@ export function useTurnStreamRecovery({
     threadTurnRef,
   ]);
 
+  const clearStaleStreamingUi = useCallback(
+    (threadId: string) => {
+      const ctx = streamRecoveryContextRef.current;
+      if (ctx?.finishOnce) {
+        ctx.finishOnce({ terminal: true });
+      } else {
+        streamSessionRef.current?.finishOnce({ terminal: true });
+      }
+      setMessages((prev) => {
+        if (!anyAssistantStreaming(prev)) return prev;
+        return clearStreamingAssistants(prev) as TurnChatMessage[];
+      });
+      setPendingComposerStream(false);
+      setStreamingThreadIds((prev) => {
+        if (!prev.has(threadId)) return prev;
+        const next = new Set(prev);
+        next.delete(threadId);
+        return next;
+      });
+    },
+    [
+      setMessages,
+      setPendingComposerStream,
+      setStreamingThreadIds,
+      streamRecoveryContextRef,
+      streamSessionRef,
+    ],
+  );
+
   const reconcileChatFromThreadReplay = useCallback(async () => {
     const threadId = resumedThreadIdRef.current;
-    if (!threadId || streamingRef.current || recoveringRef.current) {
+    if (!threadId || recoveringRef.current) {
       return;
     }
     if (detachReasonRef.current) {
       return;
     }
-    if (!(await threadTurnStillActive(threadId, threadTurnRef.current.turnId || undefined))) {
+
+    const turnId = threadTurnRef.current.turnId || undefined;
+    let stillActive: boolean;
+    try {
+      stillActive = await threadTurnStillActive(threadId, turnId);
+    } catch {
       return;
     }
+
+    if (!stillActive) {
+      if (streamingRef.current) {
+        clearStaleStreamingUi(threadId);
+      } else {
+        setMessages((prev) => {
+          if (!anyAssistantStreaming(prev)) return prev;
+          return clearStreamingAssistants(prev) as TurnChatMessage[];
+        });
+      }
+      return;
+    }
+
+    if (streamingRef.current) {
+      return;
+    }
+
     if (resolveEventDeliver()) {
       void resumeLiveTurnStream();
       return;
@@ -371,6 +424,7 @@ export function useTurnStreamRecovery({
       /* keep last snapshot */
     }
   }, [
+    clearStaleStreamingUi,
     resolveEventDeliver,
     resumedThreadIdRef,
     resumeLiveTurnStream,
@@ -401,7 +455,7 @@ export function useTurnStreamRecovery({
         detachReasonRef.current = null;
         clearOfflineTimers();
         toast.dismissByTag(TURN_DETACHED_TAG);
-        ctx?.finishOnce();
+        ctx?.finishOnce({ terminal: true });
         return;
       }
 
@@ -418,7 +472,7 @@ export function useTurnStreamRecovery({
       detachReasonRef.current = null;
       clearOfflineTimers();
       if (!stillActive) {
-        ctx?.finishOnce();
+        ctx?.finishOnce({ terminal: true });
       }
       void refreshThreadContext(threadId);
     } catch (e) {
