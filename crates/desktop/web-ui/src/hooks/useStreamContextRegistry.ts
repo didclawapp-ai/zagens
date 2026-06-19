@@ -23,6 +23,12 @@
 
 import { useCallback, useRef, useState } from 'react';
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
+import {
+  deleteContextFromMap,
+  ensureContextInMap,
+  isActiveStreamView as isActiveStreamViewPure,
+  patchContextInMap,
+} from '../lib/chat/streamContextStore';
 import type { ApprovalState } from '../hooks/useTurnApproval';
 import type { FinishOnceOptions, StreamSessionControl } from '../hooks/useTurnStream';
 import type { StreamRecoveryContext } from '../hooks/useTurnStreamRecovery';
@@ -131,17 +137,12 @@ export function useStreamContextRegistry(): StreamContextRegistry {
 
   const ensureContext = useCallback(
     (threadId: string, sessionId?: string | null): StreamContext => {
-      const tid = threadId.trim();
-      let ctx = contextsRef.current.get(tid);
-      if (!ctx) {
-        ctx = makeEmptyContext(tid, sessionId ?? null);
-        contextsRef.current.set(tid, ctx);
-        bump();
-      } else if (sessionId != null && ctx.sessionId !== sessionId) {
-        ctx = { ...ctx, sessionId };
-        contextsRef.current.set(tid, ctx);
-        bump();
-      }
+      const { ctx, changed } = ensureContextInMap(
+        contextsRef.current,
+        threadId,
+        sessionId,
+      );
+      if (changed) bump();
       return ctx;
     },
     [bump],
@@ -152,12 +153,9 @@ export function useStreamContextRegistry(): StreamContextRegistry {
       threadId: string,
       patch: Partial<StreamContext> | ((prev: StreamContext) => Partial<StreamContext>),
     ) => {
-      const tid = threadId.trim();
-      const prev = contextsRef.current.get(tid);
-      if (!prev) return;
-      const delta = typeof patch === 'function' ? patch(prev) : patch;
-      contextsRef.current.set(tid, { ...prev, ...delta });
-      bump();
+      if (patchContextInMap(contextsRef.current, threadId, patch)) {
+        bump();
+      }
     },
     [bump],
   );
@@ -171,22 +169,23 @@ export function useStreamContextRegistry(): StreamContextRegistry {
 
   const deleteContext = useCallback(
     (threadId: string) => {
-      const tid = threadId.trim();
-      if (contextsRef.current.delete(tid)) {
-        if (activeThreadIdRef.current === tid) {
-          setActiveThreadId(null);
-        }
-        bump();
+      const { deleted, nextActiveThreadId } = deleteContextFromMap(
+        contextsRef.current,
+        threadId,
+        activeThreadIdRef.current,
+      );
+      if (!deleted) return;
+      if (nextActiveThreadId !== activeThreadIdRef.current) {
+        setActiveThreadId(nextActiveThreadId);
       }
+      bump();
     },
     [bump, setActiveThreadId],
   );
 
   const isActiveStreamView = useCallback(
-    (threadId: string | null | undefined) => {
-      if (!threadId) return true; // threadless events (global status) default through
-      return activeThreadIdRef.current === threadId;
-    },
+    (threadId: string | null | undefined) =>
+      isActiveStreamViewPure(activeThreadIdRef.current, threadId),
     [],
   );
 

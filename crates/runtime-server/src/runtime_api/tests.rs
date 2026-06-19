@@ -2142,6 +2142,194 @@ async fn sidecar_parallel_turns_on_two_threads() -> Result<()> {
     Ok(())
 }
 
+fn take_sse_frame(buf: &mut Vec<u8>) -> Option<String> {
+    let text = String::from_utf8_lossy(buf);
+    let (idx, delim) = if let Some(i) = text.find("\n\n") {
+        (i, 2usize)
+    } else if let Some(i) = text.find("\r\n\r\n") {
+        (i, 4usize)
+    } else {
+        return None;
+    };
+    let frame = text[..idx].to_string();
+    buf.drain(..idx + delim);
+    Some(frame)
+}
+
+async fn collect_sse_events_until(
+    client: reqwest::Client,
+    url: String,
+    stop_event: &str,
+    timeout: Duration,
+) -> Result<Vec<String>> {
+    let resp = client.get(url).send().await?.error_for_status()?;
+    let mut stream = resp.bytes_stream();
+    let mut buf = Vec::new();
+    let mut names = Vec::new();
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let wait = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if wait.is_zero() {
+            break;
+        }
+        let next = tokio::time::timeout(wait, stream.next()).await;
+        let chunk = match next {
+            Ok(Some(Ok(bytes))) => bytes,
+            Ok(Some(Err(err))) => return Err(err.into()),
+            Ok(None) | Err(_) => break,
+        };
+        buf.extend_from_slice(&chunk);
+        while let Some(frame) = take_sse_frame(&mut buf) {
+            if frame.starts_with(':') || frame.trim().is_empty() {
+                continue;
+            }
+            let (name, _) = parse_sse_frame(&frame)?;
+            names.push(name.clone());
+            if name == stop_event {
+                return Ok(names);
+            }
+        }
+        if buf.len() > 256 * 1024 {
+            bail!("SSE buffer exceeded 256KB without stop event {stop_event}");
+        }
+    }
+    Ok(names)
+}
+
+/// Multi-session — two overlapping live SSE consumers on distinct threads stay isolated.
+#[tokio::test]
+async fn parallel_sse_live_streams_filter_by_thread_id() -> Result<()> {
+    let Some((addr, runtime_threads, handle)) = spawn_test_server().await? else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    let thread_a: serde_json::Value = client
+        .post(format!("{base}/v1/threads"))
+        .json(&json!({"model": "deepseek-chat"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_b: serde_json::Value = client
+        .post(format!("{base}/v1/threads"))
+        .json(&json!({"model": "deepseek-chat"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_a_id = thread_a["id"].as_str().context("thread A id")?.to_string();
+    let thread_b_id = thread_b["id"].as_str().context("thread B id")?.to_string();
+
+    let harness_a = crate::core::engine::mock_engine_handle();
+    runtime_threads
+        .install_test_engine(&thread_a_id, harness_a.handle.clone())
+        .await?;
+    let (release_a, hold_a) = tokio::sync::oneshot::channel::<()>();
+    let mut rx_a = harness_a.rx_op;
+    let tx_a = harness_a.tx_event;
+    tokio::spawn(async move {
+        if !matches!(rx_a.recv().await, Some(Op::SendMessage { .. })) {
+            return;
+        }
+        let _ = hold_a.await;
+        let _ = tx_a
+            .send(EngineEvent::TurnComplete {
+                usage: Usage::default(),
+                last_request_input_tokens: None,
+                status: TurnOutcomeStatus::Completed,
+                error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
+            })
+            .await;
+    });
+
+    let harness_b = crate::core::engine::mock_engine_handle();
+    runtime_threads
+        .install_test_engine(&thread_b_id, harness_b.handle.clone())
+        .await?;
+    let mut rx_b = harness_b.rx_op;
+    let tx_b = harness_b.tx_event;
+    tokio::spawn(async move {
+        if !matches!(rx_b.recv().await, Some(Op::SendMessage { .. })) {
+            return;
+        }
+        let _ = tx_b
+            .send(EngineEvent::TurnComplete {
+                usage: Usage::default(),
+                last_request_input_tokens: None,
+                status: TurnOutcomeStatus::Completed,
+                error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
+            })
+            .await;
+    });
+
+    let url_a = format!("{base}/v1/threads/{thread_a_id}/events?since_seq=0");
+    let url_b = format!("{base}/v1/threads/{thread_b_id}/events?since_seq=0");
+    let client_a = client.clone();
+    let client_b = client.clone();
+    let coll_a = tokio::spawn(async move {
+        collect_sse_events_until(client_a, url_a, "turn.completed", Duration::from_secs(6)).await
+    });
+    let coll_b = tokio::spawn(async move {
+        collect_sse_events_until(client_b, url_b, "turn.completed", Duration::from_secs(6)).await
+    });
+
+    sleep(Duration::from_millis(40)).await;
+
+    let _turn_a: serde_json::Value = client
+        .post(format!("{base}/v1/threads/{thread_a_id}/turns"))
+        .json(&json!({"prompt": "parallel SSE A"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+
+    sleep(Duration::from_millis(40)).await;
+
+    let _turn_b: serde_json::Value = client
+        .post(format!("{base}/v1/threads/{thread_b_id}/turns"))
+        .json(&json!({"prompt": "parallel SSE B"}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+
+    let events_b = coll_b.await.context("collector B join")??;
+    assert!(
+        events_b.iter().any(|ev| ev == "turn.completed"),
+        "thread B SSE must receive its own turn.completed, got {events_b:?}"
+    );
+
+    assert!(
+        !coll_a.is_finished(),
+        "thread A SSE should still be open while A turn is held"
+    );
+
+    release_a
+        .send(())
+        .map_err(|_| anyhow::anyhow!("release channel closed"))?;
+
+    let events_a = coll_a.await.context("collector A join")??;
+    assert!(
+        events_a.iter().any(|ev| ev == "turn.completed"),
+        "thread A SSE must receive its own turn.completed after release, got {events_a:?}"
+    );
+
+    handle.abort();
+    Ok(())
+}
+
 async fn wait_for_approval_required_event(
     runtime_threads: &crate::runtime_threads::RuntimeThreadManager,
     thread_id: &str,

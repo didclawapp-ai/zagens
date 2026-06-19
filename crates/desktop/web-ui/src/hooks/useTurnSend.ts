@@ -67,6 +67,7 @@ import {
   clearStreamingAssistants,
   lastAssistantMessageId,
   rebindStreamingAssistant,
+  resolveStreamTargetId,
 } from '../lib/chat/activeTurnStreamUi';
 import {
   useTurnStreamRecovery,
@@ -313,24 +314,12 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           currentToolId: { current: null as string | null },
         };
 
-        const resolveStreamTargetId = (prev: TurnChatMessage[]): string => {
-          if (prev.some((m) => m.id === streamTarget.assistantId && m.role === 'assistant')) {
-            return streamTarget.assistantId;
-          }
-          const lastId = lastAssistantMessageId(prev);
-          if (lastId) {
-            streamTarget.assistantId = lastId;
-            return lastId;
-          }
-          return streamTarget.assistantId;
-        };
-
         const flushToolProgressToState = () => {
           const chunk = toolProgressPendingRef.current;
           if (!chunk) return;
           toolProgressPendingRef.current = '';
           setMessages((prev) => {
-            const targetId = resolveStreamTargetId(prev);
+            const targetId = resolveStreamTargetId(prev, streamTarget);
             return prev.map((m) => {
               if (m.id !== targetId) return m;
               const tools = [...(m.tools ?? [])];
@@ -803,7 +792,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               break;
             case 'thinking_delta':
               setMessages((prev) => {
-                const targetId = resolveStreamTargetId(prev);
+                const targetId = resolveStreamTargetId(prev, streamTarget);
                 return prev.map((m) => {
                   if (m.id !== targetId) return m;
                   return { ...m, thinking: (m.thinking ?? '') + norm.content };
@@ -812,7 +801,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               break;
             case 'message_delta':
               setMessages((prev) => {
-                const targetId = resolveStreamTargetId(prev);
+                const targetId = resolveStreamTargetId(prev, streamTarget);
                 return prev.map((m) => {
                   if (m.id !== targetId) return m;
                   return { ...m, content: m.content + norm.content };
@@ -824,7 +813,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               onAgentSpawnToolStarted(norm.id, norm.name, norm.input);
               const inputStr = stringifyToolInput(norm.input);
               setMessages((prev) => {
-                const targetId = resolveStreamTargetId(prev);
+                const targetId = resolveStreamTargetId(prev, streamTarget);
                 return prev.map((m) => {
                   if (m.id !== targetId) return m;
                   const tools = [
@@ -848,7 +837,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               flushToolProgressToState();
               const outStr = capToolOutputForDisplay(toolOutputString(norm.output));
               setMessages((prev) => {
-                const targetId = resolveStreamTargetId(prev);
+                const targetId = resolveStreamTargetId(prev, streamTarget);
                 return prev.map((m) => {
                   if (m.id !== targetId) return m;
                   const tools = [...(m.tools ?? [])];

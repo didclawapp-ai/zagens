@@ -23,6 +23,22 @@ export function lastAssistantMessageId(messages: StreamUiMessage[]): string | un
   return undefined;
 }
 
+/** Rebind streaming deltas to the assistant bubble after id drift (multi-session reattach). */
+export function resolveStreamTargetId(
+  messages: StreamUiMessage[],
+  streamTarget: { assistantId: string },
+): string {
+  if (messages.some((m) => m.id === streamTarget.assistantId && m.role === 'assistant')) {
+    return streamTarget.assistantId;
+  }
+  const lastId = lastAssistantMessageId(messages);
+  if (lastId) {
+    streamTarget.assistantId = lastId;
+    return lastId;
+  }
+  return streamTarget.assistantId;
+}
+
 function appendBannerLine(content: string, banner: string): string {
   const trimmed = content.trim();
   if (!trimmed) return banner;

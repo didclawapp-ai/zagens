@@ -1,6 +1,7 @@
 import { threadTurnStillActive } from '../../api/client';
 import { markLastAssistantStreaming } from './activeTurnStreamUi';
 import { restorePanelSliceToUi } from './sessionPanelReattach';
+import { removeThreadFromStreamingSet } from './streamContextStore';
 import type { TurnChatMessage } from '../../hooks/useTurnSend';
 import type { StreamContextRegistry } from '../../hooks/useStreamContextRegistry';
 import type { ApprovalState } from '../../hooks/useTurnApproval';
@@ -53,10 +54,8 @@ export async function applyStreamingReattach(
     });
     if (inSet && options.setStreamingThreadIds) {
       options.setStreamingThreadIds((prev) => {
-        if (!prev.has(tid)) return prev;
-        const next = new Set(prev);
-        next.delete(tid);
-        return next;
+        const next = removeThreadFromStreamingSet(prev, tid);
+        return next ?? prev;
       });
     }
     return { messages, composerLocked: false, pendingApproval: null };

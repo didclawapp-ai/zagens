@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Desktop web UI (multi-session parallel, P0):** Per-thread `StreamContext` registry; background turns keep running when switching sessions (detach instead of abort); SSE events for non-active threads route into isolated context; reattach on session switch rebuilds transcript and restores composer lock / pending approval; background approval surfaces a persistent toast.
 - **Desktop web UI (multi-session, P1):** Session strip shows a pulsing indicator on sessions with in-flight turns; switching back to a streaming session restores checklist/LHT/context panel state from the per-thread registry; stream recovery no longer hijacks `threadTurnRef` for non-active threads; tool deltas rebind to the last assistant bubble after reattach.
 - **Desktop web UI (session strip):** Sidebar sessions grouped by date (`yyyy/MM/dd`); up to five rows per day with **More** to expand; completed sessions show a checkmark, in-flight turns show a spinner.
+- **Desktop / CI (multi-session verify):** `npm run test:multi-session` (pure helper selfchecks) and `scripts/ci/test-multi-session.{sh,ps1}` (adds `runtime_proxy` unit tests + runtime `parallel_sse_live_streams_filter_by_thread_id` integration test).
 
 ### Fixed
 
