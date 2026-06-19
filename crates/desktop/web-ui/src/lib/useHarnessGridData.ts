@@ -26,6 +26,9 @@ export interface HarnessGridDataSnapshot {
   hasAgents: boolean;
   hasLongHorizon: boolean;
   hasAnyData: boolean;
+  checklist: ChecklistPanelPayload | null;
+  scratchpad: ScratchpadStatus | null;
+  taskGraph: HarnessTaskGraph | null;
 }
 
 function isActiveTaskGraph(graph: HarnessTaskGraph | null): boolean {
@@ -47,12 +50,12 @@ export function useHarnessGridData({
   agentStates: AgentState[];
 }): HarnessGridDataSnapshot {
   const [scratchpadStatus, setScratchpadStatus] = useState<ScratchpadStatus | null>(null);
-  const [checklistCount, setChecklistCount] = useState(0);
+  const [checklistPayload, setChecklistPayload] = useState<ChecklistPanelPayload | null>(null);
   const [taskGraph, setTaskGraph] = useState<HarnessTaskGraph | null>(null);
 
   useEffect(() => {
     setScratchpadStatus(null);
-    setChecklistCount(0);
+    setChecklistPayload(null);
     setTaskGraph(null);
   }, [threadId]);
 
@@ -93,35 +96,32 @@ export function useHarnessGridData({
 
   useEffect(() => {
     if (!runtimeSessionEstablished || !threadId) {
-      setChecklistCount(0);
+      setChecklistPayload(null);
       return;
     }
     let cancelled = false;
-    const applyChecklistCount = (count: number) => {
+    const applyChecklist = (payload: ChecklistPanelPayload | null) => {
       if (!cancelled) {
-        setChecklistCount(count);
+        setChecklistPayload(payload);
       }
     };
     const loadChecklist = async () => {
       try {
         const data = await fetchThreadChecklist(threadId);
-        if (data && Array.isArray(data.items) && data.items.length > 0) {
-          applyChecklistCount(data.items.length);
-        } else {
-          applyChecklistCount(0);
-        }
+        applyChecklist(normalizeChecklistPayload(data));
       } catch (e) {
         const status = (e as Error & { status?: number }).status;
         if (status === 404) {
-          applyChecklistCount(0);
+          applyChecklist(null);
         }
       }
     };
     const onChecklistPush = (ev: Event) => {
-      const normalized = normalizeChecklistPayload(
-        (ev as CustomEvent<ChecklistPanelPayload | unknown>).detail,
+      applyChecklist(
+        normalizeChecklistPayload(
+          (ev as CustomEvent<ChecklistPanelPayload | unknown>).detail,
+        ),
       );
-      applyChecklistCount(normalized?.items.length ?? 0);
     };
     void loadChecklist();
     window.addEventListener(PANEL_CHECKLIST_EVENT, onChecklistPush);
@@ -177,7 +177,7 @@ export function useHarnessGridData({
 
   return useMemo((): HarnessGridDataSnapshot => {
     const hasAudit = Boolean(scratchpadStatus?.run_id);
-    const hasChecklist = checklistCount > 0;
+    const hasChecklist = Boolean(checklistPayload?.items.length);
     const hasAgents = agentStates.length > 0;
     const hasLongHorizon = isActiveTaskGraph(taskGraph);
     return {
@@ -186,6 +186,9 @@ export function useHarnessGridData({
       hasAgents,
       hasLongHorizon,
       hasAnyData: hasAudit || hasChecklist || hasAgents || hasLongHorizon,
+      checklist: checklistPayload,
+      scratchpad: scratchpadStatus,
+      taskGraph,
     };
-  }, [agentStates.length, checklistCount, scratchpadStatus?.run_id, taskGraph]);
+  }, [agentStates.length, checklistPayload, scratchpadStatus, taskGraph]);
 }

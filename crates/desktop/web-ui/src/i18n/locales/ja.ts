@@ -168,6 +168,22 @@ const ja: TranslationMap = {
     hooks: 'Hooks',
     schedule: 'スケジュール',
   },
+  iconRail: {
+    sessionList: 'セッション一覧',
+    settingsMenu: '設定メニュー',
+    themeMenu: 'テーマ',
+    harnessNoData: 'このモジュールの Harness データはまだありません',
+  },
+  harnessCard: {
+    progressAllDone: '✓ 完了',
+    stackAria: 'Harness サマリーカード',
+    openCount: '未完了 {{count}}',
+    runningCount: '{{running}} / {{total}}',
+  },
+  focusMode: {
+    enter: 'フォーカスモード — サイドパネルを非表示',
+    exit: 'フォーカスモードを終了',
+  },
   rightPanel: {
     resizeWidth: 'ドラッグしてパネルの幅を変更',
     collapse: 'パネルを折りたたむ',
@@ -378,6 +394,8 @@ const ja: TranslationMap = {
     approvalFromSettingsHint:
       '設定 → Approval policy で変更できます。ツールの自動承認チェックボックスを有効にするには Auto-approve を選択してください。',
     moreMenu: 'その他',
+    overflowOff: 'オフ',
+    overflowActions: '操作',
     openRouting: 'Model routing…',
     modelFallback: 'ルーティングルールに一致しない場合のフォールバックモデル',
     modeLabel: 'モード:',
@@ -488,6 +506,7 @@ const ja: TranslationMap = {
     newSession: '新しいチャット',
     newWindow: '新しいウィンドウ',
     workspace: 'ワークスペース',
+    focusMode: 'フォーカスモード',
     devtools: 'Developer Tools',
     stopGeneration: '生成を停止（Escape）',
   },

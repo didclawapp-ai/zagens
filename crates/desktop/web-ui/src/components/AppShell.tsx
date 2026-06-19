@@ -4,10 +4,12 @@ import type { SessionRestoreSource } from '../hooks/useSessionNavigation';
 import ChatActionDialogs from './ChatActionDialogs';
 import Composer, { type ComposerOutboundMessage } from './Composer';
 import ModelParamsDialog, { type ModelParams } from './ModelParamsDialog';
-import Sidebar from './Sidebar';
+import IconRail from './chrome/IconRail';
+import SessionStrip, { type SessionStripSession } from './chrome/SessionStrip';
+import type { HarnessCardId } from './chrome/HarnessCard';
 import ApprovalDialog from './ApprovalDialog';
 import RightPanel, { type RightPanelView } from './RightPanel';
-import AuditGridPanel from './AuditGridPanel';
+import HarnessFloatStack from './chrome/HarnessFloatStack';
 import TitleBar from './TitleBar';
 import StoragePressureBanner from './StoragePressureBanner';
 import type { StoragePressureSnapshot } from '../lib/storagePressure';
@@ -30,6 +32,8 @@ import type { RuntimeConnectionState } from '../api/client';
 import type { SystemSettings } from '../api/client';
 import type { Theme } from '../lib/appPreferences';
 import type { InspectorNavActivity } from '../lib/inspectorUnread';
+import { useHarnessFloatStack } from '../hooks/useHarnessFloatStack';
+import type { HarnessGridDataSnapshot } from '../lib/useHarnessGridData';
 
 export type AppShellProps = {
   desktopHost: boolean;
@@ -57,7 +61,7 @@ export type AppShellProps = {
     draft: { messageId: string; content: string; depthFromTail: number } | null,
   ) => void;
   onConfirmBacktrack: () => void;
-  visibleSessions: Parameters<typeof Sidebar>[0]['sessions'];
+  visibleSessions: SessionStripSession[];
   showAllSessions: boolean;
   onToggleShowAllSessions: () => void;
   activeSessionId: string | null;
@@ -70,9 +74,12 @@ export type AppShellProps = {
   desktopApiKeyConfigured: boolean | null;
   activeInspector: RightPanelView;
   onInspectorChange: (view: RightPanelView) => void;
-  sidebarCollapsed: boolean;
-  onToggleSidebarCollapse: () => void;
-  onExpandSidebar: () => void;
+  sessionStripOpen: boolean;
+  onToggleSessionStrip: () => void;
+  harnessGridData: HarnessGridDataSnapshot;
+  userDismissedHarness: boolean;
+  onShowHarnessStack: () => void;
+  focusMode?: boolean;
   officeSession: boolean;
   checklistActivity: InspectorNavActivity;
   auditActivity: InspectorNavActivity;
@@ -126,6 +133,7 @@ export type AppShellProps = {
   onCollapseRightPanel: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  onThemeChange: (theme: Theme) => void;
   platform: string;
   threadTrustMode: boolean;
   onEnableTrust: () => Promise<void>;
@@ -143,7 +151,6 @@ export type AppShellProps = {
   auditGridVisible: boolean;
   auditGridAvailable: boolean;
   onToggleAuditGrid: () => void;
-  onDismissAuditGrid: () => void;
   subagentActiveCount: number;
   narrativeSpawnSuspected: boolean;
   onRequestMermaid: () => void;
@@ -189,9 +196,12 @@ export default function AppShell({
   desktopApiKeyConfigured,
   activeInspector,
   onInspectorChange,
-  sidebarCollapsed,
-  onToggleSidebarCollapse,
-  onExpandSidebar,
+  sessionStripOpen,
+  onToggleSessionStrip,
+  harnessGridData,
+  userDismissedHarness,
+  onShowHarnessStack,
+  focusMode = false,
   officeSession,
   checklistActivity,
   auditActivity,
@@ -241,6 +251,7 @@ export default function AppShell({
   onCollapseRightPanel,
   theme,
   onToggleTheme,
+  onThemeChange,
   platform,
   threadTrustMode,
   onEnableTrust,
@@ -258,7 +269,6 @@ export default function AppShell({
   auditGridVisible,
   auditGridAvailable,
   onToggleAuditGrid,
-  onDismissAuditGrid,
   subagentActiveCount,
   narrativeSpawnSuspected,
   onRequestMermaid,
@@ -271,6 +281,43 @@ export default function AppShell({
   highlightTaskId = null,
 }: AppShellProps) {
   const { t } = useT();
+  const { visible: harnessStackVisible, flashCardId, openAndScrollTo } = useHarnessFloatStack({
+    harnessData: harnessGridData,
+    userDismissed: userDismissedHarness,
+    focusMode,
+  });
+
+  const harnessCardHasData = (cardId: HarnessCardId): boolean => {
+    switch (cardId) {
+      case 'checklist':
+        return harnessGridData.hasChecklist;
+      case 'audit':
+        return harnessGridData.hasAudit;
+      case 'lht':
+        return harnessGridData.hasLongHorizon;
+      case 'agents':
+        return harnessGridData.hasAgents;
+      default:
+        return false;
+    }
+  };
+
+  const handleHarnessNavigate = (cardId: HarnessCardId) => {
+    if (!harnessCardHasData(cardId)) {
+      toast.info(t('iconRail.harnessNoData'));
+      return;
+    }
+    if (userDismissedHarness) {
+      onShowHarnessStack();
+    }
+    openAndScrollTo(cardId);
+  };
+
+  const handleHarnessHeadClick = (cardId: HarnessCardId, view: RightPanelView) => {
+    onExpandRightPanel();
+    onInspectorChange(view);
+    openAndScrollTo(cardId);
+  };
 
   return (
     <div className="flex flex-col h-screen w-screen bg-canvas">
@@ -283,8 +330,8 @@ export default function AppShell({
             toast.error((e as Error).message);
           });
         }}
-        auditGridAvailable={auditGridAvailable}
-        auditGridVisible={auditGridVisible}
+        auditGridAvailable={auditGridAvailable && !officeSession}
+        auditGridVisible={harnessStackVisible}
         onToggleAuditGrid={onToggleAuditGrid}
       />
       <div className="flex flex-1 min-h-0 bg-canvas">
@@ -314,59 +361,67 @@ export default function AppShell({
           onBacktrackDraftChange={onBacktrackDraftChange}
           onConfirmBacktrack={onConfirmBacktrack}
         />
-        <Sidebar
-          sessions={visibleSessions}
-          showAllSessions={showAllSessions}
-          onToggleShowAllSessions={onToggleShowAllSessions}
-          activeSessionId={activeSessionId}
+        <IconRail
+          sessionStripOpen={sessionStripOpen && !focusMode}
+          onToggleSessionStrip={onToggleSessionStrip}
           onNewSession={onNewSession}
-          onSelectSession={onSelectSession}
-          onDeleteSession={onDeleteSession}
+          activeInspector={activeInspector}
+          onInspectorChange={onInspectorChange}
+          onExpandRightPanel={onExpandRightPanel}
+          onHarnessNavigate={handleHarnessNavigate}
+          harnessFlashId={flashCardId}
           desktopHost={desktopHost}
+          officeSession={officeSession}
           runtimeConn={runtimeConn}
           streaming={streaming}
           runtimeSessionEstablished={runtimeSessionEstablished}
           apiKeyConfigured={desktopApiKeyConfigured}
-          activeInspector={activeInspector}
-          onInspectorChange={onInspectorChange}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={onToggleSidebarCollapse}
-          officeSession={officeSession}
           checklistActivity={checklistActivity}
           auditActivity={auditActivity}
           taskActivity={taskActivity}
           agentActivity={agentActivity}
+          theme={theme}
+          onThemeChange={onThemeChange}
         />
-        {sidebarCollapsed && (
-          <button
-            type="button"
-            onClick={onExpandSidebar}
-            className="chrome-seam-r shrink-0 w-8 bg-canvas hover:bg-hover transition-colors flex items-center justify-center group"
-            title={t('sidebar.expand')}
-            aria-label={t('sidebar.expand')}
-          >
-            <svg
-              className="w-3.5 h-3.5 text-t-text-muted group-hover:text-t-text transition-colors"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              aria-hidden
-            >
-              <path d="M5 3.5v9" strokeLinecap="round" />
-              <path d="M8 8l3-3v6l-3-3z" strokeLinejoin="round" />
-            </svg>
-          </button>
-        )}
+        <SessionStrip
+          open={sessionStripOpen && !focusMode}
+          sessions={visibleSessions}
+          showAllSessions={showAllSessions}
+          onToggleShowAllSessions={onToggleShowAllSessions}
+          activeSessionId={activeSessionId}
+          onSelectSession={onSelectSession}
+          onDeleteSession={onDeleteSession}
+        />
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex min-h-0 flex-1 flex-col min-w-0 bg-card outline-none"
+          className="flex min-h-0 flex-1 flex-col min-w-0 bg-canvas outline-none"
         >
-          <section className="order-2 shrink-0" aria-label={t('a11y.composerRegion')}>
-            <Composer
-              onSend={onSend}
-              onCancel={onCancelStream}
+          <div className="chat-stage flex min-h-0 min-w-0 flex-1">
+            <div className="chat-col flex min-h-0 min-w-0 flex-1 flex-col">
+              <ChatView
+                messages={messages}
+                workspaceRoot={selectedWorkspace}
+                desktopHost={desktopHost}
+                agentStates={agentStates}
+                onOpenWorkspacePath={onChatOpenWorkspacePath}
+                onRevealWorkspacePath={onRevealWorkspacePath}
+                onOpenDiffInPanel={onOpenDiffInPanel}
+                onRetryMessage={(content) =>
+                  onSend({ displayContent: content, apiPrompt: content })
+                }
+                onEditMessage={onEditMessage}
+                onBacktrackFromMessage={onBacktrackFromMessage}
+                officeSession={officeSession}
+                onOfficeQuickStart={officeSession ? onOfficeQuickStart : undefined}
+                sessionRestoreLoading={sessionRestoreLoading}
+                sessionRestoreSource={sessionRestoreSource}
+                onRetrySessionRestore={onRetrySessionRestore}
+              />
+              <section className="shrink-0" aria-label={t('a11y.composerRegion')}>
+                <Composer
+                  onSend={onSend}
+                  onCancel={onCancelStream}
               disabled={streaming || storagePauseTurns}
               autoApprove={autoApprove}
               approvalPolicy={approvalPolicy}
@@ -400,35 +455,22 @@ export default function AppShell({
               lhtChip={lhtChip}
               officeSession={officeSession}
               workspaceMention={composerMention}
-              composerPrefill={composerPrefill}
-            />
-          </section>
-          <section
-            className="order-1 flex min-h-0 min-w-0 flex-1 flex-col"
-            aria-label={t('a11y.chatLog')}
-          >
-            <ChatView
-              messages={messages}
-              workspaceRoot={selectedWorkspace}
-              desktopHost={desktopHost}
-              agentStates={agentStates}
-              onOpenWorkspacePath={onChatOpenWorkspacePath}
-              onRevealWorkspacePath={onRevealWorkspacePath}
-              onOpenDiffInPanel={onOpenDiffInPanel}
-              onRetryMessage={(content) =>
-                onSend({ displayContent: content, apiPrompt: content })
-              }
-              onEditMessage={onEditMessage}
-              onBacktrackFromMessage={onBacktrackFromMessage}
-              officeSession={officeSession}
-              onOfficeQuickStart={officeSession ? onOfficeQuickStart : undefined}
-              sessionRestoreLoading={sessionRestoreLoading}
-              sessionRestoreSource={sessionRestoreSource}
-              onRetrySessionRestore={onRetrySessionRestore}
-            />
-          </section>
+                  composerPrefill={composerPrefill}
+                />
+              </section>
+            </div>
+            {!officeSession ? (
+              <HarnessFloatStack
+                visible={harnessStackVisible}
+                harnessData={harnessGridData}
+                agentStates={agentStates}
+                flashCardId={flashCardId}
+                onHeadClick={handleHarnessHeadClick}
+              />
+            ) : null}
+          </div>
         </main>
-        {!auditGridVisible && !rightPanelCollapsed && (
+        {!harnessStackVisible && !rightPanelCollapsed && !focusMode && (
           <RightPanel
             view={activeInspector}
             officeSession={officeSession}
@@ -474,21 +516,7 @@ export default function AppShell({
             highlightTaskId={highlightTaskId}
           />
         )}
-        {auditGridVisible && resumedThreadId && (
-          <AuditGridPanel
-            workspaceRoot={selectedWorkspace}
-            resumedThreadId={resumedThreadId}
-            streaming={streaming}
-            runtimeConn={runtimeConn}
-            runtimeSessionEstablished={runtimeSessionEstablished}
-            agentStates={agentStates}
-            subagentActiveCount={subagentActiveCount}
-            narrativeSpawnSuspected={narrativeSpawnSuspected}
-            openWorkspaceFile={openWorkspaceFile}
-            onDismiss={onDismissAuditGrid}
-          />
-        )}
-        {!auditGridVisible && rightPanelCollapsed && (
+        {!harnessStackVisible && rightPanelCollapsed && (
           <button
             type="button"
             onClick={onExpandRightPanel}

@@ -18,8 +18,6 @@ import {
   appendWorkspaceMentionToText,
   formatWorkspaceMention,
 } from '../lib/composerWorkspaceMention';
-import type { TranslationKey } from '../i18n/keys';
-import { DESKTOP_RUN_MODE_LABELS } from '../types/desktop';
 import {
   composerModelLabel,
   composerModelShortLabel,
@@ -27,15 +25,15 @@ import {
   normalizeComposerModel,
 } from '../lib/composerModels';
 import { runModesForSession } from '../lib/taskTypeSession';
-import LhtModeToggle from './LhtModeToggle';
 import { ComposerContextMeter } from './composer/ComposerContextMeter';
-import { IconArrowUp, IconBolt } from './icons/FlatIcons';
+import ComposerOverflowMenu from './composer/ComposerOverflowMenu';
+import { IconArrowUp } from './icons/FlatIcons';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
 import {
   extractPastedUrl,
   urlAttachmentFromPaste,
 } from '../lib/composerUrlAttachment';
-import { composerAutoApproveToggleEnabled, approvalPolicySettingsKey } from '../lib/approvalPolicy';
+import { composerAutoApproveToggleEnabled } from '../lib/approvalPolicy';
 import { toast } from '../lib/toast';
 
 const COMPOSER_ERROR_TAG = 'composer-error';
@@ -48,27 +46,6 @@ const MAX_ATTACHMENTS = 8;
 // Detail: "high" at the vision API means the model still gets adequate resolution after resize.
 const COMPRESS_MAX_PX = 1920;
 const COMPRESS_QUALITY = 0.85;
-
-const TASK_TYPE_LABEL_KEYS: Record<
-  DesktopTaskTypePreference | DesktopTaskTypeResolved,
-  TranslationKey
-> = {
-  auto: 'composer.taskTypeAuto',
-  office: 'composer.taskTypeOffice',
-  code: 'composer.taskTypeCode',
-};
-
-const TASK_TYPE_HINT_KEYS: Record<DesktopTaskTypePreference, TranslationKey> = {
-  auto: 'composer.taskTypeAutoHint',
-  office: 'composer.taskTypeOfficeHint',
-  code: 'composer.taskTypeCodeHint',
-};
-
-const RUN_MODE_HINT_KEYS: Record<DesktopRunModeId, TranslationKey> = {
-  plan: 'composer.planModeHint',
-  agent: 'composer.agentModeHint',
-  yolo: 'composer.runModeYoloHint',
-};
 
 export interface ComposerOutboundMessage {
   /** Rendered in the chat transcript (attachment names/summary only — no inlined file bodies). */
@@ -522,9 +499,7 @@ export default function Composer({
   const [transcribing, setTranscribing] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const [customModelDraft, setCustomModelDraft] = useState('');
-  const [runModeOpen, setRunModeOpen] = useState(false);
-  const [taskTypeOpen, setTaskTypeOpen] = useState(false);
-  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [workspaceInput, setWorkspaceInput] = useState(workspace);
   const [isPickingDir, setIsPickingDir] = useState(false);
@@ -537,9 +512,6 @@ export default function Composer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
-  const runModeMenuRef = useRef<HTMLDivElement>(null);
-  const taskTypeMenuRef = useRef<HTMLDivElement>(null);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
   const workspaceTriggerWrapRef = useRef<HTMLDivElement>(null);
   const workspacePopoverPanelRef = useRef<HTMLDivElement>(null);
 
@@ -641,39 +613,6 @@ export default function Composer({
   }, [modelOpen]);
 
   useEffect(() => {
-    if (!runModeOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (runModeMenuRef.current && !runModeMenuRef.current.contains(e.target as Node)) {
-        setRunModeOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [runModeOpen]);
-
-  useEffect(() => {
-    if (!taskTypeOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (taskTypeMenuRef.current && !taskTypeMenuRef.current.contains(e.target as Node)) {
-        setTaskTypeOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [taskTypeOpen]);
-
-  useEffect(() => {
-    if (!moreMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-        setMoreMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [moreMenuOpen]);
-
-  useEffect(() => {
     if (!workspaceOpen) return;
     const handler = (e: MouseEvent) => {
       const node = e.target as Node | null;
@@ -689,19 +628,17 @@ export default function Composer({
   }, [workspaceOpen]);
 
   useEffect(() => {
-    if (!modelOpen && !workspaceOpen && !runModeOpen && !taskTypeOpen && !moreMenuOpen) return;
+    if (!modelOpen && !workspaceOpen && !overflowOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setModelOpen(false);
         setWorkspaceOpen(false);
-        setRunModeOpen(false);
-        setTaskTypeOpen(false);
-        setMoreMenuOpen(false);
+        setOverflowOpen(false);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [modelOpen, workspaceOpen, runModeOpen, taskTypeOpen, moreMenuOpen]);
+  }, [modelOpen, workspaceOpen, overflowOpen]);
 
   const handleSend = async () => {
     if ((!text.trim() && attachments.length === 0) || disabled || transcribing) return;
@@ -837,31 +774,6 @@ export default function Composer({
       });
     }
   };
-
-  const selectRunMode = useCallback(
-    (m: DesktopRunModeId) => {
-      onRunModeChange(m);
-      setRunModeOpen(false);
-    },
-    [onRunModeChange],
-  );
-
-  const selectTaskType = useCallback(
-    (value: DesktopTaskTypePreference) => {
-      onTaskTypePreferenceChange(value);
-      setTaskTypeOpen(false);
-    },
-    [onTaskTypePreferenceChange],
-  );
-
-  const taskTypeChipLabel =
-    lockedThreadTaskType != null
-      ? t(TASK_TYPE_LABEL_KEYS[lockedThreadTaskType])
-      : t(TASK_TYPE_LABEL_KEYS[taskTypePreference]);
-  const taskTypeChipHint =
-    lockedThreadTaskType != null
-      ? t('composer.taskTypeLocked', { type: t(TASK_TYPE_LABEL_KEYS[lockedThreadTaskType]) })
-      : t(TASK_TYPE_HINT_KEYS[taskTypePreference]);
 
   const selectModel = useCallback(
     (m: string) => {
@@ -1076,13 +988,14 @@ export default function Composer({
   const modelPickerTitle = routingActive
     ? `${composerModelLabel(model)} — ${t('composer.modelFallback')}`
     : composerModelLabel(model);
+  const sendReady =
+    Boolean(text.trim() || attachments.length > 0) && !disabled && !transcribing;
 
   return (
     <>
       <div className="composer-dock shrink-0 px-4 py-3">
         <div className="mx-auto max-w-3xl">
           <div className="composer-shell flex flex-col overflow-visible">
-            <div className="order-2 flex flex-col">
           {officeSession ? (
             <p className="px-3 pt-2 pb-1 text-[10px] text-t-text-muted border-b border-divider/40">
               {t('composer.officeStatusBar')}
@@ -1182,11 +1095,12 @@ export default function Composer({
               type="button"
               className="composer-icon-btn"
               title={t('composer.attach')}
+              aria-label={t('composer.attach')}
               disabled={disabled || transcribing || attachments.length >= MAX_ATTACHMENTS}
               onClick={handleAttachClick}
             >
-              <svg viewBox="0 0 24 24">
-                <path d="M12 5v14 M5 12h14" />
+              <svg viewBox="0 0 24 24" aria-hidden>
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
               </svg>
             </button>
             <div className="relative z-40" ref={workspaceTriggerWrapRef}>
@@ -1204,6 +1118,30 @@ export default function Composer({
                 </svg>
               </button>
             </div>
+            <ComposerOverflowMenu
+              open={overflowOpen}
+              onOpenChange={setOverflowOpen}
+              disabled={disabled}
+              officeSession={Boolean(officeSession)}
+              showAutoApprove={showAutoApprove}
+              autoApprove={autoApprove}
+              autoApproveToggleEnabled={autoApproveToggleEnabled}
+              approvalPolicy={approvalPolicy}
+              onAutoApproveChange={onAutoApproveChange}
+              runMode={runMode}
+              availableRunModes={availableRunModes}
+              runModePickerDisabled={runModePickerDisabled}
+              onRunModeChange={onRunModeChange}
+              taskTypePreference={taskTypePreference}
+              lockedThreadTaskType={lockedThreadTaskType}
+              onTaskTypePreferenceChange={onTaskTypePreferenceChange}
+              lhtChip={lhtChip}
+              sessionExportEnabled={sessionExportEnabled}
+              threadExportEnabled={threadExportEnabled}
+              onExportSessionJson={onExportSessionJson}
+              onExportThreadJson={onExportThreadJson}
+              onOpenRouting={onOpenRouting}
+            />
             <div className="min-w-[0.5rem] flex-1" />
             <div className="relative" ref={modelMenuRef}>
               <button
@@ -1324,7 +1262,7 @@ export default function Composer({
               type="button"
               onClick={() => void handleSend()}
               disabled={disabled || transcribing || (!text.trim() && attachments.length === 0)}
-              className="composer-send-btn"
+              className={`composer-send-btn${sendReady ? ' composer-send-btn--ready' : ''}`}
               title={transcribing ? t('composer.transcribing') : t('composer.send')}
               aria-label={transcribing ? t('composer.transcribing') : t('composer.sendAria')}
             >
@@ -1344,234 +1282,6 @@ export default function Composer({
               </button>
             ) : null}
           </div>
-          </div>
-            <div
-              className="composer-options-bar order-1 flex min-h-9 flex-wrap items-center gap-1.5 bg-canvas-alt/35 px-2.5 py-1.5 text-xs"
-              role="toolbar"
-              aria-label={t('a11y.composerOptionsToolbar')}
-            >
-            {showAutoApprove ? (
-              autoApproveToggleEnabled ? (
-                <button
-                  type="button"
-                  className={`composer-icon-btn ${autoApprove ? 'composer-icon-btn--active' : ''}`}
-                  disabled={disabled}
-                  aria-pressed={autoApprove}
-                  title={t('composer.autoApprove')}
-                  aria-label={t('composer.autoApproveAria')}
-                  onClick={() => onAutoApproveChange(!autoApprove)}
-                >
-                  <IconBolt />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="composer-icon-btn"
-                  disabled
-                  title={`${t('composer.approvalFromSettings', {
-                    policy: t(
-                      `settings.${approvalPolicySettingsKey(approvalPolicy)}` as 'settings.approvalOnRequest',
-                    ),
-                  })}\n${t('composer.approvalFromSettingsHint')}`}
-                  aria-label={t('composer.autoApproveLockedAria', {
-                    policy: t(
-                      `settings.${approvalPolicySettingsKey(approvalPolicy)}` as 'settings.approvalOnRequest',
-                    ),
-                  })}
-                >
-                  <IconBolt />
-                </button>
-              )
-            ) : null}
-            <div className="relative" ref={runModeMenuRef}>
-              <button
-                type="button"
-                disabled={disabled || runModePickerDisabled}
-                onClick={() => !runModePickerDisabled && setRunModeOpen((o) => !o)}
-                aria-expanded={runModeOpen}
-                aria-haspopup={runModePickerDisabled ? undefined : 'listbox'}
-                title={
-                  officeSession ? t('composer.officeRunModeHint') : t(RUN_MODE_HINT_KEYS[runMode])
-                }
-                className={`composer-chip ${runModeOpen ? 'active' : ''} ${runModePickerDisabled ? 'cursor-default opacity-90' : ''}`}
-              >
-                {DESKTOP_RUN_MODE_LABELS[runMode]}
-                {!runModePickerDisabled && (
-                  <svg viewBox="0 0 24 24">
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                )}
-              </button>
-              {runModeOpen && !runModePickerDisabled && (
-                <div
-                  className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,20rem)] max-w-[320px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
-                  role="listbox"
-                  aria-label={t('composer.selectMode')}
-                >
-                  {availableRunModes.map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="option"
-                      aria-selected={id === runMode}
-                      title={t(RUN_MODE_HINT_KEYS[id])}
-                      onClick={() => selectRunMode(id)}
-                      className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                        id === runMode ? 'bg-accent-soft text-accent' : 'text-t-text hover:bg-hover'
-                      }`}
-                    >
-                      <span className="font-medium">{DESKTOP_RUN_MODE_LABELS[id]}</span>
-                      <span className="text-[11px] leading-snug text-t-text-muted">
-                        {t(RUN_MODE_HINT_KEYS[id])}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="relative" ref={taskTypeMenuRef}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => setTaskTypeOpen((o) => !o)}
-                aria-expanded={taskTypeOpen}
-                aria-haspopup="listbox"
-                title={taskTypeChipHint}
-                className={`composer-chip ${taskTypeOpen ? 'active' : ''}`}
-              >
-                {taskTypeChipLabel}
-                <svg viewBox="0 0 24 24">
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </button>
-              {taskTypeOpen && (
-                <div
-                  className="absolute bottom-full left-0 z-[10040] mb-1 w-[min(100vw-2rem,18rem)] max-w-[288px] rounded-lg border border-card-border bg-card p-1.5 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
-                  role="listbox"
-                  aria-label={t('composer.selectTaskType')}
-                >
-                  {(['auto', 'office', 'code'] as DesktopTaskTypePreference[]).map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="option"
-                      aria-selected={
-                        lockedThreadTaskType == null
-                          ? id === taskTypePreference
-                          : id === lockedThreadTaskType
-                      }
-                      title={t(TASK_TYPE_HINT_KEYS[id])}
-                      onClick={() => selectTaskType(id)}
-                      className={`flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                        (lockedThreadTaskType == null
-                          ? id === taskTypePreference
-                          : id === lockedThreadTaskType)
-                          ? 'bg-accent-soft text-accent'
-                          : 'text-t-text hover:bg-hover'
-                      }`}
-                    >
-                      <span className="font-medium">{t(TASK_TYPE_LABEL_KEYS[id])}</span>
-                      <span className="text-[11px] leading-snug text-t-text-muted">
-                        {t(TASK_TYPE_HINT_KEYS[id])}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {!officeSession ? <LhtModeToggle disabled={disabled} /> : null}
-            {lhtChip && !officeSession ? (
-              <span
-                className={`composer-chip max-w-[8rem] truncate px-2 py-0 text-[10px] ${
-                  lhtChip.kind === 'blocked'
-                    ? 'text-amber-700 dark:text-amber-300'
-                    : lhtChip.kind === 'warning'
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-t-text-muted'
-                }`}
-                title={
-                  lhtChip.kind === 'continue'
-                    ? t('composer.lhtContinueTitle')
-                    : lhtChip.kind === 'blocked'
-                      ? lhtChip.reason === 'max_nudges_without_progress'
-                        ? t('composer.lhtBlockedNoProgressTitle')
-                        : t('composer.lhtBlockedTitle')
-                      : t('composer.lhtWarningTitle')
-                }
-              >
-                {lhtChip.kind === 'continue'
-                  ? t('composer.lhtContinue', { detail: lhtChip.detail ?? '' })
-                  : lhtChip.kind === 'blocked'
-                    ? t('composer.lhtBlocked', { detail: lhtChip.detail ?? '' })
-                    : t('composer.lhtWarning', { detail: lhtChip.detail ?? '' })}
-              </span>
-            ) : null}
-            <div className="min-w-[0.5rem] flex-1" />
-            <div className="relative" ref={moreMenuRef}>
-              <button
-                type="button"
-                className="composer-icon-btn"
-                disabled={disabled}
-                onClick={() => setMoreMenuOpen((o) => !o)}
-                aria-expanded={moreMenuOpen}
-                aria-haspopup="menu"
-                title={t('composer.moreMenu')}
-              >
-                <svg viewBox="0 0 24 24">
-                  <circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="12" cy="18" r="1.5" fill="currentColor" stroke="none" />
-                </svg>
-              </button>
-              {moreMenuOpen && (
-                <div
-                  className="absolute bottom-full right-0 z-[10040] mb-1 w-52 rounded-lg border border-card-border bg-card p-1 shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.08]"
-                  role="menu"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={!sessionExportEnabled}
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      onExportSessionJson();
-                    }}
-                    className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover disabled:opacity-40"
-                  >
-                    {t('composer.exportSession')}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={!threadExportEnabled}
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      onExportThreadJson();
-                    }}
-                    className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover disabled:opacity-40"
-                  >
-                    {t('composer.exportThread')}
-                  </button>
-                  {onOpenRouting && !officeSession ? (
-                    <>
-                      <div className="my-1 h-px bg-divider" />
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMoreMenuOpen(false);
-                          onOpenRouting();
-                        }}
-                        className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover"
-                      >
-                        {t('composer.openRouting')}
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              )}
-            </div>
-            </div>
           </div>
         </div>
       </div>

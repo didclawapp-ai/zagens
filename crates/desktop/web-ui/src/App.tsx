@@ -9,6 +9,7 @@ import AppShell from './components/AppShell';
 import OnboardingOverlay from './components/OnboardingOverlay';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
 import { useHarnessGridData } from './lib/useHarnessGridData';
+import { readSessionStripOpen, writeSessionStripOpen } from './hooks/useSessionStrip';
 import { type ModelParams } from './components/ModelParamsDialog';
 import {
   loadModelParams,
@@ -304,12 +305,13 @@ export default function App() {
 
   const [modelParams, setModelParams] = useState<ModelParams>(() => loadModelParams());
   const [modelParamsOpen, setModelParamsOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sessionStripOpen, setSessionStripOpen] = useState(() => readSessionStripOpen(false));
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(() =>
     loadStoredRightPanelCollapsed(),
   );
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
   const [auditGridDismissed, setAuditGridDismissed] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
 
   const {
     panelPreview,
@@ -492,6 +494,14 @@ export default function App() {
     );
   }, [desktopHost]);
 
+  const toggleFocusMode = useCallback(() => {
+    setFocusMode((prev) => {
+      const next = !prev;
+      toast.info(next ? t('focusMode.enter') : t('focusMode.exit'), { duration: 2000 });
+      return next;
+    });
+  }, [t]);
+
   useKeyboardShortcuts([
     { key: 'k', ctrl: true, description: t('keyboard.newSession'), handler: () => handleNewSessionPreserveMode() },
     {
@@ -507,6 +517,13 @@ export default function App() {
       },
     },
     { key: 'n', ctrl: true, description: t('keyboard.workspace'), handler: () => setActiveInspector('workspace') },
+    {
+      key: '.',
+      ctrl: true,
+      global: true,
+      description: t('keyboard.focusMode'),
+      handler: () => toggleFocusMode(),
+    },
     { key: 'f12', global: true, description: t('keyboard.devtools'), handler: () => toggleDevtools() },
     {
       key: 'i',
@@ -556,12 +573,16 @@ export default function App() {
   );
 
   const handleRequestChecklist = useCallback(() => {
-    /* Audit grid auto-shows via useAuditGridData when checklist data exists. */
+    /* Harness float stack auto-shows via useHarnessGridData when checklist data exists. */
   }, []);
 
   const handleRequestAudit = useCallback(() => {
-    /* Audit grid auto-shows via useAuditGridData when scratchpad data exists. */
+    /* Harness float stack auto-shows via useHarnessGridData when scratchpad data exists. */
   }, []);
+
+  useEffect(() => {
+    writeSessionStripOpen(sessionStripOpen);
+  }, [sessionStripOpen]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -675,17 +696,18 @@ export default function App() {
     }
   }, [rightPanelCollapsed]);
 
-  const toggleTheme = useCallback(() => {
-    setTheme((prev) => {
-      const next: Theme = prev === 'light' ? 'dark' : 'light';
-      try {
-        localStorage.setItem('deepseek-theme', next);
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+  const handleThemeChange = useCallback((next: Theme) => {
+    setTheme(next);
+    try {
+      localStorage.setItem('deepseek-theme', next);
+    } catch {
+      /* ignore */
+    }
   }, []);
+
+  const toggleTheme = useCallback(() => {
+    handleThemeChange(theme === 'light' ? 'dark' : 'light');
+  }, [theme, handleThemeChange]);
 
   useEffect(() => {
     runModeRef.current = runMode;
@@ -815,10 +837,6 @@ export default function App() {
     setAuditGridDismissed((dismissed) => !dismissed);
   }, []);
 
-  const handleDismissAuditGrid = useCallback(() => {
-    setAuditGridDismissed(true);
-  }, []);
-
   if (shellInitFailed) {
     return <ShellLoadFailure onRetry={refreshApiKeyStatus} />;
   }
@@ -878,9 +896,12 @@ export default function App() {
       desktopApiKeyConfigured={desktopApiKeyConfigured}
       activeInspector={activeInspector}
       onInspectorChange={handleInspectorChange}
-      sidebarCollapsed={sidebarCollapsed}
-      onToggleSidebarCollapse={() => setSidebarCollapsed((v) => !v)}
-      onExpandSidebar={() => setSidebarCollapsed(false)}
+      sessionStripOpen={sessionStripOpen}
+      onToggleSessionStrip={() => setSessionStripOpen((open) => !open)}
+      harnessGridData={auditGridData}
+      userDismissedHarness={auditGridDismissed}
+      onShowHarnessStack={() => setAuditGridDismissed(false)}
+      focusMode={focusMode}
       officeSession={officeSession}
       checklistActivity={checklistActivity}
       auditActivity={auditActivity}
@@ -940,6 +961,7 @@ export default function App() {
       onCollapseRightPanel={() => setRightPanelCollapsed(true)}
       theme={theme}
       onToggleTheme={toggleTheme}
+      onThemeChange={handleThemeChange}
       platform={platform}
       threadTrustMode={threadTrustMode}
       onEnableTrust={handleEnableTrust}
@@ -957,7 +979,6 @@ export default function App() {
       auditGridVisible={auditGridVisible}
       auditGridAvailable={auditGridAvailable}
       onToggleAuditGrid={handleToggleAuditGrid}
-      onDismissAuditGrid={handleDismissAuditGrid}
       subagentActiveCount={subagentActiveCount}
       narrativeSpawnSuspected={narrativeSpawnSuspected}
       onRequestMermaid={() => setActiveInspector('mermaid')}

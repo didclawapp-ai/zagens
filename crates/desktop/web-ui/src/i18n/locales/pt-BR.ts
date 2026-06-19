@@ -168,6 +168,22 @@ const ptBr: TranslationMap = {
     hooks: 'Hooks',
     schedule: 'Tarefas agendadas',
   },
+  iconRail: {
+    sessionList: 'Lista de sessões',
+    settingsMenu: 'Menu de configurações',
+    themeMenu: 'Tema',
+    harnessNoData: 'Ainda não há dados de harness neste módulo',
+  },
+  harnessCard: {
+    progressAllDone: '✓ Concluído',
+    stackAria: 'Cartões resumo Harness',
+    openCount: '{{count}} em aberto',
+    runningCount: '{{running}} / {{total}}',
+  },
+  focusMode: {
+    enter: 'Modo foco — painéis laterais ocultos',
+    exit: 'Modo foco desativado',
+  },
   rightPanel: {
     resizeWidth: 'Arraste para redimensionar o painel',
     collapse: 'Recolher painel',
@@ -379,6 +395,8 @@ const ptBr: TranslationMap = {
     approvalFromSettingsHint:
       'Altere em Configurações → Política de aprovação. Escolha Aprovar automaticamente para habilitar a caixa de aprovação automática de ferramentas.',
     moreMenu: 'Mais',
+    overflowOff: 'Desligado',
+    overflowActions: 'Ações',
     openRouting: 'Roteamento de modelos…',
     modelFallback: 'Modelo de fallback quando nenhuma regra de roteamento corresponde',
     modeLabel: 'Modo:',
@@ -489,6 +507,7 @@ const ptBr: TranslationMap = {
     newSession: 'Novo chat',
     newWindow: 'Nova janela',
     workspace: 'Workspace',
+    focusMode: 'Modo foco',
     devtools: 'Ferramentas de desenvolvedor',
     stopGeneration: 'Parar geração (Escape)',
   },

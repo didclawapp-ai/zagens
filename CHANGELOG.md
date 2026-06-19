@@ -20,8 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop web UI:** Keep Composer inside the chat column so transcript and input stay aligned when Harness float cards are open.
+
 ### Changed
 
+- **Desktop web UI (minimal chrome):** Drop the composer dock top divider for a unified chat canvas; assistant messages render borderless (document flow) while user bubbles keep a light card border.
+- **Desktop web UI (minimal chrome, Phase 1–2):** Replace the 240px text sidebar with a 52px icon rail (`IconRail`), collapsible 200px session strip, settings popover menu, and runtime connection dot; add shared chrome primitives (`HarnessCard`, `ProgressScrollViewport`, `RuntimeConnIndicator`) and `progressScroll` layout helper with self-check.
+- **Desktop web UI (Harness float stack, Phase 4):** Show four summary cards beside the transcript (`HarnessFloatStack`) with progress viewports; retire the right-side `AuditGridPanel` grid in favor of the in-stage float stack (TitleBar toggle unchanged).
+- **Desktop web UI (Composer, Phase 3):** Collapse the second options row into a single toolbar with an overflow (`⋯`) menu for run mode, task type, LHT, auto-approve, and export; paperclip attach icon; accent send button when ready; stronger `focus-within` shell styling.
+- **Desktop web UI (Focus mode, Phase 6):** `Mod+.` toggles focus mode — hides session strip, Harness float stack, and right Inspector while preserving underlying panel preferences.
+- **Desktop web UI (Inspector, Phase 5):** Workspace panel uses 44px vertical icon tabs (`InspectorIconTabs`) instead of a horizontal text tab bar.
+- **Desktop web UI (cleanup, Phase 7):** Remove unused `Sidebar.tsx`, `AuditGridPanel.tsx`, and `useAuditGridData.ts` after the icon-rail / float-stack migration.
 - **Audit workflow:** `audit-repo` skill and scratchpad gates now require multi-dimension balance — `kind=cleared` notes need `[D#]` tags and substantive evidence; defer reasons cannot be security-risk-only stubs; report template adds non-security sections (tests, maintainability, architecture).
 
 ## [0.8.2] - 2026-06-17

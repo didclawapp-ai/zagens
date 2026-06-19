@@ -168,6 +168,22 @@ const en: TranslationMap = {
     hooks: 'Hooks',
     schedule: 'Scheduled tasks',
   },
+  iconRail: {
+    sessionList: 'Session list',
+    settingsMenu: 'Settings menu',
+    themeMenu: 'Theme',
+    harnessNoData: 'No harness data for this module yet',
+  },
+  harnessCard: {
+    progressAllDone: '✓ All done',
+    stackAria: 'Harness summary cards',
+    openCount: '{{count}} open',
+    runningCount: '{{running}} / {{total}}',
+  },
+  focusMode: {
+    enter: 'Focus mode — side panels hidden',
+    exit: 'Focus mode off',
+  },
   rightPanel: {
     resizeWidth: 'Drag to resize panel',
     collapse: 'Collapse panel',
@@ -378,6 +394,8 @@ const en: TranslationMap = {
     approvalFromSettingsHint:
       'Change under Settings → Approval policy. Choose Auto-approve to enable the tool auto-approve checkbox.',
     moreMenu: 'More',
+    overflowOff: 'Off',
+    overflowActions: 'Actions',
     openRouting: 'Model routing…',
     modelFallback: 'Fallback model when no routing rule matches',
     modeLabel: 'Mode:',
@@ -488,6 +506,7 @@ const en: TranslationMap = {
     newSession: 'New Chat',
     newWindow: 'New window',
     workspace: 'Workspace',
+    focusMode: 'Focus mode',
     devtools: 'Developer Tools',
     stopGeneration: 'Stop generation (Escape)',
   },

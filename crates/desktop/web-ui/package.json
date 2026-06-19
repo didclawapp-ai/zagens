@@ -14,6 +14,7 @@
     "test:composer-url": "tsx src/lib/composerUrlAttachment.selfcheck.ts",
     "test:open-external-url": "tsx src/lib/openExternalUrl.selfcheck.ts",
     "test:mermaid": "tsx src/lib/mermaid.selfcheck.ts",
+    "test:progress-scroll": "tsx src/lib/progressScroll.selfcheck.ts",
     "build:analyze": "tsc -b && vite build --mode analyze",
     "preview": "vite preview"
   },

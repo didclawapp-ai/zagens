@@ -36,7 +36,7 @@ import { toast } from '../lib/toast';
 import PanelEdgeSeam from './PanelEdgeSeam';
 import AboutPanel from './AboutPanel';
 import AuditScratchpadPanel from './AuditScratchpadPanel';
-import { handleTabListKeyDown } from '../lib/a11y/rovingTabList';
+import InspectorIconTabs from './chrome/InspectorIconTabs';
 
 export type RightPanelView =
   | 'workspace'
@@ -170,14 +170,6 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   mermaid: 'panels.mermaid',
   about: 'panels.about',
 };
-
-function tabBtn(active: boolean) {
-  return `flex-1 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${
-    active
-      ? 'border-accent text-accent bg-hover/50'
-      : 'border-transparent text-t-text-muted hover:text-t-text hover:bg-hover/80'
-  }`;
-}
 
 function formatSnapshotTime(ts: number): string {
   try {
@@ -528,13 +520,6 @@ export default function RightPanel({
   const workbenchTabId = (tab: WorkspaceTabId) => `workbench-tab-${tab}`;
   const workbenchTabPanelId = 'workbench-tabpanel';
 
-  const onWorkspaceTabListKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      handleTabListKeyDown(e, visibleWorkspaceTabs, workspaceTab, setWorkspaceTab, workbenchTabId);
-    },
-    [visibleWorkspaceTabs, workspaceTab],
-  );
-
   const onResizePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const d = resizeDragRef.current;
     if (!d || e.pointerId !== d.pointerId) {
@@ -612,46 +597,19 @@ export default function RightPanel({
                 />
               </PreviewContainer>
             ) : (
-              <>
-                <div
-                  className="shrink-0 flex bg-canvas-alt/50"
-                  role="tablist"
-                  aria-label={t('workbench.tablistAria')}
-                  onKeyDown={onWorkspaceTabListKeyDown}
-                >
-                  {visibleWorkspaceTabs.map((tabId) => {
-                    const labelKey: TranslationKey =
-                      tabId === 'restore'
-                        ? 'workbench.tabRestore'
-                        : tabId === 'files'
-                          ? 'workspaceFiles.tab'
-                          : tabId === 'rules'
-                            ? 'workspaceRules.tab'
-                            : tabId === 'terminal'
-                              ? 'terminal.tab'
-                              : 'diff.tab';
-                    const selected = workspaceTab === tabId;
-                    return (
-                      <button
-                        key={tabId}
-                        id={workbenchTabId(tabId)}
-                        type="button"
-                        role="tab"
-                        aria-selected={selected}
-                        aria-controls={workbenchTabPanelId}
-                        tabIndex={selected ? 0 : -1}
-                        className={tabBtn(selected)}
-                        onClick={() => setWorkspaceTab(tabId)}
-                      >
-                        {t(labelKey)}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="flex min-h-0 flex-1">
+                <InspectorIconTabs
+                  tabs={visibleWorkspaceTabs}
+                  activeTab={workspaceTab}
+                  onTabChange={setWorkspaceTab}
+                  tabIdFor={workbenchTabId}
+                  tabPanelId={workbenchTabPanelId}
+                  ariaLabel={t('workbench.tablistAria')}
+                />
 
                 <div
                   id={workbenchTabPanelId}
-                  className={`flex-1 min-h-0 ${workspaceTab === 'terminal' || workspaceTab === 'diff' || workspaceTab === 'files' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
+                  className={`min-h-0 min-w-0 flex-1 ${workspaceTab === 'terminal' || workspaceTab === 'diff' || workspaceTab === 'files' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
                   role="tabpanel"
                   aria-labelledby={workbenchTabId(workspaceTab)}
                   tabIndex={0}
@@ -835,7 +793,7 @@ export default function RightPanel({
                     />
                   )}
                 </div>
-              </>
+              </div>
             )}
           </>
         )}
