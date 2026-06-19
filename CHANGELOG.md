@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.2`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.2**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.3`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.3**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Prefer updating `[Unreleased]` incrementally going forward.
 
 ## [Unreleased]
+
+## [0.8.3] - 2026-06-19
+
+**Release highlights**
+
+- **Multi-session parallel streaming (desktop):** Start a turn in session A, switch to B (or create a new session) and send — both streams run live without cancelling each other. Switch back to see progress; background approvals surface a toast; session strip shows spinners and checkmarks per session.
+- **Minimal chrome UI:** Icon rail + collapsible session strip, Harness float stack beside the transcript, focus mode (`Mod+.`), streamlined Composer toolbar, and borderless assistant messages.
+- **TUI:** Tab / Shift+Tab pane focus restored outside paste bursts.
+- **Verify:** `scripts/ci/test-multi-session.{sh,ps1}` and `npm run test:multi-session` for parallel-stream regression.
 
 ### Added
 
@@ -33,7 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Desktop web UI (multi-session):** New session composer no longer stays locked while another session streams in the background; navigation detach no longer aborts in-flight SSE before `turn_started` registers the thread; session strip shows a spinning indicator at the title when a session has an active turn; switching away and back preserves the background stream instead of stopping it.
 - **Desktop web UI (multi-session):** Background sessions appear in the sidebar after `turn_started` (early persist) and when navigating away from a streaming session (persist + refresh list); streaming checkpoint now covers all in-flight threads, not only the active view.
 - **Desktop web UI (multi-session):** Session strip spinner clears when a background turn completes without requiring a click (registry + `streamingThreadIds` stay in sync).
-
 - **TUI (`zagens-tui`):** Restore Tab / Shift+Tab pane focus cycling while the composer is focused; only swallow Tab during active multiline paste bursts (Windows conhost).
 - **Desktop web UI:** Clear stuck「生成中」after a turn ends — trust `turn.completed`/`done` for UI unlock, clear streaming on all assistant bubbles (not only the live stream target id), and periodically reconcile when the backend turn is no longer active.
 - **Desktop web UI:** Keep Composer inside the chat column so transcript and input stay aligned when Harness float cards are open.
