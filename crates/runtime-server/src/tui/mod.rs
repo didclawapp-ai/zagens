@@ -436,11 +436,14 @@ async fn handle_input_event(
                 KeyCode::Char('?') => {
                     app.show_help = !app.show_help;
                 }
-                KeyCode::Tab if !app.approval_open() && composer_absorbs_text_keys(app) => {
-                    app.handle_char('\t');
-                }
-                KeyCode::Tab if !app.approval_open() => {
-                    handle_tab_focus(app, key.modifiers.contains(KeyModifiers::SHIFT));
+                KeyCode::Tab | KeyCode::BackTab if !app.approval_open() => {
+                    if app.composer_paste_guard.paste_active() {
+                        // Swallow Tab during multiline paste bursts (Windows conhost).
+                    } else {
+                        let shift = matches!(key.code, KeyCode::BackTab)
+                            || key.modifiers.contains(KeyModifiers::SHIFT);
+                        handle_tab_focus(app, shift);
+                    }
                 }
                 KeyCode::Char('[') if composer_absorbs_text_keys(app) => {
                     app.handle_char('[');

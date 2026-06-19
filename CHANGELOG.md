@@ -22,7 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **TUI (`zagens-tui`):** Restore Tab / Shift+Tab pane focus cycling while the composer is focused; only swallow Tab during active multiline paste bursts (Windows conhost).
+- **Desktop web UI:** Clear stuck「生成中」after a turn ends — trust `turn.completed`/`done` for UI unlock, clear streaming on all assistant bubbles (not only the live stream target id), and periodically reconcile when the backend turn is no longer active.
 - **Desktop web UI:** Keep Composer inside the chat column so transcript and input stay aligned when Harness float cards are open.
+- **Desktop web UI:** Auto-open the right Inspector preview when clicking a workspace file link in chat while the Harness float stack is visible — hide the float stack and expand the panel instead of requiring a manual dismiss.
 
 ### Changed
 
