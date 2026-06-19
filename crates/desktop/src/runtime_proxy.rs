@@ -25,6 +25,11 @@ struct ThreadEventEnvelope<T: Serialize> {
     data: T,
 }
 
+/// `(window_label, thread_id)` → cancel flag for one in-flight SSE consumer.
+type SseCancelKey = (String, String);
+type SseCancelFlag = Arc<AtomicBool>;
+type SseCancelMap = HashMap<SseCancelKey, SseCancelFlag>;
+
 /// Per-(webview, thread) cancel flag for in-flight `runtime_get_sse`.
 ///
 /// Multi-session parallel streaming (P0.1): each (window, thread) pair gets its own
@@ -32,7 +37,7 @@ struct ThreadEventEnvelope<T: Serialize> {
 /// in the same window. The legacy `window_label`-only key is replaced by a composite
 /// `(window_label, thread_id)`; `runtime_cancel_sse` with `thread_id == None` cancels
 /// every in-flight SSE for that window (backwards-compatible with the global Stop path).
-static SSE_CANCEL_FLAGS: LazyLock<Mutex<HashMap<(String, String), Arc<AtomicBool>>>> =
+static SSE_CANCEL_FLAGS: LazyLock<Mutex<SseCancelMap>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 fn arm_sse_cancel(window_label: &str, thread_id: &str) -> Arc<AtomicBool> {

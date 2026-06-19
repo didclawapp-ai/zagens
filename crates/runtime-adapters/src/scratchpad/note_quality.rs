@@ -28,7 +28,6 @@ const TRIVIAL_CLEARED: &[&str] = &[
 ];
 
 /// `kind=cleared` must cite a dimension tag and concrete evidence — not a one-word stub.
-#[must_use]
 pub fn validate_cleared_claim(claim: &str) -> Result<(), &'static str> {
     let trimmed = claim.trim();
     if trimmed.is_empty() {
@@ -54,7 +53,6 @@ pub fn validate_cleared_claim(claim: &str) -> Result<(), &'static str> {
 }
 
 /// Defer reasons must name scope/time/dimension gaps — not security-risk-only stubs.
-#[must_use]
 pub fn validate_deferred_meta_claim(claim: &str) -> Result<(), &'static str> {
     let trimmed = claim.trim();
     if trimmed.is_empty() {

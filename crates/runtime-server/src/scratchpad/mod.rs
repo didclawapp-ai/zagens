@@ -317,17 +317,15 @@ impl ScratchpadStore {
             .unwrap_or("")
             .to_string();
 
-        if kind == "cleared" {
-            if let Err(msg) = coverage::validate_cleared_claim(&claim) {
-                return Err(ToolError::invalid_input(msg));
-            }
+        if kind == "cleared"
+            && let Err(msg) = coverage::validate_cleared_claim(&claim)
+        {
+            return Err(ToolError::invalid_input(msg));
         }
 
         let is_area_defer_meta = kind == "meta" && area_id != "_global";
-        if is_area_defer_meta {
-            if let Err(msg) = coverage::validate_deferred_meta_claim(&claim) {
-                return Err(ToolError::invalid_input(msg));
-            }
+        if is_area_defer_meta && let Err(msg) = coverage::validate_deferred_meta_claim(&claim) {
+            return Err(ToolError::invalid_input(msg));
         }
 
         if kind == "finding"
@@ -587,6 +585,7 @@ impl ScratchpadStore {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_contract_hints(
     areas_pending: usize,
     areas_done: usize,
