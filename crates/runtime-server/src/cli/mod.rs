@@ -11,6 +11,8 @@ pub mod mcp_config;
 pub mod pr_prompt;
 pub mod runner;
 pub mod setup;
+pub(crate) mod trace_harness;
+pub(crate) mod trace_thread;
 
 pub use args::*;
 pub use entry::configure_windows_console_utf8;

@@ -89,8 +89,14 @@ pub struct TurnContext {
 impl TurnContext {
     #[must_use]
     pub fn new(max_steps: u32) -> Self {
+        Self::with_id(max_steps, uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Begin a turn with a caller-supplied id (runtime thread store / trace export SSOT).
+    #[must_use]
+    pub fn with_id(max_steps: u32, turn_id: impl Into<String>) -> Self {
         Self {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: turn_id.into(),
             step: 0,
             max_steps,
             tool_calls: Vec::new(),

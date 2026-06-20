@@ -290,6 +290,7 @@ export function loadStoredInspector(): RightPanelView {
       s === 'index' ||
       s === 'checklist' ||
       s === 'audit' ||
+      s === 'long-horizon' ||
       s === 'mermaid' ||
       s === 'about'
     ) {

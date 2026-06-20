@@ -30,26 +30,35 @@ export default function HarnessCard({
     return null;
   }
 
-  const HeadTag = onHeadClick ? 'button' : 'div';
+  const interactive = Boolean(onHeadClick);
 
   return (
     <article
       id={`harness-card-${cardId}`}
-      className={`harness-card ${className}`.trim()}
+      className={`harness-card ${interactive ? 'harness-card--interactive' : ''} ${className}`.trim()}
       data-has-data="true"
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      onClick={onHeadClick}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onHeadClick?.();
+              }
+            }
+          : undefined
+      }
     >
-      <HeadTag
-        type={onHeadClick ? 'button' : undefined}
-        className="harness-card__head"
-        onClick={onHeadClick}
-      >
+      <div className="harness-card__head">
         <span className="harness-card__icon" aria-hidden>
           {icon}
         </span>
         <span className="harness-card__label">{label}</span>
         <span className="harness-card__stat">{stat}</span>
         {headExtra}
-      </HeadTag>
+      </div>
       {children ? <div className="harness-card__body">{children}</div> : null}
     </article>
   );

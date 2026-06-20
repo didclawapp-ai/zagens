@@ -158,6 +158,42 @@ impl<'conn> KernelEventLog<'conn> {
         }
         Ok(envelopes)
     }
+
+    /// Load all events whose `ts_ms` falls within `[from_ms, to_ms]` inclusive,
+    /// ordered by `seq ASC`. Used by trace-export to recover historical turns
+    /// whose engine-internal `turn_id` (UUID) is not persisted in runtime.db
+    /// (pre-fix data, see CHANGELOG [Unreleased] trace export fix).
+    pub fn load_events_by_time_window(
+        &self,
+        from_ms: u64,
+        to_ms: u64,
+    ) -> anyhow::Result<Vec<KernelEventEnvelope>> {
+        let mut stmt = self.db.prepare(
+            "SELECT seq, ts_ms, kind, payload FROM kernel_events
+             WHERE ts_ms BETWEEN ?1 AND ?2 ORDER BY seq ASC",
+        )?;
+        let rows = stmt.query_map(params![from_ms, to_ms], |row| {
+            Ok((
+                row.get::<_, u64>(0)?,
+                row.get::<_, u64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut envelopes = Vec::new();
+        for row in rows {
+            let (seq, ts_ms, kind, payload) = row.context("row read")?;
+            let event: KernelEvent =
+                serde_json::from_str(&payload).context("KernelEvent deserialize")?;
+            envelopes.push(KernelEventEnvelope {
+                seq,
+                ts_ms,
+                kind,
+                event,
+            });
+        }
+        Ok(envelopes)
+    }
 }
 
 fn unix_ms_now() -> u64 {

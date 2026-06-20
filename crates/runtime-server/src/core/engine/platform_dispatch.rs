@@ -38,6 +38,7 @@ impl EnginePlatformExt<crate::sandbox::SandboxPolicy, crate::tools::user_input::
         let engine = super::engine_from_core(core);
         match op {
             Op::SendMessage {
+                turn_id,
                 content,
                 mode,
                 model,
@@ -69,6 +70,7 @@ impl EnginePlatformExt<crate::sandbox::SandboxPolicy, crate::tools::user_input::
                         temperature,
                         top_p,
                         max_output_tokens,
+                        turn_id,
                     )
                     .await;
             }

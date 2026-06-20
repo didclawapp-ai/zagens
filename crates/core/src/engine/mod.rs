@@ -38,6 +38,8 @@ mod tool_dispatch;
 pub mod tool_effects;
 pub mod tool_parser;
 pub mod tool_progress;
+pub mod trace_bundle;
+pub mod trace_compare;
 pub mod turn_loop;
 pub mod turn_machine;
 mod turn_port;
@@ -113,6 +115,20 @@ pub use tool_catalog::{
 pub use tool_dispatch::EngineToolDispatch;
 pub use tool_effects::tool_writes_state;
 pub use tool_progress::{emit_tool_audit, tool_progress_opening_line, tool_progress_phase_line};
+pub use trace_bundle::{
+    GOLDEN_FIXTURE_NAMES, TRACE_BUNDLE_PLACEHOLDER, TRACE_BUNDLE_SCHEMA_VERSION, TraceAnalysis,
+    TraceBundle, TraceBundleSource, TraceCapacityEntry, TraceCompactionEntry, TraceEventEnvelope,
+    TraceReplaySummary, apply_trace_redaction, build_replay_summary,
+    build_replay_summary_from_thread, build_trace_analysis, build_trace_bundle_from_fixture,
+    build_trace_bundle_from_thread, default_trace_report_template_path, embed_trace_bundle_in_html,
+    envelopes_from_kernel_log, load_fixture_kernel_events, normalize_fixture_envelopes,
+    trace_bundle_to_json,
+};
+pub use trace_compare::{
+    TRACE_COMPARE_DOCUMENT_KIND, TraceCompareDiff, TraceCompareDocument, TraceCompareSide,
+    TraceEffectCountDelta, TraceGuardEventDelta, build_trace_compare_document,
+    embed_trace_compare_in_html, trace_compare_to_json,
+};
 #[allow(deprecated)]
 pub use turn_loop::{
     LiveOuterLoopState, LiveTurnMachine, McpPoolPort, OuterLoopHost, ToolExecOutcome,

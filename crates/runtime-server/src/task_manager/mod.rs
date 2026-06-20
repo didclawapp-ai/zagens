@@ -24,6 +24,10 @@ pub(crate) use executor::{
     EngineTaskExecutor, ExecutionTask, TaskExecutionEvent, TaskExecutionResult, TaskExecutor,
 };
 pub use manager::{SharedTaskManager, TaskManager};
+/// Resolve the runtime task data dir (`~/.zagens/tasks` unless `DEEPSEEK_TASKS_DIR` /
+/// `ZAGENS_TASKS_DIR` overrides). Shared by `task_manager` and `trace_export` so both
+/// open the same `runtime.db`.
+pub use persist::default_tasks_dir;
 pub use zagens_runtime_api::task::{
     CURRENT_TASK_SCHEMA_VERSION, NewTaskRequest, TaskArtifactRef, TaskAttemptRecord,
     TaskChecklistState, TaskCounts, TaskGateRecord, TaskGithubEvent, TaskRecord, TaskStatus,

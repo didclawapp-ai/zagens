@@ -9,6 +9,8 @@ use crate::approval::ApprovalMode;
 /// Inputs required to begin an agent turn (after routing/model resolution).
 #[derive(Debug, Clone)]
 pub struct StartTurnParams {
+    /// Runtime thread-store turn id (`turn_…`) — must match orchestrator persistence.
+    pub turn_id: String,
     pub prompt: String,
     /// Runtime mode string (`agent`, `plan`, …) — parsed in the shell.
     pub mode: String,
@@ -29,6 +31,9 @@ pub struct StartTurnParams {
 impl StartTurnParams {
     /// Returns `Err` when the prompt is empty (mirrors runtime API validation).
     pub fn validate(&self) -> Result<(), &'static str> {
+        if self.turn_id.trim().is_empty() {
+            return Err("turn_id is required");
+        }
         if self.prompt.trim().is_empty() {
             return Err("prompt is required");
         }

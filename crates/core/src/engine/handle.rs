@@ -210,6 +210,7 @@ where
     async fn start_turn(&self, params: StartTurnParams) -> Result<()> {
         params.validate().map_err(anyhow::Error::msg)?;
         self.send(Op::SendMessage {
+            turn_id: Some(params.turn_id),
             content: params.prompt,
             mode: TurnLoopMode::from_setting(&params.mode),
             model: params.model,

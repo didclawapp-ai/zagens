@@ -1,0 +1,19 @@
+{
+  "name": "zagens-trace-report",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && node ../../scripts/build-trace-report-shell.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "preact": "^10.26.9"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "typescript": "~5.6.2",
+    "vite": "^6.4.2"
+  }
+}

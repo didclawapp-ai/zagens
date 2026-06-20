@@ -27,6 +27,8 @@ use crate::turn::TurnLoopMode;
 pub enum Op {
     /// Send a message to the AI.
     SendMessage {
+        /// When set, engine kernel events use this id (runtime `turn_…` SSOT).
+        turn_id: Option<String>,
         content: String,
         mode: TurnLoopMode,
         model: String,

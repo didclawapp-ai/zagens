@@ -20,6 +20,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop UI — auto-hide scrollbars & panel seams:** Scrollbars and column resize seams (sidebar, right panel gutter) stay hidden until the pointer hovers the scroll container or gutter; dragging a resize handle keeps the seam visible.
+
+### Added
+
+- **Kernel Trace Report (KTR / Flight Recorder):** Offline single-file HTML report compiler for Kernel V3 `KernelEvent` logs + Harness snapshots. Spec: `doc_Private/docs/tech/KERNEL_TRACE_REPORT_PLAN.md` Rev 3 (P0/P1/P2 implemented).
+  - **Rust core** (`crates/core/src/engine/`): `trace_bundle.rs` (bundle schema v1, fixture normalize, replay summary via `verify_turn_replay_coherence` same-source as CI golden, secret redaction); `trace_compare.rs` (side-by-side diff: coherence match, event-kind sequence, effect count deltas, guard event deltas).
+  - **CLI** (`zagens trace`): `export --fixture|--thread [--format html|bundle] [--include-harness] [--no-redact]`; `compare --left|--left-fixture … --right|--right-fixture …`; `serve [--watch]` (local preview HTTP server with thread kernel-log polling). Handlers in `crates/runtime-server/src/cli/handlers/{trace,trace_compare,trace_serve}.rs`; thread load via `trace_export::build_trace_bundle_for_thread` (sessions.db + `RuntimeThreadStore`); harness snapshot via `cli/trace_harness.rs` (structured task graph + experimental Nodes fallback).
+  - **HTTP** (`crates/runtime-server/src/runtime_api/`): `GET /v1/threads/{id}/trace-report?format=html|bundle&include_harness=&no_redact=` and `GET /v1/trace/compare?left=&right=&format=html|bundle` — thin axum wrappers over `trace_export::*`, sharing the same Rust API as CLI (no drift). Routes registered in `runtime_api/router.rs`.
+  - **Frontend** (`tools/trace-report/`): Preact + Vite + TS, six views (Overview / Timeline / Turn Map / Memory / Harness / Replay Lab) + Compare view; single-file shell built via `scripts/build-trace-report-shell.mjs` (inlines CSS/JS, embeds `__ZAGENS_TRACE_BUNDLE__` placeholder); empty-lane placeholder strategy per spec §3.2.1.
+  - **CI** (`scripts/ci/verify-trace-report.sh`): exports all 15 golden fixtures to HTML, runs `zagens-core trace_` tests, smoke-tests `trace compare`. Fixture × lane coverage matrix at `tools/trace-report/fixtures/coverage-matrix.json`.
+  - **Bundle HTML shell** also copied to `crates/runtime-server/assets/trace-report/report.html` (with `include_str!` fallback) so `zagens trace export` works without `npm run build`.
+- **Desktop — Trace export in Composer:** Kernel Trace Report / Trace Compare moved from the long-horizon panel tab bar to the Composer overflow menu (alongside thread JSON export), enabled when a runtime thread is resumed.
+- **KTR Overview — executive summary:** Rule-based narrative block (headline, bullets, findings) above KPI metrics; latest-turn metrics fix; raw coherence message collapsed under details.
+
+### Fixed
+
+- **Trace export / kernel replay:** Runtime orchestrator `turn_…` ids are now passed into the engine `TurnContext`, so `kernel_events` in `sessions.db` keys match the thread store. Desktop Trace Report export and kernel replay no longer fail with HTTP 400 on threads that have live harness data but mismatched turn ids.
+- **Trace Report HTML shell:** Embed JSON only in the `#zagens-trace-bundle` script slot so inlined JS keeps its placeholder sentinel — fixes exported reports rendering as a blank dark page.
+- **Desktop harness LHT card:** Clicking the long-horizon float card (or icon-rail harness button) opens the `long-horizon` panel with `LongHorizonPanel`, not the background `tasks` automation panel.
+- **Trace export thread loading:** `trace_export::build_trace_bundle_for_thread` now resolves the runtime data dir via `task_manager::default_tasks_dir()` (same as the live runtime / `runtime_serve`), instead of `user_data_root()` which pointed at the empty shadow `~/.zagens/runtime/runtime.db`. Previously `zagens trace export --thread …` (and the HTTP `/v1/threads/{id}/trace-report` endpoint) failed with `load thread …` / `thread … has no kernel events` for any thread whose data lived in `~/.zagens/tasks/runtime/runtime.db`.
+- **Trace export historical-turn recovery:** For turns created before the `turn_…` SSOT fix (whose `kernel_events` in `sessions.db` are keyed by an engine-internal UUID not persisted in `runtime.db`), trace export now falls back to (1) `turn_id` prefix/alias resolve, then (2) a wall-clock time-window scoop using the turn's `started_at..ended_at` range (±5s padding). New `KernelEventWriter` helpers: `resolve_turn_id_alias`, `load_events_by_time_window`, `diagnose_turn_ids` (earliest + latest samples), `count_turn_ids_like`. Recovered turns are logged on stderr (`[trace] recovered N turn(s) via …`); unrecoverable failures now report sessions.db row count, `turn_`-prefix id count, and earliest/latest sampled turn_ids to distinguish empty db / id mismatch / wrong path.
+
 ## [0.8.3] - 2026-06-19
 
 **Release highlights**

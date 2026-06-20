@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "lanes": ["model", "tools", "memory", "guards", "context"],
+  "p0_rendered_lanes": ["model", "tools", "guards"],
+  "fixtures": {
+    "lht_continue.json": { "model": true, "tools": false, "memory": false, "guards": true, "context": false },
+    "pure_read.json": { "model": true, "tools": true, "memory": false, "guards": false, "context": false },
+    "write_batch.json": { "model": true, "tools": true, "memory": false, "guards": true, "context": false },
+    "loop_guard.json": { "model": true, "tools": true, "memory": false, "guards": true, "context": false },
+    "memory_plane_query.json": { "model": true, "tools": true, "memory": true, "guards": false, "context": false },
+    "system_prompt_refresh.json": { "model": true, "tools": false, "memory": true, "guards": false, "context": false },
+    "scratchpad_compaction.json": { "model": true, "tools": false, "memory": true, "guards": false, "context": true },
+    "capacity_checkpoint.json": { "model": true, "tools": false, "memory": false, "guards": true, "context": false },
+    "manual_compaction.json": { "model": false, "tools": false, "memory": false, "guards": false, "context": true },
+    "cycle_handoff.json": { "model": false, "tools": false, "memory": false, "guards": true, "context": true },
+    "overflow_recovery.json": { "model": true, "tools": false, "memory": false, "guards": false, "context": true },
+    "layered_context_seam.json": { "model": true, "tools": false, "memory": false, "guards": false, "context": true },
+    "deferred_activation.json": { "model": true, "tools": false, "memory": false, "guards": true, "context": false },
+    "message_body_rebuild.json": { "model": true, "tools": true, "memory": false, "guards": true, "context": false },
+    "resume_thread_parity.json": { "model": true, "tools": true, "memory": false, "guards": true, "context": false }
+  },
+  "classification": {
+    "model": ["model_request_issued", "model_message"],
+    "tools": ["tool_call_planned", "tool_call_started", "tool_call_finished", "approval_resolved"],
+    "memory": ["memory_plane_queried", "topic_memory_injected", "scratchpad_reminder_injected", "scratchpad_summary_injected", "cycle_briefing_injected"],
+    "guards": ["steer_injected", "step_limit_continuation", "loop_guard_continuation", "loop_guard_triggered", "capacity_checkpoint", "cycle_advanced", "deferred_tool_activated"],
+    "context": ["compaction_artifact_created", "context_overflow_recovered", "layered_context_seam_injected"]
+  },
+  "placeholder_text": "No events in this lane for this trace",
+  "notes": "P0 frontend renders only p0_rendered_lanes; memory/context events still appear in Replay Lab full sequence. P1+ opens all six lanes by extending classifyLane."
+}

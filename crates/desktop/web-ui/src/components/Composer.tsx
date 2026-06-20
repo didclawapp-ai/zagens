@@ -421,6 +421,8 @@ interface Props {
   threadExportEnabled: boolean;
   onExportSessionJson: () => void;
   onExportThreadJson: () => void;
+  onExportTraceReport: () => void;
+  onExportTraceCompare: () => void;
   model: ComposerModelId;
   onModelChange: (model: ComposerModelId) => void;
   /** Presets + models from config.toml + current selection. */
@@ -473,6 +475,8 @@ export default function Composer({
   threadExportEnabled,
   onExportSessionJson,
   onExportThreadJson,
+  onExportTraceReport,
+  onExportTraceCompare,
   model,
   onModelChange,
   modelOptions,
@@ -1140,6 +1144,8 @@ export default function Composer({
               threadExportEnabled={threadExportEnabled}
               onExportSessionJson={onExportSessionJson}
               onExportThreadJson={onExportThreadJson}
+              onExportTraceReport={onExportTraceReport}
+              onExportTraceCompare={onExportTraceCompare}
               onOpenRouting={onOpenRouting}
             />
             <div className="min-w-[0.5rem] flex-1" />

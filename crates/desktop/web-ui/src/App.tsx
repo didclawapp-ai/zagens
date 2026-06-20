@@ -28,6 +28,7 @@ import { usePreventBrowserReload } from './hooks/usePreventBrowserReload';
 import { useRuntimeConnection } from './hooks/useRuntimeConnection';
 import { useAgentPanelState } from './hooks/useAgentPanelState';
 import { useChatMessageActions } from './hooks/useChatMessageActions';
+import { useTraceExport } from './hooks/useTraceExport';
 import { useDesktopShell } from './hooks/useDesktopShell';
 import { useStoragePressure } from './hooks/useStoragePressure';
 import ShellLoadFailure from './components/ShellLoadFailure';
@@ -579,6 +580,8 @@ export default function App() {
     refreshThreadContext,
   });
 
+  const { handleExportTraceReport, handleExportTraceCompare } = useTraceExport(resumedThreadId, t);
+
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -825,6 +828,7 @@ export default function App() {
       activeInspector === 'index' ||
       activeInspector === 'checklist' ||
       activeInspector === 'audit' ||
+      activeInspector === 'long-horizon' ||
       activeInspector === 'routing' ||
       activeInspector === 'lht-settings'
     ) {
@@ -1018,6 +1022,8 @@ export default function App() {
       onOpenRouting={handleOpenRouting}
       onExportSessionJson={() => void handleExportSessionJson()}
       onExportThreadJson={() => void handleExportThreadJson()}
+      onExportTraceReport={() => void handleExportTraceReport()}
+      onExportTraceCompare={() => void handleExportTraceCompare()}
       selectedModel={selectedModel}
       onModelChange={setSelectedModel}
       composerModelOptions={composerModelOptions}

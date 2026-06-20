@@ -36,6 +36,7 @@ import { toast } from '../lib/toast';
 import PanelEdgeSeam from './PanelEdgeSeam';
 import AboutPanel from './AboutPanel';
 import AuditScratchpadPanel from './AuditScratchpadPanel';
+import LongHorizonPanel from './LongHorizonPanel';
 import InspectorIconTabs from './chrome/InspectorIconTabs';
 
 export type RightPanelView =
@@ -57,6 +58,7 @@ export type RightPanelView =
   | 'index'
   | 'checklist'
   | 'audit'
+  | 'long-horizon'
   | 'mermaid'
   | 'about';
 
@@ -167,6 +169,7 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   index: 'panels.index',
   checklist: 'panels.checklist',
   audit: 'panels.audit',
+  'long-horizon': 'panels.longHorizon',
   mermaid: 'panels.mermaid',
   about: 'panels.about',
 };
@@ -907,6 +910,14 @@ export default function RightPanel({
             onDetected={onRequestAudit}
           />
         </div>
+        )}
+
+        {!officeSession && view === 'long-horizon' && (
+          <LongHorizonPanel
+            threadId={resumedThreadId ?? ''}
+            streaming={streaming}
+            pollFast={streaming || view === 'long-horizon'}
+          />
         )}
 
         {/* Always mounted (hidden when inactive) so mermaid detection can auto-trigger the view */}

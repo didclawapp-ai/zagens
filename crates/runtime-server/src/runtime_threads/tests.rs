@@ -639,7 +639,17 @@ async fn start_turn_passes_effective_auto_approve_to_engine() -> Result<()> {
         .await?;
 
     match rx_op.recv().await {
-        Some(Op::SendMessage { auto_approve, .. }) => assert!(auto_approve),
+        Some(Op::SendMessage {
+            auto_approve,
+            turn_id,
+            ..
+        }) => {
+            assert!(auto_approve);
+            assert!(
+                turn_id.as_deref().is_some_and(|id| id.starts_with("turn_")),
+                "expected runtime turn id on SendMessage, got {turn_id:?}"
+            );
+        }
         other => panic!("expected SendMessage op, got {other:?}"),
     }
 

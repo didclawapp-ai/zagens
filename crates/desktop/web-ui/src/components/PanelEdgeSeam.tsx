@@ -68,8 +68,8 @@ export default function PanelEdgeSeam({
       aria-orientation="vertical"
       aria-label={ariaResize}
       tabIndex={0}
-      className={`group relative shrink-0 w-3 touch-none select-none cursor-col-resize ${
-        resizing ? 'bg-canvas-alt/80' : ''
+      className={`group panel-edge-seam relative shrink-0 w-3 touch-none select-none cursor-col-resize ${
+        resizing ? 'panel-edge-seam--active bg-canvas-alt/80' : ''
       }`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

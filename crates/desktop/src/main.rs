@@ -229,6 +229,8 @@ fn main() {
             commands::open_with_system_app,
             commands::open_external_url,
             commands::export_thread_json,
+            commands::export_thread_trace_report,
+            commands::export_thread_trace_compare,
             commands::export_session_json,
             commands::restart_sidecar,
             commands::get_system_settings,

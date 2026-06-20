@@ -23,6 +23,7 @@ impl Engine {
         temperature: Option<f32>,
         top_p: Option<f32>,
         max_output_tokens: Option<u32>,
+        turn_id: Option<String>,
     ) {
         self.emit_pending_startup_warnings().await;
 
@@ -33,7 +34,10 @@ impl Engine {
         while self.rx_steer.try_recv().is_ok() {}
 
         // Create turn context first so start event includes a stable turn id.
-        let mut turn = TurnContext::new(self.config.max_steps);
+        let mut turn = match turn_id {
+            Some(id) if !id.trim().is_empty() => TurnContext::with_id(self.config.max_steps, id),
+            _ => TurnContext::new(self.config.max_steps),
+        };
         self.0.turn_counter = self.0.turn_counter.saturating_add(1);
         self.0
             .capacity_controller

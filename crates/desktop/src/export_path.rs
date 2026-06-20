@@ -1,9 +1,18 @@
-//! Validates user-chosen JSON export paths (H05) — blocks `..` and system directories.
+//! Validates user-chosen export paths (H05) — blocks `..` and system directories.
 
 use std::path::{Component, Path, PathBuf};
 
 /// Canonical output path for `export_*_json` Tauri commands.
 pub fn validate_export_json_path(save_path: &str) -> Result<PathBuf, String> {
+    validate_export_path_with_ext(save_path, "json")
+}
+
+/// Canonical output path for Kernel Trace Report HTML export.
+pub fn validate_export_html_path(save_path: &str) -> Result<PathBuf, String> {
+    validate_export_path_with_ext(save_path, "html")
+}
+
+fn validate_export_path_with_ext(save_path: &str, expected_ext: &str) -> Result<PathBuf, String> {
     let trimmed = save_path.trim();
     if trimmed.is_empty() {
         return Err("保存路径不能为空".to_string());
@@ -18,8 +27,8 @@ pub fn validate_export_json_path(save_path: &str) -> Result<PathBuf, String> {
     }
 
     let ext = raw.extension().and_then(|e| e.to_str()).unwrap_or("");
-    if !ext.eq_ignore_ascii_case("json") {
-        return Err("仅允许导出 .json 文件".to_string());
+    if !ext.eq_ignore_ascii_case(expected_ext) {
+        return Err(format!("仅允许导出 .{expected_ext} 文件"));
     }
 
     let file_name = raw.file_name().ok_or_else(|| "无效的文件名".to_string())?;
@@ -81,5 +90,10 @@ mod tests {
     #[test]
     fn requires_json_extension() {
         assert!(validate_export_json_path(r"C:\temp\out.txt").is_err());
+    }
+
+    #[test]
+    fn requires_html_extension() {
+        assert!(validate_export_html_path(r"C:\temp\out.txt").is_err());
     }
 }

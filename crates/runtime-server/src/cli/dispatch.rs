@@ -30,6 +30,31 @@ pub async fn run(cli: Cli) -> Result<()> {
                 1
             });
         }
+        Commands::Trace { command } => {
+            let ctx = load_cli_context(&cli)?;
+            match command {
+                crate::cli::args::TraceCommand::Export(args) => {
+                    let code = handlers::trace::run(&ctx, args)?;
+                    std::process::exit(if code == std::process::ExitCode::SUCCESS {
+                        0
+                    } else {
+                        1
+                    });
+                }
+                crate::cli::args::TraceCommand::Compare(args) => {
+                    let code = handlers::trace_compare::run(&ctx, args)?;
+                    std::process::exit(if code == std::process::ExitCode::SUCCESS {
+                        0
+                    } else {
+                        1
+                    });
+                }
+                crate::cli::args::TraceCommand::Serve(args) => {
+                    handlers::trace_serve::run(&ctx, args).await?;
+                    Ok(())
+                }
+            }
+        }
         Commands::Serve(args) => handlers::serve::run_serve(&cli, args).await,
         Commands::Mcp { command } => handlers::mcp::run_mcp(&ctx, command).await,
         Commands::Sessions { .. }

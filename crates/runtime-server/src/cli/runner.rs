@@ -250,6 +250,7 @@ async fn run_exec_agent(
 
     engine_handle
         .send(Op::SendMessage {
+            turn_id: None,
             content: prompt.to_string(),
             mode: app_mode_to_turn_loop(mode),
             model: effective_model.clone(),

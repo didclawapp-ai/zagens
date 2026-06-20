@@ -145,6 +145,11 @@ pub enum Commands {
     Eval(EvalArgs),
     /// Layer-2 cross-platform completion gate check (replaces PowerShell scripts)
     CoverageGate(CoverageGateArgs),
+    /// Export Kernel V3 event trace as HTML or JSON bundle (Flight Recorder)
+    Trace {
+        #[command(subcommand)]
+        command: TraceCommand,
+    },
     /// Manage MCP servers
     Mcp {
         #[command(subcommand)]
@@ -522,4 +527,98 @@ pub struct CoverageGateArgs {
     /// Exit 0 even when gate fails (report-only mode)
     #[arg(long, default_value_t = false)]
     pub no_fail: bool,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum TraceCommand {
+    /// Export a fixture or thread to HTML / JSON bundle
+    Export(TraceExportArgs),
+    /// Compare two threads or fixtures
+    Compare(TraceCompareArgs),
+    /// Local preview HTTP server (`--watch` for live thread tail)
+    Serve(TraceServeArgs),
+}
+
+/// Arguments for `zagens trace export`
+#[derive(Args, Debug, Clone)]
+pub struct TraceExportArgs {
+    /// Golden fixture JSON (`fixtures/harness/kernel-v3-replay/*.json`)
+    #[arg(long, conflicts_with = "thread")]
+    pub fixture: Option<PathBuf>,
+    /// Runtime thread id
+    #[arg(long, conflicts_with = "fixture")]
+    pub thread: Option<String>,
+    /// Attach offline harness task-graph snapshot (thread mode only)
+    #[arg(long, default_value_t = true)]
+    pub include_harness: bool,
+    /// Output file path (`.html` or `.json`)
+    #[arg(short, long)]
+    pub out: PathBuf,
+    /// Output format: `html` (default) or `bundle` (JSON only)
+    #[arg(long, default_value = "html")]
+    pub format: String,
+    /// HTML shell template (default: `tools/trace-report/dist/report.html`)
+    #[arg(long)]
+    pub template: Option<PathBuf>,
+    /// Disable secret redaction (thread exports redact by default)
+    #[arg(long)]
+    pub no_redact: bool,
+}
+
+/// Arguments for `zagens trace compare`
+#[derive(Args, Debug, Clone)]
+pub struct TraceCompareArgs {
+    /// Left runtime thread id
+    #[arg(long, conflicts_with = "left_fixture")]
+    pub left: Option<String>,
+    /// Left golden fixture JSON
+    #[arg(long, conflicts_with = "left")]
+    pub left_fixture: Option<PathBuf>,
+    /// Right runtime thread id
+    #[arg(long, conflicts_with = "right_fixture")]
+    pub right: Option<String>,
+    /// Right golden fixture JSON
+    #[arg(long, conflicts_with = "right")]
+    pub right_fixture: Option<PathBuf>,
+    /// Attach offline harness snapshots (thread mode only)
+    #[arg(long, default_value_t = true)]
+    pub include_harness: bool,
+    /// Output file path (`.html` or `.json`)
+    #[arg(short, long)]
+    pub out: PathBuf,
+    /// Output format: `html` (default) or `bundle`
+    #[arg(long, default_value = "html")]
+    pub format: String,
+    /// HTML shell template
+    #[arg(long)]
+    pub template: Option<PathBuf>,
+    /// Disable secret redaction (thread exports redact by default)
+    #[arg(long)]
+    pub no_redact: bool,
+}
+
+/// Arguments for `zagens trace serve`
+#[derive(Args, Debug, Clone)]
+pub struct TraceServeArgs {
+    /// Runtime thread id (required for `--watch`)
+    #[arg(long, conflicts_with = "fixture")]
+    pub thread: Option<String>,
+    /// Golden fixture JSON (static preview)
+    #[arg(long, conflicts_with = "thread")]
+    pub fixture: Option<PathBuf>,
+    #[arg(long, default_value = "127.0.0.1")]
+    pub host: String,
+    #[arg(long, default_value_t = 8765)]
+    pub port: u16,
+    #[arg(long, default_value_t = true)]
+    pub include_harness: bool,
+    #[arg(long)]
+    pub no_redact: bool,
+    /// Poll thread kernel log and reload when events change
+    #[arg(long)]
+    pub watch: bool,
+    #[arg(long, default_value_t = 3, requires = "watch")]
+    pub watch_interval_secs: u64,
+    #[arg(long)]
+    pub template: Option<PathBuf>,
 }

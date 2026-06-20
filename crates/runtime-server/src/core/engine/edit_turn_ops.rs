@@ -21,6 +21,7 @@ impl Engine {
             self.session.temperature,
             self.session.top_p,
             self.session.max_output_tokens,
+            None,
         )
         .await;
     }

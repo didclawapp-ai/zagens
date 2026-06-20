@@ -59,6 +59,8 @@ type Props = {
   threadExportEnabled: boolean;
   onExportSessionJson: () => void;
   onExportThreadJson: () => void;
+  onExportTraceReport: () => void;
+  onExportTraceCompare: () => void;
   onOpenRouting?: () => void;
 };
 
@@ -105,6 +107,8 @@ export default function ComposerOverflowMenu({
   threadExportEnabled,
   onExportSessionJson,
   onExportThreadJson,
+  onExportTraceReport,
+  onExportTraceCompare,
   onOpenRouting,
 }: Props) {
   const { t } = useT();
@@ -317,6 +321,32 @@ export default function ComposerOverflowMenu({
           className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover disabled:opacity-40"
         >
           {t('composer.exportThread')}
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          disabled={!threadExportEnabled}
+          onClick={() => {
+            close();
+            onExportTraceReport();
+          }}
+          className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover disabled:opacity-40"
+          title={t('longHorizon.exportTraceReportHint')}
+        >
+          {t('longHorizon.exportTraceReport')}
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          disabled={!threadExportEnabled}
+          onClick={() => {
+            close();
+            onExportTraceCompare();
+          }}
+          className="flex w-full rounded-md px-3 py-2 text-left text-sm text-t-text hover:bg-hover disabled:opacity-40"
+          title={t('longHorizon.exportTraceCompareHint')}
+        >
+          {t('longHorizon.exportTraceCompare')}
         </button>
         {onOpenRouting && !officeSession ? (
           <button

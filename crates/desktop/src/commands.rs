@@ -1374,7 +1374,9 @@ pub fn open_in_shell(path: String) -> Result<(), String> {
 fn is_system_openable(ext_lower: &str) -> bool {
     matches!(
         ext_lower,
-        "pdf"
+        "html"
+            | "htm"
+            | "pdf"
             | "png"
             | "jpg"
             | "jpeg"
@@ -1517,6 +1519,119 @@ pub async fn export_thread_json(
 
     let out_path = crate::export_path::validate_export_json_path(&save_path)?;
     std::fs::write(&out_path, json).map_err(|e| format!("保存失败: {e}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn export_thread_trace_report(
+    thread_id: String,
+    save_path: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let enc = percent_encode_path_segment(thread_id.trim());
+    if enc.is_empty() {
+        return Err("thread_id 无效".to_string());
+    }
+    let url = format!(
+        "http://127.0.0.1:{}/v1/threads/{}/trace-report",
+        ctx.require_port()?,
+        enc
+    );
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("HTTP 客户端: {e}"))?;
+
+    let resp = client
+        .get(&url)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", ctx.runtime_token),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("无法连接运行时: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        let detail = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| {
+                v.get("error")
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| format!("HTTP {status}"));
+        return Err(format!("无法导出 Trace Report ({detail})"));
+    }
+
+    let html = resp
+        .text()
+        .await
+        .map_err(|e| format!("运行时响应无效: {e}"))?;
+
+    if !html.contains("Kernel Trace Report") {
+        return Err("Trace Report 响应无效".to_string());
+    }
+
+    let out_path = crate::export_path::validate_export_html_path(&save_path)?;
+    std::fs::write(&out_path, html).map_err(|e| format!("保存失败: {e}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn export_thread_trace_compare(
+    left_thread_id: String,
+    right_thread_id: String,
+    save_path: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    let left = percent_encode_path_segment(left_thread_id.trim());
+    let right = percent_encode_path_segment(right_thread_id.trim());
+    if left.is_empty() || right.is_empty() {
+        return Err("thread_id 无效".to_string());
+    }
+    let url = format!(
+        "http://127.0.0.1:{}/v1/trace/compare?left={left}&right={right}",
+        ctx.require_port()?
+    );
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(90))
+        .build()
+        .map_err(|e| format!("HTTP 客户端: {e}"))?;
+
+    let resp = client
+        .get(&url)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", ctx.runtime_token),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("无法连接运行时: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!(
+            "无法导出 Trace Compare (HTTP {})",
+            resp.status().as_u16()
+        ));
+    }
+
+    let html = resp
+        .text()
+        .await
+        .map_err(|e| format!("运行时响应无效: {e}"))?;
+
+    if !html.contains("Kernel Trace Compare") && !html.contains("Trace Compare") {
+        return Err("Trace Compare 响应无效".to_string());
+    }
+
+    let out_path = crate::export_path::validate_export_html_path(&save_path)?;
+    std::fs::write(&out_path, html).map_err(|e| format!("保存失败: {e}"))?;
 
     Ok(())
 }

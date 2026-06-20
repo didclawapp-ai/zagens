@@ -66,6 +66,7 @@ mod task_type;
 mod test_support;
 mod tools;
 mod topic_memory;
+mod trace_export;
 mod transcript_isomorphism;
 #[cfg(feature = "tui")]
 pub mod tui;

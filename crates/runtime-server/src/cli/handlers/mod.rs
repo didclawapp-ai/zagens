@@ -9,3 +9,6 @@ pub mod review;
 pub mod sandbox;
 pub mod serve;
 pub mod setup;
+pub mod trace;
+pub mod trace_compare;
+pub mod trace_serve;

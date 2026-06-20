@@ -10,6 +10,7 @@ import type { HarnessCardId } from './chrome/HarnessCard';
 import ApprovalDialog from './ApprovalDialog';
 import RightPanel, { type RightPanelView } from './RightPanel';
 import HarnessFloatStack from './chrome/HarnessFloatStack';
+import { HARNESS_CARD_VIEWS } from '../lib/harnessCardViews';
 import TitleBar from './TitleBar';
 import StoragePressureBanner from './StoragePressureBanner';
 import type { StoragePressureSnapshot } from '../lib/storagePressure';
@@ -100,6 +101,8 @@ export type AppShellProps = {
   onOpenRouting: () => void;
   onExportSessionJson: () => void;
   onExportThreadJson: () => void;
+  onExportTraceReport: () => void;
+  onExportTraceCompare: () => void;
   selectedModel: ComposerModelId;
   onModelChange: (model: ComposerModelId) => void;
   composerModelOptions: string[];
@@ -223,6 +226,8 @@ export default function AppShell({
   onOpenRouting,
   onExportSessionJson,
   onExportThreadJson,
+  onExportTraceReport,
+  onExportTraceCompare,
   selectedModel,
   onModelChange,
   composerModelOptions,
@@ -312,6 +317,8 @@ export default function AppShell({
     if (userDismissedHarness) {
       onShowHarnessStack();
     }
+    onExpandRightPanel();
+    onInspectorChange(HARNESS_CARD_VIEWS[cardId]);
     openAndScrollTo(cardId);
   };
 
@@ -363,38 +370,40 @@ export default function AppShell({
           onBacktrackDraftChange={onBacktrackDraftChange}
           onConfirmBacktrack={onConfirmBacktrack}
         />
-        <IconRail
-          sessionStripOpen={sessionStripOpen && !focusMode}
-          onToggleSessionStrip={onToggleSessionStrip}
-          onNewSession={onNewSession}
-          activeInspector={activeInspector}
-          onInspectorChange={onInspectorChange}
-          onExpandRightPanel={onExpandRightPanel}
-          onHarnessNavigate={handleHarnessNavigate}
-          harnessFlashId={flashCardId}
-          desktopHost={desktopHost}
-          officeSession={officeSession}
-          runtimeConn={runtimeConn}
-          streaming={streaming}
-          runtimeSessionEstablished={runtimeSessionEstablished}
-          apiKeyConfigured={desktopApiKeyConfigured}
-          checklistActivity={checklistActivity}
-          auditActivity={auditActivity}
-          taskActivity={taskActivity}
-          agentActivity={agentActivity}
-          theme={theme}
-          onThemeChange={onThemeChange}
-        />
-        <SessionStrip
-          open={sessionStripOpen && !focusMode}
-          sessions={visibleSessions}
-          showAllSessions={showAllSessions}
-          onToggleShowAllSessions={onToggleShowAllSessions}
-          activeSessionId={activeSessionId}
-          streamingSessionIds={streamingSessionIds}
-          onSelectSession={onSelectSession}
-          onDeleteSession={onDeleteSession}
-        />
+        <div className="chrome-sidebar group flex shrink-0">
+          <IconRail
+            sessionStripOpen={sessionStripOpen && !focusMode}
+            onToggleSessionStrip={onToggleSessionStrip}
+            onNewSession={onNewSession}
+            activeInspector={activeInspector}
+            onInspectorChange={onInspectorChange}
+            onExpandRightPanel={onExpandRightPanel}
+            onHarnessNavigate={handleHarnessNavigate}
+            harnessFlashId={flashCardId}
+            desktopHost={desktopHost}
+            officeSession={officeSession}
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+            apiKeyConfigured={desktopApiKeyConfigured}
+            checklistActivity={checklistActivity}
+            auditActivity={auditActivity}
+            taskActivity={taskActivity}
+            agentActivity={agentActivity}
+            theme={theme}
+            onThemeChange={onThemeChange}
+          />
+          <SessionStrip
+            open={sessionStripOpen && !focusMode}
+            sessions={visibleSessions}
+            showAllSessions={showAllSessions}
+            onToggleShowAllSessions={onToggleShowAllSessions}
+            activeSessionId={activeSessionId}
+            streamingSessionIds={streamingSessionIds}
+            onSelectSession={onSelectSession}
+            onDeleteSession={onDeleteSession}
+          />
+        </div>
         <main
           id="main-content"
           tabIndex={-1}
@@ -440,6 +449,8 @@ export default function AppShell({
               threadExportEnabled={Boolean(resumedThreadId)}
               onExportSessionJson={() => void onExportSessionJson()}
               onExportThreadJson={() => void onExportThreadJson()}
+              onExportTraceReport={() => void onExportTraceReport()}
+              onExportTraceCompare={() => void onExportTraceCompare()}
               model={selectedModel}
               onModelChange={onModelChange}
               modelOptions={composerModelOptions}

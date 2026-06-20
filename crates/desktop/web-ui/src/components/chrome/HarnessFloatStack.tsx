@@ -8,6 +8,7 @@ import {
   mapChecklistCardSummary,
   mapLhtCardSummary,
 } from '../../lib/harnessCardMappers';
+import { HARNESS_CARD_VIEWS } from '../../lib/harnessCardViews';
 import type { AgentState } from '../../types/agent';
 import type { RightPanelView } from '../RightPanel';
 import HarnessCard, { type HarnessCardId } from './HarnessCard';
@@ -20,13 +21,6 @@ export type HarnessFloatStackProps = {
   agentStates: AgentState[];
   flashCardId?: HarnessCardId | null;
   onHeadClick?: (cardId: HarnessCardId, view: RightPanelView) => void;
-};
-
-const CARD_VIEWS: Record<HarnessCardId, RightPanelView> = {
-  checklist: 'checklist',
-  audit: 'audit',
-  lht: 'tasks',
-  agents: 'agents',
 };
 
 function MiniProgressBar({ pct }: { pct: number }) {
@@ -76,7 +70,7 @@ export default function HarnessFloatStack({
         hasData={harnessData.hasChecklist}
         stat={checklist?.stat ?? '0/0'}
         className={flashCardId === 'checklist' ? 'harness-card--flash' : ''}
-        onHeadClick={onHeadClick ? () => onHeadClick('checklist', CARD_VIEWS.checklist) : undefined}
+        onHeadClick={onHeadClick ? () => onHeadClick('checklist', HARNESS_CARD_VIEWS.checklist) : undefined}
         icon={
           <IconRailSvg>
             <path d="M9 6h11M9 12h11M9 18h11M5 6h.01M5 12h.01M5 18h.01" />
@@ -101,7 +95,7 @@ export default function HarnessFloatStack({
         hasData={harnessData.hasAudit}
         stat={audit ? t('harnessCard.openCount', { count: audit.stat }) : t('harnessCard.openCount', { count: '0' })}
         className={flashCardId === 'audit' ? 'harness-card--flash' : ''}
-        onHeadClick={onHeadClick ? () => onHeadClick('audit', CARD_VIEWS.audit) : undefined}
+        onHeadClick={onHeadClick ? () => onHeadClick('audit', HARNESS_CARD_VIEWS.audit) : undefined}
         icon={
           <IconRailSvg>
             <path d="M4 6h16v12H4zM8 6V4h8v2M9 10h6M9 14h4" />
@@ -123,7 +117,7 @@ export default function HarnessFloatStack({
         hasData={harnessData.hasLongHorizon}
         stat={lht?.stat ?? '0%'}
         className={flashCardId === 'lht' ? 'harness-card--flash' : ''}
-        onHeadClick={onHeadClick ? () => onHeadClick('lht', CARD_VIEWS.lht) : undefined}
+        onHeadClick={onHeadClick ? () => onHeadClick('lht', HARNESS_CARD_VIEWS.lht) : undefined}
         icon={
           <IconRailSvg>
             <path d="M12 3l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V7l7-4z" />
@@ -156,7 +150,7 @@ export default function HarnessFloatStack({
             : t('harnessCard.runningCount', { running: '0', total: '0' })
         }
         className={flashCardId === 'agents' ? 'harness-card--flash' : ''}
-        onHeadClick={onHeadClick ? () => onHeadClick('agents', CARD_VIEWS.agents) : undefined}
+        onHeadClick={onHeadClick ? () => onHeadClick('agents', HARNESS_CARD_VIEWS.agents) : undefined}
         icon={
           <IconRailSvg>
             <path d="M12 3a4 4 0 014 4v1h2a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V10a2 2 0 012-2h2V7a4 4 0 014-4z" />

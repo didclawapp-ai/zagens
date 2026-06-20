@@ -225,7 +225,8 @@ where
         touch_lru(&mut active.lru, thread_id);
     }
 
-    let start_params = host.prepare_start_turn_params(&thread, req, prompt).await?;
+    let mut start_params = host.prepare_start_turn_params(&thread, req, prompt).await?;
+    start_params.turn_id = turn_id.clone();
     if let Err(e) = engine.start_turn(start_params).await {
         rollback_failed_turn_start(mgr, thread_id, &turn_id, e.to_string()).await?;
         return Err(anyhow!("Failed to start turn: {e}"));

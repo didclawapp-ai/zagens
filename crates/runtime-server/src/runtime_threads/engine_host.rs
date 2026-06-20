@@ -66,6 +66,7 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
         };
 
         Ok(StartTurnParams {
+            turn_id: String::new(),
             prompt: prompt.to_string(),
             mode: mode.as_setting().to_string(),
             model,

@@ -2091,6 +2091,7 @@ async fn engine_llm_client_override_runs_mock_turn() {
 
     handle
         .send(Op::SendMessage {
+            turn_id: None,
             content: "hello".into(),
             mode: zagens_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v4-pro".into(),
@@ -2257,6 +2258,7 @@ async fn engine_mock_parallel_readonly_tools_complete_turn() {
 
     handle
         .send(Op::SendMessage {
+            turn_id: None,
             content: "list workspace twice".into(),
             mode: zagens_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v4-pro".into(),
@@ -2427,6 +2429,7 @@ async fn engine_mock_capacity_pre_request_observes_mock_and_emits_decision() {
 
     handle
         .send(Op::SendMessage {
+            turn_id: None,
             content: "continue".into(),
             mode: zagens_core::turn::TurnLoopMode::Agent,
             model: "deepseek-v3.2-128k".into(),
