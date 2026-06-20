@@ -113,7 +113,37 @@ pub(crate) async fn persist_thread_session(
                 .as_ref()
                 .map(|s| SystemPrompt::Text(s.clone()));
 
-            if let Some(existing_id) = sid {
+            // Resolve the session id to update. The client-supplied `sid` is
+            // treated as a *hint*: if it is missing, blank, or no longer linked
+            // to this thread (e.g. the web UI lost the threadId→sessionId
+            // binding during a parallel-session detach/reattach), we fall back
+            // to a reverse lookup by `runtime_thread_id`. Only when no existing
+            // session is found do we create a new one — this is what prevents
+            // "one new title per follow-up prompt" in multi-session flows.
+            //
+            // The validation must happen on the same session we are about to
+            // write, so we re-load after the lookup and check the link.
+            let resolved_sid: Option<String> = match sid.as_deref() {
+                Some(proposed) => {
+                    let linked = manager
+                        .load_session(proposed)
+                        .ok()
+                        .and_then(|s| s.metadata.runtime_thread_id);
+                    if linked.as_deref() == Some(thread_id.as_str()) {
+                        Some(proposed.to_string())
+                    } else {
+                        // Stale/foreign sid — ignore and reverse-lookup instead.
+                        manager
+                            .find_session_id_by_runtime_thread_id(&thread_id)
+                            .map_err(|e| format!("reverse-lookup session: {e}"))?
+                    }
+                }
+                None => manager
+                    .find_session_id_by_runtime_thread_id(&thread_id)
+                    .map_err(|e| format!("reverse-lookup session: {e}"))?,
+            };
+
+            if let Some(existing_id) = resolved_sid {
                 let existing = manager
                     .load_session(&existing_id)
                     .map_err(|e| format!("read existing session: {e}"))?;
@@ -121,6 +151,9 @@ pub(crate) async fn persist_thread_session(
                 session.metadata.model = thread.model.clone();
                 session.metadata.workspace = thread.workspace.clone();
                 session.metadata.mode = Some(thread.mode.clone());
+                // Preserve the original title on update — never regenerate it
+                // from the first user message, which would create spurious
+                // duplicate session entries on each follow-up turn.
                 if let Some(title) = &thread.title {
                     session.metadata.title = title.clone();
                 }

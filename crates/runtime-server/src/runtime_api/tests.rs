@@ -1620,6 +1620,123 @@ async fn session_resume_reuses_runtime_thread_when_sqlite_has_link() -> Result<(
     Ok(())
 }
 
+/// Regression: calling `persist-session` repeatedly on the same thread —
+/// with no `session_id`, or with a stale/blank one, as happens when the
+/// web UI loses the threadId→sessionId binding during parallel-session
+/// detach/reattach — must NOT create a new session each time. The backend
+/// resolves the existing session by `runtime_thread_id` and updates it in
+/// place, preserving the original title.
+#[tokio::test]
+async fn persist_session_does_not_duplicate_on_repeated_calls() -> Result<()> {
+    use crate::models::{ContentBlock, Message};
+
+    let root = std::env::temp_dir().join(format!("deepseek-persist-no-dup-{}", Uuid::new_v4()));
+    let sessions_dir = root.join("sessions");
+    fs::create_dir_all(&sessions_dir)?;
+
+    let Some((addr, runtime_threads, handle)) =
+        spawn_test_server_with_root(root.clone(), sessions_dir.clone()).await?
+    else {
+        return Ok(());
+    };
+
+    let client = reqwest::Client::new();
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads"))
+        .json(&json!({ "model": "deepseek-v4-pro" }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_id = created["id"]
+        .as_str()
+        .context("missing thread id")?
+        .to_string();
+
+    // Seed an initial user turn so there is something to persist.
+    let messages = vec![Message {
+        role: "user".to_string(),
+        content: vec![ContentBlock::Text {
+            text: "First prompt in this thread".to_string(),
+            cache_control: None,
+        }],
+    }];
+    runtime_threads
+        .seed_thread_from_messages(&thread_id, &messages)
+        .await?;
+
+    // First persist: no sid → creates the session and records the link.
+    let first: serde_json::Value = client
+        .post(format!(
+            "http://{addr}/v1/threads/{thread_id}/persist-session"
+        ))
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let first_session_id = first["session_id"]
+        .as_str()
+        .context("missing session_id on first persist")?
+        .to_string();
+
+    // Second persist: still no sid — must resolve to the SAME session,
+    // not create a new one.
+    let second: serde_json::Value = client
+        .post(format!(
+            "http://{addr}/v1/threads/{thread_id}/persist-session"
+        ))
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(
+        second["session_id"].as_str(),
+        Some(first_session_id.as_str()),
+        "repeated persist with blank sid must reuse the existing session, not duplicate it"
+    );
+
+    // Third persist: pass a foreign/blank sid — must still resolve back to
+    // the thread's own session, never create a new one and never overwrite
+    // an unrelated session.
+    let foreign_sid = Uuid::new_v4().to_string();
+    let third: serde_json::Value = client
+        .post(format!(
+            "http://{addr}/v1/threads/{thread_id}/persist-session"
+        ))
+        .json(&json!({ "session_id": foreign_sid }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(
+        third["session_id"].as_str(),
+        Some(first_session_id.as_str()),
+        "persist with a foreign sid must fall back to the thread's own session, not create or overwrite another"
+    );
+
+    // Verify on disk: exactly one session linked to this thread.
+    let sm = SessionManager::new(sessions_dir.clone())?;
+    let linked = sm
+        .find_session_id_by_runtime_thread_id(&thread_id)?
+        .context("expected a session linked to the thread")?;
+    assert_eq!(linked, first_session_id);
+
+    // And the foreign sid we tried to inject must not exist on disk.
+    assert!(
+        sm.load_session(&foreign_sid).is_err(),
+        "foreign sid must not have been created as a new session"
+    );
+
+    handle.abort();
+    Ok(())
+}
+
 #[tokio::test]
 async fn session_delete_returns_404_for_missing_id() -> Result<()> {
     let Some((addr, _runtime_threads, handle)) = spawn_test_server().await? else {

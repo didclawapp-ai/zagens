@@ -441,8 +441,14 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           lastPersistedTurnRef.current = ctxTurnId;
           void (async () => {
             try {
-              const sessionId =
-                streamRegistry?.getContext(tid)?.sessionId ?? activeSessionIdRef.current;
+              // Background turns must NOT fall back to `activeSessionIdRef`:
+              // in parallel-session flows that ref points at *another*
+              // thread's session, and forwarding it would either overwrite
+              // the wrong session or force the backend into a wasteful
+              // load+validate+reverse-lookup cycle. Pass `null` instead and
+              // let `persist_thread_session` resolve the session by
+              // `runtime_thread_id` — which is the authoritative link.
+              const sessionId = streamRegistry?.getContext(tid)?.sessionId ?? null;
               const res = await persistThreadSession(tid, sessionId);
               if (streamRegistry?.isActiveStreamView(tid)) {
                 setActiveSessionId(res.session_id);
