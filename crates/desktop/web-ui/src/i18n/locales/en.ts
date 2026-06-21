@@ -391,6 +391,8 @@ const en: TranslationMap = {
     turnStillRunning: 'A turn is still running on this thread — reconnected to it. Wait for it to finish or press Stop.',
     turnReconnecting: 'Reconnected to the background turn — syncing progress…',
     bgApprovalRequired: 'Session {{thread}} needs approval — switch back to act on it.',
+    bgStreamRunning: 'Session {{thread}} is still generating in the background — switch back anytime.',
+    switchToSession: 'Switch to session',
     runtimeSidecarRestart: 'Runtime restarted; generation stopped',
     runtimeSidecarRestartReconnecting: 'Local runtime restarted — reconnecting to the background turn…',
     runtimeOfflineReconnecting:
@@ -1280,6 +1282,7 @@ const en: TranslationMap = {
   },
   notification: {
     turnComplete: 'Model finished responding',
+    turnCompleteBackground: 'Session {{session}} finished in the background — tap to view',
   },
   composerAttachment: {
     header: '[Attachments]',

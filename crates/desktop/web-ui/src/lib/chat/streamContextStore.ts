@@ -64,6 +64,28 @@ export function isActiveStreamView(
   return activeThreadId === threadId;
 }
 
+/**
+ * Whether an SSE event for `eventThreadId` should update a background
+ * `StreamContext` instead of the active view transcript.
+ *
+ * `pendingSend` is true for the SSE consumer that initiated the current
+ * `handleSend` until its `turn_started` is processed. That keeps a brand-new
+ * session on the active path even when `activeThreadId` is still null.
+ */
+export function isBackgroundStreamEvent(
+  activeThreadId: string | null,
+  eventThreadId: string | null | undefined,
+  ownerThreadId: string | null,
+  pendingSend = false,
+): boolean {
+  if (!eventThreadId) return false;
+  if (isActiveStreamView(activeThreadId, eventThreadId)) return false;
+  if (pendingSend && (ownerThreadId == null || ownerThreadId === eventThreadId)) {
+    return false;
+  }
+  return true;
+}
+
 /** Immutable remove from streaming set; returns null when unchanged. */
 export function removeThreadFromStreamingSet(
   prev: Set<string>,
@@ -74,4 +96,19 @@ export function removeThreadFromStreamingSet(
   const next = new Set(prev);
   next.delete(tid);
   return next;
+}
+
+/** Thread ids that may need periodic replay reconcile (P1 multi-session). */
+export function collectReconcileThreadIds(
+  streamingThreadIds: Iterable<string>,
+  activeThreadId: string | null,
+): string[] {
+  const ids = new Set<string>();
+  for (const raw of streamingThreadIds) {
+    const tid = raw.trim();
+    if (tid) ids.add(tid);
+  }
+  const active = activeThreadId?.trim();
+  if (active) ids.add(active);
+  return [...ids];
 }

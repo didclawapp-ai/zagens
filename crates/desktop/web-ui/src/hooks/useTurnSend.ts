@@ -69,6 +69,7 @@ import {
   rebindStreamingAssistant,
   resolveStreamTargetId,
 } from '../lib/chat/activeTurnStreamUi';
+import { isBackgroundStreamEvent } from '../lib/chat/streamContextStore';
 import {
   useTurnStreamRecovery,
   type StreamRecoveryContext,
@@ -148,6 +149,9 @@ export type UseTurnSendParams = {
    */
   streamRegistry?: StreamContextRegistry | null;
   bindThreadSession?: (threadId: string, sessionId: string | null | undefined) => void;
+  /** Navigate to a persisted session (background turn complete toast action). */
+  onNavigateToSession?: (sessionId: string) => void;
+  streamingThreadIdsRef?: MutableRefObject<Set<string>>;
 };
 
 export type UseTurnSendResult = {
@@ -204,9 +208,12 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     storagePauseTurns,
     streamRegistry,
     bindThreadSession,
+    onNavigateToSession,
+    streamingThreadIdsRef,
   } = params;
 
-  const lastPersistedTurnRef = useRef('');  const toolProgressPendingRef = useRef('');
+  const lastPersistedTurnRef = useRef('');
+  const toolProgressPendingRef = useRef('');
   const toolProgressRafRef = useRef<number | null>(null);
   const streamRecoveryContextRef = useRef<StreamRecoveryContext | null>(null);
   const liveStreamDeliverRef = useRef<
@@ -230,6 +237,8 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     handleCancelStream,
     notifyRuntimeTransient,
     refreshThreadContext,
+    streamingThreadIdsRef,
+    streamRegistry,
   });
 
   useEffect(() => {
@@ -273,6 +282,8 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       // is resolved from `turn_started`. Used by `applyNorm` to route events
       // into the background context when this thread is not the active view.
       let ownerThreadId: string | null = resumedThreadIdRef.current;
+      /** True until this consumer's `turn_started` — keeps new-session sends on the active SSE path. */
+      let pendingSend = true;
 
       const userMsg: TurnChatMessage = {
         id: nextId(),
@@ -620,16 +631,38 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         };
         streamSessionRef.current = { markInterrupted, finishOnce };
 
-        const notifyTurnCompleteIfAway = (host: boolean) => {
+        const notifyTurnCompleteIfAway = (host: boolean, completingThreadId: string) => {
           if (!host) return;
-          // Respect the user's notify_method preference; 'off' suppresses all notifications.
           if (loadNotifyMethod() === 'off') return;
+          const isActiveView =
+            !streamRegistry || streamRegistry.isActiveStreamView(completingThreadId);
+          const ctx = streamRegistry?.getContext(completingThreadId);
+          const sessionId = ctx?.sessionId ?? null;
+          const sessionLabel =
+            sessionId?.slice(0, 8) ?? completingThreadId.slice(0, 8);
+
+          if (!isActiveView) {
+            toast.success(
+              t('notification.turnCompleteBackground', { session: sessionLabel }),
+              {
+                tag: `bg-complete-${completingThreadId}`,
+                duration: 8000,
+                action:
+                  sessionId && onNavigateToSession
+                    ? {
+                        label: t('composer.switchToSession'),
+                        onClick: () => onNavigateToSession(sessionId),
+                      }
+                    : undefined,
+              },
+            );
+          }
+
           void (async () => {
             try {
-              // Use Tauri's isFocused() — more reliable than document.hidden in WebView2 on Windows.
               const { getCurrentWindow } = await import('@tauri-apps/api/window');
               const focused = await getCurrentWindow().isFocused();
-              if (focused) return;
+              if (focused && isActiveView) return;
               const mod = await import('@tauri-apps/plugin-notification');
               let granted = await mod.isPermissionGranted();
               if (!granted) {
@@ -637,7 +670,12 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 granted = perm === 'granted';
               }
               if (granted) {
-                mod.sendNotification({ title: 'Zagens', body: t('notification.turnComplete') });
+                mod.sendNotification({
+                  title: 'Zagens',
+                  body: isActiveView
+                    ? t('notification.turnComplete')
+                    : t('notification.turnCompleteBackground', { session: sessionLabel }),
+                });
               }
             } catch {
               /* browser mode or Tauri API unavailable */
@@ -651,10 +689,15 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           // same SSE consumer inherit the `ownerThreadId` closure value.
           const eventThreadId =
             norm.kind === 'turn_started' ? norm.threadId : ownerThreadId;
+          const activeThreadId = streamRegistry?.activeThreadIdRef.current ?? null;
           const isBackground =
             !!streamRegistry &&
-            !!eventThreadId &&
-            !streamRegistry.isActiveStreamView(eventThreadId);
+            isBackgroundStreamEvent(
+              activeThreadId,
+              eventThreadId,
+              ownerThreadId,
+              pendingSend,
+            );
 
           // Background-turn event routing: state events (panel/approval/turn
           // lifecycle) are recorded into the background context so the UI can
@@ -699,7 +742,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 toast.dismissByTag(`bg-approval-${eventThreadId}`);
                 finishOnce({ terminal: true });
                 if (norm.kind === 'done' || norm.kind === 'turn_completed') {
-                  notifyTurnCompleteIfAway(desktopHost);
+                  notifyTurnCompleteIfAway(desktopHost, eventThreadId);
                 }
                 break;
               case 'error':
@@ -769,14 +812,22 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           switch (norm.kind) {
             case 'turn_started':
               ownerThreadId = norm.threadId;
+              pendingSend = false;
               if (norm.threadId && streamRegistry) {
-                streamRegistry.ensureContext(norm.threadId, activeSessionIdRef.current);
-                streamRegistry.patchContext(norm.threadId, {
-                  threadTurn: { threadId: norm.threadId, turnId: norm.turnId },
-                  sessionId: activeSessionIdRef.current,
-                  isStreaming: true,
+                // Seed registry messages from the live UI — user/assistant bubbles
+                // were added before `turn_started` while `resumedThreadId` was
+                // still null, so bindLegacySetMessages only updated React state.
+                setMessages((prev) => {
+                  streamRegistry.ensureContext(norm.threadId, activeSessionIdRef.current);
+                  streamRegistry.patchContext(norm.threadId, {
+                    messages: prev,
+                    threadTurn: { threadId: norm.threadId, turnId: norm.turnId },
+                    sessionId: activeSessionIdRef.current,
+                    isStreaming: true,
+                  });
+                  bindThreadSession?.(norm.threadId, activeSessionIdRef.current);
+                  return prev;
                 });
-                bindThreadSession?.(norm.threadId, activeSessionIdRef.current);
               }
               threadTurnRef.current = {
                 threadId: norm.threadId,
@@ -785,6 +836,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               syncRecoveryContext();
               if (norm.threadId) {
                 scheduleThreadSessionPersist(norm.threadId);
+                streamRegistry?.setActiveThreadId(norm.threadId);
                 setResumedThreadId(norm.threadId);
                 void registerWindowThread(norm.threadId);
                 setStreamingThreadIds((prev) => new Set(prev).add(norm.threadId));
@@ -887,7 +939,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               break;
             case 'turn_completed':
               finishOnce({ terminal: true });
-              notifyTurnCompleteIfAway(desktopHost);
+              notifyTurnCompleteIfAway(
+                desktopHost,
+                ownerThreadId || threadTurnRef.current.threadId,
+              );
               if (norm.usage?.output_tokens != null && norm.usage.output_tokens > 0) {
                 setLastTurnOutputTokens(norm.usage.output_tokens);
               }
@@ -898,7 +953,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               break;
             case 'done':
               finishOnce({ terminal: true });
-              notifyTurnCompleteIfAway(desktopHost);
+              notifyTurnCompleteIfAway(
+                desktopHost,
+                ownerThreadId || threadTurnRef.current.threadId,
+              );
               break;
             case 'error':
               finishOnce({ terminal: true });

@@ -391,6 +391,8 @@ const ptBr: TranslationMap = {
     turnStillRunning: 'Ainda há um turno em execução nesta thread — reconectado a ele. Aguarde terminar ou pressione Parar.',
     turnReconnecting: 'Reconectado ao turno em segundo plano — sincronizando progresso…',
     bgApprovalRequired: 'A sessão {{thread}} aguarda aprovação — volte a ela para continuar.',
+    bgStreamRunning: 'A sessão {{thread}} ainda está gerando em segundo plano — volte quando quiser.',
+    switchToSession: 'Ir para a sessão',
     runtimeSidecarRestart: 'Runtime reiniciado; geração interrompida',
     runtimeSidecarRestartReconnecting:
       'Runtime local reiniciado — reconectando ao turno em segundo plano…',
@@ -1281,6 +1283,7 @@ const ptBr: TranslationMap = {
   },
   notification: {
     turnComplete: 'O modelo terminou de responder',
+    turnCompleteBackground: 'A sessão {{session}} terminou em segundo plano — toque para ver',
   },
   composerAttachment: {
     header: '[Anexos]',

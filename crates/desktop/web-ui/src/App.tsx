@@ -39,7 +39,7 @@ import { useTurnSession } from './hooks/useTurnSession';
 import { useTurnApproval, type ApprovalState } from './hooks/useTurnApproval';
 import { useTurnStream } from './hooks/useTurnStream';
 import { useTurnSend, type TurnChatMessage } from './hooks/useTurnSend';
-import { useStreamContextRegistry } from './hooks/useStreamContextRegistry';
+import { useStreamContextRegistry, bindLegacySetMessages } from './hooks/useStreamContextRegistry';
 import { parseWriteOfficeOutputPath } from './lib/officeDeliverable';
 import {
   type ComposerModelId,
@@ -202,9 +202,33 @@ export default function App() {
 
   // Multi-session P0.2: per-thread StreamContext registry.
   const streamRegistry = useStreamContextRegistry();
+  const setMessagesForTurn = useMemo(
+    () => bindLegacySetMessages(streamRegistry, setMessages),
+    [streamRegistry, setMessages],
+  );
   useEffect(() => {
     streamRegistry.setActiveThreadId(resumedThreadId);
   }, [resumedThreadId, streamRegistry]);
+  // Keep active-view `messages` in sync when switching sessions (registry SSOT).
+  // Depends on `resumedThreadId` only — not `streamRegistry.version`, which bumps
+  // on every panel/turn patch and would wipe the transcript when the registry
+  // snapshot is still empty (new session: messages land in React state before
+  // `turn_started` binds the thread id).
+  const getStreamContext = streamRegistry.getContext;
+  useEffect(() => {
+    const tid = resumedThreadId;
+    if (!tid) {
+      // Do not clear here: new-session sends populate React state while
+      // resumedThreadId is still null; handleNewSession / handleSelectSession
+      // own explicit clears.
+      return;
+    }
+    const registryMessages = getStreamContext(tid)?.messages ?? [];
+    if (registryMessages.length === 0) {
+      return;
+    }
+    setMessages(registryMessages);
+  }, [resumedThreadId, getStreamContext]);
 
   const bindThreadSession = useCallback(
     (threadId: string, sessionId: string | null | undefined) => {
@@ -450,7 +474,7 @@ export default function App() {
     streamSessionRef,
     setStreamingThreadIds,
     setPendingComposerStream,
-    setMessages,
+    setMessages: setMessagesForTurn,
     setResumedThreadId,
     setActiveSessionId,
     setRuntimeSessionEstablished,
@@ -474,6 +498,8 @@ export default function App() {
     storagePauseTurns,
     streamRegistry,
     bindThreadSession,
+    onNavigateToSession: (sessionId) => handleSelectSessionRef.current(sessionId),
+    streamingThreadIdsRef,
     onToolCompleted: (toolName, success, output) => {
       if (!officeSession || !success || toolName !== 'write_office') return;
       const rel = parseWriteOfficeOutputPath(output);
@@ -512,7 +538,7 @@ export default function App() {
     refreshSessions,
     resetTurnPersistState,
     clearApproval,
-    setMessages,
+    setMessages: setMessagesForTurn,
     setActiveSessionId,
     setResumedThreadId,
     setRuntimeSessionEstablished,
@@ -567,7 +593,7 @@ export default function App() {
     streamControllersRef,
     sessionUiCacheRef,
     handleSend,
-    setMessages,
+    setMessages: setMessagesForTurn,
     setResumedThreadId,
     setStreamingThreadIds,
     setPendingComposerStream,

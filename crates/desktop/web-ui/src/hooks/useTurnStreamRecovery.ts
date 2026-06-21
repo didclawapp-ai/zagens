@@ -28,6 +28,11 @@ import {
   rebindStreamingAssistant,
 } from '../lib/chat/activeTurnStreamUi';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
+import {
+  collectReconcileThreadIds,
+  removeThreadFromStreamingSet,
+} from '../lib/chat/streamContextStore';
+import type { StreamContextRegistry } from './useStreamContextRegistry';
 import type { FinishOnceOptions, StreamSessionControl } from './useTurnStream';
 import type { TurnChatMessage } from './useTurnSend';
 
@@ -72,6 +77,9 @@ export type UseTurnStreamRecoveryParams = {
   handleCancelStream: () => void;
   notifyRuntimeTransient: (message: string) => void;
   refreshThreadContext: (threadId: string) => Promise<void>;
+  /** All in-flight thread ids (P1: reconcile each, not only the active view). */
+  streamingThreadIdsRef?: MutableRefObject<Set<string>>;
+  streamRegistry?: StreamContextRegistry | null;
 };
 
 export type UseTurnStreamRecoveryResult = {
@@ -108,6 +116,8 @@ export function useTurnStreamRecovery({
   handleCancelStream,
   notifyRuntimeTransient,
   refreshThreadContext,
+  streamingThreadIdsRef,
+  streamRegistry,
 }: UseTurnStreamRecoveryParams): UseTurnStreamRecoveryResult {
   const detachReasonRef = useRef<StreamDetachReason | null>(null);
   const recoveringRef = useRef(false);
@@ -379,73 +389,146 @@ export function useTurnStreamRecovery({
     ],
   );
 
+  const clearBackgroundStreamingUi = useCallback(
+    (threadId: string) => {
+      streamRegistry?.patchContext(threadId, {
+        isStreaming: false,
+        pendingApproval: null,
+      });
+      setStreamingThreadIds((prev) => removeThreadFromStreamingSet(prev, threadId) ?? prev);
+    },
+    [setStreamingThreadIds, streamRegistry],
+  );
+
+  const resolveTurnIdForThread = useCallback(
+    (threadId: string, isActiveView: boolean): string | undefined => {
+      if (isActiveView && threadTurnRef.current.threadId === threadId) {
+        return threadTurnRef.current.turnId || undefined;
+      }
+      return streamRegistry?.getContext(threadId)?.threadTurn.turnId || undefined;
+    },
+    [streamRegistry, threadTurnRef],
+  );
+
+  const reconcileSingleThread = useCallback(
+    async (threadId: string) => {
+      const tid = threadId.trim();
+      if (!tid) return;
+
+      const isActiveView = tid === resumedThreadIdRef.current;
+
+      if (streamControllersRef.current.has(tid)) {
+        return;
+      }
+
+      const turnId = resolveTurnIdForThread(tid, isActiveView);
+      let stillActive: boolean;
+      try {
+        stillActive = await threadTurnStillActive(tid, turnId);
+      } catch {
+        return;
+      }
+
+      if (!stillActive) {
+        if (isActiveView) {
+          if (streamingRef.current) {
+            clearStaleStreamingUi(tid);
+          } else {
+            setMessages((prev) => {
+              if (!anyAssistantStreaming(prev)) return prev;
+              return clearStreamingAssistants(prev) as TurnChatMessage[];
+            });
+            setStreamingThreadIds((prev) => removeThreadFromStreamingSet(prev, tid) ?? prev);
+          }
+        } else {
+          clearBackgroundStreamingUi(tid);
+        }
+        return;
+      }
+
+      if (isActiveView) {
+        if (streamingRef.current) {
+          return;
+        }
+        if (resolveEventDeliver()) {
+          void resumeLiveTurnStream();
+          return;
+        }
+        try {
+          const rebuilt = await rebuildMessagesFromThreadEvents(tid);
+          if (!(await threadTurnStillActive(tid, turnId))) {
+            return;
+          }
+          const { messages, assistantId } = markLastAssistantStreaming(rebuilt);
+          if (!assistantId) {
+            return;
+          }
+          setMessages(messages as TurnChatMessage[]);
+          setStreamingThreadIds((prev) => new Set(prev).add(tid));
+          setPendingComposerStream(true);
+        } catch {
+          /* keep last snapshot */
+        }
+        return;
+      }
+
+      // Background thread: refresh registry transcript for reattach.
+      try {
+        const rebuilt = await rebuildMessagesFromThreadEvents(tid);
+        if (!(await threadTurnStillActive(tid, turnId))) {
+          clearBackgroundStreamingUi(tid);
+          return;
+        }
+        const { messages: marked } = markLastAssistantStreaming(rebuilt);
+        const sessionId = streamRegistry?.getContext(tid)?.sessionId ?? null;
+        streamRegistry?.ensureContext(tid, sessionId);
+        streamRegistry?.patchContext(tid, {
+          messages: marked as TurnChatMessage[],
+          isStreaming: true,
+        });
+        setStreamingThreadIds((prev) => new Set(prev).add(tid));
+      } catch {
+        /* keep last snapshot */
+      }
+    },
+    [
+      clearBackgroundStreamingUi,
+      clearStaleStreamingUi,
+      resolveEventDeliver,
+      resolveTurnIdForThread,
+      resumeLiveTurnStream,
+      setMessages,
+      setPendingComposerStream,
+      setStreamingThreadIds,
+      streamControllersRef,
+      streamRegistry,
+      streamingRef,
+    ],
+  );
+
   const reconcileChatFromThreadReplay = useCallback(async () => {
-    const threadId = resumedThreadIdRef.current;
-    if (!threadId || recoveringRef.current) {
+    if (recoveringRef.current) {
       return;
     }
     if (detachReasonRef.current) {
       return;
     }
-    // Skip if navigation raced ahead to a different active thread.
-    if (threadTurnRef.current.threadId && threadTurnRef.current.threadId !== threadId) {
+
+    const threadIds = collectReconcileThreadIds(
+      streamingThreadIdsRef?.current ?? [],
+      resumedThreadIdRef.current,
+    );
+    if (threadIds.length === 0) {
       return;
     }
 
-    const turnId = threadTurnRef.current.turnId || undefined;
-    let stillActive: boolean;
-    try {
-      stillActive = await threadTurnStillActive(threadId, turnId);
-    } catch {
-      return;
-    }
-
-    if (!stillActive) {
-      if (streamingRef.current) {
-        clearStaleStreamingUi(threadId);
-      } else {
-        setMessages((prev) => {
-          if (!anyAssistantStreaming(prev)) return prev;
-          return clearStreamingAssistants(prev) as TurnChatMessage[];
-        });
-      }
-      return;
-    }
-
-    if (streamingRef.current) {
-      return;
-    }
-
-    if (resolveEventDeliver()) {
-      void resumeLiveTurnStream();
-      return;
-    }
-
-    try {
-      const rebuilt = await rebuildMessagesFromThreadEvents(threadId);
-      if (!(await threadTurnStillActive(threadId))) {
-        return;
-      }
-      const { messages, assistantId } = markLastAssistantStreaming(rebuilt);
-      if (!assistantId) {
-        return;
-      }
-      setMessages(messages as TurnChatMessage[]);
-      setStreamingThreadIds((prev) => new Set(prev).add(threadId));
-      setPendingComposerStream(true);
-    } catch {
-      /* keep last snapshot */
+    for (const threadId of threadIds) {
+      await reconcileSingleThread(threadId);
     }
   }, [
-    clearStaleStreamingUi,
-    resolveEventDeliver,
+    reconcileSingleThread,
     resumedThreadIdRef,
-    resumeLiveTurnStream,
-    setMessages,
-    setPendingComposerStream,
-    setStreamingThreadIds,
-    streamingRef,
-    threadTurnRef,
+    streamingThreadIdsRef,
   ]);
 
   const tryRecoverDetachedTurn = useCallback(async () => {

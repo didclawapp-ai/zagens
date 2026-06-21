@@ -16,9 +16,11 @@ import {
   groupSessionsByDate,
 } from './sessionStripGrouping';
 import {
+  collectReconcileThreadIds,
   deleteContextFromMap,
   ensureContextInMap,
   isActiveStreamView,
+  isBackgroundStreamEvent,
   patchContextInMap,
   removeThreadFromStreamingSet,
 } from './streamContextStore';
@@ -79,6 +81,32 @@ assert.equal(isActiveStreamView('thr_a', 'thr_b'), false);
 assert.equal(isActiveStreamView(null, 'thr_b'), false);
 assert.equal(isActiveStreamView('thr_a', null), true, 'threadless events pass through');
 
+assert.equal(
+  isBackgroundStreamEvent(null, 'thr_b', null, true),
+  false,
+  'pending new-session send',
+);
+assert.equal(
+  isBackgroundStreamEvent(null, 'thr_b', 'thr_b', true),
+  false,
+  'pending send after turn_started before activeThreadId catches up',
+);
+assert.equal(
+  isBackgroundStreamEvent(null, 'thr_a', 'thr_a', false),
+  true,
+  'background thread while composer is on blank new session',
+);
+assert.equal(
+  isBackgroundStreamEvent('thr_b', 'thr_a', 'thr_a', false),
+  true,
+  'background thread while viewing another session',
+);
+assert.equal(
+  isBackgroundStreamEvent('thr_a', 'thr_a', 'thr_a', false),
+  false,
+  'active view thread',
+);
+
 const del = deleteContextFromMap(map, 'thr_a', 'thr_a');
 assert.equal(del.deleted, true);
 assert.equal(del.nextActiveThreadId, null, 'deleting active clears pointer');
@@ -87,6 +115,10 @@ const streaming = new Set(['thr_a', 'thr_b']);
 assert.equal(removeThreadFromStreamingSet(streaming, 'thr_missing'), null);
 const pruned = removeThreadFromStreamingSet(streaming, 'thr_a');
 assert.deepEqual([...pruned!], ['thr_b']);
+
+assert.deepEqual(collectReconcileThreadIds([], null), []);
+assert.deepEqual(collectReconcileThreadIds(['thr_a'], 'thr_b').sort(), ['thr_a', 'thr_b']);
+assert.deepEqual(collectReconcileThreadIds(['thr_a', 'thr_a'], 'thr_a'), ['thr_a']);
 
 assert.equal(makeEmptyPanelSlice().checklist, null);
 assert.equal(makeEmptyContext('thr_x', null).threadId, 'thr_x');

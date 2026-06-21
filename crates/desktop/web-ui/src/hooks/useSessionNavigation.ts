@@ -153,19 +153,40 @@ export function useSessionNavigation({
   // (keep its SSE alive in the background) instead of aborting. The thread's
   // events route into its background `StreamContext` via `useTurnSend`'s
   // `isBackground` guard.
+  const notifyBackgroundStreamDetached = useCallback(
+    (threadId: string) => {
+      const tid = threadId.trim();
+      if (!tid) return;
+      const sid = streamRegistry?.getContext(tid)?.sessionId;
+      const label = sid?.slice(0, 8) ?? tid.slice(0, 8);
+      toast.info(t('composer.bgStreamRunning', { thread: label }), {
+        tag: `bg-stream-${tid}`,
+        duration: 5000,
+      });
+    },
+    [streamRegistry, t],
+  );
+
   const detachOrAbort = useCallback(
     (threadId: string | null | undefined) => {
       if (!threadId) return;
       if (streamingThreadIdsRef?.current.has(threadId)) {
+        notifyBackgroundStreamDetached(threadId);
         return;
       }
       // turn_started may not have fired yet; an armed controller still means detach.
       if (streamControllersRef?.current.has(threadId)) {
+        notifyBackgroundStreamDetached(threadId);
         return;
       }
       abortThreadStream(threadId, { clearComposerLock: false });
     },
-    [abortThreadStream, streamControllersRef, streamingThreadIdsRef],
+    [
+      abortThreadStream,
+      notifyBackgroundStreamDetached,
+      streamControllersRef,
+      streamingThreadIdsRef,
+    ],
   );
 
   const persistOutgoingThread = useCallback(

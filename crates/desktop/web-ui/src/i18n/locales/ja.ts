@@ -391,6 +391,8 @@ const ja: TranslationMap = {
     turnStillRunning: 'このスレッドではターンがまだ実行中です。再接続しました。完了を待つか、停止を押してください。',
     turnReconnecting: 'バックグラウンドのターンに再接続しました。進捗を同期中…',
     bgApprovalRequired: 'セッション {{thread}} が承認待ちです — 当該セッションに戻って対応してください。',
+    bgStreamRunning: 'セッション {{thread}} はバックグラウンドで生成中です — いつでも戻って進捗を確認できます。',
+    switchToSession: 'セッションに切り替え',
     runtimeSidecarRestart: 'Runtime が再起動したため、生成を停止しました',
     runtimeSidecarRestartReconnecting: 'ローカル Runtime が再起動しました。バックグラウンドのターンに再接続しています…',
     runtimeOfflineReconnecting:
@@ -1280,6 +1282,7 @@ const ja: TranslationMap = {
   },
   notification: {
     turnComplete: 'モデルの応答が完了しました',
+    turnCompleteBackground: 'セッション {{session}} がバックグラウンドで完了しました — タップして表示',
   },
   composerAttachment: {
     header: '[添付ファイル]',

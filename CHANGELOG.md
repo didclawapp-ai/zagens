@@ -20,9 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Desktop web UI (multi-session P1 wrap-up):** 8s reconcile walks every in-flight `streamingThreadIds` entry (background threads refresh registry transcript via replay); `bindLegacySetMessages` routes active-view writes into `StreamContext`; background turn completion toast with optional switch-to-session action and per-session system notification when another session is focused; detach toast when leaving a streaming session.
+
 ### Changed
 
 - **Desktop UI — auto-hide scrollbars & panel seams:** Scrollbars and column resize seams (sidebar, right panel gutter) stay hidden until the pointer hovers the scroll container or gutter; dragging a resize handle keeps the seam visible.
+
+### Fixed
+
+- **Desktop web UI (multi-session):** New-session first send no longer shows an empty transcript while the sidebar title/spinner update — SSE events for the in-flight send are no longer misclassified as background when `activeThreadId` is still null (`isBackgroundStreamEvent`); the active-view message sync effect no longer clears React transcript state on every render while `resumedThreadId` is still null (before `turn_started`).
+- **Desktop web UI (multi-session):** Background `persist-session` no longer falls back to the active session id; runtime resolves existing session by `runtime_thread_id` when the client sid is stale (prevents duplicate sidebar entries).
 
 ### Added
 
