@@ -1,12 +1,14 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useT } from '../i18n';
-import { MODEL_MAX_TOKENS } from '../lib/modelParams';
+import { maxTokensCapForModel } from '../lib/modelParams';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onApply: (params: ModelParams) => void;
   initial: ModelParams;
+  /** Active Composer model — caps the Max Tokens field (V4 vs third-party). */
+  modelId?: string;
 }
 
 export interface ModelParams {
@@ -15,10 +17,11 @@ export interface ModelParams {
   maxTokens: number;
 }
 
-export default function ModelParamsDialog({ open, onClose, onApply, initial }: Props) {
+export default function ModelParamsDialog({ open, onClose, onApply, initial, modelId }: Props) {
   const { t } = useT();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const maxTokensLimit = maxTokensCapForModel(modelId?.trim() || 'deepseek-v4-pro');
   const [temperature, setTemperature] = useState(initial.temperature);
   const [topP, setTopP] = useState(initial.topP);
   const [maxTokens, setMaxTokens] = useState(initial.maxTokens);
@@ -134,9 +137,9 @@ export default function ModelParamsDialog({ open, onClose, onApply, initial }: P
               id="model-params-max-tokens"
               type="number"
               min={256}
-              max={MODEL_MAX_TOKENS}
+              max={maxTokensLimit}
               step={1024}
-              value={maxTokens}
+              value={Math.min(maxTokens, maxTokensLimit)}
               onChange={(e) => setMaxTokens(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-lg bg-input-bg border border-input-border text-sm text-t-text outline-none focus:border-accent"
             />
@@ -157,7 +160,10 @@ export default function ModelParamsDialog({ open, onClose, onApply, initial }: P
               onApply({
                 temperature,
                 topP,
-                maxTokens: Math.min(MODEL_MAX_TOKENS, Math.max(256, Math.round(maxTokens) || 256)),
+                maxTokens: Math.min(
+                  maxTokensLimit,
+                  Math.max(256, Math.round(maxTokens) || 256),
+                ),
               })
             }
             className="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-accent-text hover:opacity-90"

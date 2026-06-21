@@ -246,6 +246,13 @@ pub fn active_provider_has_env_api_key(config: &Config) -> bool {
         ApiProvider::Sglang => std::env::var("SGLANG_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
         ApiProvider::Vllm => std::env::var("VLLM_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
         ApiProvider::Ollama => std::env::var("OLLAMA_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
+        ApiProvider::Agnes => std::env::var("AGNES_API_KEY")
+            .or_else(|_| std::env::var("AGNES_API_TOKEN"))
+            .or_else(|_| std::env::var("APIHUB_AGNES_API_KEY"))
+            .is_ok_and(|k| !k.trim().is_empty()),
+        ApiProvider::SenseNova => std::env::var("SENSENOVA_API_KEY")
+            .or_else(|_| std::env::var("SENSENOVA_API_TOKEN"))
+            .is_ok_and(|k| !k.trim().is_empty()),
     }
 }
 
@@ -269,6 +276,8 @@ pub fn has_api_key_for(config: &Config, provider: ApiProvider) -> bool {
         ApiProvider::Sglang => "SGLANG_API_KEY",
         ApiProvider::Vllm => "VLLM_API_KEY",
         ApiProvider::Ollama => "OLLAMA_API_KEY",
+        ApiProvider::Agnes => "AGNES_API_KEY",
+        ApiProvider::SenseNova => "SENSENOVA_API_KEY",
     };
     if std::env::var(env_var).is_ok_and(|k| !k.trim().is_empty()) {
         return true;
@@ -337,6 +346,8 @@ pub fn save_api_key_for(provider: ApiProvider, api_key: &str) -> Result<PathBuf>
         ApiProvider::Sglang => "providers.sglang",
         ApiProvider::Vllm => "providers.vllm",
         ApiProvider::Ollama => "providers.ollama",
+        ApiProvider::Agnes => "providers.agnes",
+        ApiProvider::SenseNova => "providers.sensenova",
     };
 
     // Parse existing TOML (or start fresh) so we can edit the right table
@@ -371,6 +382,8 @@ pub fn save_api_key_for(provider: ApiProvider, api_key: &str) -> Result<PathBuf>
         ApiProvider::Sglang => "sglang",
         ApiProvider::Vllm => "vllm",
         ApiProvider::Ollama => "ollama",
+        ApiProvider::Agnes => "agnes",
+        ApiProvider::SenseNova => "sensenova",
     };
     let entry = providers
         .entry(key_inside.to_string())

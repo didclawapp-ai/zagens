@@ -78,6 +78,10 @@ const DEFAULT_VLLM_FLASH_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
 const DEFAULT_VLLM_BASE_URL: &str = "http://localhost:8000/v1";
 const DEFAULT_OLLAMA_MODEL: &str = "deepseek-coder:1.3b";
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434/v1";
+const DEFAULT_AGNES_MODEL: &str = "agnes-2.0-flash";
+const DEFAULT_AGNES_BASE_URL: &str = "https://apihub.agnes-ai.com/v1";
+const DEFAULT_SENSENOVA_MODEL: &str = "sensenova-6.7-flash-lite";
+const DEFAULT_SENSENOVA_BASE_URL: &str = "https://token.sensenova.cn/v1";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
@@ -92,6 +96,9 @@ pub enum ProviderKind {
     Sglang,
     Vllm,
     Ollama,
+    Agnes,
+    #[serde(rename = "sensenova")]
+    SenseNova,
 }
 
 impl ProviderKind {
@@ -108,6 +115,8 @@ impl ProviderKind {
         Self::Sglang,
         Self::Vllm,
         Self::Ollama,
+        Self::Agnes,
+        Self::SenseNova,
     ];
 
     #[must_use]
@@ -122,6 +131,8 @@ impl ProviderKind {
             Self::Sglang => "sglang",
             Self::Vllm => "vllm",
             Self::Ollama => "ollama",
+            Self::Agnes => "agnes",
+            Self::SenseNova => "sensenova",
         }
     }
 
@@ -137,6 +148,8 @@ impl ProviderKind {
             "sglang" | "sg-lang" => Some(Self::Sglang),
             "vllm" | "v-llm" => Some(Self::Vllm),
             "ollama" | "ollama-local" => Some(Self::Ollama),
+            "agnes" | "agnes-ai" => Some(Self::Agnes),
+            "sensenova" | "sense-nova" | "sense_nova" => Some(Self::SenseNova),
             _ => None,
         }
     }
@@ -206,6 +219,10 @@ pub struct ProvidersToml {
     pub vllm: ProviderConfigToml,
     #[serde(default)]
     pub ollama: ProviderConfigToml,
+    #[serde(default)]
+    pub agnes: ProviderConfigToml,
+    #[serde(default)]
+    pub sensenova: ProviderConfigToml,
 }
 
 impl ProvidersToml {
@@ -221,6 +238,8 @@ impl ProvidersToml {
             ProviderKind::Sglang => &self.sglang,
             ProviderKind::Vllm => &self.vllm,
             ProviderKind::Ollama => &self.ollama,
+            ProviderKind::Agnes => &self.agnes,
+            ProviderKind::SenseNova => &self.sensenova,
         }
     }
 
@@ -235,6 +254,8 @@ impl ProvidersToml {
             ProviderKind::Sglang => &mut self.sglang,
             ProviderKind::Vllm => &mut self.vllm,
             ProviderKind::Ollama => &mut self.ollama,
+            ProviderKind::Agnes => &mut self.agnes,
+            ProviderKind::SenseNova => &mut self.sensenova,
         }
     }
 }
@@ -734,6 +755,8 @@ impl ConfigToml {
         merge_provider_config(&mut self.providers.sglang, &project.providers.sglang);
         merge_provider_config(&mut self.providers.vllm, &project.providers.vllm);
         merge_provider_config(&mut self.providers.ollama, &project.providers.ollama);
+        merge_provider_config(&mut self.providers.agnes, &project.providers.agnes);
+        merge_provider_config(&mut self.providers.sensenova, &project.providers.sensenova);
 
         if project.network.is_some() {
             self.network = project.network;
@@ -879,6 +902,23 @@ impl ConfigToml {
             "providers.ollama.http_headers" => {
                 serialize_http_headers(&self.providers.ollama.http_headers)
             }
+            "providers.agnes.api_key" => self.providers.agnes.api_key.as_deref().map(redact_secret),
+            "providers.agnes.base_url" => self.providers.agnes.base_url.clone(),
+            "providers.agnes.model" => self.providers.agnes.model.clone(),
+            "providers.agnes.http_headers" => {
+                serialize_http_headers(&self.providers.agnes.http_headers)
+            }
+            "providers.sensenova.api_key" => self
+                .providers
+                .sensenova
+                .api_key
+                .as_deref()
+                .map(redact_secret),
+            "providers.sensenova.base_url" => self.providers.sensenova.base_url.clone(),
+            "providers.sensenova.model" => self.providers.sensenova.model.clone(),
+            "providers.sensenova.http_headers" => {
+                serialize_http_headers(&self.providers.sensenova.http_headers)
+            }
             "vision.api_key" => self
                 .vision
                 .as_ref()
@@ -1021,6 +1061,30 @@ impl ConfigToml {
             "providers.ollama.http_headers" => {
                 self.providers.ollama.http_headers = parse_http_headers(value)?;
             }
+            "providers.agnes.api_key" => {
+                self.providers.agnes.api_key = Some(value.to_string());
+            }
+            "providers.agnes.base_url" => {
+                self.providers.agnes.base_url = Some(value.to_string());
+            }
+            "providers.agnes.model" => {
+                self.providers.agnes.model = Some(value.to_string());
+            }
+            "providers.agnes.http_headers" => {
+                self.providers.agnes.http_headers = parse_http_headers(value)?;
+            }
+            "providers.sensenova.api_key" => {
+                self.providers.sensenova.api_key = Some(value.to_string());
+            }
+            "providers.sensenova.base_url" => {
+                self.providers.sensenova.base_url = Some(value.to_string());
+            }
+            "providers.sensenova.model" => {
+                self.providers.sensenova.model = Some(value.to_string());
+            }
+            "providers.sensenova.http_headers" => {
+                self.providers.sensenova.http_headers = parse_http_headers(value)?;
+            }
             "vision.api_key" => {
                 let v = self.vision.get_or_insert_default();
                 v.api_key = Some(value.to_string());
@@ -1105,6 +1169,14 @@ impl ConfigToml {
             "providers.ollama.base_url" => self.providers.ollama.base_url = None,
             "providers.ollama.model" => self.providers.ollama.model = None,
             "providers.ollama.http_headers" => self.providers.ollama.http_headers.clear(),
+            "providers.agnes.api_key" => self.providers.agnes.api_key = None,
+            "providers.agnes.base_url" => self.providers.agnes.base_url = None,
+            "providers.agnes.model" => self.providers.agnes.model = None,
+            "providers.agnes.http_headers" => self.providers.agnes.http_headers.clear(),
+            "providers.sensenova.api_key" => self.providers.sensenova.api_key = None,
+            "providers.sensenova.base_url" => self.providers.sensenova.base_url = None,
+            "providers.sensenova.model" => self.providers.sensenova.model = None,
+            "providers.sensenova.http_headers" => self.providers.sensenova.http_headers.clear(),
             "vision.api_key" => {
                 if let Some(v) = self.vision.as_mut() {
                     v.api_key = None;
@@ -1279,6 +1351,30 @@ impl ConfigToml {
         if let Some(v) = serialize_http_headers(&self.providers.ollama.http_headers) {
             out.insert("providers.ollama.http_headers".to_string(), v);
         }
+        if let Some(v) = self.providers.agnes.api_key.as_ref() {
+            out.insert("providers.agnes.api_key".to_string(), redact_secret(v));
+        }
+        if let Some(v) = self.providers.agnes.base_url.as_ref() {
+            out.insert("providers.agnes.base_url".to_string(), v.clone());
+        }
+        if let Some(v) = self.providers.agnes.model.as_ref() {
+            out.insert("providers.agnes.model".to_string(), v.clone());
+        }
+        if let Some(v) = serialize_http_headers(&self.providers.agnes.http_headers) {
+            out.insert("providers.agnes.http_headers".to_string(), v);
+        }
+        if let Some(v) = self.providers.sensenova.api_key.as_ref() {
+            out.insert("providers.sensenova.api_key".to_string(), redact_secret(v));
+        }
+        if let Some(v) = self.providers.sensenova.base_url.as_ref() {
+            out.insert("providers.sensenova.base_url".to_string(), v.clone());
+        }
+        if let Some(v) = self.providers.sensenova.model.as_ref() {
+            out.insert("providers.sensenova.model".to_string(), v.clone());
+        }
+        if let Some(v) = serialize_http_headers(&self.providers.sensenova.http_headers) {
+            out.insert("providers.sensenova.http_headers".to_string(), v);
+        }
         if let Some(v) = self
             .vision
             .as_ref()
@@ -1378,6 +1474,8 @@ impl ConfigToml {
                 ProviderKind::Sglang => DEFAULT_SGLANG_BASE_URL.to_string(),
                 ProviderKind::Vllm => DEFAULT_VLLM_BASE_URL.to_string(),
                 ProviderKind::Ollama => DEFAULT_OLLAMA_BASE_URL.to_string(),
+                ProviderKind::Agnes => DEFAULT_AGNES_BASE_URL.to_string(),
+                ProviderKind::SenseNova => DEFAULT_SENSENOVA_BASE_URL.to_string(),
             });
 
         let model = cli
@@ -1397,6 +1495,8 @@ impl ConfigToml {
                 ProviderKind::Sglang => DEFAULT_SGLANG_MODEL.to_string(),
                 ProviderKind::Vllm => DEFAULT_VLLM_MODEL.to_string(),
                 ProviderKind::Ollama => DEFAULT_OLLAMA_MODEL.to_string(),
+                ProviderKind::Agnes => DEFAULT_AGNES_MODEL.to_string(),
+                ProviderKind::SenseNova => DEFAULT_SENSENOVA_MODEL.to_string(),
             });
         let model = normalize_model_for_provider(provider, &model);
 
@@ -1482,7 +1582,10 @@ pub fn load_project_config(workspace: &Path) -> Option<ConfigToml> {
 }
 
 fn normalize_model_for_provider(provider: ProviderKind, model: &str) -> String {
-    if matches!(provider, ProviderKind::Ollama) {
+    if matches!(
+        provider,
+        ProviderKind::Ollama | ProviderKind::Openai | ProviderKind::Agnes | ProviderKind::SenseNova
+    ) {
         return model.to_string();
     }
 
@@ -1932,6 +2035,8 @@ impl EnvRuntimeOverrides {
             ProviderKind::Sglang => self.sglang_base_url.clone(),
             ProviderKind::Vllm => self.vllm_base_url.clone(),
             ProviderKind::Ollama => self.ollama_base_url.clone(),
+            ProviderKind::Agnes => None,
+            ProviderKind::SenseNova => None,
         }
     }
 }

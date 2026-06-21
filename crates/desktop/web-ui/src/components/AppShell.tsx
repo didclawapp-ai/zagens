@@ -162,6 +162,7 @@ export type AppShellProps = {
   onSystemSettingsSaved: (settings: SystemSettings) => void;
   onRouteIntentChange: (intent: DesktopRouteIntentOption) => void;
   refreshApiKeyStatus: () => void;
+  onModelProvidersSaved: () => void;
   onOpenTasks?: (taskId?: string) => void;
   onOpenTaskThread?: (threadId: string) => void;
   highlightTaskId?: string | null;
@@ -283,6 +284,7 @@ export default function AppShell({
   onSystemSettingsSaved,
   onRouteIntentChange,
   refreshApiKeyStatus,
+  onModelProvidersSaved,
   onOpenTasks,
   onOpenTaskThread,
   highlightTaskId = null,
@@ -355,6 +357,7 @@ export default function AppShell({
         <ModelParamsDialog
           open={modelParamsOpen}
           initial={modelParams}
+          modelId={selectedModel}
           onClose={() => onModelParamsOpenChange(false)}
           onApply={(params) => {
             onModelParamsApply(params);
@@ -493,7 +496,7 @@ export default function AppShell({
             runtimeSessionEstablished={runtimeSessionEstablished}
             apiKeyConfigured={desktopApiKeyConfigured}
             onSavedApiKey={() => {
-              refreshApiKeyStatus();
+              onModelProvidersSaved();
               toast.dismissAll();
             }}
             theme={theme}

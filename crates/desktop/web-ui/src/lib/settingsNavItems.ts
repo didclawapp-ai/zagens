@@ -3,7 +3,7 @@ import type { RightPanelView } from '../components/RightPanel';
 export type SettingsNavTab = Extract<
   RightPanelView,
   | 'settings'
-  | 'api-key'
+  | 'models'
   | 'mcp'
   | 'skills'
   | 'routing'
@@ -32,7 +32,7 @@ export function buildSettingsNavItems(args: {
   const { t, desktopHost, officeSession } = args;
   return [
     { tab: 'settings', label: t('panels.settings'), show: true },
-    { tab: 'api-key', label: t('sidebar.apiKey'), show: desktopHost },
+    { tab: 'models', label: t('sidebar.models'), show: desktopHost },
     { tab: 'mcp', label: t('panels.mcp'), show: true },
     { tab: 'skills', label: t('sidebar.skills'), show: true },
     { tab: 'routing', label: t('panels.routing'), show: !officeSession },

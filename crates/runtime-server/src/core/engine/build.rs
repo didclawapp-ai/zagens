@@ -47,6 +47,8 @@ fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
         ApiProvider::Sglang => "SGLANG_API_KEY",
         ApiProvider::Vllm => "VLLM_API_KEY",
         ApiProvider::Ollama => "OLLAMA_API_KEY",
+        ApiProvider::Agnes => "AGNES_API_KEY",
+        ApiProvider::SenseNova => "SENSENOVA_API_KEY",
     };
 
     Some(format!(

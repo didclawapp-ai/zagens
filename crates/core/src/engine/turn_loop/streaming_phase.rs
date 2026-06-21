@@ -7,7 +7,7 @@ use super::control::{TurnLoopControl, TurnLoopStreamingPhaseOutcome};
 use super::helpers::{messages_with_turn_metadata, messages_with_turn_metadata_compiled};
 use super::inner_step_host::InnerStepHost;
 use super::turn_loop_outer_host::TurnLoopOuterHost;
-use crate::chat::{ContentBlock, LlmClient, Message, Tool};
+use crate::chat::{ContentBlock, LlmClient, Message, Tool, clamp_max_output_tokens_for_model};
 use crate::engine::context::{
     MAX_CONTEXT_RECOVERY_ATTEMPTS, TURN_MAX_OUTPUT_TOKENS, effective_max_output_tokens,
     is_context_length_error_message, summarize_text,
@@ -79,6 +79,7 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
             messages,
             max_tokens: session
                 .max_output_tokens
+                .map(|t| clamp_max_output_tokens_for_model(&session.model, t))
                 .unwrap_or_else(|| effective_max_output_tokens(&session.model)),
             system: compiler_ctx.and_then(|c| c.system_prompt),
             tools: active_tools.clone(),

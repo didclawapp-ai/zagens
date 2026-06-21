@@ -10,6 +10,10 @@ use serde::{Deserialize, Serialize};
 
 pub const LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS: u32 = 128_000;
 pub const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS: u32 = 1_000_000;
+/// Official DeepSeek V4 max output (384 × 1024). Desktop may request up to this cap.
+pub const DEEPSEEK_V4_MAX_OUTPUT_TOKENS: u32 = 384 * 1024;
+/// Unified API `max_tokens` ceiling for non-V4 providers (OpenRouter, Agnes, etc.).
+pub const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 65_536;
 pub const DEFAULT_COMPACTION_TOKEN_THRESHOLD: usize = 102_400;
 const COMPACTION_THRESHOLD_PERCENT: u32 = 80;
 
@@ -285,6 +289,36 @@ pub trait LlmClient: Send + Sync {
 
 // ── Context window helpers ────────────────────────────────────────────
 
+/// Whether the model id refers to a DeepSeek V4-class model (1M context / high output cap).
+#[must_use]
+pub fn is_deepseek_v4_model(model: &str) -> bool {
+    let lower = model.to_ascii_lowercase();
+    if !lower.contains("deepseek") {
+        return false;
+    }
+    lower.contains("v4-pro")
+        || lower.contains("v4-flash")
+        || lower.contains("v4pro")
+        || lower.contains("v4flash")
+        || (lower.contains("v4") && !lower.contains("v3"))
+}
+
+/// Provider-aware `max_tokens` ceiling for outbound API requests.
+#[must_use]
+pub fn max_output_token_cap_for_model(model: &str) -> u32 {
+    if is_deepseek_v4_model(model) {
+        DEEPSEEK_V4_MAX_OUTPUT_TOKENS
+    } else {
+        DEFAULT_MAX_OUTPUT_TOKENS
+    }
+}
+
+/// Clamp a client-requested `max_tokens` to the model's provider cap.
+#[must_use]
+pub fn clamp_max_output_tokens_for_model(model: &str, requested: u32) -> u32 {
+    requested.min(max_output_token_cap_for_model(model))
+}
+
 /// Map known models to their approximate context window sizes.
 #[must_use]
 pub fn context_window_for_model(model: &str) -> Option<u32> {
@@ -351,5 +385,32 @@ pub fn compaction_threshold_for_override(override_model: Option<&str>) -> usize 
     match override_model {
         Some(model) => compaction_threshold_for_model(model),
         None => DEFAULT_COMPACTION_TOKEN_THRESHOLD,
+    }
+}
+
+#[cfg(test)]
+mod max_output_tests {
+    use super::*;
+
+    #[test]
+    fn v4_models_get_high_output_cap() {
+        assert!(is_deepseek_v4_model("deepseek-v4-pro"));
+        assert_eq!(
+            max_output_token_cap_for_model("deepseek-v4-pro"),
+            DEEPSEEK_V4_MAX_OUTPUT_TOKENS
+        );
+    }
+
+    #[test]
+    fn third_party_models_clamp_to_unified_cap() {
+        assert!(!is_deepseek_v4_model("agnes-2.0-flash"));
+        assert_eq!(
+            clamp_max_output_tokens_for_model("agnes-2.0-flash", 393_216),
+            DEFAULT_MAX_OUTPUT_TOKENS
+        );
+        assert_eq!(
+            clamp_max_output_tokens_for_model("openrouter/owl-alpha", 200_000),
+            DEFAULT_MAX_OUTPUT_TOKENS
+        );
     }
 }

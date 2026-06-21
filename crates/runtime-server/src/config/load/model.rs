@@ -15,7 +15,11 @@ pub(crate) fn normalize_model_config(config: &mut Config) {
     if let Some(model) = config.default_text_model.as_deref()
         && !matches!(
             config.api_provider(),
-            ApiProvider::Ollama | ApiProvider::Openai
+            ApiProvider::Ollama
+                | ApiProvider::Openai
+                | ApiProvider::Agnes
+                | ApiProvider::SenseNova
+                | ApiProvider::Openrouter
         )
         && let Some(normalized) = normalize_model_for_provider(config.api_provider(), model)
     {
@@ -69,7 +73,14 @@ pub(crate) fn normalize_model_config(config: &mut Config) {
 pub(crate) fn normalize_model_for_provider(provider: ApiProvider, model: &str) -> Option<String> {
     // Ollama and OpenAI model identifiers are free-form; DeepSeek-style
     // normalization does not apply.
-    if matches!(provider, ApiProvider::Ollama | ApiProvider::Openai) {
+    if matches!(
+        provider,
+        ApiProvider::Ollama
+            | ApiProvider::Openai
+            | ApiProvider::Agnes
+            | ApiProvider::SenseNova
+            | ApiProvider::Openrouter
+    ) {
         return None;
     }
     normalize_model_name(model).map(|normalized| model_for_provider(provider, normalized))

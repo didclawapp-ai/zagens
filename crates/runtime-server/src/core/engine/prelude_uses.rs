@@ -5,6 +5,7 @@ use context::{
     estimate_input_tokens_conservative, extract_compaction_summary_prompt,
     is_context_length_error_message, summarize_text, turn_response_headroom_tokens,
 };
+use zagens_core::chat::clamp_max_output_tokens_for_model;
 use zagens_core::engine::SubAgentSpawnError;
 use zagens_core::engine::ToolExecOutcome;
 use zagens_core::engine::dispatch::{

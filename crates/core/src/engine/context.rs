@@ -2,23 +2,27 @@
 
 use zagens_tools::ToolResult;
 
-use crate::chat::{Message, SystemPrompt, context_window_for_model};
+use crate::chat::{
+    DEFAULT_MAX_OUTPUT_TOKENS, Message, SystemPrompt, context_window_for_model,
+    is_deepseek_v4_model, max_output_token_cap_for_model,
+};
 use crate::engine::token_estimate::TokenEstimator;
 
 /// Max output tokens requested for normal agent turns.
 pub const TURN_MAX_OUTPUT_TOKENS: u32 = 262_144;
 
-const API_MAX_OUTPUT_TOKENS: u32 = 65_536;
+const API_MAX_OUTPUT_TOKENS: u32 = DEFAULT_MAX_OUTPUT_TOKENS;
 
-/// Compute the effective `max_tokens` to send in the API request for a given model.
+/// Compute the default `max_tokens` when the client did not supply an override.
 #[must_use]
 pub fn effective_max_output_tokens(model: &str) -> u32 {
-    let window = context_window_for_model(model).unwrap_or(128_000);
-    if window >= 500_000 {
+    if is_deepseek_v4_model(model) {
+        // Conservative default; desktop may override up to `DEEPSEEK_V4_MAX_OUTPUT_TOKENS`.
         API_MAX_OUTPUT_TOKENS
     } else {
+        let window = context_window_for_model(model).unwrap_or(128_000);
         let capped = window / 2;
-        capped.min(API_MAX_OUTPUT_TOKENS)
+        capped.min(max_output_token_cap_for_model(model))
     }
 }
 

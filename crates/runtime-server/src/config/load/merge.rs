@@ -172,6 +172,8 @@ pub(crate) fn merge_providers(
             sglang: merge_provider_config(base.sglang, override_cfg.sglang),
             vllm: merge_provider_config(base.vllm, override_cfg.vllm),
             ollama: merge_provider_config(base.ollama, override_cfg.ollama),
+            agnes: merge_provider_config(base.agnes, override_cfg.agnes),
+            sensenova: merge_provider_config(base.sensenova, override_cfg.sensenova),
         }),
     }
 }

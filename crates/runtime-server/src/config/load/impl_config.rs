@@ -10,12 +10,13 @@ use crate::hooks::HooksConfig;
 use super::super::providers::{ApiProvider, normalize_model_name};
 use super::super::types::*;
 use super::super::{
-    API_KEYRING_SENTINEL, DEFAULT_DEEPSEEK_BASE_URL, DEFAULT_DEEPSEEKCN_BASE_URL,
-    DEFAULT_FIREWORKS_BASE_URL, DEFAULT_FIREWORKS_MODEL, DEFAULT_MAX_SUBAGENTS,
-    DEFAULT_NOVITA_BASE_URL, DEFAULT_NOVITA_MODEL, DEFAULT_NVIDIA_NIM_BASE_URL,
-    DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL,
-    DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL, DEFAULT_OPENROUTER_BASE_URL,
-    DEFAULT_OPENROUTER_MODEL, DEFAULT_SGLANG_BASE_URL, DEFAULT_SGLANG_MODEL, DEFAULT_TEXT_MODEL,
+    API_KEYRING_SENTINEL, DEFAULT_AGNES_BASE_URL, DEFAULT_AGNES_MODEL, DEFAULT_DEEPSEEK_BASE_URL,
+    DEFAULT_DEEPSEEKCN_BASE_URL, DEFAULT_FIREWORKS_BASE_URL, DEFAULT_FIREWORKS_MODEL,
+    DEFAULT_MAX_SUBAGENTS, DEFAULT_NOVITA_BASE_URL, DEFAULT_NOVITA_MODEL,
+    DEFAULT_NVIDIA_NIM_BASE_URL, DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_OLLAMA_BASE_URL,
+    DEFAULT_OLLAMA_MODEL, DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL,
+    DEFAULT_OPENROUTER_BASE_URL, DEFAULT_OPENROUTER_MODEL, DEFAULT_SENSENOVA_BASE_URL,
+    DEFAULT_SENSENOVA_MODEL, DEFAULT_SGLANG_BASE_URL, DEFAULT_SGLANG_MODEL, DEFAULT_TEXT_MODEL,
     DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_MODEL, MAX_SUBAGENTS,
 };
 use super::env_overrides::apply_env_overrides;
@@ -87,7 +88,14 @@ impl Config {
         }
         if let Some(model) = self.default_text_model.as_deref()
             && !model.trim().eq_ignore_ascii_case("auto")
-            && !matches!(self.api_provider(), ApiProvider::Ollama)
+            && !matches!(
+                self.api_provider(),
+                ApiProvider::Ollama
+                    | ApiProvider::Openai
+                    | ApiProvider::Agnes
+                    | ApiProvider::SenseNova
+                    | ApiProvider::Openrouter
+            )
             && normalize_model_name(model).is_none()
         {
             anyhow::bail!(
@@ -212,6 +220,8 @@ impl Config {
             ApiProvider::Sglang => &providers.sglang,
             ApiProvider::Vllm => &providers.vllm,
             ApiProvider::Ollama => &providers.ollama,
+            ApiProvider::Agnes => &providers.agnes,
+            ApiProvider::SenseNova => &providers.sensenova,
         })
     }
 
@@ -241,7 +251,14 @@ impl Config {
         {
             // Ollama and OpenAI model names are free-form (not DeepSeek IDs);
             // pass them through without DeepSeek normalization.
-            if matches!(provider, ApiProvider::Ollama | ApiProvider::Openai) {
+            if matches!(
+                provider,
+                ApiProvider::Ollama
+                    | ApiProvider::Openai
+                    | ApiProvider::Agnes
+                    | ApiProvider::SenseNova
+                    | ApiProvider::Openrouter
+            ) {
                 return model.trim().to_string();
             }
             if let Some(normalized) = normalize_model_for_provider(provider, model) {
@@ -249,7 +266,14 @@ impl Config {
             }
         }
         if let Some(model) = self.default_text_model.as_deref()
-            && matches!(provider, ApiProvider::Ollama | ApiProvider::Openai)
+            && matches!(
+                provider,
+                ApiProvider::Ollama
+                    | ApiProvider::Openai
+                    | ApiProvider::Agnes
+                    | ApiProvider::SenseNova
+                    | ApiProvider::Openrouter
+            )
         {
             return model.trim().to_string();
         }
@@ -274,6 +298,8 @@ impl Config {
             ApiProvider::Sglang => DEFAULT_SGLANG_MODEL,
             ApiProvider::Vllm => DEFAULT_VLLM_MODEL,
             ApiProvider::Ollama => DEFAULT_OLLAMA_MODEL,
+            ApiProvider::Agnes => DEFAULT_AGNES_MODEL,
+            ApiProvider::SenseNova => DEFAULT_SENSENOVA_MODEL,
         }
         .to_string()
     }
@@ -302,7 +328,9 @@ impl Config {
             | ApiProvider::Fireworks
             | ApiProvider::Sglang
             | ApiProvider::Vllm
-            | ApiProvider::Ollama => None,
+            | ApiProvider::Ollama
+            | ApiProvider::Agnes
+            | ApiProvider::SenseNova => None,
         };
         let base = provider_base.or(root_base).unwrap_or_else(|| {
             match provider {
@@ -316,6 +344,8 @@ impl Config {
                 ApiProvider::Sglang => DEFAULT_SGLANG_BASE_URL,
                 ApiProvider::Vllm => DEFAULT_VLLM_BASE_URL,
                 ApiProvider::Ollama => DEFAULT_OLLAMA_BASE_URL,
+                ApiProvider::Agnes => DEFAULT_AGNES_BASE_URL,
+                ApiProvider::SenseNova => DEFAULT_SENSENOVA_BASE_URL,
             }
             .to_string()
         });
@@ -342,6 +372,8 @@ impl Config {
             ApiProvider::Sglang => "sglang",
             ApiProvider::Vllm => "vllm",
             ApiProvider::Ollama => "ollama",
+            ApiProvider::Agnes => "agnes",
+            ApiProvider::SenseNova => "sensenova",
         };
 
         // 0. Explicit in-memory override (set by onboarding / provider
@@ -409,6 +441,14 @@ impl Config {
             // Self-hosted deployments commonly run without auth on localhost.
             // Return an empty key and let the client omit the Authorization header.
             ApiProvider::Sglang | ApiProvider::Vllm | ApiProvider::Ollama => Ok(String::new()),
+            ApiProvider::Agnes => anyhow::bail!(
+                "Agnes AI API key not found. Set AGNES_API_KEY, \
+                 or add [providers.agnes] in ~/.zagens/config.toml (use Zagens → Models panel)."
+            ),
+            ApiProvider::SenseNova => anyhow::bail!(
+                "SenseNova API key not found. Set SENSENOVA_API_KEY, \
+                 or add [providers.sensenova] in ~/.zagens/config.toml (use Zagens → Models panel)."
+            ),
         }
     }
 

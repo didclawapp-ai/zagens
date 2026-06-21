@@ -23,6 +23,10 @@ pub const DEFAULT_VLLM_FLASH_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
 pub const DEFAULT_VLLM_BASE_URL: &str = "http://localhost:8000/v1";
 pub const DEFAULT_OLLAMA_MODEL: &str = "deepseek-coder:1.3b";
 pub const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434/v1";
+pub const DEFAULT_AGNES_MODEL: &str = "agnes-2.0-flash";
+pub const DEFAULT_AGNES_BASE_URL: &str = "https://apihub.agnes-ai.com/v1";
+pub const DEFAULT_SENSENOVA_MODEL: &str = "sensenova-6.7-flash-lite";
+pub const DEFAULT_SENSENOVA_BASE_URL: &str = "https://token.sensenova.cn/v1";
 // OpenAI-compatible endpoint (M0.5). Defaults mirror the facade
 // (`zagens_config::DEFAULT_OPENAI_*`); drift is caught by tests in providers.rs.
 pub const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1";

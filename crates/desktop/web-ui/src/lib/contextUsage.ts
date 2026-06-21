@@ -13,7 +13,10 @@ export interface ThreadDetailWithTurns {
   turns?: ThreadTurnRecordLite[];
 }
 
-export const DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000;
+import { isDeepSeekV4Model } from './modelParams';
+
+export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
+export const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS = 1_000_000;
 
 /** Conservative system + tools prompt overhead when the UI cannot read runtime system blocks. */
 export const DEFAULT_SYSTEM_PROMPT_OVERHEAD = 12_000;
@@ -46,14 +49,21 @@ export interface ThreadContextSnapshot {
 
 export function contextWindowTokensForModel(model: string | undefined): number {
   const lower = (model ?? '').toLowerCase();
+  if (isDeepSeekV4Model(model ?? '')) {
+    return DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS;
+  }
   if (lower.includes('claude')) {
     return 200_000;
   }
-  if (lower.includes('deepseek') && lower.includes('v4')) {
-    return 1_000_000;
-  }
   if (lower.includes('deepseek')) {
     return 128_000;
+  }
+  if (
+    lower.includes('ollama') ||
+    lower.includes('agnes') ||
+    lower.includes('sensenova')
+  ) {
+    return 8192;
   }
   return DEFAULT_CONTEXT_WINDOW_TOKENS;
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { extractDiffRelPaths } from '../lib/diff/diffEntries';
 import type { invoke as InvokeFn } from '@tauri-apps/api/core';
-import ApiKeyForm from './ApiKeyForm';
+import ModelProvidersPanel from './ModelProvidersPanel';
 import McpPanel from './McpPanel';
 import UsageDashboard from './UsageDashboard';
 import AutomationPanel from './AutomationPanel';
@@ -41,7 +41,7 @@ import InspectorIconTabs from './chrome/InspectorIconTabs';
 
 export type RightPanelView =
   | 'workspace'
-  | 'api-key'
+  | 'models'
   | 'settings'
   | 'system'
   | 'sandbox'
@@ -152,7 +152,7 @@ interface Props {
 
 const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   workspace: 'panels.workspace',
-  'api-key': 'panels.apiKey',
+  'models': 'panels.models',
   settings: 'panels.settings',
   system: 'panels.system',
   sandbox: 'panels.sandbox',
@@ -801,7 +801,7 @@ export default function RightPanel({
           </>
         )}
 
-        {view === 'api-key' && (
+        {view === 'models' && (
           <div className="p-4 overflow-y-auto">
             {!desktopHost && (
               <p className="mb-3 text-xs text-amber-text/90 leading-relaxed">
@@ -810,12 +810,11 @@ export default function RightPanel({
             )}
             {desktopHost && apiKeyConfigured === false && (
               <p className="mb-3 text-xs text-amber-text/90 leading-relaxed">
-                {t('workbench.apiKeyMissing')}
+                {t('workbench.modelsMissingDeepSeek')}
               </p>
             )}
             {desktopHost && (
-              <ApiKeyForm
-                mainKeyConfigured={apiKeyConfigured === true}
+              <ModelProvidersPanel
                 onSaved={onSavedApiKey}
                 className={!desktopHost ? 'pointer-events-none opacity-50' : ''}
               />

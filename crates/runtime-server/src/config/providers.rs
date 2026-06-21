@@ -13,6 +13,8 @@ pub enum ApiProvider {
     Sglang,
     Vllm,
     Ollama,
+    Agnes,
+    SenseNova,
 }
 
 impl ApiProvider {
@@ -31,6 +33,8 @@ impl ApiProvider {
             "sglang" | "sg-lang" => Some(Self::Sglang),
             "vllm" | "v-llm" => Some(Self::Vllm),
             "ollama" | "ollama-local" => Some(Self::Ollama),
+            "agnes" | "agnes-ai" => Some(Self::Agnes),
+            "sensenova" | "sense-nova" | "sense_nova" => Some(Self::SenseNova),
             _ => None,
         }
     }
@@ -48,6 +52,8 @@ impl ApiProvider {
             Self::Sglang => "sglang",
             Self::Vllm => "vllm",
             Self::Ollama => "ollama",
+            Self::Agnes => "agnes",
+            Self::SenseNova => "sensenova",
         }
     }
 
@@ -65,6 +71,8 @@ impl ApiProvider {
             Self::Sglang => "SGLang",
             Self::Vllm => "vLLM",
             Self::Ollama => "Ollama",
+            Self::Agnes => "Agnes AI",
+            Self::SenseNova => "SenseNova",
         }
     }
 
@@ -82,6 +90,8 @@ impl ApiProvider {
             Self::Sglang,
             Self::Vllm,
             Self::Ollama,
+            Self::Agnes,
+            Self::SenseNova,
         ]
     }
 }
@@ -130,7 +140,10 @@ pub enum RequestPayloadMode {
 /// in the API payload (after normalization / provider-specific mapping).
 #[must_use]
 pub fn provider_capability(provider: ApiProvider, resolved_model: &str) -> ProviderCapability {
-    if matches!(provider, ApiProvider::Ollama) {
+    if matches!(
+        provider,
+        ApiProvider::Ollama | ApiProvider::Openai | ApiProvider::Agnes | ApiProvider::SenseNova
+    ) {
         return ProviderCapability {
             provider,
             resolved_model: resolved_model.to_string(),

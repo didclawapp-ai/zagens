@@ -974,6 +974,10 @@ pub struct ProvidersConfig {
     pub vllm: ProviderConfig,
     #[serde(default)]
     pub ollama: ProviderConfig,
+    #[serde(default)]
+    pub agnes: ProviderConfig,
+    #[serde(default)]
+    pub sensenova: ProviderConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

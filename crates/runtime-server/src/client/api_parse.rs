@@ -80,7 +80,10 @@ pub(super) fn apply_reasoning_effort(
             }
             // OpenAI rejects unknown request arguments (`thinking`) and only
             // some model families accept `reasoning_effort`; send nothing.
-            ApiProvider::Openai | ApiProvider::Ollama => {}
+            ApiProvider::Openai
+            | ApiProvider::Ollama
+            | ApiProvider::Agnes
+            | ApiProvider::SenseNova => {}
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": false,
@@ -98,7 +101,10 @@ pub(super) fn apply_reasoning_effort(
                 body["reasoning_effort"] = json!("high");
                 body["thinking"] = json!({ "type": "enabled" });
             }
-            ApiProvider::Openai | ApiProvider::Ollama => {}
+            ApiProvider::Openai
+            | ApiProvider::Ollama
+            | ApiProvider::Agnes
+            | ApiProvider::SenseNova => {}
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": true,
@@ -117,7 +123,10 @@ pub(super) fn apply_reasoning_effort(
                 body["reasoning_effort"] = json!("max");
                 body["thinking"] = json!({ "type": "enabled" });
             }
-            ApiProvider::Openai | ApiProvider::Ollama => {}
+            ApiProvider::Openai
+            | ApiProvider::Ollama
+            | ApiProvider::Agnes
+            | ApiProvider::SenseNova => {}
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": true,

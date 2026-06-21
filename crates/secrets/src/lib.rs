@@ -418,17 +418,15 @@ impl Secrets {
     }
 }
 
-/// Map a canonical provider name to its environment variable, returning
-/// the value if non-empty.
-#[must_use]
-pub fn env_for(name: &str) -> Option<String> {
-    let candidates: &[&str] = match name.to_ascii_lowercase().as_str() {
+/// Environment variables runtime checks for a keyring slot (first = primary injection target).
+fn env_var_candidates_for_keyring_slot(slot: &str) -> &'static [&'static str] {
+    let lowered = slot.to_ascii_lowercase();
+    match lowered.as_str() {
         "deepseek" => &["DEEPSEEK_API_KEY"],
         "openrouter" => &["OPENROUTER_API_KEY"],
         "novita" => &["NOVITA_API_KEY"],
-        // NVIDIA NIM falls back to `DEEPSEEK_API_KEY` last because the
-        // catalog endpoint accepts the same DeepSeek-issued key when no
-        // dedicated NVIDIA token is set. This mirrors pre-v0.7 behaviour.
+        // NVIDIA NIM falls back to `DEEPSEEK_API_KEY` last because the catalog endpoint
+        // accepts the same DeepSeek-issued key when no dedicated NVIDIA token is set.
         "nvidia" | "nvidia-nim" | "nvidia_nim" | "nim" => {
             &["NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY", "DEEPSEEK_API_KEY"]
         }
@@ -437,9 +435,58 @@ pub fn env_for(name: &str) -> Option<String> {
         "vllm" | "v-llm" => &["VLLM_API_KEY"],
         "ollama" | "ollama-local" => &["OLLAMA_API_KEY"],
         "openai" => &["OPENAI_API_KEY"],
-        _ => return None,
-    };
-    for var in candidates {
+        "agnes" | "agnes-ai" => &["AGNES_API_KEY", "AGNES_API_TOKEN", "APIHUB_AGNES_API_KEY"],
+        "sensenova" | "sense-nova" | "sense_nova" => &["SENSENOVA_API_KEY", "SENSENOVA_API_TOKEN"],
+        "vision" => &["VISION_API_KEY", "SILICONFLOW_API_KEY"],
+        _ => &[],
+    }
+}
+
+/// Every keyring slot the desktop (or CLI login) may populate. Sidecar spawn injects the
+/// primary env var for each slot that holds a value.
+const KEYRING_INJECTION_SLOTS: &[&str] = &[
+    "deepseek",
+    "openrouter",
+    "novita",
+    "nvidia-nim",
+    "fireworks",
+    "sglang",
+    "vllm",
+    "ollama",
+    "openai",
+    "agnes",
+    "sensenova",
+    "vision",
+];
+
+/// Whether [`inject_keyring_envs`] will map this slot into a sidecar env var.
+#[must_use]
+pub fn keyring_slot_has_sidecar_env_injection(slot: &str) -> bool {
+    !env_var_candidates_for_keyring_slot(slot).is_empty()
+}
+
+/// Inject keyring-held provider API keys into a child process environment.
+///
+/// Runtime resolves credentials via **env → config file** (no keyring I/O). The desktop
+/// parent mirrors every keyring slot listed in [`KEYRING_INJECTION_SLOTS`] into the
+/// matching primary env var before starting the sidecar.
+pub fn inject_keyring_envs(cmd: &mut std::process::Command) {
+    let secrets = Secrets::auto_detect();
+    for slot in KEYRING_INJECTION_SLOTS {
+        let Some(env_var) = env_var_candidates_for_keyring_slot(slot).first() else {
+            continue;
+        };
+        if let Some(key) = secrets.resolve(slot) {
+            cmd.env(env_var, &key);
+        }
+    }
+}
+
+/// Map a canonical provider name to its environment variable, returning
+/// the value if non-empty.
+#[must_use]
+pub fn env_for(name: &str) -> Option<String> {
+    for var in env_var_candidates_for_keyring_slot(name) {
         if let Ok(value) = std::env::var(var)
             && !value.trim().is_empty()
         {
@@ -475,11 +522,39 @@ mod tests {
             "VLLM_API_KEY",
             "OLLAMA_API_KEY",
             "OPENAI_API_KEY",
+            "AGNES_API_KEY",
+            "SENSENOVA_API_KEY",
+            "VISION_API_KEY",
+            "SILICONFLOW_API_KEY",
         ] {
             // Safety: tests serialise on env_lock(); the broader
             // workspace has the same pattern in `crates/config`.
             unsafe { std::env::remove_var(var) };
         }
+    }
+
+    #[test]
+    fn every_injection_slot_maps_to_env_var() {
+        for slot in KEYRING_INJECTION_SLOTS {
+            assert!(
+                keyring_slot_has_sidecar_env_injection(slot),
+                "keyring slot {slot} has no sidecar env mapping"
+            );
+        }
+    }
+
+    #[test]
+    fn env_for_honors_nvidia_deepseek_fallback() {
+        let _lock = env_lock();
+        clear_known_envs();
+        // Safety: env mutation guarded by env_lock().
+        unsafe { std::env::set_var("DEEPSEEK_API_KEY", "ds-fallback-for-nim") };
+        assert_eq!(
+            env_for("nvidia-nim").as_deref(),
+            Some("ds-fallback-for-nim")
+        );
+        // Safety: env mutation guarded by env_lock().
+        unsafe { std::env::remove_var("DEEPSEEK_API_KEY") };
     }
 
     #[test]

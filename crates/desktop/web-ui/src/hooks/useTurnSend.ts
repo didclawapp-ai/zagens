@@ -1091,7 +1091,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               trust_mode: streamOpts.trust_mode,
               auto_approve: streamOpts.auto_approve,
               ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
-              ...modelSamplingForApi(modelParams),
+              ...modelSamplingForApi(modelParams, selectedModel),
             };
             const { turn } = sendOptions?.editFromMessageId
               ? await editLastThreadTurn(resumedThreadId, {
@@ -1135,7 +1135,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 auto_approve: streamOpts.auto_approve,
                 ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
                 task_type: taskTypePreference,
-                ...modelSamplingForApi(modelParams),
+                ...modelSamplingForApi(modelParams, selectedModel),
               },
               (ev) => onSseEvent(ev),
               () => {

@@ -202,8 +202,9 @@ impl Engine {
         if top_p.is_some() {
             self.session.top_p = top_p;
         }
-        if max_output_tokens.is_some() {
-            self.session.max_output_tokens = max_output_tokens;
+        if let Some(t) = max_output_tokens {
+            self.session.max_output_tokens =
+                Some(clamp_max_output_tokens_for_model(&self.session.model, t));
         }
 
         // Update system prompt to match current mode and include persisted compaction context.

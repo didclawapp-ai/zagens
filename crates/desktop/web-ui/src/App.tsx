@@ -373,6 +373,23 @@ export default function App() {
     [handleSystemSettingsSaved],
   );
 
+  const syncComposerFromConfig = useCallback(() => {
+    void fetchSystemSettings()
+      .then((settings) => {
+        setConfiguredModels(settings.available_models ?? []);
+        const next = settings.default_model.trim();
+        if (next) {
+          setSelectedModel(next);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleModelProvidersSaved = useCallback(() => {
+    refreshApiKeyStatus();
+    syncComposerFromConfig();
+  }, [refreshApiKeyStatus, syncComposerFromConfig]);
+
   useEffect(() => {
     if (!desktopHost) return;
     let cancelled = false;
@@ -380,6 +397,10 @@ export default function App() {
       .then((settings) => {
         if (cancelled) return;
         setConfiguredModels(settings.available_models ?? []);
+        const next = settings.default_model.trim();
+        if (next) {
+          setSelectedModel(next);
+        }
       })
       .catch(() => {});
     return () => {
@@ -1115,6 +1136,7 @@ export default function App() {
       onSystemSettingsSaved={handleSystemSettingsSavedWithModels}
       onRouteIntentChange={setRouteIntent}
       refreshApiKeyStatus={refreshApiKeyStatus}
+      onModelProvidersSaved={handleModelProvidersSaved}
       onOpenTasks={handleOpenTasks}
       onOpenTaskThread={handleOpenTaskThread}
       highlightTaskId={highlightTaskId}

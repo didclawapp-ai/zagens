@@ -1413,6 +1413,25 @@ fn openrouter_provider_uses_canonical_defaults() -> Result<()> {
 }
 
 #[test]
+fn openrouter_custom_model_passes_through() -> Result<()> {
+    let config = Config {
+        provider: Some("openrouter".to_string()),
+        default_text_model: Some("openrouter/owl-alpha".to_string()),
+        providers: Some(ProvidersConfig {
+            openrouter: ProviderConfig {
+                model: Some("openrouter/owl-alpha".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    config.validate()?;
+    assert_eq!(config.default_model(), "openrouter/owl-alpha");
+    Ok(())
+}
+
+#[test]
 fn novita_provider_uses_canonical_defaults() -> Result<()> {
     let _lock = lock_test_env();
     let nanos = SystemTime::now()

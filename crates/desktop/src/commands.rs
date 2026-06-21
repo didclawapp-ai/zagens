@@ -594,6 +594,66 @@ pub fn clear_deepseek_api_key(ctx: tauri::State<'_, AppContext>) -> Result<(), S
     Ok(())
 }
 
+#[tauri::command]
+pub fn get_model_providers_status()
+-> Result<Vec<crate::model_providers::ModelProviderStatus>, String> {
+    crate::model_providers::get_model_providers_status()
+}
+
+#[tauri::command]
+pub fn save_model_provider_credentials(
+    provider_id: String,
+    api_key: Option<String>,
+    base_url: Option<String>,
+    model: Option<String>,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    crate::model_providers::save_model_provider_credentials(
+        provider_id,
+        api_key,
+        base_url,
+        model,
+        &ctx.sidecar_restart,
+    )
+}
+
+#[tauri::command]
+pub fn clear_model_provider_credentials(
+    provider_id: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    crate::model_providers::clear_model_provider_credentials(provider_id, &ctx.sidecar_restart)
+}
+
+#[tauri::command]
+pub fn activate_model_provider(
+    provider_id: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    crate::model_providers::activate_model_provider(provider_id, &ctx.sidecar_restart)
+}
+
+#[tauri::command]
+pub async fn probe_model_provider(
+    provider_id: String,
+) -> Result<crate::model_providers::ProviderProbeResult, String> {
+    crate::model_providers::probe_model_provider(provider_id).await
+}
+
+#[tauri::command]
+pub async fn list_openrouter_models() -> Result<crate::model_providers::OpenRouterModelList, String>
+{
+    crate::model_providers::list_openrouter_models().await
+}
+
+#[tauri::command]
+pub fn set_openrouter_model(
+    model_id: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    crate::model_providers::set_openrouter_model(model_id, &ctx.sidecar_restart)
+}
+
 #[derive(Debug, Serialize)]
 pub struct VisionBridgeStatus {
     pub configured: bool,
@@ -1737,6 +1797,8 @@ fn collect_configured_models(cfg: &zagens_config::ConfigToml) -> Vec<String> {
     push_model_option(&mut out, &mut seen, providers.sglang.model.as_deref());
     push_model_option(&mut out, &mut seen, providers.vllm.model.as_deref());
     push_model_option(&mut out, &mut seen, providers.ollama.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.agnes.model.as_deref());
+    push_model_option(&mut out, &mut seen, providers.sensenova.model.as_deref());
     out
 }
 

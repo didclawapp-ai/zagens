@@ -179,12 +179,9 @@ fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> 
         std_cmd.env("DEEPSEEK_BUNDLED_PYTHON", py);
     }
 
-    // Pull the DeepSeek API key from OS keyring so it never sits in config.toml
-    // or any other file plaintext. The sidecar picks it up via DEEPSEEK_API_KEY.
-    let secrets = zagens_secrets::Secrets::auto_detect();
-    if let Some(api_key) = secrets.resolve("deepseek") {
-        std_cmd.env("DEEPSEEK_API_KEY", api_key);
-    }
+    // Pull provider API keys from OS keyring into env vars. Runtime resolves
+    // credentials via env → config (no keyring I/O in the sidecar process).
+    zagens_secrets::inject_keyring_envs(&mut std_cmd);
     std_cmd
         .args(runtime_sidecar_cli_args(port_s.as_str()))
         .arg("--workspace")

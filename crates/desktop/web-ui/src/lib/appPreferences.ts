@@ -272,9 +272,17 @@ export function loadStoredInspector(): RightPanelView {
         /* ignore */
       }
     }
+    if (s === 'api-key') {
+      s = 'models';
+      try {
+        localStorage.setItem(ACTIVE_INSPECTOR_STORAGE_KEY, 'models');
+      } catch {
+        /* ignore */
+      }
+    }
     if (
       s === 'workspace' ||
-      s === 'api-key' ||
+      s === 'models' ||
       s === 'settings' ||
       s === 'system' ||
       s === 'sandbox' ||

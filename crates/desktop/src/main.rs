@@ -3,6 +3,7 @@
 mod commands;
 mod disk_guard;
 mod export_path;
+mod model_providers;
 mod runtime_proxy;
 mod sidecar;
 mod terminal;
@@ -219,6 +220,13 @@ fn main() {
             commands::get_api_key_status,
             commands::save_deepseek_api_key,
             commands::clear_deepseek_api_key,
+            commands::get_model_providers_status,
+            commands::save_model_provider_credentials,
+            commands::clear_model_provider_credentials,
+            commands::activate_model_provider,
+            commands::probe_model_provider,
+            commands::list_openrouter_models,
+            commands::set_openrouter_model,
             commands::get_vision_bridge_status,
             commands::save_vision_bridge,
             commands::clear_vision_bridge,
