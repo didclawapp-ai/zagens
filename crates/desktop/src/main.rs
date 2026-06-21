@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod custom_providers;
 mod disk_guard;
 mod export_path;
 mod model_providers;
@@ -220,6 +221,7 @@ fn main() {
             commands::get_api_key_status,
             commands::save_deepseek_api_key,
             commands::clear_deepseek_api_key,
+            commands::add_custom_model_provider,
             commands::get_model_providers_status,
             commands::save_model_provider_credentials,
             commands::clear_model_provider_credentials,
@@ -227,6 +229,8 @@ fn main() {
             commands::probe_model_provider,
             commands::list_openrouter_models,
             commands::set_openrouter_model,
+            commands::list_sensenova_models,
+            commands::set_sensenova_model,
             commands::get_vision_bridge_status,
             commands::save_vision_bridge,
             commands::clear_vision_bridge,

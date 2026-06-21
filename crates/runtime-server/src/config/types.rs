@@ -679,6 +679,15 @@ pub struct Config {
     /// Agent kernel-v3 turn machine kill switch (`[kernel]` table).
     #[serde(default)]
     pub kernel: Option<KernelConfigToml>,
+
+    /// User-defined OpenAI-compatible providers (`[custom_providers.<id>]`).
+    #[serde(default)]
+    pub custom_providers:
+        Option<std::collections::BTreeMap<String, zagens_config::CustomProviderToml>>,
+
+    /// Active entry in `custom_providers` when `provider = "custom"`.
+    #[serde(default)]
+    pub custom_provider_id: Option<String>,
 }
 
 /// `[tools]` table — kernel-v2 tool plane kill switches.
@@ -942,6 +951,8 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub base_url: Option<String>,
     pub model: Option<String>,
+    #[serde(default)]
+    pub model_output_limits: std::collections::BTreeMap<String, u32>,
     pub http_headers: Option<HashMap<String, String>>,
 }
 

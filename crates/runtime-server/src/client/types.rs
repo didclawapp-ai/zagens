@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -23,6 +24,7 @@ pub struct DeepSeekClient {
     pub(super) api_key: String,
     pub(super) base_url: String,
     pub(super) api_provider: ApiProvider,
+    pub(super) model_output_limits: BTreeMap<String, u32>,
     pub(super) retry: RetryPolicy,
     pub(super) default_model: String,
     pub(super) connection_health: Arc<AsyncMutex<ConnectionHealth>>,
@@ -190,6 +192,7 @@ impl Clone for DeepSeekClient {
             api_key: self.api_key.clone(),
             base_url: self.base_url.clone(),
             api_provider: self.api_provider,
+            model_output_limits: self.model_output_limits.clone(),
             retry: self.retry.clone(),
             default_model: self.default_model.clone(),
             connection_health: self.connection_health.clone(),

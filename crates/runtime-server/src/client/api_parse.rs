@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use zagens_core::chat::is_deepseek_v4_model;
 
 use crate::config::ApiProvider;
 use crate::models::{ServerToolUsage, SystemPrompt, Usage};
@@ -66,6 +67,8 @@ pub(super) fn apply_reasoning_effort(
     let Some(effort) = effort else {
         return;
     };
+    let model = body.get("model").and_then(Value::as_str).unwrap_or("");
+    let v4_hosted = is_deepseek_v4_model(model);
     let normalized = effort.trim().to_ascii_lowercase();
     match normalized.as_str() {
         "off" | "disabled" | "none" | "false" => match provider {
@@ -78,12 +81,14 @@ pub(super) fn apply_reasoning_effort(
             | ApiProvider::Vllm => {
                 body["thinking"] = json!({ "type": "disabled" });
             }
-            // OpenAI rejects unknown request arguments (`thinking`) and only
-            // some model families accept `reasoning_effort`; send nothing.
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova => {}
+            | ApiProvider::SenseNova => {
+                if v4_hosted {
+                    body["thinking"] = json!({ "type": "disabled" });
+                }
+            }
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": false,
@@ -104,7 +109,12 @@ pub(super) fn apply_reasoning_effort(
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova => {}
+            | ApiProvider::SenseNova => {
+                if v4_hosted {
+                    body["reasoning_effort"] = json!("high");
+                    body["thinking"] = json!({ "type": "enabled" });
+                }
+            }
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": true,
@@ -126,7 +136,12 @@ pub(super) fn apply_reasoning_effort(
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova => {}
+            | ApiProvider::SenseNova => {
+                if v4_hosted {
+                    body["reasoning_effort"] = json!("max");
+                    body["thinking"] = json!({ "type": "enabled" });
+                }
+            }
             ApiProvider::NvidiaNim => {
                 body["chat_template_kwargs"] = json!({
                     "thinking": true,

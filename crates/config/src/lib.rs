@@ -99,6 +99,8 @@ pub enum ProviderKind {
     Agnes,
     #[serde(rename = "sensenova")]
     SenseNova,
+    /// User-defined OpenAI-compatible provider (see `[custom_providers]`).
+    Custom,
 }
 
 impl ProviderKind {
@@ -117,6 +119,7 @@ impl ProviderKind {
         Self::Ollama,
         Self::Agnes,
         Self::SenseNova,
+        Self::Custom,
     ];
 
     #[must_use]
@@ -133,12 +136,19 @@ impl ProviderKind {
             Self::Ollama => "ollama",
             Self::Agnes => "agnes",
             Self::SenseNova => "sensenova",
+            Self::Custom => "custom",
         }
+    }
+
+    #[must_use]
+    pub fn is_custom(self) -> bool {
+        matches!(self, Self::Custom)
     }
 
     #[must_use]
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
+            "custom" => Some(Self::Custom),
             "deepseek" | "deep-seek" => Some(Self::Deepseek),
             "nvidia" | "nvidia-nim" | "nvidia_nim" | "nim" => Some(Self::NvidiaNim),
             "openai" | "open-ai" => Some(Self::Openai),
@@ -160,8 +170,45 @@ pub struct ProviderConfigToml {
     pub api_key: Option<String>,
     pub base_url: Option<String>,
     pub model: Option<String>,
+    /// Cached model ids from the provider API (e.g. SenseNova `/v1/models`); Composer picker reads these.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub available_models: Vec<String>,
+    /// Per-model max output tokens from provider `/v1/models` (`max_output_length`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_output_limits: BTreeMap<String, u32>,
     #[serde(default)]
     pub http_headers: BTreeMap<String, String>,
+}
+
+/// User-defined OpenAI-compatible model provider (Phase 4 custom panel entries).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomProviderToml {
+    pub display_name: String,
+    pub base_url: String,
+    pub model: String,
+}
+
+/// Keyring slot for a custom provider id (`custom-{id}`).
+#[must_use]
+pub fn custom_provider_keyring_slot(id: &str) -> String {
+    format!("custom-{}", id.trim())
+}
+
+/// Stable id slug from a display name (a-z0-9 and dashes).
+#[must_use]
+pub fn slugify_custom_provider_id(name: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for ch in name.trim().to_ascii_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            prev_dash = false;
+        } else if !prev_dash && !out.is_empty() {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
 }
 
 /// Vision bridge config — enables image→text extraction via an external
@@ -240,6 +287,8 @@ impl ProvidersToml {
             ProviderKind::Ollama => &self.ollama,
             ProviderKind::Agnes => &self.agnes,
             ProviderKind::SenseNova => &self.sensenova,
+            // Custom entries live in `ConfigToml.custom_providers`, not `[providers.*]`.
+            ProviderKind::Custom => &self.openai,
         }
     }
 
@@ -256,8 +305,36 @@ impl ProvidersToml {
             ProviderKind::Ollama => &mut self.ollama,
             ProviderKind::Agnes => &mut self.agnes,
             ProviderKind::SenseNova => &mut self.sensenova,
+            ProviderKind::Custom => &mut self.openai,
         }
     }
+}
+
+/// UI / Tauri command id prefix for user-defined providers (`custom:{slug}`).
+pub const CUSTOM_PROVIDER_UI_ID_PREFIX: &str = "custom:";
+
+/// Parse `custom:{slug}` → `slug`, or pass through bare slug.
+#[must_use]
+pub fn parse_custom_provider_ui_id(id: &str) -> Option<String> {
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(rest) = trimmed.strip_prefix(CUSTOM_PROVIDER_UI_ID_PREFIX) {
+        let slug = rest.trim();
+        if slug.is_empty() {
+            None
+        } else {
+            Some(slug.to_string())
+        }
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+#[must_use]
+pub fn custom_provider_ui_id(slug: &str) -> String {
+    format!("{CUSTOM_PROVIDER_UI_ID_PREFIX}{}", slug.trim())
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -348,6 +425,12 @@ pub struct ConfigToml {
     /// Windows native sandbox (`[windows]` table).
     #[serde(default)]
     pub windows: Option<WindowsConfigToml>,
+    /// User-defined OpenAI-compatible providers (`[custom_providers.<id>]`).
+    #[serde(default)]
+    pub custom_providers: BTreeMap<String, CustomProviderToml>,
+    /// Active entry in `custom_providers` when `provider = "custom"`.
+    #[serde(default)]
+    pub custom_provider_id: Option<String>,
     #[serde(flatten)]
     pub extras: BTreeMap<String, toml::Value>,
 }
@@ -1428,6 +1511,16 @@ impl ConfigToml {
         let env = EnvRuntimeOverrides::load();
         let provider = cli.provider.or(env.provider).unwrap_or(self.provider);
 
+        let custom_entry = (provider == ProviderKind::Custom)
+            .then(|| {
+                self.custom_provider_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty())
+                    .and_then(|id| self.custom_providers.get(id))
+            })
+            .flatten();
+
         let provider_cfg = self.providers.for_provider(provider);
         let root_deepseek_api_key = (provider == ProviderKind::Deepseek)
             .then(|| self.api_key.clone())
@@ -1448,6 +1541,26 @@ impl ConfigToml {
             (Some(value), Some(RuntimeApiKeySource::Cli))
         } else if let Some(value) = from_file.clone().filter(|v| !v.trim().is_empty()) {
             (Some(value), Some(RuntimeApiKeySource::ConfigFile))
+        } else if provider == ProviderKind::Custom {
+            if let Some(id) = self
+                .custom_provider_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+            {
+                let slot = custom_provider_keyring_slot(id);
+                if let Some((value, source)) = secrets.resolve_with_source(&slot) {
+                    let source = match source {
+                        SecretSource::Keyring => RuntimeApiKeySource::Keyring,
+                        SecretSource::Env => RuntimeApiKeySource::Env,
+                    };
+                    (Some(value), Some(source))
+                } else {
+                    (None, None)
+                }
+            } else {
+                (None, None)
+            }
         } else if let Some((value, source)) = secrets.resolve_with_source(provider.as_str()) {
             let source = match source {
                 SecretSource::Keyring => RuntimeApiKeySource::Keyring,
@@ -1463,6 +1576,7 @@ impl ConfigToml {
             .clone()
             .or_else(|| env.base_url_for(provider))
             .or_else(|| provider_cfg.base_url.clone())
+            .or_else(|| custom_entry.map(|e| e.base_url.clone()))
             .or(root_deepseek_base_url)
             .unwrap_or_else(|| match provider {
                 ProviderKind::Deepseek => DEFAULT_DEEPSEEK_BASE_URL.to_string(),
@@ -1476,6 +1590,7 @@ impl ConfigToml {
                 ProviderKind::Ollama => DEFAULT_OLLAMA_BASE_URL.to_string(),
                 ProviderKind::Agnes => DEFAULT_AGNES_BASE_URL.to_string(),
                 ProviderKind::SenseNova => DEFAULT_SENSENOVA_BASE_URL.to_string(),
+                ProviderKind::Custom => DEFAULT_OPENAI_BASE_URL.to_string(),
             });
 
         let model = cli
@@ -1483,6 +1598,7 @@ impl ConfigToml {
             .clone()
             .or_else(|| env.model.clone())
             .or_else(|| provider_cfg.model.clone())
+            .or_else(|| custom_entry.map(|e| e.model.clone()))
             .or(root_deepseek_model)
             .or_else(|| self.model.clone())
             .unwrap_or_else(|| match provider {
@@ -1497,6 +1613,7 @@ impl ConfigToml {
                 ProviderKind::Ollama => DEFAULT_OLLAMA_MODEL.to_string(),
                 ProviderKind::Agnes => DEFAULT_AGNES_MODEL.to_string(),
                 ProviderKind::SenseNova => DEFAULT_SENSENOVA_MODEL.to_string(),
+                ProviderKind::Custom => DEFAULT_OPENAI_MODEL.to_string(),
             });
         let model = normalize_model_for_provider(provider, &model);
 
@@ -1565,6 +1682,12 @@ fn merge_provider_config(target: &mut ProviderConfigToml, source: &ProviderConfi
     if source.model.is_some() {
         target.model = source.model.clone();
     }
+    if !source.available_models.is_empty() {
+        target.available_models = source.available_models.clone();
+    }
+    if !source.model_output_limits.is_empty() {
+        target.model_output_limits = source.model_output_limits.clone();
+    }
     if !source.http_headers.is_empty() {
         target.http_headers = source.http_headers.clone();
     }
@@ -1584,7 +1707,11 @@ pub fn load_project_config(workspace: &Path) -> Option<ConfigToml> {
 fn normalize_model_for_provider(provider: ProviderKind, model: &str) -> String {
     if matches!(
         provider,
-        ProviderKind::Ollama | ProviderKind::Openai | ProviderKind::Agnes | ProviderKind::SenseNova
+        ProviderKind::Ollama
+            | ProviderKind::Openai
+            | ProviderKind::Agnes
+            | ProviderKind::SenseNova
+            | ProviderKind::Custom
     ) {
         return model.to_string();
     }
@@ -2037,6 +2164,7 @@ impl EnvRuntimeOverrides {
             ProviderKind::Ollama => self.ollama_base_url.clone(),
             ProviderKind::Agnes => None,
             ProviderKind::SenseNova => None,
+            ProviderKind::Custom => None,
         }
     }
 }

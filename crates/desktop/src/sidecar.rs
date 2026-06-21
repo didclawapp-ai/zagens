@@ -168,6 +168,30 @@ fn sidecar_spawn_workspace() -> PathBuf {
         .unwrap_or_else(|_| sidecar_spawn_cwd().unwrap_or_else(|| PathBuf::from(".")))
 }
 
+fn inject_active_custom_provider_key(cmd: &mut std::process::Command) {
+    let Ok(store) = zagens_config::ConfigStore::load(None) else {
+        return;
+    };
+    if store.config.provider != zagens_config::ProviderKind::Custom {
+        return;
+    }
+    let Some(id) = store
+        .config
+        .custom_provider_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+    let slot = zagens_config::custom_provider_keyring_slot(id);
+    let secrets = zagens_secrets::Secrets::auto_detect();
+    if let Some(key) = secrets.resolve(&slot) {
+        cmd.env("OPENAI_API_KEY", &key);
+        cmd.env("ZAGENS_CUSTOM_API_KEY", &key);
+    }
+}
+
 fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> Result<Command> {
     let port_s = port.to_string();
     let workspace = sidecar_spawn_workspace();
@@ -182,6 +206,7 @@ fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> 
     // Pull provider API keys from OS keyring into env vars. Runtime resolves
     // credentials via env → config (no keyring I/O in the sidecar process).
     zagens_secrets::inject_keyring_envs(&mut std_cmd);
+    inject_active_custom_provider_key(&mut std_cmd);
     std_cmd
         .args(runtime_sidecar_cli_args(port_s.as_str()))
         .arg("--workspace")

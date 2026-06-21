@@ -4,6 +4,7 @@ import { useT } from '../i18n';
 import { confirmDialog } from '../lib/confirmDialog';
 import type { ModelProviderStatus, ProviderProbeResult } from '../types/modelProviders';
 import OpenRouterModelPicker from './OpenRouterModelPicker';
+import SenseNovaModelPicker from './SenseNovaModelPicker';
 
 interface Props {
   status: ModelProviderStatus;
@@ -21,7 +22,10 @@ export default function ModelProviderCard({
   onRefresh,
 }: Props) {
   const { t } = useT();
+  const isCustom = status.section === 'custom';
   const [keyDraft, setKeyDraft] = useState('');
+  const [baseUrlDraft, setBaseUrlDraft] = useState('');
+  const [modelDraft, setModelDraft] = useState('');
   const [saveBusy, setSaveBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
   const [activateBusy, setActivateBusy] = useState(false);
@@ -37,8 +41,8 @@ export default function ModelProviderCard({
       await invoke('save_model_provider_credentials', {
         providerId: status.id,
         apiKey: keyDraft.trim() || null,
-        baseUrl: null,
-        model: null,
+        baseUrl: isCustom ? (baseUrlDraft.trim() || status.base_url) : null,
+        model: isCustom ? (modelDraft.trim() || status.model) : null,
       });
       setKeyDraft('');
       onRefresh();
@@ -50,7 +54,13 @@ export default function ModelProviderCard({
   };
 
   const handleClear = async () => {
-    if (!(await confirmDialog(t('models.clearKeyConfirm', { name: status.display_name })))) {
+    if (
+      !(await confirmDialog(
+        isCustom
+          ? t('models.customRemoveConfirm', { name: status.display_name })
+          : t('models.clearKeyConfirm', { name: status.display_name }),
+      ))
+    ) {
       return;
     }
     setError(null);
@@ -128,10 +138,39 @@ export default function ModelProviderCard({
 
       {expanded && (
         <div className="border-t border-divider px-3 py-3 space-y-3">
-          {status.model && (
+          {status.model && !isCustom && (
             <p className="text-[11px] text-t-text-muted">
               {t('models.currentModel')}: <span className="text-t-text-secondary">{status.model}</span>
             </p>
+          )}
+
+          {isCustom && (
+            <>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-medium text-t-text-secondary">
+                  {t('models.customBaseUrl')}
+                </span>
+                <input
+                  type="url"
+                  value={baseUrlDraft || status.base_url || ''}
+                  onChange={(e) => setBaseUrlDraft(e.target.value)}
+                  disabled={busy}
+                  className="w-full rounded-lg bg-input-bg border border-input-border px-3 py-2 text-sm text-t-text placeholder-t-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-medium text-t-text-secondary">
+                  {t('models.customModelId')}
+                </span>
+                <input
+                  type="text"
+                  value={modelDraft || status.model || ''}
+                  onChange={(e) => setModelDraft(e.target.value)}
+                  disabled={busy}
+                  className="w-full rounded-lg bg-input-bg border border-input-border px-3 py-2 text-sm text-t-text placeholder-t-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+                />
+              </label>
+            </>
           )}
 
           <form onSubmit={(e) => void handleSave(e)} className="space-y-2">
@@ -153,7 +192,7 @@ export default function ModelProviderCard({
             <div className="flex flex-wrap gap-2">
               <button
                 type="submit"
-                disabled={busy || (status.key_required && !keyDraft.trim() && !status.configured)}
+                disabled={busy || (status.key_required && !keyDraft.trim() && !status.configured && !isCustom)}
                 className="px-3 py-1.5 rounded-lg bg-accent text-accent-text text-sm font-medium hover:opacity-90 disabled:opacity-50"
               >
                 {saveBusy ? t('models.saving') : t('models.save')}
@@ -164,7 +203,7 @@ export default function ModelProviderCard({
                 onClick={() => void handleClear()}
                 className="px-3 py-1.5 rounded-lg border border-input-border text-sm text-t-text-secondary hover:bg-canvas-alt disabled:opacity-40"
               >
-                {clearBusy ? t('models.clearing') : t('models.clearKey')}
+                {clearBusy ? t('models.clearing') : isCustom ? t('models.customRemove') : t('models.clearKey')}
               </button>
               <button
                 type="button"
@@ -204,8 +243,19 @@ export default function ModelProviderCard({
             />
           )}
 
-          {status.id !== 'deepseek' && status.configured && (
+          {status.id === 'sensenova' && status.configured && (
+            <SenseNovaModelPicker
+              currentModel={status.model}
+              disabled={busy}
+              onModelChanged={onRefresh}
+            />
+          )}
+
+          {status.id !== 'deepseek' && status.configured && !isCustom && (
             <p className="text-[10px] text-t-text-muted leading-relaxed">{t('models.freeProviderHint')}</p>
+          )}
+          {isCustom && status.configured && (
+            <p className="text-[10px] text-t-text-muted leading-relaxed">{t('models.customProviderHint')}</p>
           )}
         </div>
       )}

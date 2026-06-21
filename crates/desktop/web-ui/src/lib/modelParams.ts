@@ -13,8 +13,8 @@ export const MODEL_PARAMS_STORAGE_KEY = 'zagens-desktop-model-params';
  * the answer; `max_tokens` is an upper bound, not a reservation — the model
  * stops when done, so this only removes the premature cap.
  *
- * Third-party providers (OpenRouter, Agnes, SenseNova, …) share a unified 64K cap
- * to avoid provider errors such as Agnes `max_tokens exceeds the limit of 65536`.
+ * Other third-party models (OpenRouter Agnes native ids, SenseNova `sensenova-*`, …)
+ * share a unified 64K cap unless the provider catalog publishes a lower limit.
  */
 export const MODEL_MAX_TOKENS = 384 * 1024; // 393216 — DeepSeek V4 official cap
 export const THIRD_PARTY_MAX_TOKENS = 65_536;
@@ -25,6 +25,13 @@ export const DEFAULT_MAX_TOKENS = MODEL_MAX_TOKENS;
  *  {@link DEFAULT_MAX_TOKENS} on load, so existing installs stop truncating
  *  without the user manually re-opening the dialog. */
 const LEGACY_LOW_MAX_TOKENS = 65536;
+
+/** SenseNova `/v1/models` `max_output_length` keyed by model id (desktop cache). */
+let senseNovaOutputLimits: Record<string, number> = {};
+
+export function setSenseNovaOutputLimits(limits: Record<string, number>): void {
+  senseNovaOutputLimits = limits;
+}
 
 export function isDeepSeekV4Model(model: string): boolean {
   const lower = model.toLowerCase();
@@ -38,9 +45,25 @@ export function isDeepSeekV4Model(model: string): boolean {
   );
 }
 
+function catalogLimitForModel(model: string): number | undefined {
+  const limit = senseNovaOutputLimits[model];
+  return typeof limit === 'number' && limit > 0 ? limit : undefined;
+}
+
 /** Model-aware output cap for the Composer / runtime API. */
 export function maxTokensCapForModel(model: string): number {
-  return isDeepSeekV4Model(model) ? MODEL_MAX_TOKENS : THIRD_PARTY_MAX_TOKENS;
+  if (isDeepSeekV4Model(model)) {
+    const catalog = catalogLimitForModel(model);
+    if (catalog != null && catalog > THIRD_PARTY_MAX_TOKENS) {
+      return Math.min(MODEL_MAX_TOKENS, catalog);
+    }
+    return MODEL_MAX_TOKENS;
+  }
+  const catalog = catalogLimitForModel(model);
+  if (catalog != null) {
+    return Math.min(THIRD_PARTY_MAX_TOKENS, catalog);
+  }
+  return THIRD_PARTY_MAX_TOKENS;
 }
 
 export function maxTokensForModel(model: string, params: ModelParams): number {

@@ -62,6 +62,9 @@ use crate::models::{
     StreamEvent, SystemPrompt, Tool, ToolCaller, Usage,
 };
 
+use crate::config::ApiProvider;
+use zagens_core::chat::clamp_max_output_tokens_with_catalog_limit;
+
 use super::api_parse::{apply_reasoning_effort, parse_usage, system_to_instructions};
 use super::http::{ERROR_BODY_MAX_BYTES, api_url, bounded_error_text};
 use super::tool_names::{from_api_tool_name, to_api_tool_name};
@@ -71,15 +74,25 @@ use super::types::{
 };
 
 impl DeepSeekClient {
+    fn wire_max_tokens(&self, model: &str, requested: u32) -> u32 {
+        let catalog_limit = if self.api_provider == ApiProvider::SenseNova {
+            self.model_output_limits.get(model).copied()
+        } else {
+            None
+        };
+        clamp_max_output_tokens_with_catalog_limit(model, requested, catalog_limit)
+    }
+
     pub(super) async fn create_message_chat(
         &self,
         request: &MessageRequest,
     ) -> Result<MessageResponse> {
         let messages = build_chat_messages_for_request(request);
+        let max_tokens = self.wire_max_tokens(&request.model, request.max_tokens);
         let mut body = json!({
             "model": request.model,
             "messages": messages,
-            "max_tokens": request.max_tokens,
+            "max_tokens": max_tokens,
         });
 
         if let Some(temperature) = request.temperature {
@@ -141,10 +154,11 @@ impl DeepSeekClient {
     ) -> Result<StreamEventBox> {
         // Try true SSE streaming via chat completions (widely supported)
         let messages = build_chat_messages_for_request(&request);
+        let max_tokens = self.wire_max_tokens(&request.model, request.max_tokens);
         let mut body = json!({
             "model": request.model,
             "messages": messages,
-            "max_tokens": request.max_tokens,
+            "max_tokens": max_tokens,
             "stream": true,
             "stream_options": {
                 "include_usage": true

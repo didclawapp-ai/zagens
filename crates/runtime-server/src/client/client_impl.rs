@@ -45,12 +45,18 @@ impl DeepSeekClient {
         ));
 
         let http_client = Self::build_http_client(&api_key, &http_headers)?;
+        let model_output_limits = config
+            .providers
+            .as_ref()
+            .map(|p| p.sensenova.model_output_limits.clone())
+            .unwrap_or_default();
 
         Ok(Self {
             http_client,
             api_key,
             base_url,
             api_provider,
+            model_output_limits,
             retry,
             default_model,
             connection_health: Arc::new(AsyncMutex::new(ConnectionHealth::default())),

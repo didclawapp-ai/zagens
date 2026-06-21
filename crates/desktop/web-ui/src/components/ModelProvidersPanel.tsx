@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n';
+import CustomProviderAddForm from './CustomProviderAddForm';
 import ModelProviderCard from './ModelProviderCard';
 import VisionBridgeSection from './VisionBridgeSection';
 import type { ModelProviderStatus } from '../types/modelProviders';
@@ -40,6 +41,10 @@ export default function ModelProvidersPanel({ onSaved, className = '' }: Props) 
     [providers],
   );
   const free = useMemo(() => providers.filter((p) => p.section === 'free'), [providers]);
+  const custom = useMemo(
+    () => providers.filter((p) => p.section === 'custom'),
+    [providers],
+  );
 
   const toggleExpanded = (id: string) => {
     setExpandedId((cur) => (cur === id ? null : id));
@@ -81,6 +86,23 @@ export default function ModelProvidersPanel({ onSaved, className = '' }: Props) 
             onRefresh={refresh}
           />
         ))}
+      </section>
+
+      <section className="mt-5 space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-t-text-muted">
+          {t('models.customSection')}
+        </p>
+        <p className="text-[10px] text-t-text-muted leading-relaxed">{t('models.customSectionHint')}</p>
+        {custom.map((status) => (
+          <ModelProviderCard
+            key={status.id}
+            status={status}
+            expanded={expandedId === status.id}
+            onToggle={() => toggleExpanded(status.id)}
+            onRefresh={refresh}
+          />
+        ))}
+        <CustomProviderAddForm onAdded={refresh} />
       </section>
 
       <section className="mt-6 border-t border-divider pt-4">

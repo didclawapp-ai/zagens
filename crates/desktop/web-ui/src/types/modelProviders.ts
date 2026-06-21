@@ -1,4 +1,4 @@
-export type ModelProviderSection = 'primary' | 'free';
+export type ModelProviderSection = 'primary' | 'free' | 'custom';
 
 export interface ModelProviderStatus {
   id: string;
@@ -28,5 +28,18 @@ export interface OpenRouterModelEntry {
 export interface OpenRouterModelList {
   free: OpenRouterModelEntry[];
   paid: OpenRouterModelEntry[];
+  current_model: string | null;
+}
+
+export interface SenseNovaModelEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  context_length: number | null;
+  max_output_length: number | null;
+}
+
+export interface SenseNovaModelList {
+  models: SenseNovaModelEntry[];
   current_model: string | null;
 }

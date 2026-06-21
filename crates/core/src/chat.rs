@@ -319,6 +319,29 @@ pub fn clamp_max_output_tokens_for_model(model: &str, requested: u32) -> u32 {
     requested.min(max_output_token_cap_for_model(model))
 }
 
+/// Provider catalog cap (e.g. SenseNova `max_output_length`) layered on top of
+/// {@link max_output_token_cap_for_model}. DeepSeek V4 models keep the main-model
+/// 384K budget even on third-party gateways unless the catalog limit is higher.
+#[must_use]
+pub fn clamp_max_output_tokens_with_catalog_limit(
+    model: &str,
+    requested: u32,
+    catalog_limit: Option<u32>,
+) -> u32 {
+    let base_cap = max_output_token_cap_for_model(model);
+    let Some(limit) = catalog_limit.filter(|&v| v > 0) else {
+        return requested.min(base_cap);
+    };
+    if is_deepseek_v4_model(model) {
+        if limit > DEFAULT_MAX_OUTPUT_TOKENS {
+            return requested.min(base_cap.min(limit));
+        }
+        // Catalog still on the generic 64K gate — V4 uses the main-model cap.
+        return requested.min(base_cap);
+    }
+    requested.min(base_cap.min(limit))
+}
+
 /// Map known models to their approximate context window sizes.
 #[must_use]
 pub fn context_window_for_model(model: &str) -> Option<u32> {
@@ -410,6 +433,34 @@ mod max_output_tests {
         );
         assert_eq!(
             clamp_max_output_tokens_for_model("openrouter/owl-alpha", 200_000),
+            DEFAULT_MAX_OUTPUT_TOKENS
+        );
+    }
+
+    #[test]
+    fn v4_on_sensenova_keeps_main_model_cap_when_catalog_is_64k() {
+        assert_eq!(
+            clamp_max_output_tokens_with_catalog_limit("deepseek-v4-flash", 393_216, Some(65_536)),
+            DEEPSEEK_V4_MAX_OUTPUT_TOKENS
+        );
+    }
+
+    #[test]
+    fn v4_on_sensenova_respects_higher_catalog_limit() {
+        assert_eq!(
+            clamp_max_output_tokens_with_catalog_limit("deepseek-v4-flash", 500_000, Some(400_000)),
+            DEEPSEEK_V4_MAX_OUTPUT_TOKENS
+        );
+    }
+
+    #[test]
+    fn native_sensenova_clamps_to_catalog() {
+        assert_eq!(
+            clamp_max_output_tokens_with_catalog_limit(
+                "sensenova-6.7-flash-lite",
+                393_216,
+                Some(65_536)
+            ),
             DEFAULT_MAX_OUTPUT_TOKENS
         );
     }

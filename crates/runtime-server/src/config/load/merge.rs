@@ -122,6 +122,8 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         windows: override_cfg.windows.or(base.windows),
         tools: merge_tools_config(base.tools, override_cfg.tools),
         kernel: override_cfg.kernel.or(base.kernel),
+        custom_providers: override_cfg.custom_providers.or(base.custom_providers),
+        custom_provider_id: override_cfg.custom_provider_id.or(base.custom_provider_id),
     }
 }
 
@@ -149,6 +151,11 @@ pub(crate) fn merge_provider_config(
         api_key: override_cfg.api_key.or(base.api_key),
         base_url: override_cfg.base_url.or(base.base_url),
         model: override_cfg.model.or(base.model),
+        model_output_limits: if override_cfg.model_output_limits.is_empty() {
+            base.model_output_limits
+        } else {
+            override_cfg.model_output_limits
+        },
         http_headers: override_cfg.http_headers.or(base.http_headers),
     }
 }

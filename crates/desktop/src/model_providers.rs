@@ -6,13 +6,14 @@ use std::time::Duration;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
-use zagens_config::{ConfigStore, ProviderConfigToml, ProviderKind};
+use zagens_config::{CUSTOM_PROVIDER_UI_ID_PREFIX, ConfigStore, ProviderConfigToml, ProviderKind};
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelProviderSection {
     Primary,
     Free,
+    Custom,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -130,10 +131,17 @@ const PRESETS: &[ProviderPreset] = &[
 ];
 
 fn preset_by_id(id: &str) -> Result<&'static ProviderPreset, String> {
+    if id.trim().starts_with(CUSTOM_PROVIDER_UI_ID_PREFIX) {
+        return Err(format!("未知模型接入: {id}"));
+    }
     PRESETS
         .iter()
         .find(|p| p.id == id)
         .ok_or_else(|| format!("未知模型接入: {id}"))
+}
+
+fn is_custom_provider_id(id: &str) -> bool {
+    id.trim().starts_with(CUSTOM_PROVIDER_UI_ID_PREFIX)
 }
 
 fn provider_cfg<'a>(store: &'a ConfigStore, kind: ProviderKind) -> &'a ProviderConfigToml {
@@ -187,7 +195,7 @@ pub fn get_model_providers_status() -> Result<Vec<ModelProviderStatus>, String> 
     let secrets = zagens_secrets::Secrets::auto_detect();
     let active = store.config.provider;
 
-    Ok(PRESETS
+    let mut out: Vec<ModelProviderStatus> = PRESETS
         .iter()
         .map(|preset| {
             let cfg = provider_cfg(&store, preset.kind);
@@ -212,7 +220,12 @@ pub fn get_model_providers_status() -> Result<Vec<ModelProviderStatus>, String> 
                 service_detail: None,
             }
         })
-        .collect())
+        .collect();
+
+    out.extend(crate::custom_providers::custom_provider_statuses(
+        &store, &secrets,
+    ));
+    Ok(out)
 }
 
 fn apply_provider_defaults(store: &mut ConfigStore, preset: &ProviderPreset) {
@@ -236,6 +249,15 @@ pub fn save_model_provider_credentials(
     model: Option<String>,
     sidecar_restart: &Arc<Notify>,
 ) -> Result<(), String> {
+    if is_custom_provider_id(provider_id.trim()) {
+        return crate::custom_providers::save_custom_provider_credentials(
+            provider_id.trim(),
+            api_key,
+            base_url,
+            model,
+            sidecar_restart,
+        );
+    }
     let preset = preset_by_id(provider_id.trim())?;
     let key_trim = api_key
         .map(|k| k.trim().to_string())
@@ -284,6 +306,9 @@ pub fn clear_model_provider_credentials(
     provider_id: String,
     sidecar_restart: &Arc<Notify>,
 ) -> Result<(), String> {
+    if is_custom_provider_id(provider_id.trim()) {
+        return crate::custom_providers::remove_custom_model_provider(provider_id, sidecar_restart);
+    }
     let preset = preset_by_id(provider_id.trim())?;
     let secrets = zagens_secrets::Secrets::auto_detect();
     secrets
@@ -293,6 +318,8 @@ pub fn clear_model_provider_credentials(
     let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let cfg = provider_cfg_mut(&mut store, preset.kind);
     cfg.api_key = None;
+    cfg.available_models.clear();
+    cfg.model_output_limits.clear();
     if preset.kind == ProviderKind::Deepseek {
         store.config.api_key = None;
     }
@@ -305,6 +332,12 @@ pub fn activate_model_provider(
     provider_id: String,
     sidecar_restart: &Arc<Notify>,
 ) -> Result<(), String> {
+    if is_custom_provider_id(provider_id.trim()) {
+        return crate::custom_providers::activate_custom_model_provider(
+            provider_id.trim(),
+            sidecar_restart,
+        );
+    }
     let preset = preset_by_id(provider_id.trim())?;
     let secrets = zagens_secrets::Secrets::auto_detect();
     if preset.key_required
@@ -332,6 +365,17 @@ pub fn activate_model_provider(
     Ok(())
 }
 
+pub async fn activate_model_provider_async(
+    provider_id: String,
+    sidecar_restart: &Arc<Notify>,
+) -> Result<(), String> {
+    activate_model_provider(provider_id.clone(), sidecar_restart)?;
+    if provider_id.trim() == "sensenova" {
+        sync_sensenova_models_catalog(None).await?;
+    }
+    Ok(())
+}
+
 fn normalize_models_url(base_url: &str) -> String {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.ends_with("/v1") {
@@ -351,7 +395,10 @@ struct OpenAiModelEntry {
     id: String,
 }
 
-async fn probe_models_endpoint(base_url: &str, api_key: Option<&str>) -> ProviderProbeResult {
+pub(crate) async fn probe_models_endpoint(
+    base_url: &str,
+    api_key: Option<&str>,
+) -> ProviderProbeResult {
     let url = normalize_models_url(base_url);
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
@@ -426,6 +473,9 @@ fn truncate_probe_body(body: &str) -> String {
 }
 
 pub async fn probe_model_provider(provider_id: String) -> Result<ProviderProbeResult, String> {
+    if is_custom_provider_id(provider_id.trim()) {
+        return crate::custom_providers::probe_custom_model_provider(provider_id.trim()).await;
+    }
     let preset = preset_by_id(provider_id.trim())?;
     let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let secrets = zagens_secrets::Secrets::auto_detect();
@@ -609,6 +659,198 @@ pub fn set_openrouter_model(model_id: String, sidecar_restart: &Arc<Notify>) -> 
     let cfg = provider_cfg_mut(&mut store, ProviderKind::Openrouter);
     cfg.model = Some(model_id.clone());
     store.config.provider = ProviderKind::Openrouter;
+    store.config.default_text_model = Some(model_id);
+    store.save().map_err(|e| e.to_string())?;
+    sidecar_restart.notify_one();
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SenseNovaModelEntry {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub context_length: Option<u64>,
+    pub max_output_length: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SenseNovaModelList {
+    pub models: Vec<SenseNovaModelEntry>,
+    pub current_model: Option<String>,
+}
+
+const SENSENOVA_MODELS_URL: &str = "https://token.sensenova.cn/v1/models";
+
+#[derive(Debug, Deserialize)]
+struct SenseNovaModelsResponse {
+    data: Option<Vec<SenseNovaModelRaw>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SenseNovaModelRaw {
+    id: String,
+    name: Option<String>,
+    description: Option<String>,
+    context_length: Option<u64>,
+    max_output_length: Option<u64>,
+}
+
+fn sensenova_display_name(raw: &SenseNovaModelRaw) -> String {
+    raw.name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(raw.id.as_str())
+        .to_string()
+}
+
+async fn fetch_sensenova_models_from_api() -> Result<Vec<SenseNovaModelEntry>, String> {
+    let secrets = zagens_secrets::Secrets::auto_detect();
+    let api_key = secrets
+        .resolve("sensenova")
+        .filter(|k| !k.trim().is_empty())
+        .ok_or_else(|| "请先保存 SenseNova API Key".to_string())?;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("HTTP 客户端初始化失败: {e}"))?;
+
+    let response = client
+        .get(SENSENOVA_MODELS_URL)
+        .header(AUTHORIZATION, format!("Bearer {}", api_key.trim()))
+        .header(CONTENT_TYPE, "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("SenseNova 请求失败: {e}"))?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!(
+            "SenseNova 模型列表 HTTP {status}: {}",
+            truncate_probe_body(&body)
+        ));
+    }
+
+    let parsed: SenseNovaModelsResponse =
+        serde_json::from_str(&body).map_err(|e| format!("SenseNova 响应解析失败: {e}"))?;
+
+    let mut models = Vec::new();
+    for raw in parsed.data.unwrap_or_default() {
+        if raw.id.trim().is_empty() {
+            continue;
+        }
+        models.push(SenseNovaModelEntry {
+            id: raw.id.clone(),
+            name: sensenova_display_name(&raw),
+            description: raw
+                .description
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+            context_length: raw.context_length,
+            max_output_length: raw.max_output_length,
+        });
+    }
+
+    models.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+    });
+
+    if models.is_empty() {
+        return Err("SenseNova 未返回可用模型".to_string());
+    }
+
+    Ok(models)
+}
+
+fn persist_sensenova_catalog(
+    model_ids: &[String],
+    output_limits: &std::collections::BTreeMap<String, u32>,
+) -> Result<(), String> {
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    store.config.providers.sensenova.available_models = model_ids.to_vec();
+    store.config.providers.sensenova.model_output_limits = output_limits.clone();
+    store.save().map_err(|e| e.to_string())
+}
+
+fn sensenova_output_limits_from_models(
+    models: &[SenseNovaModelEntry],
+) -> std::collections::BTreeMap<String, u32> {
+    let mut out = std::collections::BTreeMap::new();
+    for model in models {
+        if let Some(limit) = model.max_output_length.filter(|v| *v > 0) {
+            let Ok(limit_u32) = u32::try_from(limit) else {
+                continue;
+            };
+            out.insert(model.id.clone(), limit_u32);
+        }
+    }
+    out
+}
+
+pub async fn list_sensenova_models() -> Result<SenseNovaModelList, String> {
+    let models = fetch_sensenova_models_from_api().await?;
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let current_model = store
+        .config
+        .providers
+        .sensenova
+        .model
+        .clone()
+        .filter(|m| !m.trim().is_empty())
+        .or_else(|| store.config.default_text_model.clone());
+    Ok(SenseNovaModelList {
+        models,
+        current_model,
+    })
+}
+
+/// Refresh `[providers.sensenova].available_models` from the official API (no sidecar restart).
+pub async fn sync_sensenova_models_catalog(
+    model_ids: Option<Vec<String>>,
+) -> Result<Vec<String>, String> {
+    let models = fetch_sensenova_models_from_api().await?;
+    let limits = sensenova_output_limits_from_models(&models);
+    let ids = match model_ids {
+        Some(ids) if !ids.is_empty() => ids,
+        _ => models.into_iter().map(|m| m.id).collect(),
+    };
+    persist_sensenova_catalog(&ids, &limits)?;
+    Ok(ids)
+}
+
+pub async fn set_sensenova_model(
+    model_id: String,
+    sidecar_restart: &Arc<Notify>,
+) -> Result<(), String> {
+    let model_id = model_id.trim().to_string();
+    if model_id.is_empty() {
+        return Err("请选择模型".to_string());
+    }
+
+    let preset = preset_by_id("sensenova")?;
+    let secrets = zagens_secrets::Secrets::auto_detect();
+    if !is_configured(
+        preset,
+        &ConfigStore::load(None).map_err(|e| e.to_string())?,
+        &secrets,
+    ) {
+        return Err("请先配置 SenseNova API Key".to_string());
+    }
+
+    sync_sensenova_models_catalog(None).await?;
+
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    apply_provider_defaults(&mut store, preset);
+    let cfg = provider_cfg_mut(&mut store, ProviderKind::SenseNova);
+    cfg.model = Some(model_id.clone());
+    store.config.provider = ProviderKind::SenseNova;
     store.config.default_text_model = Some(model_id);
     store.save().map_err(|e| e.to_string())?;
     sidecar_restart.notify_one();

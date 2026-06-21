@@ -67,12 +67,33 @@ impl Config {
 
     /// Validate that critical config fields are present.
     pub fn validate(&self) -> Result<()> {
-        if let Some(provider) = self.provider.as_deref()
-            && ApiProvider::parse(provider).is_none()
-        {
-            anyhow::bail!(
-                "Invalid provider '{provider}': expected deepseek, deepseek-cn, nvidia-nim, openai, openrouter, novita, fireworks, sglang, vllm, or ollama."
-            );
+        if let Some(provider) = self.provider.as_deref() {
+            if provider.trim().eq_ignore_ascii_case("custom") {
+                let id = self
+                    .custom_provider_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "provider = \"custom\" requires custom_provider_id pointing at a [custom_providers.<id>] table."
+                        )
+                    })?;
+                let entries = self.custom_providers.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "provider = \"custom\" but no [custom_providers] tables were found for id '{id}'."
+                    )
+                })?;
+                if !entries.contains_key(id) {
+                    anyhow::bail!(
+                        "custom_provider_id '{id}' not found under [custom_providers]; add [custom_providers.{id}] first."
+                    );
+                }
+            } else if ApiProvider::parse(provider).is_none() {
+                anyhow::bail!(
+                    "Invalid provider '{provider}': expected deepseek, deepseek-cn, nvidia-nim, openai, openrouter, novita, fireworks, sglang, vllm, ollama, agnes, sensenova, or custom."
+                );
+            }
         }
         if let Some(ref key) = self.api_key
             && key.trim().is_empty()
@@ -188,7 +209,29 @@ impl Config {
     }
 
     #[must_use]
+    pub fn is_custom_provider_active(&self) -> bool {
+        self.provider
+            .as_deref()
+            .is_some_and(|p| p.trim().eq_ignore_ascii_case("custom"))
+            && self
+                .custom_provider_id
+                .as_ref()
+                .is_some_and(|id| !id.trim().is_empty())
+    }
+
+    fn active_custom_provider(&self) -> Option<&zagens_config::CustomProviderToml> {
+        let id = self.custom_provider_id.as_deref()?.trim();
+        if id.is_empty() {
+            return None;
+        }
+        self.custom_providers.as_ref()?.get(id)
+    }
+
+    #[must_use]
     pub fn api_provider(&self) -> ApiProvider {
+        if self.is_custom_provider_active() {
+            return ApiProvider::Openai;
+        }
         self.provider
             .as_deref()
             .and_then(ApiProvider::parse)
@@ -244,6 +287,9 @@ impl Config {
 
     #[must_use]
     pub fn default_model(&self) -> String {
+        if let Some(custom) = self.active_custom_provider() {
+            return custom.model.trim().to_string();
+        }
         let provider = self.api_provider();
         if let Some(model) = self
             .provider_config()
@@ -307,6 +353,9 @@ impl Config {
     /// Return the configured API base URL (normalized).
     #[must_use]
     pub fn deepseek_base_url(&self) -> String {
+        if let Some(custom) = self.active_custom_provider() {
+            return normalize_base_url(custom.base_url.trim());
+        }
         let provider = self.api_provider();
         let provider_base = self
             .provider_config_for(provider)
@@ -361,6 +410,30 @@ impl Config {
     /// explicitly set the field (not the legacy `API_KEYRING_SENTINEL`
     /// placeholder, not empty whitespace).
     pub fn deepseek_api_key(&self) -> Result<String> {
+        if self.is_custom_provider_active() {
+            if let Some(configured) = self.api_key.as_ref()
+                && !configured.trim().is_empty()
+                && configured != API_KEYRING_SENTINEL
+            {
+                return Ok(configured.clone());
+            }
+            for var in ["ZAGENS_CUSTOM_API_KEY", "OPENAI_API_KEY"] {
+                if let Ok(value) = std::env::var(var)
+                    && !value.trim().is_empty()
+                {
+                    return Ok(value);
+                }
+            }
+            let id = self
+                .custom_provider_id
+                .as_deref()
+                .unwrap_or("custom")
+                .trim();
+            anyhow::bail!(
+                "Custom provider '{id}' API key not found. Set OPENAI_API_KEY (injected from keyring on desktop start), \
+                 or add the key via Zagens → Models → custom provider card."
+            );
+        }
         let provider = self.api_provider();
         let slot = match provider {
             ApiProvider::Deepseek | ApiProvider::DeepseekCN => "deepseek",

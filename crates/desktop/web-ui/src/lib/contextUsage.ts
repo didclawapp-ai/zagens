@@ -48,10 +48,10 @@ export interface ThreadContextSnapshot {
 }
 
 export function contextWindowTokensForModel(model: string | undefined): number {
-  const lower = (model ?? '').toLowerCase();
   if (isDeepSeekV4Model(model ?? '')) {
     return DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS;
   }
+  const lower = (model ?? '').toLowerCase();
   if (lower.includes('claude')) {
     return 200_000;
   }

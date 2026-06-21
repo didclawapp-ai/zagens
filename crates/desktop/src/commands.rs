@@ -595,6 +595,25 @@ pub fn clear_deepseek_api_key(ctx: tauri::State<'_, AppContext>) -> Result<(), S
 }
 
 #[tauri::command]
+pub fn add_custom_model_provider(
+    display_name: String,
+    base_url: String,
+    api_key: String,
+    model: String,
+    set_active: bool,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<String, String> {
+    crate::custom_providers::add_custom_model_provider(
+        display_name,
+        base_url,
+        api_key,
+        model,
+        set_active,
+        &ctx.sidecar_restart,
+    )
+}
+
+#[tauri::command]
 pub fn get_model_providers_status()
 -> Result<Vec<crate::model_providers::ModelProviderStatus>, String> {
     crate::model_providers::get_model_providers_status()
@@ -626,11 +645,11 @@ pub fn clear_model_provider_credentials(
 }
 
 #[tauri::command]
-pub fn activate_model_provider(
+pub async fn activate_model_provider(
     provider_id: String,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
-    crate::model_providers::activate_model_provider(provider_id, &ctx.sidecar_restart)
+    crate::model_providers::activate_model_provider_async(provider_id, &ctx.sidecar_restart).await
 }
 
 #[tauri::command]
@@ -652,6 +671,19 @@ pub fn set_openrouter_model(
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
     crate::model_providers::set_openrouter_model(model_id, &ctx.sidecar_restart)
+}
+
+#[tauri::command]
+pub async fn list_sensenova_models() -> Result<crate::model_providers::SenseNovaModelList, String> {
+    crate::model_providers::list_sensenova_models().await
+}
+
+#[tauri::command]
+pub async fn set_sensenova_model(
+    model_id: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    crate::model_providers::set_sensenova_model(model_id, &ctx.sidecar_restart).await
 }
 
 #[derive(Debug, Serialize)]
@@ -1799,6 +1831,9 @@ fn collect_configured_models(cfg: &zagens_config::ConfigToml) -> Vec<String> {
     push_model_option(&mut out, &mut seen, providers.ollama.model.as_deref());
     push_model_option(&mut out, &mut seen, providers.agnes.model.as_deref());
     push_model_option(&mut out, &mut seen, providers.sensenova.model.as_deref());
+    for id in &providers.sensenova.available_models {
+        push_model_option(&mut out, &mut seen, Some(id.as_str()));
+    }
     out
 }
 
