@@ -45,11 +45,7 @@ impl DeepSeekClient {
         ));
 
         let http_client = Self::build_http_client(&api_key, &http_headers)?;
-        let model_output_limits = config
-            .providers
-            .as_ref()
-            .map(|p| p.sensenova.model_output_limits.clone())
-            .unwrap_or_default();
+        let model_output_limits = config.effective_model_output_limits();
 
         Ok(Self {
             http_client,

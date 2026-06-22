@@ -5,6 +5,7 @@ mod custom_providers;
 mod disk_guard;
 mod export_path;
 mod model_providers;
+mod nvidia_nim_provider;
 mod runtime_proxy;
 mod sidecar;
 mod terminal;
@@ -112,6 +113,7 @@ fn main() {
                 runtime_token: token.clone(),
                 sidecar_restart: sidecar_restart.clone(),
                 shutdown: shutdown.clone(),
+                probe_cache: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             });
             app.manage(terminal::TerminalManager::default());
 
@@ -222,6 +224,7 @@ fn main() {
             commands::save_deepseek_api_key,
             commands::clear_deepseek_api_key,
             commands::add_custom_model_provider,
+            commands::rename_custom_model_provider,
             commands::get_model_providers_status,
             commands::save_model_provider_credentials,
             commands::clear_model_provider_credentials,
@@ -231,6 +234,8 @@ fn main() {
             commands::set_openrouter_model,
             commands::list_sensenova_models,
             commands::set_sensenova_model,
+            commands::list_nvidia_nim_models,
+            commands::set_nvidia_nim_model,
             commands::get_vision_bridge_status,
             commands::save_vision_bridge,
             commands::clear_vision_bridge,

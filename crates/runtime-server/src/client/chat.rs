@@ -63,7 +63,9 @@ use crate::models::{
 };
 
 use crate::config::ApiProvider;
-use zagens_core::chat::clamp_max_output_tokens_with_catalog_limit;
+use zagens_core::chat::{
+    clamp_max_output_tokens_for_nvidia_nim, clamp_max_output_tokens_with_catalog_limit,
+};
 
 use super::api_parse::{apply_reasoning_effort, parse_usage, system_to_instructions};
 use super::http::{ERROR_BODY_MAX_BYTES, api_url, bounded_error_text};
@@ -75,12 +77,14 @@ use super::types::{
 
 impl DeepSeekClient {
     fn wire_max_tokens(&self, model: &str, requested: u32) -> u32 {
-        let catalog_limit = if self.api_provider == ApiProvider::SenseNova {
-            self.model_output_limits.get(model).copied()
-        } else {
-            None
-        };
-        clamp_max_output_tokens_with_catalog_limit(model, requested, catalog_limit)
+        // Use catalog limit for all providers — populated from SenseNova API,
+        // OpenRouter model list, NVIDIA NIM catalog, or custom-provider override.
+        let catalog_limit = self.model_output_limits.get(model).copied();
+        let mut wired = clamp_max_output_tokens_with_catalog_limit(model, requested, catalog_limit);
+        if self.api_provider == ApiProvider::NvidiaNim {
+            wired = clamp_max_output_tokens_for_nvidia_nim(wired);
+        }
+        wired
     }
 
     pub(super) async fn create_message_chat(

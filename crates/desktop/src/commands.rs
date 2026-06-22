@@ -6,9 +6,10 @@
 
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::Notify;
 use zagens_config::{
@@ -65,6 +66,8 @@ pub struct AppContext {
     pub sidecar_restart: Arc<Notify>,
     /// Signal the sidecar supervisor to shut down (kill the child process and exit).
     pub shutdown: Arc<Notify>,
+    /// In-memory cache of the last probe result per provider_id: (ok, detail_message).
+    pub probe_cache: Arc<RwLock<HashMap<String, (bool, String)>>>,
 }
 
 impl AppContext {
@@ -600,6 +603,7 @@ pub fn add_custom_model_provider(
     base_url: String,
     api_key: String,
     model: String,
+    max_output_tokens: Option<u32>,
     set_active: bool,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<String, String> {
@@ -608,15 +612,39 @@ pub fn add_custom_model_provider(
         base_url,
         api_key,
         model,
+        max_output_tokens,
         set_active,
         &ctx.sidecar_restart,
     )
 }
 
 #[tauri::command]
-pub fn get_model_providers_status()
--> Result<Vec<crate::model_providers::ModelProviderStatus>, String> {
-    crate::model_providers::get_model_providers_status()
+pub fn rename_custom_model_provider(
+    provider_id: String,
+    new_display_name: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    crate::custom_providers::rename_custom_model_provider(
+        provider_id,
+        new_display_name,
+        &ctx.sidecar_restart,
+    )
+}
+
+#[tauri::command]
+pub fn get_model_providers_status(
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<Vec<crate::model_providers::ModelProviderStatus>, String> {
+    let mut list = crate::model_providers::get_model_providers_status()?;
+    if let Ok(cache) = ctx.probe_cache.read() {
+        for status in &mut list {
+            if let Some((ok, detail)) = cache.get(&status.id) {
+                status.service_ok = Some(*ok);
+                status.service_detail = Some(detail.clone());
+            }
+        }
+    }
+    Ok(list)
 }
 
 #[tauri::command]
@@ -625,6 +653,7 @@ pub fn save_model_provider_credentials(
     api_key: Option<String>,
     base_url: Option<String>,
     model: Option<String>,
+    max_output_tokens: Option<u32>,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
     crate::model_providers::save_model_provider_credentials(
@@ -632,6 +661,7 @@ pub fn save_model_provider_credentials(
         api_key,
         base_url,
         model,
+        max_output_tokens,
         &ctx.sidecar_restart,
     )
 }
@@ -655,8 +685,13 @@ pub async fn activate_model_provider(
 #[tauri::command]
 pub async fn probe_model_provider(
     provider_id: String,
+    ctx: tauri::State<'_, AppContext>,
 ) -> Result<crate::model_providers::ProviderProbeResult, String> {
-    crate::model_providers::probe_model_provider(provider_id).await
+    let result = crate::model_providers::probe_model_provider(provider_id.clone()).await?;
+    if let Ok(mut cache) = ctx.probe_cache.write() {
+        cache.insert(provider_id, (result.ok, result.message.clone()));
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -684,6 +719,20 @@ pub async fn set_sensenova_model(
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
     crate::model_providers::set_sensenova_model(model_id, &ctx.sidecar_restart).await
+}
+
+#[tauri::command]
+pub async fn list_nvidia_nim_models()
+-> Result<crate::nvidia_nim_provider::NvidiaNimModelList, String> {
+    crate::nvidia_nim_provider::list_nvidia_nim_models().await
+}
+
+#[tauri::command]
+pub async fn set_nvidia_nim_model(
+    model_id: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    crate::nvidia_nim_provider::set_nvidia_nim_model(model_id, &ctx.sidecar_restart).await
 }
 
 #[derive(Debug, Serialize)]
@@ -1834,6 +1883,12 @@ fn collect_configured_models(cfg: &zagens_config::ConfigToml) -> Vec<String> {
     for id in &providers.sensenova.available_models {
         push_model_option(&mut out, &mut seen, Some(id.as_str()));
     }
+    for id in &providers.nvidia_nim.available_models {
+        push_model_option(&mut out, &mut seen, Some(id.as_str()));
+    }
+    for entry in cfg.custom_providers.values() {
+        push_model_option(&mut out, &mut seen, Some(entry.model.as_str()));
+    }
     out
 }
 
@@ -1947,11 +2002,20 @@ pub fn save_system_settings(
     settings: SystemSettings,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
+    let model_trimmed = settings.default_model.trim().to_string();
+    if model_trimmed.is_empty() {
+        return Err("默认模型 ID 不能为空".to_string());
+    }
+    // 拒绝明显无效的 model id：包含换行、控制字符或超长
+    if model_trimmed.len() > 256 || model_trimmed.chars().any(|c| c.is_control()) {
+        return Err("默认模型 ID 格式无效".to_string());
+    }
+
     let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let cfg = &mut store.config;
 
     // 顶层标量字段
-    cfg.default_text_model = Some(settings.default_model);
+    cfg.default_text_model = Some(model_trimmed);
     cfg.reasoning_effort = Some(settings.reasoning_effort);
     cfg.cost_currency = Some(settings.cost_currency);
     cfg.allow_shell = Some(settings.allow_shell);

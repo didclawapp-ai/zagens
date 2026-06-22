@@ -37,6 +37,9 @@ pub struct ModelProviderStatus {
     pub base_url: Option<String>,
     pub service_ok: Option<bool>,
     pub service_detail: Option<String>,
+    /// Custom-provider only: user-configured hard cap on max_tokens per request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -72,6 +75,16 @@ struct ProviderPreset {
     docs_url: Option<&'static str>,
 }
 
+pub(crate) fn preset_by_id(id: &str) -> Result<&'static ProviderPreset, String> {
+    if id.trim().starts_with(CUSTOM_PROVIDER_UI_ID_PREFIX) {
+        return Err(format!("未知模型接入: {id}"));
+    }
+    PRESETS
+        .iter()
+        .find(|p| p.id == id)
+        .ok_or_else(|| format!("未知模型接入: {id}"))
+}
+
 const PRESETS: &[ProviderPreset] = &[
     ProviderPreset {
         id: "deepseek",
@@ -94,6 +107,17 @@ const PRESETS: &[ProviderPreset] = &[
         key_required: true,
         section: ModelProviderSection::Free,
         docs_url: Some("https://openrouter.ai/docs"),
+    },
+    ProviderPreset {
+        id: "nvidia-nim",
+        display_name: "NVIDIA NIM",
+        kind: ProviderKind::NvidiaNim,
+        keyring_slot: "nvidia-nim",
+        default_base_url: "https://integrate.api.nvidia.com/v1",
+        default_model: "deepseek-ai/deepseek-v4-flash",
+        key_required: true,
+        section: ModelProviderSection::Free,
+        docs_url: Some("https://build.nvidia.com/settings/api-key"),
     },
     ProviderPreset {
         id: "ollama",
@@ -129,16 +153,6 @@ const PRESETS: &[ProviderPreset] = &[
         docs_url: Some("https://platform.sensenova.cn/docs"),
     },
 ];
-
-fn preset_by_id(id: &str) -> Result<&'static ProviderPreset, String> {
-    if id.trim().starts_with(CUSTOM_PROVIDER_UI_ID_PREFIX) {
-        return Err(format!("未知模型接入: {id}"));
-    }
-    PRESETS
-        .iter()
-        .find(|p| p.id == id)
-        .ok_or_else(|| format!("未知模型接入: {id}"))
-}
 
 fn is_custom_provider_id(id: &str) -> bool {
     id.trim().starts_with(CUSTOM_PROVIDER_UI_ID_PREFIX)
@@ -218,6 +232,7 @@ pub fn get_model_providers_status() -> Result<Vec<ModelProviderStatus>, String> 
                     .or_else(|| Some(preset.default_base_url.to_string())),
                 service_ok: None,
                 service_detail: None,
+                max_output_tokens: None,
             }
         })
         .collect();
@@ -247,6 +262,7 @@ pub fn save_model_provider_credentials(
     api_key: Option<String>,
     base_url: Option<String>,
     model: Option<String>,
+    max_output_tokens: Option<u32>,
     sidecar_restart: &Arc<Notify>,
 ) -> Result<(), String> {
     if is_custom_provider_id(provider_id.trim()) {
@@ -255,6 +271,7 @@ pub fn save_model_provider_credentials(
             api_key,
             base_url,
             model,
+            max_output_tokens,
             sidecar_restart,
         );
     }
@@ -372,6 +389,9 @@ pub async fn activate_model_provider_async(
     activate_model_provider(provider_id.clone(), sidecar_restart)?;
     if provider_id.trim() == "sensenova" {
         sync_sensenova_models_catalog(None).await?;
+    }
+    if provider_id.trim() == "nvidia-nim" {
+        crate::nvidia_nim_provider::sync_nvidia_nim_models_catalog(None).await?;
     }
     Ok(())
 }
@@ -517,12 +537,20 @@ struct OpenRouterModelRaw {
     id: String,
     name: Option<String>,
     pricing: Option<OpenRouterPricing>,
+    /// Per-model max completion tokens reported by OpenRouter.
+    #[serde(default)]
+    top_provider: Option<OpenRouterTopProvider>,
 }
 
 #[derive(Debug, Deserialize)]
 struct OpenRouterPricing {
     prompt: Option<String>,
     completion: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenRouterTopProvider {
+    max_completion_tokens: Option<u64>,
 }
 
 #[must_use]
@@ -599,6 +627,8 @@ pub async fn list_openrouter_models() -> Result<OpenRouterModelList, String> {
 
     let mut free = Vec::new();
     let mut paid = Vec::new();
+    let mut output_limits: std::collections::BTreeMap<String, u32> =
+        std::collections::BTreeMap::new();
 
     for raw in parsed.data.unwrap_or_default() {
         if raw.id.trim().is_empty() {
@@ -607,6 +637,16 @@ pub async fn list_openrouter_models() -> Result<OpenRouterModelList, String> {
         let id_lower = raw.id.to_ascii_lowercase();
         if id_lower.contains("embed") || id_lower.contains("moderation") {
             continue;
+        }
+        // Collect per-model max_completion_tokens from the top_provider field
+        if let Some(limit) = raw
+            .top_provider
+            .as_ref()
+            .and_then(|tp| tp.max_completion_tokens)
+            .and_then(|v| u32::try_from(v).ok())
+            .filter(|&v| v > 0 && v <= 1_000_000)
+        {
+            output_limits.insert(raw.id.clone(), limit);
         }
         let entry = OpenRouterModelEntry {
             id: raw.id.clone(),
@@ -617,6 +657,14 @@ pub async fn list_openrouter_models() -> Result<OpenRouterModelList, String> {
             free.push(entry);
         } else {
             paid.push(entry);
+        }
+    }
+
+    // Persist the per-model output limits so the runtime can use them for all providers
+    if !output_limits.is_empty() {
+        if let Ok(mut store_mut) = ConfigStore::load(None) {
+            store_mut.config.providers.openrouter.model_output_limits = output_limits;
+            let _ = store_mut.save();
         }
     }
 

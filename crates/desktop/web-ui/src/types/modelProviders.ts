@@ -11,6 +11,8 @@ export interface ModelProviderStatus {
   base_url: string | null;
   service_ok: boolean | null;
   service_detail: string | null;
+  /** Custom providers only: user-configured max_tokens cap (undefined = use default 65536) */
+  max_output_tokens?: number | null;
 }
 
 export interface ProviderProbeResult {
@@ -41,5 +43,18 @@ export interface SenseNovaModelEntry {
 
 export interface SenseNovaModelList {
   models: SenseNovaModelEntry[];
+  current_model: string | null;
+}
+
+export interface NvidiaNimModelEntry {
+  id: string;
+  name: string;
+  owned_by: string | null;
+  context_length: number | null;
+  max_output_length: number | null;
+}
+
+export interface NvidiaNimModelList {
+  models: NvidiaNimModelEntry[];
   current_model: string | null;
 }

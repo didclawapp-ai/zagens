@@ -5,6 +5,7 @@ import { confirmDialog } from '../lib/confirmDialog';
 import type { ModelProviderStatus, ProviderProbeResult } from '../types/modelProviders';
 import OpenRouterModelPicker from './OpenRouterModelPicker';
 import SenseNovaModelPicker from './SenseNovaModelPicker';
+import NvidiaNimModelPicker from './NvidiaNimModelPicker';
 
 interface Props {
   status: ModelProviderStatus;
@@ -26,10 +27,13 @@ export default function ModelProviderCard({
   const [keyDraft, setKeyDraft] = useState('');
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
   const [modelDraft, setModelDraft] = useState('');
+  const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [maxOutputTokensDraft, setMaxOutputTokensDraft] = useState('');
   const [saveBusy, setSaveBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
   const [activateBusy, setActivateBusy] = useState(false);
   const [probeBusy, setProbeBusy] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<ProviderProbeResult | null>(null);
 
@@ -37,14 +41,18 @@ export default function ModelProviderCard({
     e.preventDefault();
     setError(null);
     setSaveBusy(true);
+    const parsedMax = parseInt(maxOutputTokensDraft.trim(), 10);
+    const maxOutputTokens = isCustom && maxOutputTokensDraft.trim() ? (parsedMax > 0 ? parsedMax : 0) : null;
     try {
       await invoke('save_model_provider_credentials', {
         providerId: status.id,
         apiKey: keyDraft.trim() || null,
         baseUrl: isCustom ? (baseUrlDraft.trim() || status.base_url) : null,
         model: isCustom ? (modelDraft.trim() || status.model) : null,
+        maxOutputTokens,
       });
       setKeyDraft('');
+      setMaxOutputTokensDraft('');
       onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -89,6 +97,26 @@ export default function ModelProviderCard({
     }
   };
 
+  const handleRename = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = displayNameDraft.trim();
+    if (!name || name === status.display_name) return;
+    setError(null);
+    setRenameBusy(true);
+    try {
+      await invoke('rename_custom_model_provider', {
+        providerId: status.id,
+        newDisplayName: name,
+      });
+      setDisplayNameDraft('');
+      onRefresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
   const handleProbe = useCallback(async () => {
     setError(null);
     setProbeBusy(true);
@@ -105,7 +133,7 @@ export default function ModelProviderCard({
     }
   }, [status.id, onRefresh]);
 
-  const busy = saveBusy || clearBusy || activateBusy || probeBusy || disabled;
+  const busy = saveBusy || clearBusy || activateBusy || probeBusy || renameBusy || disabled;
 
   return (
     <div className="rounded-lg border border-card-border bg-card/40 overflow-hidden">
@@ -146,6 +174,27 @@ export default function ModelProviderCard({
 
           {isCustom && (
             <>
+              <form onSubmit={(e) => void handleRename(e)} className="flex gap-2 items-end">
+                <label className="block space-y-1 flex-1 min-w-0">
+                  <span className="text-[11px] font-medium text-t-text-secondary">
+                    {t('models.customRenameName')}
+                  </span>
+                  <input
+                    type="text"
+                    value={displayNameDraft || status.display_name}
+                    onChange={(e) => setDisplayNameDraft(e.target.value)}
+                    disabled={busy}
+                    className="w-full rounded-lg bg-input-bg border border-input-border px-3 py-2 text-sm text-t-text placeholder-t-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={busy || !displayNameDraft.trim() || displayNameDraft.trim() === status.display_name}
+                  className="shrink-0 px-3 py-2 rounded-lg bg-accent text-accent-text text-sm font-medium hover:opacity-90 disabled:opacity-40"
+                >
+                  {renameBusy ? t('models.customRenaming') : t('models.customRename')}
+                </button>
+              </form>
               <label className="block space-y-1">
                 <span className="text-[11px] font-medium text-t-text-secondary">
                   {t('models.customBaseUrl')}
@@ -166,6 +215,21 @@ export default function ModelProviderCard({
                   type="text"
                   value={modelDraft || status.model || ''}
                   onChange={(e) => setModelDraft(e.target.value)}
+                  disabled={busy}
+                  className="w-full rounded-lg bg-input-bg border border-input-border px-3 py-2 text-sm text-t-text placeholder-t-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-medium text-t-text-secondary">
+                  {t('models.customMaxOutputTokens')}
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000000}
+                  value={maxOutputTokensDraft || (status.max_output_tokens != null ? String(status.max_output_tokens) : '')}
+                  onChange={(e) => setMaxOutputTokensDraft(e.target.value)}
+                  placeholder={t('models.customMaxOutputTokensPlaceholder')}
                   disabled={busy}
                   className="w-full rounded-lg bg-input-bg border border-input-border px-3 py-2 text-sm text-t-text placeholder-t-text-muted focus:border-accent focus:outline-none disabled:opacity-50"
                 />
@@ -251,11 +315,25 @@ export default function ModelProviderCard({
             />
           )}
 
+          {status.id === 'nvidia-nim' && status.configured && (
+            <NvidiaNimModelPicker
+              currentModel={status.model}
+              disabled={busy}
+              onModelChanged={onRefresh}
+            />
+          )}
+
           {status.id !== 'deepseek' && status.configured && !isCustom && (
             <p className="text-[10px] text-t-text-muted leading-relaxed">{t('models.freeProviderHint')}</p>
           )}
           {isCustom && status.configured && (
-            <p className="text-[10px] text-t-text-muted leading-relaxed">{t('models.customProviderHint')}</p>
+            <p className="text-[10px] text-t-text-muted leading-relaxed">
+              {t('models.customProviderHint', {
+                limit: status.max_output_tokens != null
+                  ? status.max_output_tokens.toLocaleString()
+                  : '65,536',
+              })}
+            </p>
           )}
         </div>
       )}

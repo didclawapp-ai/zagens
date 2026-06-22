@@ -76,7 +76,7 @@ const DEFAULT_SGLANG_BASE_URL: &str = "http://localhost:30000/v1";
 const DEFAULT_VLLM_MODEL: &str = "deepseek-ai/DeepSeek-V4-Pro";
 const DEFAULT_VLLM_FLASH_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
 const DEFAULT_VLLM_BASE_URL: &str = "http://localhost:8000/v1";
-const DEFAULT_OLLAMA_MODEL: &str = "deepseek-coder:1.3b";
+const DEFAULT_OLLAMA_MODEL: &str = "qwen2.5-coder:7b";
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434/v1";
 const DEFAULT_AGNES_MODEL: &str = "agnes-2.0-flash";
 const DEFAULT_AGNES_BASE_URL: &str = "https://apihub.agnes-ai.com/v1";
@@ -186,6 +186,10 @@ pub struct CustomProviderToml {
     pub display_name: String,
     pub base_url: String,
     pub model: String,
+    /// Optional hard cap on `max_tokens` sent in each API request (overrides 65536 default).
+    /// Leave unset to use the default ceiling for the model family.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
 }
 
 /// Keyring slot for a custom provider id (`custom-{id}`).

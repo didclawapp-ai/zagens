@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Desktop (模型接入面板 · Phase 1):** 设置菜单「API Key」改为「模型」；右侧面板分区展示主力模型（DeepSeek）与免费接入（OpenRouter、Ollama、Agnes AI、SenseNova）。填 Key 后自动写入 `~/.zagens/config.toml` + OS keyring 并重启 sidecar；支持「设为当前」切换 provider、Ollama/远端 **检测服务**。Runtime/config 新增 `agnes` / `sensenova` provider。Vision Bridge 移至面板「高级」折叠区。
 - **Desktop (模型接入 · Phase 2):** OpenRouter 展开后拉取 `/v1/models`，按 pricing 分 **免费/收费** 列表，搜索过滤，点选即 `set_openrouter_model` 并激活 provider。
 - **Desktop (模型接入 · SenseNova):** 展开 SenseNova 后从官方 `GET https://token.sensenova.cn/v1/models` 拉取模型列表；点选或「设为当前」时缓存至 `[providers.sensenova].available_models`，Composer 输入区模型下拉同步展示全部可用模型。
+- **Desktop (模型接入 · NVIDIA NIM):** 免费接入区新增 **NVIDIA NIM** 卡片（`integrate.api.nvidia.com`）；保存 [build.nvidia.com](https://build.nvidia.com/settings/api-key) API Key 后拉取 `/v1/models` 对话模型列表，点选激活；从响应字段（`max_output_length` / `max_model_len` 等）持久化 `[providers.nvidia_nim].model_output_limits`，运行时与 OpenRouter/SenseNova 一样自适应 `max_tokens` 上限。
 - **Desktop (模型接入 · Phase 4):** 「自定义接入」区 — 填写模型商名称、API 路径、模型 ID、API Key 后动态增加卡片；`provider = "custom"` + `[custom_providers.<id>]` 写入 config，密钥 keyring `custom-{id}`；Runtime 按 OpenAI Chat Completions 调用，sidecar 注入 `OPENAI_API_KEY` / `ZAGENS_CUSTOM_API_KEY`。
 
 - **Desktop web UI (multi-session P1 wrap-up):** 8s reconcile walks every in-flight `streamingThreadIds` entry (background threads refresh registry transcript via replay); `bindLegacySetMessages` routes active-view writes into `StreamContext`; background turn completion toast with optional switch-to-session action and per-session system notification when another session is focused; detach toast when leaving a streaming session.
@@ -35,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop (NVIDIA NIM · max_tokens):** 修复 catalog 误把 `max_model_len`（上下文）当作输出上限、DeepSeek V4 仍请求 384K 导致 `max_completion_tokens is too large: 384256`（NIM 上限 262144）的 HTTP 400；catalog 解析与 runtime `wire_max_tokens`、Composer 上限均钳制至 262144。
 - **Desktop (模型接入 · OpenRouter):** 选择 OpenRouter 模型后 Composer 现与 `config.toml` 的 `default_text_model` 同步；Runtime 将 OpenRouter 模型 ID 原样透传（不再误当作 DeepSeek ID 校验/回退默认模型），修复 sidecar 连接与请求模型不一致。
 - **Desktop (模型接入 · 密钥):** 模型面板与视觉桥接保存的密钥统一由 sidecar 启动时从系统密钥链注入对应环境变量（此前仅注入 `DEEPSEEK_API_KEY`）；覆盖 DeepSeek、OpenRouter、Ollama、Agnes、SenseNova 及 Novita/NVIDIA/OpenAI 等扩展 provider，并补全 Vision Bridge 的 `VISION_API_KEY`。
 - **Desktop / Runtime (max_tokens):** 按模型分流输出上限 — DeepSeek V4 保留 384K（1M 上下文），其它 provider 统一封顶 65536；Composer 发送与 runtime 请求构建双侧 clamp，修复 Agnes 等第三方报 `max_tokens exceeds the limit of 65536`。

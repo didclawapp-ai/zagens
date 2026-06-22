@@ -14,6 +14,8 @@ pub const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS: u32 = 1_000_000;
 pub const DEEPSEEK_V4_MAX_OUTPUT_TOKENS: u32 = 384 * 1024;
 /// Unified API `max_tokens` ceiling for non-V4 providers (OpenRouter, Agnes, etc.).
 pub const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 65_536;
+/// NVIDIA NIM hosted chat endpoints cap **completion** tokens (not context length).
+pub const NVIDIA_NIM_MAX_COMPLETION_TOKENS: u32 = 262_144;
 pub const DEFAULT_COMPACTION_TOKEN_THRESHOLD: usize = 102_400;
 const COMPACTION_THRESHOLD_PERCENT: u32 = 80;
 
@@ -342,6 +344,12 @@ pub fn clamp_max_output_tokens_with_catalog_limit(
     requested.min(base_cap.min(limit))
 }
 
+/// Apply the hosted NVIDIA NIM completion ceiling after catalog / model caps.
+#[must_use]
+pub fn clamp_max_output_tokens_for_nvidia_nim(wired: u32) -> u32 {
+    wired.min(NVIDIA_NIM_MAX_COMPLETION_TOKENS)
+}
+
 /// Map known models to their approximate context window sizes.
 #[must_use]
 pub fn context_window_for_model(model: &str) -> Option<u32> {
@@ -356,6 +364,45 @@ pub fn context_window_for_model(model: &str) -> Option<u32> {
         return Some(LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS);
     }
     if lower.contains("claude") {
+        return Some(200_000);
+    }
+    // Qwen / QwQ family — Qwen2.5+ generally support 128K context
+    if lower.contains("qwen") || lower.contains("qwq") {
+        return Some(128_000);
+    }
+    // Llama 3.x and later: 128K context
+    if lower.contains("llama-3") || lower.contains("llama3") || lower.contains("llama_3") {
+        return Some(128_000);
+    }
+    // Older Llama / Llama-2: 4K–8K, use conservative 4K
+    if lower.contains("llama") {
+        return Some(4_096);
+    }
+    // Mistral / Mixtral: 32K for older variants, many newer models support 128K
+    if lower.contains("mixtral") {
+        return Some(32_000);
+    }
+    if lower.contains("mistral") {
+        return Some(32_000);
+    }
+    // Gemma 2 / Gemma 3: up to 128K context depending on variant; use 8K as safe lower bound
+    if lower.contains("gemma") {
+        return Some(8_192);
+    }
+    // Phi-3 / Phi-4: Microsoft Phi models generally have 128K context
+    if lower.contains("phi-3")
+        || lower.contains("phi3")
+        || lower.contains("phi-4")
+        || lower.contains("phi4")
+    {
+        return Some(128_000);
+    }
+    // GPT-4 series via OpenAI-compatible endpoints (e.g. OpenRouter)
+    if lower.contains("gpt-4") || lower.contains("gpt4") {
+        return Some(128_000);
+    }
+    // Yi family models from 01-ai
+    if lower.contains("/yi-") || lower.starts_with("yi-") {
         return Some(200_000);
     }
     None
@@ -462,6 +509,19 @@ mod max_output_tests {
                 Some(65_536)
             ),
             DEFAULT_MAX_OUTPUT_TOKENS
+        );
+    }
+
+    #[test]
+    fn nvidia_nim_completion_ceiling_clamps_inflated_catalog() {
+        let wired = clamp_max_output_tokens_with_catalog_limit(
+            "deepseek-ai/deepseek-v4-pro",
+            393_216,
+            Some(384_256),
+        );
+        assert_eq!(
+            clamp_max_output_tokens_for_nvidia_nim(wired),
+            NVIDIA_NIM_MAX_COMPLETION_TOKENS
         );
     }
 }

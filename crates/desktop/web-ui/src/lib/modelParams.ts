@@ -18,6 +18,8 @@ export const MODEL_PARAMS_STORAGE_KEY = 'zagens-desktop-model-params';
  */
 export const MODEL_MAX_TOKENS = 384 * 1024; // 393216 — DeepSeek V4 official cap
 export const THIRD_PARTY_MAX_TOKENS = 65_536;
+/** NVIDIA NIM hosted chat APIs cap completion tokens separately from context length. */
+export const NVIDIA_NIM_MAX_COMPLETION_TOKENS = 262_144;
 export const DEFAULT_MAX_TOKENS = MODEL_MAX_TOKENS;
 
 /** Stored `maxTokens` at or below this (any historical default: 8192, then the
@@ -29,8 +31,15 @@ const LEGACY_LOW_MAX_TOKENS = 65536;
 /** SenseNova `/v1/models` `max_output_length` keyed by model id (desktop cache). */
 let senseNovaOutputLimits: Record<string, number> = {};
 
+/** NVIDIA NIM `/v1/models` output limits keyed by model id (desktop cache). */
+let nvidiaNimOutputLimits: Record<string, number> = {};
+
 export function setSenseNovaOutputLimits(limits: Record<string, number>): void {
   senseNovaOutputLimits = limits;
+}
+
+export function setNvidiaNimOutputLimits(limits: Record<string, number>): void {
+  nvidiaNimOutputLimits = limits;
 }
 
 export function isDeepSeekV4Model(model: string): boolean {
@@ -46,6 +55,10 @@ export function isDeepSeekV4Model(model: string): boolean {
 }
 
 function catalogLimitForModel(model: string): number | undefined {
+  const nvidiaLimit = nvidiaNimOutputLimits[model];
+  if (typeof nvidiaLimit === 'number' && nvidiaLimit > 0) {
+    return Math.min(nvidiaLimit, NVIDIA_NIM_MAX_COMPLETION_TOKENS);
+  }
   const limit = senseNovaOutputLimits[model];
   return typeof limit === 'number' && limit > 0 ? limit : undefined;
 }
@@ -56,6 +69,9 @@ export function maxTokensCapForModel(model: string): number {
     const catalog = catalogLimitForModel(model);
     if (catalog != null && catalog > THIRD_PARTY_MAX_TOKENS) {
       return Math.min(MODEL_MAX_TOKENS, catalog);
+    }
+    if (nvidiaNimOutputLimits[model] != null) {
+      return Math.min(MODEL_MAX_TOKENS, NVIDIA_NIM_MAX_COMPLETION_TOKENS);
     }
     return MODEL_MAX_TOKENS;
   }

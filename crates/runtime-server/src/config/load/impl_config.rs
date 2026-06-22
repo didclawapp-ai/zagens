@@ -272,6 +272,25 @@ impl Config {
         self.provider_config_for(self.api_provider())
     }
 
+    /// Returns the combined `model → max_output_tokens` catalog for the active provider.
+    /// Merges the provider's persisted catalog with any custom-provider `max_output_tokens` override.
+    pub(crate) fn effective_model_output_limits(&self) -> std::collections::BTreeMap<String, u32> {
+        let mut limits = self
+            .provider_config()
+            .map(|pc| pc.model_output_limits.clone())
+            .unwrap_or_default();
+
+        // Custom provider may have a per-provider max_output_tokens override.
+        if self.is_custom_provider_active() {
+            if let Some(entry) = self.active_custom_provider() {
+                if let Some(cap) = entry.max_output_tokens.filter(|&v| v > 0) {
+                    limits.insert(entry.model.clone(), cap);
+                }
+            }
+        }
+        limits
+    }
+
     #[must_use]
     pub fn http_headers(&self) -> HashMap<String, String> {
         let mut headers = self.http_headers.clone().unwrap_or_default();

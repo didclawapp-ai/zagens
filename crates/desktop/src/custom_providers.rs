@@ -67,6 +67,7 @@ pub fn custom_provider_statuses(
                 base_url: Some(entry.base_url.clone()),
                 service_ok: None,
                 service_detail: None,
+                max_output_tokens: entry.max_output_tokens,
             }
         })
         .collect()
@@ -77,6 +78,7 @@ pub fn add_custom_model_provider(
     base_url: String,
     api_key: String,
     model: String,
+    max_output_tokens: Option<u32>,
     set_active: bool,
     sidecar_restart: &Arc<Notify>,
 ) -> Result<String, String> {
@@ -93,6 +95,7 @@ pub fn add_custom_model_provider(
         return Err("API Key 不能为空".to_string());
     }
     let base_url = normalize_base_url(&base_url)?;
+    let max_output_tokens = max_output_tokens.filter(|&v| v > 0 && v <= 1_000_000);
 
     let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let mut slug = slugify_custom_provider_id(name);
@@ -107,6 +110,7 @@ pub fn add_custom_model_provider(
             display_name: name.to_string(),
             base_url,
             model: model.to_string(),
+            max_output_tokens,
         },
     );
 
@@ -151,9 +155,27 @@ pub fn remove_custom_model_provider(
             .as_deref()
             .is_some_and(|id| id == slug);
     if was_active {
-        store.config.provider = ProviderKind::Deepseek;
-        store.config.custom_provider_id = None;
-        store.config.default_text_model = Some("deepseek-v4-pro".to_string());
+        // 优先切到其他已配置的自定义接入，否则回退到 Deepseek
+        let secrets = zagens_secrets::Secrets::auto_detect();
+        let next_custom = store
+            .config
+            .custom_providers
+            .iter()
+            .find(|(remaining_slug, _)| {
+                let slot = custom_provider_keyring_slot(remaining_slug);
+                secrets.resolve(&slot).is_some()
+            })
+            .map(|(s, e)| (s.clone(), e.model.clone()));
+
+        if let Some((next_slug, next_model)) = next_custom {
+            store.config.custom_provider_id = Some(next_slug);
+            store.config.default_text_model = Some(next_model);
+            // provider 保持 ProviderKind::Custom
+        } else {
+            store.config.provider = ProviderKind::Deepseek;
+            store.config.custom_provider_id = None;
+            store.config.default_text_model = None;
+        }
     }
 
     store.save().map_err(|e| e.to_string())?;
@@ -166,6 +188,7 @@ pub fn save_custom_provider_credentials(
     api_key: Option<String>,
     base_url: Option<String>,
     model: Option<String>,
+    max_output_tokens: Option<u32>,
     sidecar_restart: &Arc<Notify>,
 ) -> Result<(), String> {
     let slug = parse_custom_provider_ui_id(provider_id)
@@ -204,6 +227,14 @@ pub fn save_custom_provider_credentials(
     {
         entry.model = m;
     }
+    // None means "keep existing"; Some(0) means "clear / use default"
+    if let Some(limit) = max_output_tokens {
+        entry.max_output_tokens = if limit == 0 || limit > 1_000_000 {
+            None
+        } else {
+            Some(limit)
+        };
+    }
 
     store.save().map_err(|e| e.to_string())?;
     sidecar_restart.notify_one();
@@ -238,6 +269,32 @@ pub fn activate_custom_model_provider(
     store.config.provider = ProviderKind::Custom;
     store.config.custom_provider_id = Some(slug);
     store.config.default_text_model = Some(model);
+    store.save().map_err(|e| e.to_string())?;
+    sidecar_restart.notify_one();
+    Ok(())
+}
+
+pub fn rename_custom_model_provider(
+    provider_id: String,
+    new_display_name: String,
+    sidecar_restart: &Arc<Notify>,
+) -> Result<(), String> {
+    let slug = parse_custom_provider_ui_id(&provider_id)
+        .ok_or_else(|| "无效的自定义接入 ID".to_string())?;
+
+    let new_name = new_display_name.trim();
+    if new_name.is_empty() {
+        return Err("模型商名称不能为空".to_string());
+    }
+
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let entry = store
+        .config
+        .custom_providers
+        .get_mut(&slug)
+        .ok_or_else(|| format!("未找到自定义接入: {slug}"))?;
+
+    entry.display_name = new_name.to_string();
     store.save().map_err(|e| e.to_string())?;
     sidecar_restart.notify_one();
     Ok(())
