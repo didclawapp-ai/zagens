@@ -6,6 +6,7 @@ import {
   makeEmptyContext,
   type StreamContext,
 } from '../../hooks/useStreamContextRegistry';
+import type { TurnChatMessage } from '../../hooks/useTurnSend';
 
 export function ensureContextInMap(
   map: Map<string, StreamContext>,
@@ -64,6 +65,70 @@ export function isActiveStreamView(
   return activeThreadId === threadId;
 }
 
+/** Pre-`turn_started` draft bucket for a persisted session row. */
+export function draftContextKey(sessionId: string): string {
+  return `__draft__:${sessionId.trim()}`;
+}
+
+/** Brand-new composer before any session id exists. */
+export const NEW_SESSION_DRAFT_KEY = '__new__';
+
+/** Registry key for the active view transcript (thread > session draft > new-session draft). */
+export function resolveViewMessageKey(
+  threadId: string | null | undefined,
+  sessionId: string | null | undefined,
+): string {
+  const tid = threadId?.trim();
+  if (tid) return tid;
+  const sid = sessionId?.trim();
+  if (sid) return draftContextKey(sid);
+  return NEW_SESSION_DRAFT_KEY;
+}
+
+export function getViewMessagesFromMap(
+  map: Map<string, StreamContext>,
+  threadId: string | null | undefined,
+  sessionId: string | null | undefined,
+): TurnChatMessage[] {
+  const key = resolveViewMessageKey(threadId, sessionId);
+  return map.get(key)?.messages ?? [];
+}
+
+/** Move pre-turn_started draft messages onto the runtime thread context. */
+export function migrateDraftContextInMap(
+  map: Map<string, StreamContext>,
+  sessionId: string | null | undefined,
+  threadId: string,
+): boolean {
+  const tid = threadId.trim();
+  if (!tid) return false;
+  const draftKeys = [
+    ...(sessionId?.trim() ? [draftContextKey(sessionId)] : []),
+    NEW_SESSION_DRAFT_KEY,
+  ];
+  let draft: StreamContext | undefined;
+  let draftKey: string | undefined;
+  for (const key of draftKeys) {
+    const candidate = map.get(key);
+    if (candidate && candidate.messages.length > 0) {
+      draft = candidate;
+      draftKey = key;
+      break;
+    }
+  }
+  if (!draft || !draftKey) return false;
+  const prev = map.get(tid) ?? makeEmptyContext(tid, sessionId ?? draft.sessionId);
+  map.set(tid, {
+    ...prev,
+    messages: draft.messages,
+    sessionId: sessionId ?? prev.sessionId ?? draft.sessionId,
+    isStreaming: prev.isStreaming || draft.isStreaming,
+    threadTurn: prev.threadTurn.threadId === tid ? prev.threadTurn : { threadId: tid, turnId: '' },
+  });
+  map.delete(draftKey);
+  return true;
+}
+
 /**
  * Whether an SSE event for `eventThreadId` should update a background
  * `StreamContext` instead of the active view transcript.
@@ -84,6 +149,22 @@ export function isBackgroundStreamEvent(
     return false;
   }
   return true;
+}
+
+/** Resolve a runtime thread id already bound to a persisted session. */
+export function lookupThreadIdForSession(
+  contexts: Map<string, { sessionId: string | null }>,
+  sessionId: string | null | undefined,
+  activeThreadId?: string | null,
+): string | null {
+  const sid = sessionId?.trim();
+  if (!sid) return null;
+  for (const [tid, ctx] of contexts) {
+    if (ctx.sessionId === sid) return tid;
+  }
+  const active = activeThreadId?.trim();
+  if (active && contexts.has(active)) return active;
+  return null;
 }
 
 /** Immutable remove from streaming set; returns null when unchanged. */

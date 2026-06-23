@@ -29,7 +29,8 @@
 - [x] Stop / Escape → `stopThreadTurn` (interrupt + disconnect)
 - [x] API_DESIGN §2.1.1 / §2.1.2 documented
 - [x] Non-owner windows ignore live SSE delta (`filterThreadStreamEvents`)
-- [ ] Manual multi-window E2E (thread steal + parallel streaming) — maintainer sign-off
+- [x] Per-session registry routes `liveDeliver` / `recoveryCtx` per thread (multi-session P2, 2026-06-22)
+- [ ] Manual multi-window E2E (thread steal + parallel streaming) — see `doc_Private/docs/desktop/multi-session-manual-acceptance.md` §D10
 
 ## Non-goals
 

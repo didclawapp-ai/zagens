@@ -12,6 +12,10 @@ import {
 
 /**
  * Restore a background thread's panel slice into the active UI (multi-session P0.6).
+ *
+ * `threadId` is the thread being reattached (should already be the active view).
+ * It is forwarded to the dispatchers so the panelChannel guard can verify the
+ * event belongs to the active thread.
  */
 export function restorePanelSliceToUi(
   slice: PanelSlice,
@@ -20,19 +24,19 @@ export function restorePanelSliceToUi(
   threadId?: string,
 ): void {
   if (slice.checklist) {
-    dispatchPanelChecklist(slice.checklist as ChecklistPanelPayload);
+    dispatchPanelChecklist(slice.checklist as ChecklistPanelPayload, threadId);
   }
   if (slice.taskGraph) {
-    dispatchPanelTaskGraph(slice.taskGraph);
+    dispatchPanelTaskGraph(slice.taskGraph, threadId);
   }
   if (slice.scratchpad) {
-    dispatchPanelScratchpad(slice.scratchpad);
+    dispatchPanelScratchpad(slice.scratchpad, threadId);
   }
   if (slice.context) {
     if (threadId && applyThreadContextSnapshot) {
       applyThreadContextSnapshot(threadId, slice.context);
     }
-    dispatchPanelContext(slice.context);
+    dispatchPanelContext(slice.context, threadId);
   }
   setLhtChip(slice.lhtChip);
 }

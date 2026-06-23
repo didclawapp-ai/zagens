@@ -9,9 +9,9 @@ import {
 import {
   getSessionDetail,
   getThreadDetail,
-  persistThreadSession,
   resumeSessionThread,
 } from '../api/client';
+import { persistThreadSessionDeduped } from '../lib/chat/persistThreadSessionDedup';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
 import {
   pickBestSessionMessagesWithSource,
@@ -32,6 +32,7 @@ import {
 import type { PreviewState } from '../components/preview/types';
 import { toast } from '../lib/toast';
 import type { StreamContextRegistry } from './useStreamContextRegistry';
+import { writeThreadTurn } from '../lib/chat/streamContextAccess';
 import type { ApprovalState } from './useTurnApproval';
 import {
   registerWindowThread,
@@ -49,7 +50,7 @@ export type UseSessionNavigationParams = {
   selectedModel: ComposerModelId;
   activeSessionIdRef: MutableRefObject<string | null>;
   resumedThreadIdRef: MutableRefObject<string | null>;
-  threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;
+  streamRegistry: StreamContextRegistry;
   threadContextSnapshotRef: MutableRefObject<ThreadContextSnapshot | null>;
   threadContextCacheRef: MutableRefObject<Map<string, ThreadContextSnapshot>>;
   messagesRef: MutableRefObject<NavMessage[]>;
@@ -65,7 +66,6 @@ export type UseSessionNavigationParams = {
    */
   streamingThreadIdsRef?: MutableRefObject<Set<string>>;
   streamControllersRef?: MutableRefObject<Map<string, AbortController>>;
-  streamRegistry?: StreamContextRegistry | null;
   /** threadId → sessionId for SessionStrip streaming indicators. */
   bindThreadSession?: (threadId: string, sessionId: string | null | undefined) => void;
   desktopHost?: boolean;
@@ -112,7 +112,7 @@ export function useSessionNavigation({
   selectedModel,
   activeSessionIdRef,
   resumedThreadIdRef,
-  threadTurnRef,
+  streamRegistry,
   threadContextSnapshotRef,
   threadContextCacheRef,
   messagesRef,
@@ -120,7 +120,6 @@ export function useSessionNavigation({
   abortThreadStream,
   streamingThreadIdsRef,
   streamControllersRef,
-  streamRegistry,
   bindThreadSession,
   desktopHost = false,
   setPendingComposerStream,
@@ -197,7 +196,7 @@ export function useSessionNavigation({
         sessionId ??
         streamRegistry?.getContext(tid)?.sessionId ??
         null;
-      void persistThreadSession(tid, knownSid)
+      void persistThreadSessionDeduped(tid, knownSid)
         .then(async (res) => {
           bindThreadSession?.(tid, res.session_id);
           await refreshSessions?.();
@@ -405,7 +404,7 @@ export function useSessionNavigation({
           }
           cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, reattachedMessages);
         }
-        threadTurnRef.current = { threadId: resumed.thread_id, turnId: '' };
+        writeThreadTurn(streamRegistry, resumed.thread_id, '');
         try {
           const threadDetail = await getThreadDetail(resumed.thread_id);
           if (gen !== selectSessionGenerationRef.current) {
@@ -460,7 +459,6 @@ export function useSessionNavigation({
     [
       activeSessionIdRef,
       resumedThreadIdRef,
-      threadTurnRef,
       threadContextSnapshotRef,
       threadContextCacheRef,
       messagesRef,
@@ -535,7 +533,7 @@ export function useSessionNavigation({
       setMessages([]);
       setRuntimeSessionEstablished(true);
       restoreThreadContextFromCache(trimmed);
-      threadTurnRef.current = { threadId: trimmed, turnId: '' };
+      writeThreadTurn(streamRegistry, trimmed, '');
 
       try {
         const fromThread = await rebuildMessagesFromThreadEvents(trimmed, {
@@ -596,7 +594,6 @@ export function useSessionNavigation({
     [
       activeSessionIdRef,
       resumedThreadIdRef,
-      threadTurnRef,
       threadContextSnapshotRef,
       threadContextCacheRef,
       messagesRef,
@@ -648,7 +645,7 @@ export function useSessionNavigation({
     setLastCacheHitPercent(null);
     setContextWindowTokens(contextWindowTokensForModel(selectedModel));
     clearStoredActiveSessionId();
-    threadTurnRef.current = { threadId: '', turnId: '' };
+    writeThreadTurn(streamRegistry, '', '');
     resetTurnPersistState();
     clearApproval();
     setSessionRestoreLoading(false);
@@ -673,7 +670,7 @@ export function useSessionNavigation({
     setResumedThreadId,
     setThreadDetailForContext,
     setThreadTrustMode,
-    threadTurnRef,
+    streamRegistry,
   ]);
 
   return {

@@ -109,6 +109,9 @@ jobs:
         run: |
           bash scripts/ci/cargo-retry.sh test --workspace --all-features --locked --exclude zagens-cli
           bash scripts/ci/cargo-retry.sh test -p zagens-cli --lib --all-features --locked
+      - name: Multi-session parallel streaming (ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: bash scripts/ci/test-multi-session.sh
       - name: Runtime sidecar contract (A+.4 / R-009)
         if: matrix.os == 'ubuntu-latest'
         run: cargo test -p zagens-cli --lib sidecar_contract_full_lifecycle --locked

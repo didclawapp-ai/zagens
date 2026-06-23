@@ -18,11 +18,16 @@ import {
 import {
   collectReconcileThreadIds,
   deleteContextFromMap,
+  draftContextKey,
   ensureContextInMap,
+  getViewMessagesFromMap,
   isActiveStreamView,
   isBackgroundStreamEvent,
+  migrateDraftContextInMap,
+  NEW_SESSION_DRAFT_KEY,
   patchContextInMap,
   removeThreadFromStreamingSet,
+  resolveViewMessageKey,
 } from './streamContextStore';
 import {
   makeEmptyContext,
@@ -123,6 +128,30 @@ assert.deepEqual(collectReconcileThreadIds(['thr_a', 'thr_a'], 'thr_a'), ['thr_a
 assert.equal(makeEmptyPanelSlice().checklist, null);
 assert.equal(makeEmptyContext('thr_x', null).threadId, 'thr_x');
 
+// ── draft view message keys (registry SSOT) ─────────────────────────────
+
+assert.equal(resolveViewMessageKey('thr_a', 'sess_1'), 'thr_a', 'thread wins over session');
+assert.equal(resolveViewMessageKey(null, 'sess_1'), draftContextKey('sess_1'));
+assert.equal(resolveViewMessageKey(null, null), NEW_SESSION_DRAFT_KEY);
+
+const draftMap = new Map<string, StreamContext>();
+ensureContextInMap(draftMap, NEW_SESSION_DRAFT_KEY, null);
+patchContextInMap(draftMap, NEW_SESSION_DRAFT_KEY, {
+  messages: [{ id: 'u1', role: 'user', content: 'draft' }],
+});
+assert.equal(
+  getViewMessagesFromMap(draftMap, null, null).length,
+  1,
+  'new-session draft visible before turn_started',
+);
+assert.equal(
+  migrateDraftContextInMap(draftMap, null, 'thr_new'),
+  true,
+  'draft migrates onto runtime thread',
+);
+assert.equal(draftMap.get(NEW_SESSION_DRAFT_KEY), undefined, 'draft bucket removed');
+assert.equal(draftMap.get('thr_new')?.messages[0]?.content, 'draft');
+
 // ── activeTurnStreamUi / resolveStreamTargetId ──────────────────────────
 
 const messages = [
@@ -151,5 +180,176 @@ const marked = markLastAssistantStreaming([
 ]);
 assert.equal(marked.assistantId, 'a-live');
 assert.equal(marked.messages.find((m) => m.id === 'a-live')?.isStreaming, true);
+
+// ── panelChannel thread-scoped dispatch (P0.6 hardening) ────────────────
+//
+// The dispatcher drops panel events whose `originThreadId` differs from the
+// registered active thread. This is a defensive guard: the primary isolation
+// is the `isBackground` early-return in `useTurnSend.applyNorm`, but this
+// prevents future call sites that forget the check from leaking background
+// panel state into the active UI.
+
+import {
+  dispatchPanelChecklist,
+  dispatchPanelContext,
+  dispatchPanelScratchpad,
+  dispatchPanelTaskGraph,
+  getPanelActiveThreadId,
+  PANEL_CHECKLIST_EVENT,
+  PANEL_CONTEXT_EVENT,
+  PANEL_SCRATCHPAD_EVENT,
+  PANEL_TASK_GRAPH_EVENT,
+  setPanelActiveThreadId,
+} from '../panelChannel';
+
+// Minimal window/CustomEvent polyfill for the Node.js tsx runner.
+const dispatched: Array<{ type: string; detail: unknown }> = [];
+(globalThis as unknown as { window: unknown }).window = {
+  dispatchEvent(ev: { type: string; detail: unknown }) {
+    dispatched.push({ type: ev.type, detail: ev.detail });
+  },
+};
+class FakeCustomEvent {
+  type: string;
+  detail: unknown;
+  constructor(type: string, init?: { detail?: unknown }) {
+    this.type = type;
+    this.detail = init?.detail;
+  }
+}
+(globalThis as unknown as { CustomEvent: typeof FakeCustomEvent }).CustomEvent =
+  FakeCustomEvent;
+
+function countDispatched(type: string): number {
+  return dispatched.filter((d) => d.type === type).length;
+}
+
+// Reset state for a clean baseline.
+setPanelActiveThreadId(null);
+dispatched.length = 0;
+
+// 1. No active thread registered → all events pass through (filter off).
+dispatchPanelChecklist({ items: [], completion_pct: 0, in_progress_id: null }, 'thr_a');
+assert.equal(countDispatched(PANEL_CHECKLIST_EVENT), 1, 'filter off: dispatch passes');
+
+// 2. Register thr_a as active; thr_a events pass, thr_b events dropped.
+setPanelActiveThreadId('thr_a');
+dispatchPanelChecklist(null, 'thr_a');
+assert.equal(countDispatched(PANEL_CHECKLIST_EVENT), 2, 'active thread event passes');
+dispatchPanelChecklist(null, 'thr_b');
+assert.equal(
+  countDispatched(PANEL_CHECKLIST_EVENT),
+  2,
+  'non-active thread event dropped',
+);
+
+// 3. No originThreadId → always dispatch (backward-compatible, used by
+//    sessionPanelReattach which restores a slice right after navigation).
+dispatchPanelChecklist(null);
+assert.equal(
+  countDispatched(PANEL_CHECKLIST_EVENT),
+  3,
+  'no originThreadId → always dispatch',
+);
+
+// 4. All panel dispatchers enforce the same guard.
+dispatchPanelScratchpad(null, 'thr_b');
+assert.equal(countDispatched(PANEL_SCRATCHPAD_EVENT), 0, 'scratchpad dropped for non-active');
+dispatchPanelTaskGraph({} as never, 'thr_a');
+assert.equal(countDispatched(PANEL_TASK_GRAPH_EVENT), 1, 'task graph passes for active');
+dispatchPanelContext({} as never, 'thr_b');
+assert.equal(countDispatched(PANEL_CONTEXT_EVENT), 0, 'context dropped for non-active');
+
+// 5. setPanelActiveThreadId(null) disables filtering again.
+setPanelActiveThreadId(null);
+dispatchPanelChecklist(null, 'thr_b');
+assert.equal(
+  countDispatched(PANEL_CHECKLIST_EVENT),
+  4,
+  'filter disabled after null → dispatch passes',
+);
+
+// 6. Whitespace is trimmed.
+setPanelActiveThreadId('  thr_a  ');
+assert.equal(getPanelActiveThreadId(), 'thr_a', 'active thread id trimmed');
+dispatchPanelChecklist(null, 'thr_a');
+assert.equal(countDispatched(PANEL_CHECKLIST_EVENT), 5, 'trimmed active matches');
+
+// Restore module state for subsequent test runs in the same process.
+setPanelActiveThreadId(null);
+
+// ── Per-send stream key isolation (cross-talk fix) ──────────────────────
+//
+// Simulates the scenario: A (existing thread) is streaming, user opens a
+// brand-new session B and sends. B's controller is stored under a per-send
+// key (not a shared `__pending__`). When A completes and cleans up, B's
+// controller must survive.
+
+// Simulate two per-send keys (as generated by nextSendKey in useTurnSend).
+const sendKeyA = '__send_1__';
+const sendKeyB = '__send_2__';
+const controllers = new Map<string, { aborted: boolean }>();
+
+// A sends (has a real threadId, but we test the pending path too)
+const ctrlA = { aborted: false };
+controllers.set(sendKeyA, ctrlA);
+
+// B sends (brand-new session, no threadId yet → per-send key)
+const ctrlB = { aborted: false };
+controllers.set(sendKeyB, ctrlB);
+
+// A completes → only deletes ITS per-send key (not B's)
+controllers.delete(sendKeyA);
+assert.equal(controllers.has(sendKeyA), false, 'A key removed after A completes');
+assert.equal(controllers.has(sendKeyB), true, 'B key survives A completion');
+assert.equal(ctrlB.aborted, false, 'B controller not aborted by A completion');
+
+// Simulate turn_started for B: migrate from per-send key to real threadId
+const realThreadB = 'thr_b_real';
+controllers.delete(sendKeyB);
+controllers.set(realThreadB, ctrlB);
+assert.equal(controllers.has(sendKeyB), false, 'B per-send key cleared after turn_started');
+assert.equal(controllers.has(realThreadB), true, 'B controller migrated to real threadId');
+
+// ── ownerSessionId closure isolation (cross-talk fix) ───────────────────
+//
+// Simulates: user on session S_A sends turn for thread A, then switches to
+// session S_B before A's turn_started arrives. migrateDraftToThread must use
+// S_A (captured at send time), not S_B (current active).
+
+const ownerSessionId = 'sess_A'; // captured at send time
+const activeSessionIdNow = 'sess_B'; // user switched after send
+
+// Set up: A's draft in sess_A bucket, B's draft in sess_B bucket
+const migrateMap = new Map<string, StreamContext>();
+ensureContextInMap(migrateMap, draftContextKey(ownerSessionId), ownerSessionId);
+patchContextInMap(migrateMap, draftContextKey(ownerSessionId), {
+  messages: [{ id: 'u1', role: 'user', content: 'A draft' }],
+});
+ensureContextInMap(migrateMap, draftContextKey(activeSessionIdNow), activeSessionIdNow);
+patchContextInMap(migrateMap, draftContextKey(activeSessionIdNow), {
+  messages: [{ id: 'u2', role: 'user', content: 'B draft' }],
+});
+
+// Correct behavior: migrate with ownerSessionId (send-time session)
+assert.equal(
+  migrateDraftContextInMap(migrateMap, ownerSessionId, 'thr_A'),
+  true,
+  'A draft migrates with send-time session id',
+);
+assert.equal(migrateMap.get('thr_A')?.messages[0]?.content, 'A draft');
+
+// Cross-talk prevention: B's draft is untouched (we used ownerSessionId, not
+// activeSessionIdNow, so sess_B's bucket was never read)
+assert.equal(
+  migrateMap.get(draftContextKey(activeSessionIdNow))?.messages[0]?.content,
+  'B draft',
+  'B draft stays in its own bucket — no cross-talk',
+);
+assert.equal(
+  migrateMap.get(draftContextKey(ownerSessionId)),
+  undefined,
+  'A draft bucket removed after migration',
+);
 
 console.log('multiSession.selfcheck: ok');

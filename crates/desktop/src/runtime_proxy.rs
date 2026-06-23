@@ -368,14 +368,17 @@ mod tests {
         guard.retain(|_, _| false);
     }
 
+    // Each test uses a unique window-label prefix so parallel test execution
+    // does not cause `purge_test_keys` / `arm_sse_cancel` to race on the same
+    // global `SSE_CANCEL_FLAGS` entries.
     #[test]
     fn arm_sse_cancel_isolates_distinct_threads_in_same_window() {
         purge_test_keys();
-        let _a = arm_sse_cancel("win1", "thr_a");
-        let _b = arm_sse_cancel("win1", "thr_b");
+        let _a = arm_sse_cancel("test_distinct", "thr_a");
+        let _b = arm_sse_cancel("test_distinct", "thr_b");
         let guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
-        assert!(guard.contains_key(&("win1".to_string(), "thr_a".to_string())));
-        assert!(guard.contains_key(&("win1".to_string(), "thr_b".to_string())));
+        assert!(guard.contains_key(&("test_distinct".to_string(), "thr_a".to_string())));
+        assert!(guard.contains_key(&("test_distinct".to_string(), "thr_b".to_string())));
         assert_eq!(guard.len(), 2, "two distinct threads must coexist");
         drop(guard);
         purge_test_keys();
@@ -384,8 +387,8 @@ mod tests {
     #[test]
     fn arm_sse_cancel_replaces_same_thread_in_same_window() {
         purge_test_keys();
-        let prev = arm_sse_cancel("win1", "thr_a");
-        let _curr = arm_sse_cancel("win1", "thr_a");
+        let prev = arm_sse_cancel("test_replace", "thr_a");
+        let _curr = arm_sse_cancel("test_replace", "thr_a");
         assert!(
             prev.load(Ordering::Relaxed),
             "re-arming the same (window, thread) must cancel the previous consumer"
@@ -399,8 +402,8 @@ mod tests {
     #[test]
     fn arm_sse_cancel_isolates_across_windows() {
         purge_test_keys();
-        let _w1 = arm_sse_cancel("win1", "thr_a");
-        let _w2 = arm_sse_cancel("win2", "thr_a");
+        let _w1 = arm_sse_cancel("test_win1", "thr_a");
+        let _w2 = arm_sse_cancel("test_win2", "thr_a");
         let guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
         assert_eq!(
             guard.len(),
@@ -414,12 +417,12 @@ mod tests {
     #[test]
     fn disarm_sse_cancel_removes_only_target_pair() {
         purge_test_keys();
-        let _a = arm_sse_cancel("win1", "thr_a");
-        let _b = arm_sse_cancel("win1", "thr_b");
-        disarm_sse_cancel("win1", "thr_a");
+        let _a = arm_sse_cancel("test_disarm", "thr_a");
+        let _b = arm_sse_cancel("test_disarm", "thr_b");
+        disarm_sse_cancel("test_disarm", "thr_a");
         let guard = SSE_CANCEL_FLAGS.lock().expect("sse cancel map");
-        assert!(!guard.contains_key(&("win1".to_string(), "thr_a".to_string())));
-        assert!(guard.contains_key(&("win1".to_string(), "thr_b".to_string())));
+        assert!(!guard.contains_key(&("test_disarm".to_string(), "thr_a".to_string())));
+        assert!(guard.contains_key(&("test_disarm".to_string(), "thr_b".to_string())));
         drop(guard);
         purge_test_keys();
     }

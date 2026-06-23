@@ -2,23 +2,15 @@
  * Per-session stream context registry (multi-session P0.2).
  *
  * Holds one `StreamContext` per thread so that multiple sessions can stream
- * concurrently without sharing a single `messages` state, `threadTurnRef`,
- * or panel slice. The active view is just a pointer (`activeThreadId`);
+ * concurrently. All per-thread handles (`threadTurn`, `streamSession`,
+ * `liveDeliver`, `recoveryCtx`, `messages`, `panelSlice`) live in the registry.
  * non-active contexts keep receiving their SSE events into their own
  * `messages` / `panelSlice` so the user can switch back to live progress.
  *
  * Migration policy (see `doc_Private/docs/desktop/multi-session-streaming-plan.md`
- * §8.2): this registry is introduced incrementally. Legacy single-instance
- * refs (`threadTurnRef`, `streamSessionRef`, `liveStreamDeliverRef`,
- * `streamRecoveryContextRef`) remain the source of truth for paths that have
- * not been migrated yet; `useStreamContextRegistry` is wired into `useTurnSend`
- * kind-by-kind. Once all writes go through the registry, the legacy refs are
- * removed.
- *
- * The registry is intentionally framework-light: it owns a `Map` in a ref plus
- * a version counter in state to trigger re-renders, and exposes stable
- * callbacks. `App.tsx` derives `messages` for the active view from
- * `getContext(activeThreadId)?.messages`.
+ * §8.2): registry is the SSOT for per-thread messages. `App.tsx` derives the
+ * active view transcript via `getViewMessages`; `createSetMessagesForView` routes
+ * all `setMessages` calls into the registry (draft bucket pre-`turn_started`).
  */
 
 import { useCallback, useRef, useState } from 'react';
@@ -26,8 +18,11 @@ import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
 import {
   deleteContextFromMap,
   ensureContextInMap,
+  getViewMessagesFromMap,
   isActiveStreamView as isActiveStreamViewPure,
+  migrateDraftContextInMap,
   patchContextInMap,
+  resolveViewMessageKey,
 } from '../lib/chat/streamContextStore';
 import type { ApprovalState } from '../hooks/useTurnApproval';
 import type { FinishOnceOptions, StreamSessionControl } from '../hooks/useTurnStream';
@@ -48,12 +43,17 @@ export type PanelSlice = {
   lhtChip: LhtChipState | null;
 };
 
-/** One streaming session's isolated state. */
+/** One streaming session's isolated state.
+ *
+ * Note: `AbortController` is NOT stored here. It lives in
+ * `useTurnStream.streamControllersRef` (a `Map<threadId, AbortController>`)
+ * which is the SSOT for stream cancellation. Keeping it out of the registry
+ * avoids redundant re-renders on every controller mutation.
+ */
 export type StreamContext = {
   threadId: string;
   sessionId: string | null;
   messages: TurnChatMessage[];
-  controller: AbortController | null;
   threadTurn: { threadId: string; turnId: string };
   streamSession: StreamSessionControl | null;
   liveDeliver: ((ev: SseTurnEvent, filter?: { turnId: string }) => void) | null;
@@ -78,7 +78,6 @@ export function makeEmptyContext(threadId: string, sessionId: string | null): St
     threadId,
     sessionId,
     messages: [],
-    controller: null,
     threadTurn: { threadId, turnId: '' },
     streamSession: null,
     liveDeliver: null,
@@ -112,6 +111,16 @@ export type StreamContextRegistry = {
   isActiveStreamView: (threadId: string | null | undefined) => boolean;
   /** Bumped on every mutation so consumers re-render. */
   version: number;
+  /** Active view transcript (derived from thread or pre-turn_started draft). */
+  getViewMessages: (
+    threadId: string | null | undefined,
+    sessionId: string | null | undefined,
+  ) => TurnChatMessage[];
+  /** Move session/new-session draft messages onto a runtime thread. */
+  migrateDraftToThread: (
+    sessionId: string | null | undefined,
+    threadId: string,
+  ) => void;
 };
 
 export function useStreamContextRegistry(): StreamContextRegistry {
@@ -189,6 +198,21 @@ export function useStreamContextRegistry(): StreamContextRegistry {
     [],
   );
 
+  const getViewMessages = useCallback(
+    (threadId: string | null | undefined, sessionId: string | null | undefined) =>
+      getViewMessagesFromMap(contextsRef.current, threadId, sessionId),
+    [],
+  );
+
+  const migrateDraftToThread = useCallback(
+    (sessionId: string | null | undefined, threadId: string) => {
+      if (migrateDraftContextInMap(contextsRef.current, sessionId, threadId)) {
+        bump();
+      }
+    },
+    [bump],
+  );
+
   return {
     contexts: contextsRef.current,
     activeThreadId,
@@ -202,29 +226,31 @@ export function useStreamContextRegistry(): StreamContextRegistry {
     deleteContext,
     isActiveStreamView,
     version,
+    getViewMessages,
+    migrateDraftToThread,
   };
 }
 
 /**
- * Bridge a legacy single-instance ref setter (e.g. `setMessages`) into the
- * registry for the active thread. Used during the P0.2→P0.3 migration so
- * unmigrated paths that still call `setMessages(prev => ...)` transparently
- * land in the active context's messages.
+ * Registry-backed `setMessages` for the active view. Resolves the target bucket
+ * (runtime thread, session draft, or brand-new session draft) and bumps version.
  */
-export function bindLegacySetMessages(
+export function createSetMessagesForView(
   registry: StreamContextRegistry,
-  setMessagesState: Dispatch<SetStateAction<TurnChatMessage[]>>,
-) {
+  getViewPointers: () => {
+    threadId: string | null | undefined;
+    sessionId: string | null | undefined;
+  },
+): Dispatch<SetStateAction<TurnChatMessage[]>> {
   return (next: TurnChatMessage[] | ((prev: TurnChatMessage[]) => TurnChatMessage[])) => {
-    const tid = registry.activeThreadIdRef.current;
-    if (tid) {
-      const ctx = registry.ensureContext(tid);
-      const resolved =
-        typeof next === 'function' ? (next as (p: TurnChatMessage[]) => TurnChatMessage[])(ctx.messages) : next;
-      registry.setMessages(tid, resolved);
-      setMessagesState(resolved);
-    } else {
-      setMessagesState(next as TurnChatMessage[] | ((prev: TurnChatMessage[]) => TurnChatMessage[]));
-    }
+    const { threadId, sessionId } = getViewPointers();
+    const key = resolveViewMessageKey(threadId, sessionId);
+    registry.ensureContext(key, sessionId ?? null);
+    const ctx = registry.getContext(key)!;
+    const resolved =
+      typeof next === 'function'
+        ? (next as (p: TurnChatMessage[]) => TurnChatMessage[])(ctx.messages)
+        : next;
+    registry.setMessages(key, resolved);
   };
 }

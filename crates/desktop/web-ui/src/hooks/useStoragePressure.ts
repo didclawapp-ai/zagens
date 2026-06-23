@@ -10,6 +10,8 @@ import {
   type StoragePressureSnapshot,
   worstStorageLevel,
 } from '../lib/storagePressure';
+import { resolveActiveThreadTurn } from '../lib/chat/streamContextAccess';
+import type { StreamContextRegistry } from '../hooks/useStreamContextRegistry';
 import { stopThreadTurn } from '../api/turnControl';
 import { toast } from '../lib/toast';
 
@@ -19,7 +21,8 @@ export type UseStoragePressureParams = {
   desktopHost: boolean;
   workspaceRoot: string;
   streaming: boolean;
-  threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;
+  streamRegistry: StreamContextRegistry;
+  resumedThreadId: string | null;
   handleCancelStream: () => void;
   t: (key: string, params?: Record<string, string>) => string;
 };
@@ -35,7 +38,8 @@ export function useStoragePressure({
   desktopHost,
   workspaceRoot,
   streaming,
-  threadTurnRef,
+  streamRegistry,
+  resumedThreadId,
   handleCancelStream,
   t,
 }: UseStoragePressureParams): UseStoragePressureResult {
@@ -47,7 +51,7 @@ export function useStoragePressure({
   const level = worstStorageLevel(snapshot);
 
   const runPauseForCritical = useCallback(async () => {
-    const { threadId, turnId } = threadTurnRef.current;
+    const { threadId, turnId } = resolveActiveThreadTurn(streamRegistry, resumedThreadId);
     handleCancelStream();
     if (threadId.trim() && turnId.trim()) {
       try {
@@ -56,7 +60,7 @@ export function useStoragePressure({
         /* stream teardown already requested */
       }
     }
-  }, [handleCancelStream, threadTurnRef]);
+  }, [handleCancelStream, resumedThreadId, streamRegistry]);
 
   const refresh = useCallback(() => {
     if (!desktopHost) {

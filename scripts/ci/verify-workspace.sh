@@ -9,6 +9,9 @@ bash scripts/ci/verify-lint.sh
 echo "==> cargo test --workspace --all-features --locked"
 cargo test --workspace --all-features --locked
 
+echo "==> multi-session parallel streaming verification"
+bash scripts/ci/test-multi-session.sh
+
 echo "==> Cargo.lock drift guard"
 if ! git diff --exit-code -- Cargo.lock; then
   echo "::error::Cargo.lock changed during verify. Commit the lockfile." >&2

@@ -1737,6 +1737,82 @@ async fn persist_session_does_not_duplicate_on_repeated_calls() -> Result<()> {
     Ok(())
 }
 
+/// When the client passes a valid session id that exists but has no
+/// `runtime_thread_id` yet (legacy row or first persist still in flight),
+/// persist must update that row in place — not create a duplicate sidebar entry.
+#[tokio::test]
+async fn persist_session_claims_orphan_session_hint() -> Result<()> {
+    use crate::models::{ContentBlock, Message};
+    use crate::session_manager::{SessionManager, create_saved_session_with_mode};
+
+    let root = std::env::temp_dir().join(format!("deepseek-persist-orphan-{}", Uuid::new_v4()));
+    let sessions_dir = root.join("sessions");
+    fs::create_dir_all(&sessions_dir)?;
+
+    let Some((addr, runtime_threads, handle)) =
+        spawn_test_server_with_root(root.clone(), sessions_dir.clone()).await?
+    else {
+        return Ok(());
+    };
+
+    let client = reqwest::Client::new();
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads"))
+        .json(&json!({ "model": "deepseek-v4-pro" }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_id = created["id"]
+        .as_str()
+        .context("missing thread id")?
+        .to_string();
+
+    let messages = vec![Message {
+        role: "user".to_string(),
+        content: vec![ContentBlock::Text {
+            text: "Follow-up prompt title".to_string(),
+            cache_control: None,
+        }],
+    }];
+    runtime_threads
+        .seed_thread_from_messages(&thread_id, &messages)
+        .await?;
+
+    // Legacy sidebar row: exists but not linked to the runtime thread yet.
+    let sm = SessionManager::new(sessions_dir.clone())?;
+    let orphan =
+        create_saved_session_with_mode(&messages, "deepseek-v4-pro", &root, 0, None, Some("agent"));
+    let orphan_id = orphan.metadata.id.clone();
+    sm.save_session(&orphan)?;
+
+    let resp: serde_json::Value = client
+        .post(format!(
+            "http://{addr}/v1/threads/{thread_id}/persist-session"
+        ))
+        .json(&json!({ "session_id": orphan_id }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(
+        resp["session_id"].as_str(),
+        Some(orphan_id.as_str()),
+        "orphan session hint must be claimed, not duplicated"
+    );
+
+    let linked = sm
+        .find_session_id_by_runtime_thread_id(&thread_id)?
+        .context("thread must be linked after persist")?;
+    assert_eq!(linked, orphan_id);
+    assert_eq!(sm.list_sessions()?.len(), 1, "must not create a second row");
+
+    handle.abort();
+    Ok(())
+}
+
 #[tokio::test]
 async fn session_delete_returns_404_for_missing_id() -> Result<()> {
     let Some((addr, _runtime_threads, handle)) = spawn_test_server().await? else {

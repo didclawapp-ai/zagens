@@ -39,7 +39,8 @@ import { useTurnSession } from './hooks/useTurnSession';
 import { useTurnApproval, type ApprovalState } from './hooks/useTurnApproval';
 import { useTurnStream } from './hooks/useTurnStream';
 import { useTurnSend, type TurnChatMessage } from './hooks/useTurnSend';
-import { useStreamContextRegistry, bindLegacySetMessages } from './hooks/useStreamContextRegistry';
+import { useStreamContextRegistry, createSetMessagesForView } from './hooks/useStreamContextRegistry';
+import { removeThreadFromStreamingSet } from './lib/chat/streamContextStore';
 import { parseWriteOfficeOutputPath } from './lib/officeDeliverable';
 import {
   type ComposerModelId,
@@ -88,7 +89,6 @@ export default function App() {
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
   const composerModelOptions = mergeComposerModelOptions(configuredModels, selectedModel);
   const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs(getWindowLabel()).workspace);
-  const [messages, setMessages] = useState<TurnChatMessage[]>([]);
   const [activeInspector, setActiveInspector] = useState<RightPanelView>(() => loadStoredInspector());
   const [threadTrustMode, setThreadTrustMode] = useState(false);
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
@@ -174,6 +174,9 @@ export default function App() {
     setLastCacheHitPercent(null);
   }, []);
 
+  // Multi-session P0.2: per-thread StreamContext registry (messages SSOT).
+  const streamRegistry = useStreamContextRegistry();
+
   const {
     streamingThreadIds,
     setStreamingThreadIds,
@@ -181,14 +184,14 @@ export default function App() {
     setPendingComposerStream,
     streaming,
     streamControllersRef,
-    threadTurnRef,
-    streamSessionRef,
+    pendingSendKeyRef,
     userStopRequestedRef,
     abortThreadStream,
     handleCancelStream,
   } = useTurnStream({
     resumedThreadId,
     streamingRef,
+    streamRegistry,
     cancelCleanupRef,
     t,
     onCancelSideEffects: onCancelStreamSideEffects,
@@ -200,35 +203,34 @@ export default function App() {
     streamingThreadIdsRef.current = streamingThreadIds;
   }, [streamingThreadIds]);
 
-  // Multi-session P0.2: per-thread StreamContext registry.
-  const streamRegistry = useStreamContextRegistry();
-  const setMessagesForTurn = useMemo(
-    () => bindLegacySetMessages(streamRegistry, setMessages),
-    [streamRegistry, setMessages],
+  const getViewPointers = useCallback(
+    () => ({
+      threadId: resumedThreadIdRef.current ?? streamRegistry.activeThreadIdRef.current,
+      sessionId: activeSessionIdRef.current,
+    }),
+    [streamRegistry],
   );
+
+  const setMessagesForTurn = useMemo(
+    () => createSetMessagesForView(streamRegistry, getViewPointers),
+    [streamRegistry, getViewPointers],
+  );
+
+  const messages = useMemo(
+    () => streamRegistry.getViewMessages(resumedThreadId, activeSessionId),
+    [resumedThreadId, activeSessionId, streamRegistry.version, streamRegistry],
+  );
+
   useEffect(() => {
     streamRegistry.setActiveThreadId(resumedThreadId);
   }, [resumedThreadId, streamRegistry]);
-  // Keep active-view `messages` in sync when switching sessions (registry SSOT).
-  // Depends on `resumedThreadId` only — not `streamRegistry.version`, which bumps
-  // on every panel/turn patch and would wipe the transcript when the registry
-  // snapshot is still empty (new session: messages land in React state before
-  // `turn_started` binds the thread id).
-  const getStreamContext = streamRegistry.getContext;
+
+  // Promote session/new-session draft transcript when a runtime thread binds.
   useEffect(() => {
-    const tid = resumedThreadId;
-    if (!tid) {
-      // Do not clear here: new-session sends populate React state while
-      // resumedThreadId is still null; handleNewSession / handleSelectSession
-      // own explicit clears.
-      return;
-    }
-    const registryMessages = getStreamContext(tid)?.messages ?? [];
-    if (registryMessages.length === 0) {
-      return;
-    }
-    setMessages(registryMessages);
-  }, [resumedThreadId, getStreamContext]);
+    const tid = resumedThreadId?.trim();
+    if (!tid) return;
+    streamRegistry.migrateDraftToThread(activeSessionId, tid);
+  }, [resumedThreadId, activeSessionId, streamRegistry]);
 
   const bindThreadSession = useCallback(
     (threadId: string, sessionId: string | null | undefined) => {
@@ -249,19 +251,59 @@ export default function App() {
     const ids = new Set<string>();
     for (const threadId of streamingThreadIds) {
       const ctx = streamRegistry.getContext(threadId);
-      // Registry may mark a background turn idle before `streamingThreadIds` prunes.
       if (ctx?.isStreaming === false) continue;
-      const sid = ctx?.sessionId;
-      if (sid) ids.add(sid);
-    }
-    if (activeSessionId && resumedThreadId && streamingThreadIds.has(resumedThreadId)) {
-      const activeCtx = streamRegistry.getContext(resumedThreadId);
-      if (activeCtx?.isStreaming !== false) {
-        ids.add(activeSessionId);
+      let sid = ctx?.sessionId ?? null;
+      if (!sid && threadId === resumedThreadId) {
+        sid = activeSessionId;
       }
+      if (!sid) continue;
+      // Composer unlocked for the active session — strip stale sidebar spinner
+      // when registry / streamingThreadIds lag behind finishOnce (dual-track).
+      const isActiveSession =
+        sid === activeSessionId &&
+        (threadId === resumedThreadId ||
+          threadId === streamRegistry.activeThreadIdRef.current);
+      if (isActiveSession && !streaming) {
+        continue;
+      }
+      ids.add(sid);
     }
     return ids;
-  }, [streamingThreadIds, streamRegistry.version, activeSessionId, resumedThreadId, streamRegistry]);
+  }, [
+    streamingThreadIds,
+    streamRegistry.version,
+    activeSessionId,
+    resumedThreadId,
+    streamRegistry,
+    streaming,
+  ]);
+
+  // When the active view unlocks, sweep stale in-flight markers for that thread.
+  const prevStreamingRef = useRef(streaming);
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current;
+    prevStreamingRef.current = streaming;
+    if (streaming || wasStreaming) {
+      return;
+    }
+    const tid =
+      resumedThreadId?.trim() || streamRegistry.activeThreadIdRef.current?.trim() || '';
+    if (!tid || !streamingThreadIds.has(tid)) {
+      return;
+    }
+    const knownSid =
+      streamRegistry.getContext(tid)?.sessionId ?? activeSessionIdRef.current;
+    streamRegistry.ensureContext(tid, knownSid);
+    streamRegistry.patchContext(tid, { isStreaming: false, pendingApproval: null });
+    setStreamingThreadIds((prev) => removeThreadFromStreamingSet(prev, tid) ?? prev);
+  }, [
+    streaming,
+    resumedThreadId,
+    streamingThreadIds,
+    streamRegistry,
+    setStreamingThreadIds,
+    activeSessionIdRef,
+  ]);
 
   // Drop stale thread ids once registry records the turn as idle.
   useEffect(() => {
@@ -329,7 +371,8 @@ export default function App() {
       desktopHost,
       workspaceRoot: selectedWorkspace,
       streaming,
-      threadTurnRef,
+      streamRegistry,
+      resumedThreadId,
       handleCancelStream,
       t,
     });
@@ -356,7 +399,8 @@ export default function App() {
     clearApproval,
   } = useTurnApproval({
     t,
-    threadTurnRef,
+    streamRegistry,
+    resumedThreadIdRef,
     desktopHost,
     runModeRef,
   });
@@ -491,8 +535,7 @@ export default function App() {
     modelParams,
     desktopHost,
     streamControllersRef,
-    threadTurnRef,
-    streamSessionRef,
+    pendingSendKeyRef,
     setStreamingThreadIds,
     setPendingComposerStream,
     setMessages: setMessagesForTurn,
@@ -540,7 +583,7 @@ export default function App() {
     selectedModel,
     activeSessionIdRef,
     resumedThreadIdRef,
-    threadTurnRef,
+    streamRegistry,
     threadContextSnapshotRef,
     threadContextCacheRef,
     messagesRef,
@@ -548,7 +591,6 @@ export default function App() {
     abortThreadStream,
     streamingThreadIdsRef,
     streamControllersRef,
-    streamRegistry,
     bindThreadSession,
     desktopHost,
     setPendingComposerStream,
@@ -610,7 +652,7 @@ export default function App() {
     messages,
     activeSessionIdRef,
     resumedThreadIdRef,
-    threadTurnRef,
+    streamRegistry,
     streamControllersRef,
     sessionUiCacheRef,
     handleSend,

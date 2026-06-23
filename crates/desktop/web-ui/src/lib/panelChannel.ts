@@ -1,6 +1,14 @@
 /**
  * Panel channel (C): SSE `panel.*` events → window CustomEvents for checklist / scratchpad / context.
  * Reduces B-channel HTTP polling while a turn is streaming.
+ *
+ * Multi-session thread routing (P0.6 hardening): each dispatcher accepts an
+ * optional `originThreadId`. When provided AND a panel active-thread has been
+ * registered via `setPanelActiveThreadId`, the event is silently dropped if
+ * `originThreadId !== activePanelThreadId`. This is a defensive guard — the
+ * primary isolation is the `isBackground` early-return in `useTurnSend.applyNorm`,
+ * but this guard prevents future call sites that forget the active-view check
+ * from leaking background-thread panel state into the active UI.
  */
 
 import type { ScratchpadStatus } from '../api/client';
@@ -27,34 +35,87 @@ export interface ChecklistPanelPayload {
   in_progress_id: number | null;
 }
 
-export function dispatchPanelScratchpad(scratchpad: ScratchpadStatus | null): void {
+/**
+ * Module-level active thread for panel dispatch filtering.
+ * Synced from the registry via `setPanelActiveThreadId` (called from
+ * `useTurnSend` / `App.tsx` whenever `activeThreadId` changes).
+ */
+let activePanelThreadId: string | null = null;
+
+/**
+ * Register the thread whose panel slice is currently rendered in the active
+ * view. Pass `null` to disable filtering (e.g. during teardown).
+ */
+export function setPanelActiveThreadId(threadId: string | null): void {
+  activePanelThreadId = threadId?.trim() || null;
+}
+
+/** Read the current panel active thread (mainly for tests). */
+export function getPanelActiveThreadId(): string | null {
+  return activePanelThreadId;
+}
+
+/**
+ * Returns true if a panel event from `originThreadId` should be dispatched.
+ * - No `originThreadId` → always dispatch (backward-compatible, used by
+ *   `sessionPanelReattach` which restores a slice right after navigation).
+ * - `originThreadId` provided but no active registered → dispatch (filter off).
+ * - `originThreadId` provided and active registered and they differ → drop.
+ */
+function shouldDispatchPanelForThread(originThreadId: string | undefined): boolean {
+  if (!originThreadId) return true;
+  if (activePanelThreadId === null) return true;
+  return originThreadId === activePanelThreadId;
+}
+
+export function dispatchPanelScratchpad(
+  scratchpad: ScratchpadStatus | null,
+  originThreadId?: string,
+): void {
+  if (!shouldDispatchPanelForThread(originThreadId)) return;
   window.dispatchEvent(
     new CustomEvent(PANEL_SCRATCHPAD_EVENT, { detail: scratchpad }),
   );
 }
 
-export function dispatchPanelChecklist(checklist: ChecklistPanelPayload | null): void {
+export function dispatchPanelChecklist(
+  checklist: ChecklistPanelPayload | null,
+  originThreadId?: string,
+): void {
+  if (!shouldDispatchPanelForThread(originThreadId)) return;
   window.dispatchEvent(
     new CustomEvent(PANEL_CHECKLIST_EVENT, { detail: checklist }),
   );
 }
 
-export function dispatchPanelContext(context: ThreadContextSnapshot): void {
+export function dispatchPanelContext(
+  context: ThreadContextSnapshot,
+  originThreadId?: string,
+): void {
+  if (!shouldDispatchPanelForThread(originThreadId)) return;
   window.dispatchEvent(
     new CustomEvent(PANEL_CONTEXT_EVENT, { detail: context }),
   );
 }
 
-export function dispatchPanelTaskGraph(task_graph: HarnessTaskGraph): void {
+export function dispatchPanelTaskGraph(
+  task_graph: HarnessTaskGraph,
+  originThreadId?: string,
+): void {
+  if (!shouldDispatchPanelForThread(originThreadId)) return;
   window.dispatchEvent(
     new CustomEvent(PANEL_TASK_GRAPH_EVENT, { detail: { task_graph } }),
   );
 }
 
-export function dispatchHarnessCycleAdvanced(detail: {
-  from: number;
-  to: number;
-}): void {
+export function dispatchHarnessCycleAdvanced(
+  detail: {
+    from: number;
+    to: number;
+  },
+  originThreadId?: string,
+): void {
+  if (!shouldDispatchPanelForThread(originThreadId)) return;
   window.dispatchEvent(
     new CustomEvent(HARNESS_CYCLE_ADVANCED_EVENT, { detail }),
   );

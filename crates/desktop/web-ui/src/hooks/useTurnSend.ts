@@ -12,13 +12,14 @@ import {
   getThreadDetail,
   pollThreadTurnEvents,
   postStreamTurn,
-  persistThreadSession,
+  resumeSessionThread,
   startThreadTurn,
   threadIdFromSseEvent,
   threadTurnStillActive,
   type RuntimeConnectionState,
   type SseTurnEvent,
 } from '../api/client';
+import { persistThreadSessionDeduped } from '../lib/chat/persistThreadSessionDedup';
 import type { ComposerOutboundMessage } from '../components/Composer';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent } from '../api/streamNormalize';
 import { notifyCraftBlackboardChanged } from '../lib/craftBlackboard';
@@ -44,6 +45,7 @@ import {
   dispatchPanelTaskGraph,
   dispatchHarnessCycleAdvanced,
   normalizeChecklistPayload,
+  setPanelActiveThreadId,
 } from '../lib/panelChannel';
 import type { HarnessTaskGraph } from '../lib/types/longHorizon';
 import { streamFlagsForRunMode } from '../lib/runtimeMode';
@@ -57,8 +59,7 @@ import {
   type DesktopTaskTypePreference,
 } from '../types/desktop';
 import type { ApprovalState } from './useTurnApproval';
-import type { FinishOnceOptions, StreamSessionControl } from './useTurnStream';
-import type { ScratchpadStatus } from '../api/client';
+import type { FinishOnceOptions } from './useTurnStream';
 import { saveStoredActiveSessionId } from '../lib/windowBridge';
 import { turnCacheHitPercent } from '../lib/cacheUsage';
 import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
@@ -69,10 +70,21 @@ import {
   rebindStreamingAssistant,
   resolveStreamTargetId,
 } from '../lib/chat/activeTurnStreamUi';
-import { isBackgroundStreamEvent } from '../lib/chat/streamContextStore';
+import {
+  isBackgroundStreamEvent,
+} from '../lib/chat/streamContextStore';
+import {
+  clearActiveStreamHandles,
+  readThreadTurn,
+  resolveThreadIdForSend,
+  writeLiveDeliver,
+  writeRecoveryCtx,
+  writeStreamSession,
+  writeThreadTurn,
+} from '../lib/chat/streamContextAccess';
+import type { ScratchpadStatus } from '../api/client';
 import {
   useTurnStreamRecovery,
-  type StreamRecoveryContext,
 } from './useTurnStreamRecovery';
 import type { StreamContextRegistry } from './useStreamContextRegistry';
 
@@ -96,6 +108,14 @@ function nextId() {
   return `msg-${++msgId}`;
 }
 
+// Monotonic counter for per-send stream keys. Replaces the shared `__pending__`
+// key so that two concurrent sends (e.g. A completing while B is still pending
+// its `turn_started`) cannot abort or delete each other's AbortController.
+let sendSeq = 0;
+function nextSendKey(): string {
+  return `__send_${++sendSeq}__`;
+}
+
 export type UseTurnSendParams = {
   t: (key: string, params?: Record<string, string>) => string;
   runtimeConn: RuntimeConnectionState;
@@ -111,8 +131,8 @@ export type UseTurnSendParams = {
   modelParams: ModelParams;
   desktopHost: boolean;
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
-  threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;
-  streamSessionRef: MutableRefObject<StreamSessionControl | null>;
+  /** Per-send key for the pending controller (before turn_started resolves threadId). */
+  pendingSendKeyRef: MutableRefObject<string | null>;
   setStreamingThreadIds: Dispatch<SetStateAction<Set<string>>>;
   setPendingComposerStream: Dispatch<SetStateAction<boolean>>;
   setMessages: Dispatch<SetStateAction<TurnChatMessage[]>>;
@@ -142,12 +162,9 @@ export type UseTurnSendParams = {
   /** When user-data or workspace volume is critically low. */
   storagePauseTurns: boolean;
   /**
-   * Multi-session P0.3: per-thread context registry. When provided, SSE events
-   * whose owner thread is not the active view are routed into that thread's
-   * background context (messages/panel) instead of polluting the active view.
-   * Omit to keep the legacy single-view behaviour.
+   * Per-thread stream context registry (required for multi-session parallel streaming).
    */
-  streamRegistry?: StreamContextRegistry | null;
+  streamRegistry: StreamContextRegistry;
   bindThreadSession?: (threadId: string, sessionId: string | null | undefined) => void;
   /** Navigate to a persisted session (background turn complete toast action). */
   onNavigateToSession?: (sessionId: string) => void;
@@ -178,8 +195,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     modelParams,
     desktopHost,
     streamControllersRef,
-    threadTurnRef,
-    streamSessionRef,
+    pendingSendKeyRef,
     setStreamingThreadIds,
     setPendingComposerStream,
     setMessages,
@@ -215,10 +231,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
   const lastPersistedTurnRef = useRef('');
   const toolProgressPendingRef = useRef('');
   const toolProgressRafRef = useRef<number | null>(null);
-  const streamRecoveryContextRef = useRef<StreamRecoveryContext | null>(null);
-  const liveStreamDeliverRef = useRef<
-    ((ev: SseTurnEvent, filter?: { turnId: string }) => void) | null
-  >(null);
 
   const { shouldSkipFinishOnAbort, clearDetachedState } = useTurnStreamRecovery({
     t,
@@ -226,11 +238,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     runtimeConn,
     streamingRef,
     resumedThreadIdRef,
-    threadTurnRef,
     streamControllersRef,
-    streamSessionRef,
-    streamRecoveryContextRef,
-    liveStreamDeliverRef,
     setMessages,
     setStreamingThreadIds,
     setPendingComposerStream,
@@ -247,6 +255,18 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       cancelCleanupRef.current = null;
     };
   }, [cancelCleanupRef, clearDetachedState]);
+
+  // Multi-session P0.6 hardening: sync the panel channel's active-thread filter
+  // whenever the registry's active thread changes. This lets `dispatchPanel*`
+  // drop panel events originating from a non-active thread (defensive guard
+  // against future call sites that forget the `isBackground` early-return).
+  useEffect(() => {
+    setPanelActiveThreadId(streamRegistry.activeThreadId ?? resumedThreadId ?? null);
+    return () => {
+      // Reset on teardown so the module-level filter does not retain a stale id.
+      setPanelActiveThreadId(null);
+    };
+  }, [streamRegistry.activeThreadId, resumedThreadId, streamRegistry.version]);
 
   const resetTurnPersistState = useCallback(() => {
     lastPersistedTurnRef.current = '';
@@ -265,13 +285,40 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
 
       userStopRequestedRef.current = false;
       setPendingComposerStream(true);
-      const knownThreadAtSend = resumedThreadIdRef.current;
+
+      // Multi-session cross-talk fix: capture the session id at send time.
+      // All persist / migrate / context-bind operations within this send's
+      // lifecycle use this closure value, NOT `activeSessionIdRef.current`,
+      // so that if the user switches to session B between A's send and A's
+      // `turn_started`, A's draft/messages are not migrated to B's session.
+      const ownerSessionId = activeSessionIdRef.current;
+
+      const syncResolvedThread =
+        resolveThreadIdForSend(
+          streamRegistry,
+          resumedThreadIdRef.current,
+          ownerSessionId,
+        ) ||
+        null;
+      if (syncResolvedThread && syncResolvedThread !== resumedThreadIdRef.current) {
+        resumedThreadIdRef.current = syncResolvedThread;
+        setResumedThreadId(syncResolvedThread);
+      }
+
+      const knownThreadAtSend = syncResolvedThread ?? resumedThreadIdRef.current;
       if (knownThreadAtSend) {
         setStreamingThreadIds((prev) => new Set(prev).add(knownThreadAtSend));
-        streamRegistry?.ensureContext(knownThreadAtSend, activeSessionIdRef.current);
-        bindThreadSession?.(knownThreadAtSend, activeSessionIdRef.current);
+        streamRegistry.ensureContext(knownThreadAtSend, ownerSessionId);
+        bindThreadSession?.(knownThreadAtSend, ownerSessionId);
       }
-      const streamKey = resumedThreadIdRef.current ?? '__pending__';
+      // Multi-session cross-talk fix: use a per-send unique key for the
+      // AbortController when the real threadId is not yet known (brand-new
+      // session). This replaces the shared `__pending__` key so that one send
+      // completing cannot delete/abort another concurrent pending send's
+      // controller. The key is recorded in `pendingSendKeyRef` so that
+      // `handleCancelStream` (Esc) can find the right controller.
+      const streamKey = resumedThreadIdRef.current ?? nextSendKey();
+      pendingSendKeyRef.current = streamKey;
       streamControllersRef.current.get(streamKey)?.abort();
       const controller = new AbortController();
       streamControllersRef.current.set(streamKey, controller);
@@ -281,7 +328,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       // when resuming an existing thread; for new-thread `postStreamTurn` it
       // is resolved from `turn_started`. Used by `applyNorm` to route events
       // into the background context when this thread is not the active view.
-      let ownerThreadId: string | null = resumedThreadIdRef.current;
+      let ownerThreadId: string | null = knownThreadAtSend?.trim() || null;
       /** True until this consumer's `turn_started` — keeps new-session sends on the active SSE path. */
       let pendingSend = true;
 
@@ -365,16 +412,41 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           });
         };
 
+        const markThreadStreamIdle = (threadId: string | null | undefined) => {
+          const tid = threadId?.trim();
+          if (!tid) return;
+          const knownSessionId =
+            streamRegistry.getContext(tid)?.sessionId ?? activeSessionIdRef.current;
+          streamRegistry.ensureContext(tid, knownSessionId);
+          streamRegistry.patchContext(tid, {
+            isStreaming: false,
+            pendingApproval: null,
+          });
+          setStreamingThreadIds((prev) => {
+            if (!prev.has(tid)) return prev;
+            const next = new Set(prev);
+            next.delete(tid);
+            return next;
+          });
+        };
+
+        const resolveStreamThreadId = (): string | null =>
+          ownerThreadId?.trim() ||
+          readThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId ||
+          resumedThreadIdRef.current?.trim() ||
+          streamRegistry.activeThreadIdRef.current?.trim() ||
+          null;
+
         const scheduleThreadSessionPersist = (threadId: string) => {
           const tid = threadId.trim();
           if (!tid) return;
           const knownSessionId =
-            streamRegistry?.getContext(tid)?.sessionId ?? activeSessionIdRef.current;
+            streamRegistry.getContext(tid)?.sessionId ?? ownerSessionId;
           void (async () => {
             try {
-              const res = await persistThreadSession(tid, knownSessionId);
+              const res = await persistThreadSessionDeduped(tid, knownSessionId);
               bindThreadSession?.(tid, res.session_id);
-              if (streamRegistry?.isActiveStreamView(tid)) {
+              if (streamRegistry.isActiveStreamView(tid)) {
                 setActiveSessionId(res.session_id);
                 saveStoredActiveSessionId(res.session_id);
               }
@@ -408,22 +480,16 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         };
 
         const maybePersistCompletedTurn = () => {
-          const { threadId, turnId } = threadTurnRef.current;
+          const completingId = ownerThreadId || resumedThreadIdRef.current || '';
+          const { threadId, turnId } = readThreadTurn(streamRegistry, completingId);
           if (!threadId || !turnId || turnId === lastPersistedTurnRef.current) {
             return;
           }
           lastPersistedTurnRef.current = turnId;
           void (async () => {
             try {
-              const res = await persistThreadSession(threadId, activeSessionIdRef.current);
-              // Multi-session P0.7: only promote the persisted session to the
-              // stored active session when the user is actually viewing it.
-              // Background-turn completion must not hijack the active session.
-              if (
-                streamRegistry &&
-                ownerThreadId &&
-                !streamRegistry.isActiveStreamView(ownerThreadId)
-              ) {
+              const res = await persistThreadSessionDeduped(threadId, ownerSessionId);
+              if (ownerThreadId && !streamRegistry.isActiveStreamView(ownerThreadId)) {
                 await refreshSessions();
                 return;
               }
@@ -437,31 +503,19 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           })();
         };
 
-        // Multi-session P0.5: background turns complete without touching the
-        // active view's state. Only the owning thread's controller / streaming
-        // flag / registry context are cleaned up.
         const maybePersistBackgroundTurn = () => {
           const tid = ownerThreadId;
           if (!tid) return;
-          const ctxTurnId =
-            streamRegistry?.getContext(tid)?.threadTurn.turnId ||
-            threadTurnRef.current.turnId;
+          const ctxTurnId = readThreadTurn(streamRegistry, tid).turnId;
           if (!ctxTurnId || ctxTurnId === lastPersistedTurnRef.current) {
             return;
           }
           lastPersistedTurnRef.current = ctxTurnId;
           void (async () => {
             try {
-              // Background turns must NOT fall back to `activeSessionIdRef`:
-              // in parallel-session flows that ref points at *another*
-              // thread's session, and forwarding it would either overwrite
-              // the wrong session or force the backend into a wasteful
-              // load+validate+reverse-lookup cycle. Pass `null` instead and
-              // let `persist_thread_session` resolve the session by
-              // `runtime_thread_id` — which is the authoritative link.
-              const sessionId = streamRegistry?.getContext(tid)?.sessionId ?? null;
-              const res = await persistThreadSession(tid, sessionId);
-              if (streamRegistry?.isActiveStreamView(tid)) {
+              const sessionId = streamRegistry.getContext(tid)?.sessionId ?? null;
+              const res = await persistThreadSessionDeduped(tid, sessionId);
+              if (streamRegistry.isActiveStreamView(tid)) {
                 setActiveSessionId(res.session_id);
                 saveStoredActiveSessionId(res.session_id);
               }
@@ -482,28 +536,21 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           }
           const tid = ownerThreadId;
           if (tid) {
-            streamRegistry?.patchContext(tid, {
-              isStreaming: false,
-              pendingApproval: null,
-            });
-            setStreamingThreadIds((prev) => {
-              if (!prev.has(tid)) return prev;
-              const next = new Set(prev);
-              next.delete(tid);
-              return next;
-            });
+            markThreadStreamIdle(tid);
             streamControllersRef.current.delete(tid);
           }
-          streamControllersRef.current.delete('__pending__');
+          // Only clean up THIS send's per-send key — never a shared key that
+          // might belong to a concurrent pending send (cross-talk fix).
+          streamControllersRef.current.delete(streamKey);
+          if (pendingSendKeyRef.current === streamKey) {
+            pendingSendKeyRef.current = null;
+          }
         };
 
         const completeStreamUi = () => {
           if (finished) return;
           finished = true;
           userStopRequestedRef.current = false;
-          liveStreamDeliverRef.current = null;
-          streamSessionRef.current = null;
-          streamRecoveryContextRef.current = null;
           if (toolProgressRafRef.current != null) {
             cancelAnimationFrame(toolProgressRafRef.current);
             toolProgressRafRef.current = null;
@@ -512,15 +559,17 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           if (!signal.aborted) {
             controller.abort();
           }
-          const finishedThreadId = ownerThreadId || threadTurnRef.current.threadId;
-          streamControllersRef.current.delete('__pending__');
+          const finishedThreadId = resolveStreamThreadId();
+          // Only clean up THIS send's per-send key (cross-talk fix).
+          streamControllersRef.current.delete(streamKey);
           if (finishedThreadId) {
-            setStreamingThreadIds((prev) => {
-              const next = new Set(prev);
-              next.delete(finishedThreadId);
-              return next;
-            });
+            markThreadStreamIdle(finishedThreadId);
             streamControllersRef.current.delete(finishedThreadId);
+            clearActiveStreamHandles(streamRegistry, finishedThreadId);
+          }
+          clearActiveStreamHandles(streamRegistry, streamKey);
+          if (pendingSendKeyRef.current === streamKey) {
+            pendingSendKeyRef.current = null;
           }
           setPendingComposerStream(false);
           setMessages((prev) => {
@@ -531,7 +580,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             }
             return next;
           });
-          const tid = finishedThreadId || threadTurnRef.current.threadId;
+          const tid = finishedThreadId || readThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId;
           if (tid) {
             void refreshThreadContext(tid);
           }
@@ -540,14 +589,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
 
         const finishOnce = (options?: FinishOnceOptions) => {
           const terminalEvent = options?.terminal === true;
-          // Multi-session P0.5: background turns take a trimmed finish path so
-          // they never touch the active view's `setMessages` /
-          // `setPendingComposerStream` / `streamSessionRef`.
-          if (
-            streamRegistry &&
-            ownerThreadId &&
-            !streamRegistry.isActiveStreamView(ownerThreadId)
-          ) {
+          if (ownerThreadId && !streamRegistry.isActiveStreamView(ownerThreadId)) {
             if (options?.force || userStopRequestedRef.current) {
               completeBackgroundStream();
               return;
@@ -572,14 +614,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           if (finished) {
             if (terminalEvent) {
               setPendingComposerStream(false);
-              const tid = threadTurnRef.current.threadId;
+              const tid = ownerThreadId || readThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId;
               if (tid) {
-                setStreamingThreadIds((prev) => {
-                  if (!prev.has(tid)) return prev;
-                  const next = new Set(prev);
-                  next.delete(tid);
-                  return next;
-                });
+                markThreadStreamIdle(tid);
               }
               setMessages((prev) => {
                 if (!anyAssistantStreaming(prev)) return prev;
@@ -595,7 +632,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             return;
           }
           if (finishPending) return;
-          const { threadId, turnId } = threadTurnRef.current;
+          const { threadId, turnId } = readThreadTurn(
+            streamRegistry,
+            ownerThreadId || resumedThreadIdRef.current,
+          );
           if (!threadId) {
             completeStreamUi();
             return;
@@ -629,14 +669,17 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               if (!finished) completeStreamUi();
             });
         };
-        streamSessionRef.current = { markInterrupted, finishOnce };
+        // Use the per-send streamKey as the registry delivery key until
+        // `turn_started` resolves the real threadId. This avoids two concurrent
+        // new-session sends writing into the same shared `__pending__` context.
+        let deliveryThreadId = knownThreadAtSend?.trim() || streamKey;
+        writeStreamSession(streamRegistry, deliveryThreadId, { markInterrupted, finishOnce });
 
         const notifyTurnCompleteIfAway = (host: boolean, completingThreadId: string) => {
           if (!host) return;
           if (loadNotifyMethod() === 'off') return;
-          const isActiveView =
-            !streamRegistry || streamRegistry.isActiveStreamView(completingThreadId);
-          const ctx = streamRegistry?.getContext(completingThreadId);
+          const isActiveView = streamRegistry.isActiveStreamView(completingThreadId);
+          const ctx = streamRegistry.getContext(completingThreadId);
           const sessionId = ctx?.sessionId ?? null;
           const sessionLabel =
             sessionId?.slice(0, 8) ?? completingThreadId.slice(0, 8);
@@ -688,11 +731,14 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           // `turn_started` carries it explicitly; all subsequent events on the
           // same SSE consumer inherit the `ownerThreadId` closure value.
           const eventThreadId =
-            norm.kind === 'turn_started' ? norm.threadId : ownerThreadId;
-          const activeThreadId = streamRegistry?.activeThreadIdRef.current ?? null;
-          const isBackground =
-            !!streamRegistry &&
-            isBackgroundStreamEvent(
+            norm.kind === 'turn_started'
+              ? norm.threadId
+              : ownerThreadId ||
+                readThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId ||
+                resumedThreadIdRef.current ||
+                null;
+          const activeThreadId = streamRegistry.activeThreadIdRef.current ?? null;
+          const isBackground = isBackgroundStreamEvent(
               activeThreadId,
               eventThreadId,
               ownerThreadId,
@@ -708,13 +754,13 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           if (isBackground && eventThreadId) {
             switch (norm.kind) {
               case 'turn_started':
-                streamRegistry.ensureContext(eventThreadId, activeSessionIdRef.current);
+                streamRegistry.ensureContext(eventThreadId, ownerSessionId);
                 streamRegistry.patchContext(eventThreadId, {
                   threadTurn: { threadId: eventThreadId, turnId: norm.turnId },
                   isStreaming: true,
-                  sessionId: activeSessionIdRef.current,
+                  sessionId: ownerSessionId,
                 });
-                bindThreadSession?.(eventThreadId, activeSessionIdRef.current);
+                bindThreadSession?.(eventThreadId, ownerSessionId);
                 scheduleThreadSessionPersist(eventThreadId);
                 setStreamingThreadIds((prev) => new Set(prev).add(eventThreadId));
                 break;
@@ -813,39 +859,41 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             case 'turn_started':
               ownerThreadId = norm.threadId;
               pendingSend = false;
-              if (norm.threadId && streamRegistry) {
-                // Seed registry messages from the live UI — user/assistant bubbles
-                // were added before `turn_started` while `resumedThreadId` was
-                // still null, so bindLegacySetMessages only updated React state.
-                setMessages((prev) => {
-                  streamRegistry.ensureContext(norm.threadId, activeSessionIdRef.current);
-                  streamRegistry.patchContext(norm.threadId, {
-                    messages: prev,
-                    threadTurn: { threadId: norm.threadId, turnId: norm.turnId },
-                    sessionId: activeSessionIdRef.current,
-                    isStreaming: true,
-                  });
-                  bindThreadSession?.(norm.threadId, activeSessionIdRef.current);
-                  return prev;
+              if (norm.threadId) {
+                deliveryThreadId = norm.threadId;
+                streamRegistry.migrateDraftToThread(
+                  ownerSessionId,
+                  norm.threadId,
+                );
+                streamRegistry.ensureContext(norm.threadId, ownerSessionId);
+                writeThreadTurn(streamRegistry, norm.threadId, norm.turnId);
+                streamRegistry.patchContext(norm.threadId, {
+                  sessionId: ownerSessionId,
+                  isStreaming: true,
                 });
+                writeStreamSession(streamRegistry, norm.threadId, { markInterrupted, finishOnce });
+                writeLiveDeliver(streamRegistry, norm.threadId, onSseEvent);
+                clearActiveStreamHandles(streamRegistry, streamKey);
+                bindThreadSession?.(norm.threadId, ownerSessionId);
               }
-              threadTurnRef.current = {
-                threadId: norm.threadId,
-                turnId: norm.turnId,
-              };
               syncRecoveryContext();
               if (norm.threadId) {
                 scheduleThreadSessionPersist(norm.threadId);
-                streamRegistry?.setActiveThreadId(norm.threadId);
+                streamRegistry.setActiveThreadId(norm.threadId);
+                resumedThreadIdRef.current = norm.threadId;
                 setResumedThreadId(norm.threadId);
                 void registerWindowThread(norm.threadId);
                 setStreamingThreadIds((prev) => new Set(prev).add(norm.threadId));
                 setPendingComposerStream(false);
-                const pending = streamControllersRef.current.get('__pending__');
+                // Migrate the controller from the per-send key to the real
+                // threadId so that subsequent cancel/abort resolves correctly.
+                // Only this send's controller is moved — no shared `__pending__`.
+                const pending = streamControllersRef.current.get(streamKey);
                 if (pending) {
-                  streamControllersRef.current.delete('__pending__');
+                  streamControllersRef.current.delete(streamKey);
                   streamControllersRef.current.set(norm.threadId, pending);
                 }
+                pendingSendKeyRef.current = null;
               }
               break;
             case 'thinking_delta':
@@ -941,7 +989,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               finishOnce({ terminal: true });
               notifyTurnCompleteIfAway(
                 desktopHost,
-                ownerThreadId || threadTurnRef.current.threadId,
+                ownerThreadId || readThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId,
               );
               if (norm.usage?.output_tokens != null && norm.usage.output_tokens > 0) {
                 setLastTurnOutputTokens(norm.usage.output_tokens);
@@ -955,7 +1003,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               finishOnce({ terminal: true });
               notifyTurnCompleteIfAway(
                 desktopHost,
-                ownerThreadId || threadTurnRef.current.threadId,
+                ownerThreadId || readThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId,
               );
               break;
             case 'error':
@@ -980,25 +1028,27 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             case 'panel_scratchpad': {
               const raw = norm.scratchpad;
               if (raw && typeof raw === 'object' && 'run_id' in (raw as Record<string, unknown>)) {
-                dispatchPanelScratchpad(raw as ScratchpadStatus);
+                // P0.6 hardening: pass originThreadId so panelChannel can drop
+                // the event if it is not from the active view's thread.
+                dispatchPanelScratchpad(raw as ScratchpadStatus, ownerThreadId || eventThreadId || undefined);
               }
               break;
             }
             case 'panel_checklist':
-              dispatchPanelChecklist(normalizeChecklistPayload(norm.checklist));
+              dispatchPanelChecklist(normalizeChecklistPayload(norm.checklist), ownerThreadId || eventThreadId || undefined);
               break;
             case 'panel_task_graph':
-              dispatchPanelTaskGraph(norm.task_graph as HarnessTaskGraph);
+              dispatchPanelTaskGraph(norm.task_graph as HarnessTaskGraph, ownerThreadId || eventThreadId || undefined);
               break;
             case 'harness_cycle_advanced':
-              dispatchHarnessCycleAdvanced({ from: norm.from, to: norm.to });
+              dispatchHarnessCycleAdvanced({ from: norm.from, to: norm.to }, ownerThreadId || eventThreadId || undefined);
               break;
             case 'panel_context': {
               const panelCtx = norm.context as ThreadContextSnapshot;
               const tid = resumedThreadIdRef.current;
               if (tid && panelCtx && typeof panelCtx.estimated_input_tokens === 'number') {
                 applyThreadContextSnapshot(tid, panelCtx);
-                dispatchPanelContext(panelCtx);
+                dispatchPanelContext(panelCtx, ownerThreadId || eventThreadId || undefined);
               }
               break;
             }
@@ -1032,25 +1082,28 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             return;
           }
           const tid =
-            resumedThreadId || threadTurnRef.current.threadId || threadIdFromSseEvent(ev);
+            resumedThreadId ||
+            readThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId ||
+            threadIdFromSseEvent(ev);
           if (!tid) {
             deliverSseEvent(ev, filter);
             return;
           }
           filterThreadStreamEvents(tid, () => deliverSseEvent(ev, filter))(ev);
         };
-        liveStreamDeliverRef.current = onSseEvent;
+        writeLiveDeliver(streamRegistry, deliveryThreadId, onSseEvent);
 
         const syncRecoveryContext = () => {
-          const { threadId, turnId } = threadTurnRef.current;
+          const tid = ownerThreadId || deliveryThreadId;
+          const { threadId, turnId } = readThreadTurn(streamRegistry, tid);
           if (!threadId || !turnId) return;
-          streamRecoveryContextRef.current = {
+          writeRecoveryCtx(streamRegistry, threadId, {
             assistantId: streamTarget.assistantId,
             threadId,
             turnId,
             deliverSseEvent: (ev, filter) => onSseEvent(ev, filter),
             finishOnce,
-          };
+          });
         };
 
         const handleHttpError = (err: Error & { status?: number }) => {
@@ -1076,9 +1129,56 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         const streamOpts = streamFlagsForRunMode(runMode, autoApprove);
         const routeIntentApi = resolveRouteIntentForApi(routeIntent, runMode);
 
+        const repairStaleStreamingThreads = async () => {
+          const ids = streamingThreadIdsRef?.current;
+          if (!ids?.size) return;
+          await Promise.all(
+            [...ids].map(async (tid) => {
+              try {
+                const ctx = streamRegistry.getContext(tid);
+                const turnId = ctx?.threadTurn.turnId || '';
+                const active = await threadTurnStillActive(tid, turnId || undefined);
+                if (!active) {
+                  markThreadStreamIdle(tid);
+                }
+              } catch {
+                markThreadStreamIdle(tid);
+              }
+            }),
+          );
+        };
+
+        await repairStaleStreamingThreads();
+
+        let sendThreadId =
+          resolveThreadIdForSend(
+            streamRegistry,
+            resumedThreadIdRef.current,
+            ownerSessionId,
+          ) ?? '';
+
+        if (!sendThreadId && ownerSessionId?.trim()) {
+          try {
+            const resumed = await resumeSessionThread(ownerSessionId.trim());
+            sendThreadId = resumed.thread_id?.trim() ?? '';
+            if (sendThreadId) {
+              resumedThreadIdRef.current = sendThreadId;
+              setResumedThreadId(sendThreadId);
+              bindThreadSession?.(sendThreadId, ownerSessionId);
+              ownerThreadId = sendThreadId;
+            }
+          } catch {
+            /* orphan session — fall through to postStreamTurn */
+          }
+        } else if (sendThreadId && sendThreadId !== ownerThreadId) {
+          resumedThreadIdRef.current = sendThreadId;
+          setResumedThreadId(sendThreadId);
+          ownerThreadId = sendThreadId;
+        }
+
         try {
-          if (resumedThreadId) {
-            const detail = await getThreadDetail(resumedThreadId);
+          if (sendThreadId) {
+            const detail = await getThreadDetail(sendThreadId);
             if (signal.aborted) {
               finishOnce();
               return;
@@ -1094,11 +1194,11 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               ...modelSamplingForApi(modelParams, selectedModel),
             };
             const { turn } = sendOptions?.editFromMessageId
-              ? await editLastThreadTurn(resumedThreadId, {
+              ? await editLastThreadTurn(sendThreadId, {
                   content: outbound.apiPrompt,
                   ...turnBody,
                 })
-              : await startThreadTurn(resumedThreadId, {
+              : await startThreadTurn(sendThreadId, {
                   prompt: outbound.apiPrompt,
                   task_type: taskTypePreference,
                   ...turnBody,
@@ -1108,14 +1208,14 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               return;
             }
             const turnId = turn.id;
-            threadTurnRef.current = {
-              threadId: resumedThreadId,
-              turnId,
-            };
+            deliveryThreadId = sendThreadId;
+            writeThreadTurn(streamRegistry, sendThreadId, turnId);
+            writeStreamSession(streamRegistry, sendThreadId, { markInterrupted, finishOnce });
+            writeLiveDeliver(streamRegistry, sendThreadId, onSseEvent);
             syncRecoveryContext();
 
             await pollThreadTurnEvents(
-              resumedThreadId,
+              sendThreadId,
               sinceSeq,
               (ev) => onSseEvent(ev, { turnId }),
               { signal, turnId },
@@ -1160,12 +1260,12 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           // Reconnect to that turn instead of surfacing a raw error, and keep the
           // composer locked until it actually ends.
           const emsg = (e as Error).message || '';
-          if (resumedThreadId && /active turn/i.test(emsg)) {
+          if (sendThreadId && /active turn/i.test(emsg)) {
             const recovered = await (async () => {
               try {
-                const detail = await getThreadDetail(resumedThreadId);
+                const detail = await getThreadDetail(sendThreadId);
                 const activeTurnId = detail.thread.latest_turn_id ?? undefined;
-                if (!(await threadTurnStillActive(resumedThreadId, activeTurnId))) {
+                if (!(await threadTurnStillActive(sendThreadId, activeTurnId))) {
                   return false;
                 }
                 // The just-typed prompt was rejected — drop optimistic bubbles, rebind live stream
@@ -1191,17 +1291,18 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                     },
                   ];
                 });
-                threadTurnRef.current = {
-                  threadId: resumedThreadId,
-                  turnId: activeTurnId ?? '',
-                };
-                setResumedThreadId(resumedThreadId);
-                setStreamingThreadIds((prev) => new Set(prev).add(resumedThreadId));
+                deliveryThreadId = sendThreadId;
+                writeThreadTurn(streamRegistry, sendThreadId, activeTurnId ?? '');
+                writeStreamSession(streamRegistry, sendThreadId, { markInterrupted, finishOnce });
+                writeLiveDeliver(streamRegistry, sendThreadId, onSseEvent);
+                resumedThreadIdRef.current = sendThreadId;
+                setResumedThreadId(sendThreadId);
+                setStreamingThreadIds((prev) => new Set(prev).add(sendThreadId));
                 setPendingComposerStream(true);
                 syncRecoveryContext();
                 toast.warning(t('composer.turnStillRunning'));
                 await pollThreadTurnEvents(
-                  resumedThreadId,
+                  sendThreadId,
                   detail.latest_seq ?? 0,
                   (ev) => onSseEvent(ev, activeTurnId ? { turnId: activeTurnId } : undefined),
                   { signal, turnId: activeTurnId },
@@ -1236,8 +1337,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       modelParams,
       desktopHost,
       streamControllersRef,
-      threadTurnRef,
-      streamSessionRef,
       setStreamingThreadIds,
       setPendingComposerStream,
       setMessages,
@@ -1261,6 +1360,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       t,
       streamRegistry,
       bindThreadSession,
+      streamingThreadIdsRef,
     ],
   );
 

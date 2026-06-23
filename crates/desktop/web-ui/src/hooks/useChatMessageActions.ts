@@ -12,7 +12,10 @@ import { cacheSessionUiMessages, type CachedUiMessage } from '../lib/chat/sessio
 import type { ThreadDetailWithTurns } from '../lib/contextUsage';
 import { toast } from '../lib/toast';
 import { usageRecordCacheHitPercent } from '../lib/cacheUsage';
+import type { StreamContextRegistry } from './useStreamContextRegistry';
+import { writeThreadTurn } from '../lib/chat/streamContextAccess';
 import type { TurnChatMessage } from './useTurnSend';
+
 type EditDraft = { messageId: string; content: string };
 
 type BacktrackDraft = {
@@ -29,7 +32,7 @@ export type UseChatMessageActionsParams = {
   messages: TurnChatMessage[];
   activeSessionIdRef: MutableRefObject<string | null>;
   resumedThreadIdRef: MutableRefObject<string | null>;
-  threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;
+  streamRegistry: StreamContextRegistry;
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
   sessionUiCacheRef: MutableRefObject<Map<string, CachedUiMessage[]>>;
   handleSend: (
@@ -59,7 +62,7 @@ export function useChatMessageActions({
   messages,
   activeSessionIdRef,
   resumedThreadIdRef,
-  threadTurnRef,
+  streamRegistry,
   streamControllersRef,
   sessionUiCacheRef,
   handleSend,
@@ -209,7 +212,7 @@ export function useChatMessageActions({
       resetAgentPanel();
       resumedThreadIdRef.current = newThreadId;
       setResumedThreadId(newThreadId);
-      threadTurnRef.current = { threadId: newThreadId, turnId: '' };
+      writeThreadTurn(streamRegistry, newThreadId, '');
       resetTurnPersistState();
 
       const rebuilt = await rebuildMessagesFromThreadEvents(newThreadId);
@@ -252,7 +255,7 @@ export function useChatMessageActions({
     setPendingComposerStream,
     resumedThreadIdRef,
     setResumedThreadId,
-    threadTurnRef,
+    streamRegistry,
     setMessages,
     activeSessionIdRef,
     sessionUiCacheRef,

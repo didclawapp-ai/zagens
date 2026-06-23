@@ -32,8 +32,18 @@ import {
   collectReconcileThreadIds,
   removeThreadFromStreamingSet,
 } from '../lib/chat/streamContextStore';
+import {
+  hasAnyActiveStreamHandle,
+  invokeFinishOnce,
+  patchRecoveryAssistantId,
+  readRecoveryCtx,
+  readThreadTurn,
+  resolveActiveThreadTurn,
+  resolveEventDeliver,
+  writeThreadTurn,
+} from '../lib/chat/streamContextAccess';
 import type { StreamContextRegistry } from './useStreamContextRegistry';
-import type { FinishOnceOptions, StreamSessionControl } from './useTurnStream';
+import type { FinishOnceOptions } from './useTurnStream';
 import type { TurnChatMessage } from './useTurnSend';
 
 /** Why the live SSE consumer was detached (backend turn may still run). */
@@ -64,13 +74,7 @@ export type UseTurnStreamRecoveryParams = {
   runtimeConn: RuntimeConnectionState;
   streamingRef: MutableRefObject<boolean>;
   resumedThreadIdRef: MutableRefObject<string | null>;
-  threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
-  streamSessionRef: MutableRefObject<StreamSessionControl | null>;
-  streamRecoveryContextRef: MutableRefObject<StreamRecoveryContext | null>;
-  liveStreamDeliverRef: MutableRefObject<
-    ((ev: SseTurnEvent, filter?: { turnId: string }) => void) | null
-  >;
   setMessages: Dispatch<SetStateAction<TurnChatMessage[]>>;
   setStreamingThreadIds: Dispatch<SetStateAction<Set<string>>>;
   setPendingComposerStream: Dispatch<SetStateAction<boolean>>;
@@ -79,7 +83,7 @@ export type UseTurnStreamRecoveryParams = {
   refreshThreadContext: (threadId: string) => Promise<void>;
   /** All in-flight thread ids (P1: reconcile each, not only the active view). */
   streamingThreadIdsRef?: MutableRefObject<Set<string>>;
-  streamRegistry?: StreamContextRegistry | null;
+  streamRegistry: StreamContextRegistry;
 };
 
 export type UseTurnStreamRecoveryResult = {
@@ -105,11 +109,7 @@ export function useTurnStreamRecovery({
   runtimeConn,
   streamingRef,
   resumedThreadIdRef,
-  threadTurnRef,
   streamControllersRef,
-  streamSessionRef,
-  streamRecoveryContextRef,
-  liveStreamDeliverRef,
   setMessages,
   setStreamingThreadIds,
   setPendingComposerStream,
@@ -155,6 +155,7 @@ export function useTurnStreamRecovery({
 
   const rebindRecoveryAssistant = useCallback(
     (banner?: string): string | undefined => {
+      const activeThreadId = resumedThreadIdRef.current;
       let reboundId: string | undefined;
       setMessages((prev) => {
         const lastId = lastAssistantMessageId(prev);
@@ -162,34 +163,27 @@ export function useTurnStreamRecovery({
         reboundId = lastId;
         return rebindStreamingAssistant(prev, lastId, banner) as TurnChatMessage[];
       });
-      const ctx = streamRecoveryContextRef.current;
-      if (ctx && reboundId) {
-        ctx.assistantId = reboundId;
+      if (activeThreadId && reboundId) {
+        patchRecoveryAssistantId(streamRegistry, activeThreadId, reboundId);
       }
       return reboundId;
     },
-    [setMessages, streamRecoveryContextRef],
+    [resumedThreadIdRef, setMessages, streamRegistry],
   );
 
-  const resolveEventDeliver = useCallback((): ((
-    ev: SseTurnEvent,
-    filter?: { turnId: string },
-  ) => void) | null => {
-    return (
-      streamRecoveryContextRef.current?.deliverSseEvent ??
-      liveStreamDeliverRef.current ??
-      null
-    );
-  }, [liveStreamDeliverRef, streamRecoveryContextRef]);
+  const resolveEventDeliverForActive = useCallback(
+    (): ((ev: SseTurnEvent, filter?: { turnId: string }) => void) | null =>
+      resolveEventDeliver(streamRegistry, resumedThreadIdRef.current),
+    [resumedThreadIdRef, streamRegistry],
+  );
 
   const runTurnEventPoll = useCallback(
     async (threadId: string, turnId: string): Promise<boolean> => {
-      const deliver = resolveEventDeliver();
+      const deliver = resolveEventDeliverForActive();
       if (!deliver) {
         return false;
       }
 
-      // Multi-session: only bind global recovery refs for the active view thread.
       if (threadId !== resumedThreadIdRef.current) {
         return false;
       }
@@ -203,7 +197,7 @@ export function useTurnStreamRecovery({
 
       const controller = new AbortController();
       streamControllersRef.current.set(threadId, controller);
-      threadTurnRef.current = { threadId, turnId };
+      writeThreadTurn(streamRegistry, threadId, turnId);
       setStreamingThreadIds((prev) => new Set(prev).add(threadId));
       setPendingComposerStream(true);
 
@@ -218,19 +212,21 @@ export function useTurnStreamRecovery({
     },
     [
       rebindRecoveryAssistant,
-      resolveEventDeliver,
+      resolveEventDeliverForActive,
+      resumedThreadIdRef,
       setPendingComposerStream,
       setStreamingThreadIds,
       streamControllersRef,
-      threadTurnRef,
+      streamRegistry,
     ],
   );
 
   const detachActiveStream = useCallback(
     (reason: StreamDetachReason) => {
-      const ctx = streamRecoveryContextRef.current;
-      const { threadId, turnId } = threadTurnRef.current;
-      if (!ctx?.turnId && !turnId) {
+      const activeThreadId = resumedThreadIdRef.current ?? '';
+      const recovery = readRecoveryCtx(streamRegistry, activeThreadId);
+      const activeTurn = readThreadTurn(streamRegistry, activeThreadId);
+      if (!recovery?.turnId && !activeTurn.turnId) {
         return;
       }
       if (detachReasonRef.current != null) {
@@ -248,25 +244,23 @@ export function useTurnStreamRecovery({
         c.abort();
       }
       streamControllersRef.current.clear();
-      // Sidecar restart / offline invalidates every in-flight SSE for this window.
-      // Call without a thread_id to cancel all remaining consumers (P0.1: the
-      // per-thread disconnect above may have already cleared most, but any
-      // consumer armed without a controllers entry still needs to be torn down).
       void import('@tauri-apps/api/core')
         .then(({ invoke }) => invoke('runtime_cancel_sse'))
         .catch(() => {});
 
-      const activeThreadId = ctx?.threadId || threadId || resumedThreadIdRef.current;
-      if (activeThreadId) {
-        setStreamingThreadIds((prev) => new Set(prev).add(activeThreadId));
+      const threadId = recovery?.threadId || activeTurn.threadId || activeThreadId;
+      if (threadId) {
+        setStreamingThreadIds((prev) => new Set(prev).add(threadId));
       }
       setPendingComposerStream(true);
 
       setMessages((prev) => {
         const lastId = lastAssistantMessageId(prev);
-        const targetId = lastId ?? ctx?.assistantId;
+        const targetId = lastId ?? recovery?.assistantId;
         if (!targetId) return prev;
-        if (ctx) ctx.assistantId = targetId;
+        if (threadId) {
+          patchRecoveryAssistantId(streamRegistry, threadId, targetId);
+        }
         return prev.map((m) => {
           if (m.id !== targetId) {
             return m.role === 'assistant' && m.isStreaming ? { ...m, isStreaming: false } : m;
@@ -296,9 +290,8 @@ export function useTurnStreamRecovery({
       setStreamingThreadIds,
       showDetachedToast,
       streamControllersRef,
-      streamRecoveryContextRef,
+      streamRegistry,
       t,
-      threadTurnRef,
     ],
   );
 
@@ -313,24 +306,25 @@ export function useTurnStreamRecovery({
     if (recoveringRef.current || detachReasonRef.current) {
       return;
     }
-    const threadId = resumedThreadIdRef.current || threadTurnRef.current.threadId;
+    const activeTurn = resolveActiveThreadTurn(streamRegistry, resumedThreadIdRef.current);
+    const threadId = resumedThreadIdRef.current || activeTurn.threadId;
     if (!threadId || streamingRef.current) {
       return;
     }
-    if (!(await threadTurnStillActive(threadId, threadTurnRef.current.turnId || undefined))) {
+    if (!(await threadTurnStillActive(threadId, activeTurn.turnId || undefined))) {
       return;
     }
-    if (!resolveEventDeliver()) {
+    if (!resolveEventDeliverForActive()) {
       return;
     }
 
-    let turnId = threadTurnRef.current.turnId;
+    let turnId = activeTurn.turnId;
     if (!turnId) {
       try {
         const detail = await getThreadDetail(threadId);
         turnId = detail.thread.latest_turn_id ?? '';
         if (turnId) {
-          threadTurnRef.current = { threadId, turnId };
+          writeThreadTurn(streamRegistry, threadId, turnId);
         }
       } catch {
         return;
@@ -342,8 +336,7 @@ export function useTurnStreamRecovery({
     try {
       const stillActive = await runTurnEventPoll(threadId, turnId);
       if (!stillActive) {
-        streamRecoveryContextRef.current?.finishOnce({ terminal: true });
-        streamSessionRef.current?.finishOnce({ terminal: true });
+        invokeFinishOnce(streamRegistry, threadId, { terminal: true });
       }
     } catch {
       /* best-effort */
@@ -351,47 +344,38 @@ export function useTurnStreamRecovery({
       recoveringRef.current = false;
     }
   }, [
-    resolveEventDeliver,
+    resolveEventDeliverForActive,
     resumedThreadIdRef,
     runTurnEventPoll,
-    streamRecoveryContextRef,
-    streamSessionRef,
+    streamRegistry,
     streamingRef,
-    threadTurnRef,
   ]);
 
   const clearStaleStreamingUi = useCallback(
     (threadId: string) => {
-      const ctx = streamRecoveryContextRef.current;
-      if (ctx?.finishOnce) {
-        ctx.finishOnce({ terminal: true });
-      } else {
-        streamSessionRef.current?.finishOnce({ terminal: true });
-      }
+      invokeFinishOnce(streamRegistry, threadId, { terminal: true });
+      streamRegistry.patchContext(threadId, {
+        isStreaming: false,
+        pendingApproval: null,
+      });
       setMessages((prev) => {
         if (!anyAssistantStreaming(prev)) return prev;
         return clearStreamingAssistants(prev) as TurnChatMessage[];
       });
       setPendingComposerStream(false);
-      setStreamingThreadIds((prev) => {
-        if (!prev.has(threadId)) return prev;
-        const next = new Set(prev);
-        next.delete(threadId);
-        return next;
-      });
+      setStreamingThreadIds((prev) => removeThreadFromStreamingSet(prev, threadId) ?? prev);
     },
     [
       setMessages,
       setPendingComposerStream,
       setStreamingThreadIds,
-      streamRecoveryContextRef,
-      streamSessionRef,
+      streamRegistry,
     ],
   );
 
   const clearBackgroundStreamingUi = useCallback(
     (threadId: string) => {
-      streamRegistry?.patchContext(threadId, {
+      streamRegistry.patchContext(threadId, {
         isStreaming: false,
         pendingApproval: null,
       });
@@ -401,13 +385,9 @@ export function useTurnStreamRecovery({
   );
 
   const resolveTurnIdForThread = useCallback(
-    (threadId: string, isActiveView: boolean): string | undefined => {
-      if (isActiveView && threadTurnRef.current.threadId === threadId) {
-        return threadTurnRef.current.turnId || undefined;
-      }
-      return streamRegistry?.getContext(threadId)?.threadTurn.turnId || undefined;
-    },
-    [streamRegistry, threadTurnRef],
+    (threadId: string, _isActiveView: boolean): string | undefined =>
+      readThreadTurn(streamRegistry, threadId).turnId || undefined,
+    [streamRegistry],
   );
 
   const reconcileSingleThread = useCallback(
@@ -416,11 +396,6 @@ export function useTurnStreamRecovery({
       if (!tid) return;
 
       const isActiveView = tid === resumedThreadIdRef.current;
-
-      if (streamControllersRef.current.has(tid)) {
-        return;
-      }
-
       const turnId = resolveTurnIdForThread(tid, isActiveView);
       let stillActive: boolean;
       try {
@@ -430,6 +405,7 @@ export function useTurnStreamRecovery({
       }
 
       if (!stillActive) {
+        streamControllersRef.current.delete(tid);
         if (isActiveView) {
           if (streamingRef.current) {
             clearStaleStreamingUi(tid);
@@ -438,7 +414,7 @@ export function useTurnStreamRecovery({
               if (!anyAssistantStreaming(prev)) return prev;
               return clearStreamingAssistants(prev) as TurnChatMessage[];
             });
-            setStreamingThreadIds((prev) => removeThreadFromStreamingSet(prev, tid) ?? prev);
+            clearBackgroundStreamingUi(tid);
           }
         } else {
           clearBackgroundStreamingUi(tid);
@@ -446,11 +422,15 @@ export function useTurnStreamRecovery({
         return;
       }
 
+      if (streamControllersRef.current.has(tid)) {
+        return;
+      }
+
       if (isActiveView) {
         if (streamingRef.current) {
           return;
         }
-        if (resolveEventDeliver()) {
+        if (resolveEventDeliverForActive()) {
           void resumeLiveTurnStream();
           return;
         }
@@ -494,7 +474,7 @@ export function useTurnStreamRecovery({
     [
       clearBackgroundStreamingUi,
       clearStaleStreamingUi,
-      resolveEventDeliver,
+      resolveEventDeliverForActive,
       resolveTurnIdForThread,
       resumeLiveTurnStream,
       setMessages,
@@ -535,10 +515,11 @@ export function useTurnStreamRecovery({
     if (!detachReasonRef.current || recoveringRef.current) {
       return;
     }
-    const ctx = streamRecoveryContextRef.current;
-    const threadId =
-      ctx?.threadId || threadTurnRef.current.threadId || resumedThreadIdRef.current || '';
-    const turnId = ctx?.turnId || threadTurnRef.current.turnId || '';
+    const activeThreadId = resumedThreadIdRef.current ?? '';
+    const recovery = readRecoveryCtx(streamRegistry, activeThreadId);
+    const activeTurn = readThreadTurn(streamRegistry, activeThreadId);
+    const threadId = recovery?.threadId || activeTurn.threadId || activeThreadId;
+    const turnId = recovery?.turnId || activeTurn.turnId || '';
     if (!threadId || !turnId) {
       detachReasonRef.current = null;
       toast.dismissByTag(TURN_DETACHED_TAG);
@@ -551,11 +532,11 @@ export function useTurnStreamRecovery({
         detachReasonRef.current = null;
         clearOfflineTimers();
         toast.dismissByTag(TURN_DETACHED_TAG);
-        ctx?.finishOnce({ terminal: true });
+        invokeFinishOnce(streamRegistry, threadId, { terminal: true });
         return;
       }
 
-      if (!resolveEventDeliver()) {
+      if (!resolveEventDeliverForActive()) {
         await reconcileChatFromThreadReplay();
         return;
       }
@@ -568,7 +549,7 @@ export function useTurnStreamRecovery({
       detachReasonRef.current = null;
       clearOfflineTimers();
       if (!stillActive) {
-        ctx?.finishOnce({ terminal: true });
+        invokeFinishOnce(streamRegistry, threadId, { terminal: true });
       }
       void refreshThreadContext(threadId);
     } catch (e) {
@@ -583,12 +564,11 @@ export function useTurnStreamRecovery({
     notifyRuntimeTransient,
     refreshThreadContext,
     reconcileChatFromThreadReplay,
-    resolveEventDeliver,
+    resolveEventDeliverForActive,
     resumedThreadIdRef,
     runTurnEventPoll,
-    streamRecoveryContextRef,
+    streamRegistry,
     t,
-    threadTurnRef,
   ]);
 
   const detachActiveStreamRef = useRef(detachActiveStream);
@@ -614,7 +594,8 @@ export function useTurnStreamRecovery({
 
     offlineInterruptTimerRef.current = setTimeout(() => {
       if (detachReasonRef.current !== 'runtime_offline') return;
-      const { threadId, turnId } = threadTurnRef.current;
+      const activeTurn = resolveActiveThreadTurn(streamRegistry, resumedThreadIdRef.current);
+      const { threadId, turnId } = activeTurn;
       void (async () => {
         try {
           await stopThreadTurn({ threadId, turnId });
@@ -624,21 +605,24 @@ export function useTurnStreamRecovery({
         detachReasonRef.current = null;
         toast.dismissByTag(TURN_DETACHED_TAG);
         toast.error(t('banner.turnAutoStoppedOffline'));
-        streamRecoveryContextRef.current?.finishOnce();
+        invokeFinishOnce(streamRegistry, threadId);
       })();
     }, OFFLINE_AUTO_INTERRUPT_MS);
   }, [
     clearOfflineTimers,
     handleCancelStream,
-    streamRecoveryContextRef,
+    resumedThreadIdRef,
+    streamRegistry,
     t,
-    threadTurnRef,
   ]);
 
   useEffect(() => {
     if (!desktopHost) return;
     const unlistenRestart = subscribeCurrentWebviewEvent('sidecar://restarting', () => {
-      if (!streamingRef.current && !streamRecoveryContextRef.current) {
+      if (
+        !streamingRef.current &&
+        !hasAnyActiveStreamHandle(streamRegistry, resumedThreadIdRef.current)
+      ) {
         return;
       }
       detachActiveStreamRef.current('sidecar_restart');
@@ -654,7 +638,8 @@ export function useTurnStreamRecovery({
   }, [desktopHost]);
 
   useEffect(() => {
-    if (runtimeConn === 'offline' && streamingRef.current && threadTurnRef.current.turnId) {
+    const activeTurn = resolveActiveThreadTurn(streamRegistry, resumedThreadIdRef.current);
+    if (runtimeConn === 'offline' && streamingRef.current && activeTurn.turnId) {
       if (detachReasonRef.current == null) {
         detachActiveStream('runtime_offline');
         scheduleOfflineBillingGuard();
@@ -671,8 +656,8 @@ export function useTurnStreamRecovery({
     detachActiveStream,
     runtimeConn,
     scheduleOfflineBillingGuard,
+    streamRegistry,
     streamingRef,
-    threadTurnRef,
     tryRecoverDetachedTurn,
   ]);
 

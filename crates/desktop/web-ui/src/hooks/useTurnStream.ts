@@ -11,6 +11,13 @@ import {
 import { getThreadDetail, threadTurnStillActive } from '../api/client';
 import { stopThreadTurn } from '../api/turnControl';
 import { toast } from '../lib/toast';
+import {
+  readStreamSession,
+  readThreadTurn,
+  resolveActiveThreadTurn,
+  writeThreadTurn,
+} from '../lib/chat/streamContextAccess';
+import type { StreamContextRegistry } from './useStreamContextRegistry';
 
 export type FinishOnceOptions = {
   /** Skip backend active-turn re-lock (user Stop or local start failure). */
@@ -27,6 +34,7 @@ export type StreamSessionControl = {
 export type UseTurnStreamParams = {
   resumedThreadId: string | null;
   streamingRef: MutableRefObject<boolean>;
+  streamRegistry: StreamContextRegistry;
   t: (key: string, params?: Record<string, string>) => string;
   onCancelSideEffects: () => void;
   /** Clears detach/recovery state before runtime interrupt (wired by useTurnSend). */
@@ -41,8 +49,14 @@ export type UseTurnStreamResult = {
   streaming: boolean;
   streamingRef: MutableRefObject<boolean>;
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
-  threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;
-  streamSessionRef: MutableRefObject<StreamSessionControl | null>;
+  /**
+   * Tracks the stream-key of the current pending send (before `turn_started`
+   * resolves a real threadId). Used by `handleCancelStream` to find the right
+   * AbortController for a brand-new session cancel, without falling back to a
+   * shared `__pending__` key that might belong to another send.
+   * Set by `useTurnSend.handleSend`, cleared on `turn_started` / completion.
+   */
+  pendingSendKeyRef: MutableRefObject<string | null>;
   /** Set synchronously on user Stop — `finishOnce` must not re-lock while interrupt is in flight. */
   userStopRequestedRef: MutableRefObject<boolean>;
   abortThreadStream: (threadId: string | null | undefined) => void;
@@ -52,6 +66,7 @@ export type UseTurnStreamResult = {
 export function useTurnStream({
   resumedThreadId,
   streamingRef,
+  streamRegistry,
   t,
   onCancelSideEffects,
   cancelCleanupRef,
@@ -72,11 +87,7 @@ export function useTurnStream({
   }, [pendingComposerStream, resumedThreadId, streamingThreadIds]);
 
   const streamControllersRef = useRef<Map<string, AbortController>>(new Map());
-  const threadTurnRef = useRef<{ threadId: string; turnId: string }>({
-    threadId: '',
-    turnId: '',
-  });
-  const streamSessionRef = useRef<StreamSessionControl | null>(null);
+  const pendingSendKeyRef = useRef<string | null>(null);
   const userStopRequestedRef = useRef(false);
 
   useEffect(() => {
@@ -107,14 +118,23 @@ export function useTurnStream({
     userStopRequestedRef.current = true;
     cancelCleanupRef?.current?.();
 
-    const { threadId, turnId } = threadTurnRef.current;
+    const activeTurn = resolveActiveThreadTurn(streamRegistry, resumedThreadId);
+    const threadId = activeTurn.threadId || resumedThreadId || '';
+    const turnId = activeTurn.turnId;
+
+    // Look up the controller by threadId first. If the thread is not yet
+    // resolved (brand-new session, `turn_started` pending), fall back to the
+    // per-send key recorded by `handleSend` — NOT a shared `__pending__` key,
+    // which could belong to a different concurrent send (multi-session
+    // cross-talk fix).
+    const pendingKey = pendingSendKeyRef.current;
     const streamControl =
       (threadId ? streamControllersRef.current.get(threadId) : undefined) ??
+      (pendingKey ? streamControllersRef.current.get(pendingKey) : undefined) ??
       streamControllersRef.current.get('__pending__') ??
       undefined;
 
-    // Tear down local UI immediately (D9 layer 2 may still be winding down).
-    const session = streamSessionRef.current;
+    const session = readStreamSession(streamRegistry, threadId);
     if (session) {
       session.markInterrupted();
       session.finishOnce({ force: true });
@@ -130,7 +150,7 @@ export function useTurnStream({
           const latest = detail.thread.latest_turn_id ?? '';
           if (latest && (await threadTurnStillActive(threadId, latest))) {
             resolvedTurnId = latest;
-            threadTurnRef.current = { threadId, turnId: latest };
+            writeThreadTurn(streamRegistry, threadId, latest);
           }
         } catch {
           /* best-effort — local UI already stopped */
@@ -153,8 +173,8 @@ export function useTurnStream({
     cancelCleanupRef,
     resumedThreadId,
     streamControllersRef,
+    streamRegistry,
     t,
-    threadTurnRef,
   ]);
 
   useEffect(() => {
@@ -178,8 +198,7 @@ export function useTurnStream({
     streaming,
     streamingRef,
     streamControllersRef,
-    threadTurnRef,
-    streamSessionRef,
+    pendingSendKeyRef,
     userStopRequestedRef,
     abortThreadStream,
     handleCancelStream,

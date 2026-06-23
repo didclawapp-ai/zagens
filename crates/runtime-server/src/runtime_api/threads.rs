@@ -17,7 +17,9 @@ use crate::runtime_threads::{
     ForkAtUserMessageResponse, StartTurnRequest, SteerTurnRequest, ThreadDetail, ThreadListFilter,
     ThreadRecord, TurnItemKind, TurnRecord, UpdateThreadRequest,
 };
-use crate::session_manager::{SavedSession, create_saved_session_with_mode, update_session};
+use crate::session_manager::{
+    SavedSession, SessionManager, create_saved_session_with_mode, update_session,
+};
 use crate::snapshot::SnapshotRepo;
 
 use zagens_runtime_api::{StartTurnResponse, ThreadSummary};
@@ -76,6 +78,38 @@ pub(crate) struct PersistThreadSessionResponse {
     message_count: usize,
 }
 
+/// Resolve which persisted session row to update for a runtime thread.
+fn resolve_persist_session_id(
+    manager: &SessionManager,
+    thread_id: &str,
+    sid: Option<&str>,
+) -> Result<Option<String>, String> {
+    match sid.filter(|s| !s.trim().is_empty()) {
+        Some(proposed) => match manager.load_session(proposed) {
+            Ok(existing) => match existing.metadata.runtime_thread_id.as_deref() {
+                Some(linked) if linked == thread_id => Ok(Some(proposed.to_string())),
+                Some(_) => manager
+                    .find_session_id_by_runtime_thread_id(thread_id)
+                    .map_err(|e| format!("reverse-lookup session: {e}")),
+                None => match manager
+                    .find_session_id_by_runtime_thread_id(thread_id)
+                    .map_err(|e| format!("reverse-lookup session: {e}"))?
+                {
+                    Some(already) => Ok(Some(already)),
+                    // Client-hinted active session without link yet — claim in place.
+                    None => Ok(Some(proposed.to_string())),
+                },
+            },
+            Err(_) => manager
+                .find_session_id_by_runtime_thread_id(thread_id)
+                .map_err(|e| format!("reverse-lookup session: {e}")),
+        },
+        None => manager
+            .find_session_id_by_runtime_thread_id(thread_id)
+            .map_err(|e| format!("reverse-lookup session: {e}")),
+    }
+}
+
 /// Writes the thread's turn/item history to `~/.deepseek/sessions/*.json` (same format as TUI).
 pub(crate) async fn persist_thread_session(
     State(state): State<RuntimeApiState>,
@@ -120,28 +154,7 @@ pub(crate) async fn persist_thread_session(
             // to a reverse lookup by `runtime_thread_id`. Only when no existing
             // session is found do we create a new one — this is what prevents
             // "one new title per follow-up prompt" in multi-session flows.
-            //
-            // The validation must happen on the same session we are about to
-            // write, so we re-load after the lookup and check the link.
-            let resolved_sid: Option<String> = match sid.as_deref() {
-                Some(proposed) => {
-                    let linked = manager
-                        .load_session(proposed)
-                        .ok()
-                        .and_then(|s| s.metadata.runtime_thread_id);
-                    if linked.as_deref() == Some(thread_id.as_str()) {
-                        Some(proposed.to_string())
-                    } else {
-                        // Stale/foreign sid — ignore and reverse-lookup instead.
-                        manager
-                            .find_session_id_by_runtime_thread_id(&thread_id)
-                            .map_err(|e| format!("reverse-lookup session: {e}"))?
-                    }
-                }
-                None => manager
-                    .find_session_id_by_runtime_thread_id(&thread_id)
-                    .map_err(|e| format!("reverse-lookup session: {e}"))?,
-            };
+            let resolved_sid = resolve_persist_session_id(&manager, &thread_id, sid.as_deref())?;
 
             if let Some(existing_id) = resolved_sid {
                 let existing = manager
@@ -1209,4 +1222,80 @@ pub(crate) async fn get_thread_context(
         .await
         .map_err(map_thread_err)?;
     Ok(Json(snapshot))
+}
+
+#[cfg(test)]
+mod resolve_persist_session_tests {
+    use super::resolve_persist_session_id;
+    use crate::session_manager::{SessionManager, create_saved_session_with_mode};
+
+    fn temp_sessions_dir() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("zagens-resolve-persist-{}", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn reverse_lookup_when_sid_linked_to_other_thread() {
+        let dir = temp_sessions_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let manager = SessionManager::new(dir.clone()).unwrap();
+        let workspace = dir.join("ws");
+        std::fs::create_dir_all(&workspace).unwrap();
+
+        let orphan = create_saved_session_with_mode(
+            &[],
+            "deepseek-v4-pro",
+            &workspace,
+            0,
+            None,
+            Some("agent"),
+        );
+        manager.save_session(&orphan).unwrap();
+
+        let mut linked = create_saved_session_with_mode(
+            &[],
+            "deepseek-v4-pro",
+            &workspace,
+            0,
+            None,
+            Some("agent"),
+        );
+        linked.metadata.runtime_thread_id = Some("thr_real".to_string());
+        manager.save_session(&linked).unwrap();
+
+        let resolved = resolve_persist_session_id(&manager, "thr_real", Some(&orphan.metadata.id))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            resolved, linked.metadata.id,
+            "foreign sid must fall back to runtime_thread_id lookup"
+        );
+    }
+
+    #[test]
+    fn claims_orphan_session_without_runtime_link() {
+        let dir = temp_sessions_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let manager = SessionManager::new(dir.clone()).unwrap();
+        let workspace = dir.join("ws");
+        std::fs::create_dir_all(&workspace).unwrap();
+
+        let hint = create_saved_session_with_mode(
+            &[],
+            "deepseek-v4-pro",
+            &workspace,
+            0,
+            None,
+            Some("agent"),
+        );
+        manager.save_session(&hint).unwrap();
+        assert!(hint.metadata.runtime_thread_id.is_none());
+
+        let resolved = resolve_persist_session_id(&manager, "thr_new", Some(&hint.metadata.id))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            resolved, hint.metadata.id,
+            "client-hinted session without link is claimed in place"
+        );
+    }
 }

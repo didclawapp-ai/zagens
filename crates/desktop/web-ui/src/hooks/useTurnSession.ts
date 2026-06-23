@@ -10,9 +10,9 @@ import {
 import {
   deleteSession,
   getSessions,
-  persistThreadSession,
   type SessionInfo,
 } from '../api/client';
+import { persistThreadSessionDeduped } from '../lib/chat/persistThreadSessionDedup';
 import { confirmDialog } from '../lib/confirmDialog';
 import {
   normalizeWorkspaceForApi,
@@ -140,7 +140,7 @@ export function useTurnSession({
               tid === resumedThreadIdRef.current
                 ? activeSessionIdRef.current
                 : resolveThreadSessionId?.(tid) ?? null;
-            const res = await persistThreadSession(tid, knownSid);
+            const res = await persistThreadSessionDeduped(tid, knownSid);
             bindThreadSession?.(tid, res.session_id);
             if (tid === resumedThreadIdRef.current) {
               setActiveSessionId(res.session_id);
@@ -183,7 +183,7 @@ export function useTurnSession({
       const tid = resumedThreadId;
       void (async () => {
         try {
-          const res = await persistThreadSession(tid, activeSessionIdRef.current);
+          const res = await persistThreadSessionDeduped(tid, activeSessionIdRef.current);
           setActiveSessionId(res.session_id);
           saveStoredActiveSessionId(res.session_id);
           await refreshSessions();

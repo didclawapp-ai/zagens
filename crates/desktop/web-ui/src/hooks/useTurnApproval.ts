@@ -12,6 +12,8 @@ import { autoApproveFromPolicy, composerAutoApproveToggleEnabled } from '../lib/
 import { persistNotifyMethod } from '../lib/appPreferences';
 import { threadOwnedByWindow } from '../lib/windowBridge';
 import { toast } from '../lib/toast';
+import { resolveActiveThreadTurn } from '../lib/chat/streamContextAccess';
+import type { StreamContextRegistry } from './useStreamContextRegistry';
 import type { DesktopRunModeId } from '../types/desktop';
 
 export type ApprovalState = {
@@ -22,7 +24,8 @@ export type ApprovalState = {
 
 export type UseTurnApprovalParams = {
   t: (key: string, params?: Record<string, string>) => string;
-  threadTurnRef: MutableRefObject<{ threadId: string; turnId: string }>;
+  streamRegistry: StreamContextRegistry;
+  resumedThreadIdRef: MutableRefObject<string | null>;
   desktopHost: boolean;
   runModeRef: MutableRefObject<DesktopRunModeId>;
 };
@@ -45,7 +48,8 @@ export type UseTurnApprovalResult = {
 
 export function useTurnApproval({
   t,
-  threadTurnRef,
+  streamRegistry,
+  resumedThreadIdRef,
   desktopHost,
   runModeRef,
 }: UseTurnApprovalParams): UseTurnApprovalResult {
@@ -118,7 +122,7 @@ export function useTurnApproval({
 
   const showApprovalIfOwned = useCallback(
     (host: boolean, payload: ApprovalState) => {
-      const tid = threadTurnRef.current.threadId;
+      const tid = resolveActiveThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId;
       void (async () => {
         const show = !tid || !host || (await threadOwnedByWindow(tid));
         if (show) {
@@ -126,13 +130,16 @@ export function useTurnApproval({
         }
       })();
     },
-    [threadTurnRef],
+    [resumedThreadIdRef, streamRegistry],
   );
 
   const handleApproveDecision = useCallback(
     async (decision: 'approve' | 'deny', rememberForSession = false) => {
       if (!approval) return;
-      const { threadId, turnId } = threadTurnRef.current;
+      const { threadId, turnId } = resolveActiveThreadTurn(
+        streamRegistry,
+        resumedThreadIdRef.current,
+      );
       if (!threadId || !turnId) {
         toast.warning(t('banner.approvalMissingThread'));
         setApproval(null);
@@ -159,7 +166,7 @@ export function useTurnApproval({
         setApproval(null);
       }
     },
-    [approval, t, threadTurnRef],
+    [approval, t, streamRegistry, resumedThreadIdRef],
   );
 
   return {
