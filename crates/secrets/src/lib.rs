@@ -278,7 +278,6 @@ impl FileKeyringStore {
 
 #[cfg(unix)]
 fn apply_best_effort_permissions(path: &Path, perms: fs::Permissions, label: &str) {
-    use std::os::unix::fs::PermissionsExt;
     if let Err(e) = fs::set_permissions(path, perms) {
         // ENOSYS / unsupported chmod on Docker bind-mounts of NTFS (#897).
         if e.kind() != std::io::ErrorKind::Unsupported {
