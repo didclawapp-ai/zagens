@@ -31,6 +31,7 @@ export default function ModelProviderCard({
   const [clearBusy, setClearBusy] = useState(false);
   const [activateBusy, setActivateBusy] = useState(false);
   const [probeBusy, setProbeBusy] = useState(false);
+  const [probeModelBusyId, setProbeModelBusyId] = useState<string | null>(null);
   const [renameBusy, setRenameBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [probeResult, setProbeResult] = useState<ProviderProbeResult | null>(null);
@@ -130,7 +131,31 @@ export default function ModelProviderCard({
     }
   }, [status.id]);
 
-  const busy = saveBusy || clearBusy || activateBusy || probeBusy || renameBusy || disabled;
+  const handleProbeModelSelect = useCallback(
+    async (modelId: string) => {
+      if (probeModelBusyId) return;
+      setError(null);
+      setProbeModelBusyId(modelId);
+      try {
+        await invoke('save_model_provider_credentials', {
+          providerId: status.id,
+          apiKey: null,
+          baseUrl: null,
+          model: modelId,
+          maxOutputTokens: null,
+        });
+        onRefresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setProbeModelBusyId(null);
+      }
+    },
+    [probeModelBusyId, status.id, onRefresh],
+  );
+
+  const busy =
+    saveBusy || clearBusy || activateBusy || probeBusy || probeModelBusyId !== null || renameBusy || disabled;
 
   return (
     <div className="rounded-lg border border-card-border bg-card/40 overflow-hidden">
@@ -295,6 +320,53 @@ export default function ModelProviderCard({
               {probeResult.message}
             </p>
           )}
+
+          {!isCustom &&
+            probeResult?.ok &&
+            probeResult.models &&
+            probeResult.models.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-t-text-secondary">
+                  {t('models.probeModels')}
+                </p>
+                <div
+                  className="max-h-40 overflow-y-auto rounded-md border border-input-border bg-input-bg/50 p-1"
+                  role="listbox"
+                  aria-label={t('models.probeModels')}
+                >
+                  {probeResult.models.map((id) => {
+                    const selected = status.model === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        disabled={busy || selected}
+                        onClick={() => void handleProbeModelSelect(id)}
+                        title={id}
+                        className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left transition-colors ${
+                          selected
+                            ? 'bg-accent-soft text-accent'
+                            : 'text-t-text hover:bg-hover'
+                        } disabled:opacity-50`}
+                      >
+                        <span className="min-w-0 truncate text-xs font-medium">{id}</span>
+                        <span className="flex shrink-0 items-center gap-1.5 text-[10px]">
+                          {selected && <span>{t('models.catalogCurrent')}</span>}
+                          {probeModelBusyId === id && (
+                            <span className="text-t-text-muted">…</span>
+                          )}
+                          {!selected && probeModelBusyId !== id && (
+                            <span className="text-t-text-muted">{t('models.probeModelApply')}</span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
           {status.has_catalog_picker && status.configured && (
             <CatalogModelPicker

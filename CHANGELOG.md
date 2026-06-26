@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Desktop (model providers):** 修复打开「模型接入」面板时 `get_model_providers_status` / `get_system_settings` 等 IPC 无限循环（挂载时不再误触发 `onSaved` 全量同步）；打包手测验收通过。
 - **Desktop + Runtime (SenseNova · DeepSeek V4):** 修复经 SenseNova 等第三方使用 `deepseek-v4-flash` 时 `max_tokens` 仍按 384K 发送导致 API 400（`MaxTokens invalid, should be in [1, 65536]`）；catalog 发布 ≤64K 上限时 V4 与 runtime 双侧均 respect catalog；手测验收通过。
 - **Desktop (model providers):** 修复 DeepSeek 主力模型点「检测服务」返回 **HTTP 404**（`normalize_models_url` 对 `api.deepseek.com` 命中根路径 `/models`）；手测验收通过。
+- **Desktop (model providers):** 修复 DeepSeek 等 preset 商「检测服务」成功后只显示「服务可用（N 个模型）」文字、**不展示模型列表**且无法点选设为当前。`ModelProviderCard` 现渲染 `ProviderProbeResult.models` 为可选列表，点选后经现有 `save_model_provider_credentials` IPC 写入 `cfg.model` 并刷新；复用 `catalogCurrent` 标记当前。新增 i18n key `probeModels`/`probeModelApply`（zh-Hans/en/ja/pt-BR）。
+- **Desktop (model providers):** 修复在模型接入面板点选 probe 列表模型后，**Composer 输入区模型选择器不跟随切换**。根因：`save_model_provider_credentials` 只写 `providers.*.model`，未同步 `default_text_model`（Composer 经 `get_system_settings` 读取）；现当保存目标为**当前活跃 provider** 时同步更新 `default_text_model`（custom provider 同理）。
 
 ## [0.8.4] - 2026-06-26
 

@@ -348,20 +348,30 @@ pub fn save_model_provider_credentials(
     with_config_mut(None, |store| {
         apply_provider_defaults(store, preset);
 
-        let cfg = provider_cfg_mut(store, preset.kind);
-        if let Some(url) = base_url
-            .map(|u| u.trim().to_string())
-            .filter(|u| !u.is_empty())
-        {
-            cfg.base_url = Some(url);
-        }
-        if let Some(m) = model
+        let is_active = store.config.provider == preset.kind;
+        let model_to_save = model
             .map(|m| m.trim().to_string())
-            .filter(|m| !m.is_empty())
+            .filter(|m| !m.is_empty());
+
         {
-            cfg.model = Some(m);
+            let cfg = provider_cfg_mut(store, preset.kind);
+            if let Some(url) = base_url
+                .map(|u| u.trim().to_string())
+                .filter(|u| !u.is_empty())
+            {
+                cfg.base_url = Some(url);
+            }
+            if let Some(m) = model_to_save.as_ref() {
+                cfg.model = Some(m.clone());
+            }
+            cfg.api_key = None;
         }
-        cfg.api_key = None;
+
+        if let Some(m) = model_to_save {
+            if is_active {
+                store.config.default_text_model = Some(m);
+            }
+        }
         if preset.kind == ProviderKind::Deepseek {
             store.config.api_key = None;
         }

@@ -231,7 +231,12 @@ pub fn save_custom_provider_credentials(
             .map(|m| m.trim().to_string())
             .filter(|m| !m.is_empty())
         {
-            entry.model = m;
+            entry.model = m.clone();
+            let is_active = store.config.provider == ProviderKind::Custom
+                && store.config.custom_provider_id.as_deref() == Some(slug.as_str());
+            if is_active {
+                store.config.default_text_model = Some(m);
+            }
         }
         if let Some(limit) = max_output_tokens {
             entry.max_output_tokens = if limit == 0 || limit > 1_000_000 {
