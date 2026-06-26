@@ -141,14 +141,7 @@ export default function HarnessFloatStack({
         cardId="agents"
         label={t('sidebar.agents')}
         hasData={harnessData.hasAgents}
-        stat={
-          agents
-            ? t('harnessCard.runningCount', {
-                running: String(agents.items.filter((item) => item.progress === 'current').length),
-                total: String(agents.items.length),
-              })
-            : t('harnessCard.runningCount', { running: '0', total: '0' })
-        }
+        stat={agents?.stat ?? '0/0'}
         className={flashCardId === 'agents' ? 'harness-card--flash' : ''}
         onHeadClick={onHeadClick ? () => onHeadClick('agents', HARNESS_CARD_VIEWS.agents) : undefined}
         icon={
@@ -158,11 +151,14 @@ export default function HarnessFloatStack({
         }
       >
         {agents ? (
-          <ProgressScrollViewport
-            items={agents.items}
-            maxRows={2}
-            renderItem={(item) => harnessCardLineLabel('agents', item.id, sources)}
-          />
+          <>
+            {agents.progressPct != null ? <MiniProgressBar pct={agents.progressPct} /> : null}
+            <ProgressScrollViewport
+              items={agents.items}
+              maxRows={2}
+              renderItem={(item) => harnessCardLineLabel('agents', item.id, sources)}
+            />
+          </>
         ) : null}
       </HarnessCard>
     </aside>

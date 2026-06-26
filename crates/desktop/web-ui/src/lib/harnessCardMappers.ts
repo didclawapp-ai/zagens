@@ -108,12 +108,12 @@ export function mapAgentsCardSummary(agents: AgentState[]): HarnessCardSummary |
           ? 'current'
           : 'pending',
   }));
-  const running = items.filter((item) => item.progress === 'current').length;
+  const done = items.filter((item) => item.progress === 'done').length;
   const open = items.filter((item) => item.progress !== 'done').length;
   return {
     items: promoteFirstPending(items),
-    stat: `${running}`,
-    progressPct: open > 0 ? Math.round(((visible.length - open) / visible.length) * 100) : 100,
+    stat: `${done}/${items.length}`,
+    progressPct: open > 0 ? Math.round((done / items.length) * 100) : 100,
   };
 }
 
