@@ -11,7 +11,7 @@ use std::error::Error;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 use zagens_config::{
     CompactionToml, CompletionGateConfigToml, ConfigStore, ConfigToml, DEFAULT_VISION_MODEL,
@@ -20,8 +20,9 @@ use zagens_config::{
     WindowsSandboxModeToml, apply_lht_preset as apply_lht_preset_overlay,
     compaction_threshold_tokens_for_model, legacy_workspace_meta_dir, lht_product_defaults,
     normalize_gate_mode, normalize_lht_mode, resolve_lht,
-    vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model, workspace_meta_dir,
-    workspace_meta_dir_read, workspace_meta_file_read, workspace_meta_file_write,
+    vision_should_check_degenerate_ocr_template, vision_user_prompt_for_model, with_config_mut,
+    workspace_meta_dir, workspace_meta_dir_read, workspace_meta_file_read,
+    workspace_meta_file_write,
 };
 
 /// reqwest 顶层 `Display` 常为笼统的「error sending request」，展开 `source()` 链便于跨机排查。
@@ -53,6 +54,78 @@ fn merge_deepseek_api_key(config: &mut ConfigToml, key: &str) {
     }
 }
 
+/// How long probe results are reused when assembling provider status (no re-probe on panel open).
+const PROBE_CACHE_TTL: Duration = Duration::from_secs(60);
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProbeCacheEntry {
+    ok: bool,
+    detail: String,
+    fetched_at: Instant,
+}
+
+impl ProbeCacheEntry {
+    fn fresh(ok: bool, detail: String) -> Self {
+        Self {
+            ok,
+            detail,
+            fetched_at: Instant::now(),
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        probe_cache_entry_valid(self.fetched_at, Instant::now())
+    }
+}
+
+fn probe_cache_entry_valid(fetched_at: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(fetched_at) <= PROBE_CACHE_TTL
+}
+
+fn apply_probe_cache_to_statuses(
+    statuses: &mut [crate::model_providers::ModelProviderStatus],
+    cache: &HashMap<String, ProbeCacheEntry>,
+) {
+    for status in statuses {
+        let Some(entry) = cache.get(&status.id) else {
+            continue;
+        };
+        if !entry.is_valid() {
+            continue;
+        }
+        status.service_ok = Some(entry.ok);
+        status.service_detail = Some(entry.detail.clone());
+    }
+}
+
+fn prune_probe_cache(cache: &mut HashMap<String, ProbeCacheEntry>) {
+    cache.retain(|_, entry| entry.is_valid());
+}
+
+fn update_probe_cache_after_probe(
+    cache: &mut HashMap<String, ProbeCacheEntry>,
+    provider_id: &str,
+    result: &crate::model_providers::ProviderProbeResult,
+) {
+    if result.ok {
+        cache.insert(
+            provider_id.to_string(),
+            ProbeCacheEntry::fresh(true, result.message.clone()),
+        );
+        return;
+    }
+    if let Some(existing) = cache.get(provider_id)
+        && existing.ok
+        && existing.is_valid()
+    {
+        return;
+    }
+    cache.insert(
+        provider_id.to_string(),
+        ProbeCacheEntry::fresh(false, result.message.clone()),
+    );
+}
+
 #[derive(Clone)]
 #[allow(dead_code)]
 pub struct AppContext {
@@ -69,8 +142,8 @@ pub struct AppContext {
     pub sidecar_restart_force: Arc<AtomicBool>,
     /// Signal the sidecar supervisor to shut down (kill the child process and exit).
     pub shutdown: Arc<Notify>,
-    /// In-memory cache of the last probe result per provider_id: (ok, detail_message).
-    pub probe_cache: Arc<RwLock<HashMap<String, (bool, String)>>>,
+    /// In-memory cache of the last probe result per provider_id.
+    pub(crate) probe_cache: Arc<RwLock<HashMap<String, ProbeCacheEntry>>>,
 }
 
 impl AppContext {
@@ -448,22 +521,23 @@ pub async fn initialize_windows_sandbox(
             ));
         }
 
-        let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-        let cfg = &mut store.config;
-        cfg.sandbox_mode = Some("workspace-write".into());
-        let windows = cfg.windows.get_or_insert_with(WindowsConfigToml::default);
-        windows.sandbox = Some(if mode == "elevated" {
-            WindowsSandboxModeToml::Elevated
-        } else {
-            WindowsSandboxModeToml::Unelevated
-        });
-        windows.sandbox_initialized = Some(true);
-        windows.sandbox_private_desktop = Some(true);
-
         tracing::info!(target: "sandbox", mode = %mode, "initialize_windows_sandbox: writing config");
-        store.save().map_err(|e| e.to_string())?;
+        let settings = with_config_mut(None, |store| {
+            let cfg = &mut store.config;
+            cfg.sandbox_mode = Some("workspace-write".into());
+            let windows = cfg.windows.get_or_insert_with(WindowsConfigToml::default);
+            windows.sandbox = Some(if mode == "elevated" {
+                WindowsSandboxModeToml::Elevated
+            } else {
+                WindowsSandboxModeToml::Unelevated
+            });
+            windows.sandbox_initialized = Some(true);
+            windows.sandbox_private_desktop = Some(true);
+            Ok(sandbox_settings_from_config(&store.config))
+        })
+        .map_err(|e| e.to_string())?;
         ctx.sidecar_restart.notify_one();
-        Ok(sandbox_settings_from_config(&store.config))
+        Ok(settings)
     }
 }
 
@@ -478,35 +552,36 @@ pub fn save_sandbox_settings(
     settings: SandboxSettings,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let cfg = &mut store.config;
-
-    cfg.sandbox_mode = Some(normalize_sandbox_mode(&settings.sandbox_mode));
-
-    let windows = cfg.windows.get_or_insert_with(WindowsConfigToml::default);
-    windows.sandbox = match settings
-        .windows_sandbox
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "auto" | "" => None,
-        "elevated" => Some(WindowsSandboxModeToml::Elevated),
-        "unelevated" => Some(WindowsSandboxModeToml::Unelevated),
-        other => {
-            return Err(format!(
-                "Invalid windows_sandbox '{other}': expected auto, elevated, or unelevated."
-            ));
-        }
-    };
-    windows.sandbox_private_desktop = Some(settings.windows_private_desktop);
-    #[cfg(windows)]
-    {
-        windows.sandbox_initialized = Some(true);
-    }
-
     tracing::info!("save_sandbox_settings: writing config");
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        let cfg = &mut store.config;
+
+        cfg.sandbox_mode = Some(normalize_sandbox_mode(&settings.sandbox_mode));
+
+        let windows = cfg.windows.get_or_insert_with(WindowsConfigToml::default);
+        windows.sandbox = match settings
+            .windows_sandbox
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "auto" | "" => None,
+            "elevated" => Some(WindowsSandboxModeToml::Elevated),
+            "unelevated" => Some(WindowsSandboxModeToml::Unelevated),
+            other => {
+                return Err(format!(
+                    "Invalid windows_sandbox '{other}': expected auto, elevated, or unelevated."
+                ));
+            }
+        };
+        windows.sandbox_private_desktop = Some(settings.windows_private_desktop);
+        #[cfg(windows)]
+        {
+            windows.sandbox_initialized = Some(true);
+        }
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     ctx.sidecar_restart.notify_one();
     Ok(())
 }
@@ -568,17 +643,19 @@ pub fn save_deepseek_api_key(key: String, ctx: tauri::State<'_, AppContext>) -> 
         .map_err(|e| format!("无法保存到系统密钥链: {e}"))?;
 
     // Remove plaintext key from config.toml; keep provider section structure
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    store.config.api_key = None;
-    store.config.providers.deepseek.api_key = None;
-    if store.config.providers.deepseek.base_url.is_none() {
-        store.config.providers.deepseek.base_url =
-            Some("https://api.deepseek.com/beta".to_string());
-    }
-    if store.config.providers.deepseek.model.is_none() {
-        store.config.providers.deepseek.model = Some("deepseek-v4-pro".to_string());
-    }
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        store.config.api_key = None;
+        store.config.providers.deepseek.api_key = None;
+        if store.config.providers.deepseek.base_url.is_none() {
+            store.config.providers.deepseek.base_url =
+                Some("https://api.deepseek.com/beta".to_string());
+        }
+        if store.config.providers.deepseek.model.is_none() {
+            store.config.providers.deepseek.model = Some("deepseek-v4-pro".to_string());
+        }
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
 
     ctx.sidecar_restart.notify_one();
     Ok(())
@@ -591,10 +668,12 @@ pub fn clear_deepseek_api_key(ctx: tauri::State<'_, AppContext>) -> Result<(), S
         .delete("deepseek")
         .map_err(|e| format!("无法从系统密钥链删除: {e}"))?;
 
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    store.config.api_key = None;
-    store.config.providers.deepseek.api_key = None;
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        store.config.api_key = None;
+        store.config.providers.deepseek.api_key = None;
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
 
     ctx.sidecar_restart.notify_one();
     Ok(())
@@ -640,12 +719,10 @@ pub fn get_model_providers_status(
 ) -> Result<Vec<crate::model_providers::ModelProviderStatus>, String> {
     let mut list = crate::model_providers::get_model_providers_status()?;
     if let Ok(cache) = ctx.probe_cache.read() {
-        for status in &mut list {
-            if let Some((ok, detail)) = cache.get(&status.id) {
-                status.service_ok = Some(*ok);
-                status.service_detail = Some(detail.clone());
-            }
-        }
+        apply_probe_cache_to_statuses(&mut list, &cache);
+    }
+    if let Ok(mut cache) = ctx.probe_cache.write() {
+        prune_probe_cache(&mut cache);
     }
     Ok(list)
 }
@@ -692,9 +769,30 @@ pub async fn probe_model_provider(
 ) -> Result<crate::model_providers::ProviderProbeResult, String> {
     let result = crate::model_providers::probe_model_provider(provider_id.clone()).await?;
     if let Ok(mut cache) = ctx.probe_cache.write() {
-        cache.insert(provider_id, (result.ok, result.message.clone()));
+        update_probe_cache_after_probe(&mut cache, &provider_id, &result);
     }
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn list_catalog_models(
+    provider_id: String,
+) -> Result<crate::model_providers::CatalogModelListJson, String> {
+    crate::model_providers::list_catalog_models(provider_id).await
+}
+
+#[tauri::command]
+pub async fn set_catalog_model(
+    provider_id: String,
+    model_id: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    if crate::model_providers::catalog_sync_before_set(provider_id.trim()) {
+        crate::model_providers::set_catalog_model_async(provider_id, model_id, &ctx.sidecar_restart)
+            .await
+    } else {
+        crate::model_providers::set_catalog_model(provider_id, model_id, &ctx.sidecar_restart)
+    }
 }
 
 #[tauri::command]
@@ -725,9 +823,9 @@ pub async fn set_sensenova_model(
 }
 
 #[tauri::command]
-pub async fn list_nvidia_nim_models()
--> Result<crate::nvidia_nim_provider::NvidiaNimModelList, String> {
-    crate::nvidia_nim_provider::list_nvidia_nim_models().await
+pub async fn list_nvidia_nim_models() -> Result<crate::model_providers::NvidiaNimModelList, String>
+{
+    crate::model_providers::list_nvidia_nim_models().await
 }
 
 #[tauri::command]
@@ -735,7 +833,7 @@ pub async fn set_nvidia_nim_model(
     model_id: String,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
-    crate::nvidia_nim_provider::set_nvidia_nim_model(model_id, &ctx.sidecar_restart).await
+    crate::model_providers::set_nvidia_nim_model(model_id, &ctx.sidecar_restart).await
 }
 
 #[tauri::command]
@@ -799,35 +897,38 @@ pub fn save_vision_bridge(
             .map_err(|e| format!("无法保存视觉桥接密钥到系统密钥链: {e}"))?;
     }
 
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let mut v = store.config.vision.clone().unwrap_or_default();
-    // Never persist the key in config.toml
-    v.api_key = None;
+    with_config_mut(None, |store| {
+        let mut v = store.config.vision.clone().unwrap_or_default();
+        v.api_key = None;
 
-    let bu = base_url.trim();
-    v.base_url = if bu.is_empty() {
-        None
-    } else {
-        Some(bu.to_string())
-    };
-    let m = model.trim();
-    v.model = if m.is_empty() {
-        None
-    } else {
-        Some(m.to_string())
-    };
+        let bu = base_url.trim();
+        v.base_url = if bu.is_empty() {
+            None
+        } else {
+            Some(bu.to_string())
+        };
+        let m = model.trim();
+        v.model = if m.is_empty() {
+            None
+        } else {
+            Some(m.to_string())
+        };
 
-    store.config.vision = Some(v);
-    store.save().map_err(|e| e.to_string())?;
+        store.config.vision = Some(v);
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     ctx.sidecar_restart.notify_one();
     Ok(())
 }
 
 #[tauri::command]
 pub fn clear_vision_bridge(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    store.config.vision = None;
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        store.config.vision = None;
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     // Also clear from keyring
     let secrets = zagens_secrets::Secrets::auto_detect();
     secrets.delete("vision").ok();
@@ -1029,6 +1130,83 @@ pub async fn vision_transcribe_image(data_url: String) -> Result<String, String>
     }
 
     Ok(text)
+}
+
+#[cfg(test)]
+mod probe_cache_tests {
+    use super::*;
+    use crate::model_providers::{ModelProviderSection, ModelProviderStatus, ProviderProbeResult};
+
+    fn sample_status(id: &str) -> ModelProviderStatus {
+        ModelProviderStatus {
+            id: id.to_string(),
+            display_name: id.to_string(),
+            section: ModelProviderSection::Primary,
+            configured: true,
+            active: false,
+            key_required: true,
+            model: None,
+            base_url: None,
+            service_ok: None,
+            service_detail: None,
+            max_output_tokens: None,
+            has_catalog_picker: false,
+        }
+    }
+
+    #[test]
+    fn failure_probe_does_not_overwrite_recent_success_cache() {
+        let mut cache = HashMap::new();
+        cache.insert(
+            "open-router".to_string(),
+            ProbeCacheEntry::fresh(true, "reachable".into()),
+        );
+        let fail = ProviderProbeResult {
+            ok: false,
+            message: "network jitter".into(),
+            models: None,
+        };
+        update_probe_cache_after_probe(&mut cache, "open-router", &fail);
+        let entry = cache.get("open-router").expect("entry");
+        assert!(entry.ok);
+        assert_eq!(entry.detail, "reachable");
+    }
+
+    #[test]
+    fn expired_cache_entries_are_not_applied_to_status() {
+        let mut cache = HashMap::new();
+        cache.insert(
+            "open-router".to_string(),
+            ProbeCacheEntry {
+                ok: true,
+                detail: "old".into(),
+                fetched_at: Instant::now() - Duration::from_secs(61),
+            },
+        );
+        let mut statuses = vec![sample_status("open-router")];
+        apply_probe_cache_to_statuses(&mut statuses, &cache);
+        assert!(statuses[0].service_ok.is_none());
+    }
+
+    #[test]
+    fn prune_probe_cache_drops_stale_entries() {
+        let mut cache = HashMap::new();
+        cache.insert(
+            "stale".to_string(),
+            ProbeCacheEntry {
+                ok: true,
+                detail: "old".into(),
+                fetched_at: Instant::now() - Duration::from_secs(120),
+            },
+        );
+        cache.insert(
+            "fresh".to_string(),
+            ProbeCacheEntry::fresh(true, "new".into()),
+        );
+        prune_probe_cache(&mut cache);
+        assert!(!cache.contains_key("stale"));
+        assert!(cache.contains_key("fresh"));
+    }
 }
 
 #[cfg(test)]
@@ -2025,83 +2203,72 @@ pub fn save_system_settings(
     if model_trimmed.is_empty() {
         return Err("默认模型 ID 不能为空".to_string());
     }
-    // 拒绝明显无效的 model id：包含换行、控制字符或超长
     if model_trimmed.len() > 256 || model_trimmed.chars().any(|c| c.is_control()) {
         return Err("默认模型 ID 格式无效".to_string());
     }
 
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let cfg = &mut store.config;
-
-    // 顶层标量字段
-    cfg.default_text_model = Some(model_trimmed);
-    cfg.reasoning_effort = Some(settings.reasoning_effort);
-    cfg.cost_currency = Some(settings.cost_currency);
-    cfg.allow_shell = Some(settings.allow_shell);
-    cfg.approval_policy = Some(settings.approval_policy);
-    cfg.sandbox_mode = Some(settings.sandbox_mode);
-    cfg.max_subagents = Some(settings.max_subagents);
-
-    // 清掉 [subagents].max_concurrent 避免与顶层 max_subagents 不一致
-    //（TUI Config::max_subagents() 优先读 [subagents] 表）
-    if let Some(ref mut s) = cfg.subagents {
-        s.max_concurrent = None;
-    }
-    let subagents = cfg.subagents.get_or_insert_with(Default::default);
-    subagents.step_timeout_secs = Some(settings.subagent_step_timeout_secs.clamp(120, 1800));
-    set_subagent_extra_string(subagents, "review_model", &settings.subagent_review_model);
-    set_subagent_extra_string(
-        subagents,
-        "implementer_model",
-        &settings.subagent_implementer_model,
-    );
-    set_subagent_extra_string(
-        subagents,
-        "verifier_model",
-        &settings.subagent_verifier_model,
-    );
-    set_subagent_extra_string(subagents, "auditor_model", &settings.subagent_auditor_model);
-
-    // features：使用 get_or_insert_with 而非 take() ——
-    // 避免丢弃 config.toml 中已有的其他 features 字段
-    let features = cfg.features.get_or_insert_with(Default::default);
-    features.web_search = Some(settings.web_search);
-    features.exec_policy = Some(settings.exec_policy);
-    features.subagents = Some(settings.subagents_enabled);
-
-    // memory
-    let memory = cfg.memory.get_or_insert_with(Default::default);
-    memory.enabled = Some(settings.memory_enabled);
-
-    // topic memory (B2)
-    let topic_memory = cfg.topic_memory.get_or_insert_with(Default::default);
-    topic_memory.enabled = Some(settings.topic_memory_enabled);
-    topic_memory.inject_interval = Some(settings.topic_memory_inject_interval.max(1));
-
-    // lsp
-    let lsp = cfg.lsp.get_or_insert_with(Default::default);
-    lsp.enabled = Some(settings.lsp_enabled);
-
-    // snapshots
-    let snapshots = cfg.snapshots.get_or_insert_with(Default::default);
-    snapshots.enabled = settings.snapshots_enabled;
-
-    // notifications
-    let notif = cfg.notifications.get_or_insert_with(Default::default);
-    notif.method = Some(settings.notify_method);
-
-    // session
-    let session = cfg.session.get_or_insert_with(Default::default);
-    session.max_file_mb = settings.session_file_mb;
-
-    // compaction — shared with TUI engine via config.toml `[compaction]`
-    let compaction = cfg.compaction.get_or_insert_with(CompactionToml::default);
-    compaction.auto_compact = Some(settings.auto_compact);
-    compaction.token_threshold = Some(settings.compaction_threshold_tokens);
-
     tracing::info!("save_system_settings: writing config");
 
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        let cfg = &mut store.config;
+
+        cfg.default_text_model = Some(model_trimmed);
+        cfg.reasoning_effort = Some(settings.reasoning_effort);
+        cfg.cost_currency = Some(settings.cost_currency);
+        cfg.allow_shell = Some(settings.allow_shell);
+        cfg.approval_policy = Some(settings.approval_policy);
+        cfg.sandbox_mode = Some(settings.sandbox_mode);
+        cfg.max_subagents = Some(settings.max_subagents);
+
+        if let Some(ref mut s) = cfg.subagents {
+            s.max_concurrent = None;
+        }
+        let subagents = cfg.subagents.get_or_insert_with(Default::default);
+        subagents.step_timeout_secs = Some(settings.subagent_step_timeout_secs.clamp(120, 1800));
+        set_subagent_extra_string(subagents, "review_model", &settings.subagent_review_model);
+        set_subagent_extra_string(
+            subagents,
+            "implementer_model",
+            &settings.subagent_implementer_model,
+        );
+        set_subagent_extra_string(
+            subagents,
+            "verifier_model",
+            &settings.subagent_verifier_model,
+        );
+        set_subagent_extra_string(subagents, "auditor_model", &settings.subagent_auditor_model);
+
+        let features = cfg.features.get_or_insert_with(Default::default);
+        features.web_search = Some(settings.web_search);
+        features.exec_policy = Some(settings.exec_policy);
+        features.subagents = Some(settings.subagents_enabled);
+
+        let memory = cfg.memory.get_or_insert_with(Default::default);
+        memory.enabled = Some(settings.memory_enabled);
+
+        let topic_memory = cfg.topic_memory.get_or_insert_with(Default::default);
+        topic_memory.enabled = Some(settings.topic_memory_enabled);
+        topic_memory.inject_interval = Some(settings.topic_memory_inject_interval.max(1));
+
+        let lsp = cfg.lsp.get_or_insert_with(Default::default);
+        lsp.enabled = Some(settings.lsp_enabled);
+
+        let snapshots = cfg.snapshots.get_or_insert_with(Default::default);
+        snapshots.enabled = settings.snapshots_enabled;
+
+        let notif = cfg.notifications.get_or_insert_with(Default::default);
+        notif.method = Some(settings.notify_method);
+
+        let session = cfg.session.get_or_insert_with(Default::default);
+        session.max_file_mb = settings.session_file_mb;
+
+        let compaction = cfg.compaction.get_or_insert_with(CompactionToml::default);
+        compaction.auto_compact = Some(settings.auto_compact);
+        compaction.token_threshold = Some(settings.compaction_threshold_tokens);
+
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
 
     // 重启 sidecar 使 TUI Config 重新读取 config.toml
     ctx.sidecar_restart.notify_one();
@@ -2220,15 +2387,17 @@ pub fn apply_lht_preset(
 ) -> Result<LhtSettings, String> {
     let preset = LhtPresetId::from_str_id(&preset_id)
         .ok_or_else(|| format!("unknown LHT preset: {preset_id}"))?;
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let mut lh = store
-        .config
-        .long_horizon
-        .take()
-        .unwrap_or_else(lht_product_defaults);
-    apply_lht_preset_overlay(&mut lh, preset);
-    store.config.long_horizon = Some(lh);
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        let mut lh = store
+            .config
+            .long_horizon
+            .take()
+            .unwrap_or_else(lht_product_defaults);
+        apply_lht_preset_overlay(&mut lh, preset);
+        store.config.long_horizon = Some(lh);
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     request_sidecar_restart(&ctx);
     get_lht_settings()
 }
@@ -2270,57 +2439,58 @@ pub fn save_lht_settings(
     settings: LhtSettings,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let existing_gate = store
-        .config
-        .long_horizon
-        .as_ref()
-        .and_then(|lh| lh.completion_gate.clone())
-        .unwrap_or_default();
-
-    let completion_gate = CompletionGateConfigToml {
-        auto_verify_replay: Some(normalize_gate_mode(&settings.auto_verify_replay)),
-        toolchain_gate: Some(normalize_gate_mode(&settings.toolchain_gate)),
-        stub_gate: Some(normalize_gate_mode(&settings.stub_gate)),
-        max_manifest_rounds: Some(settings.max_manifest_rounds.clamp(1, 32)),
-        max_audit_rounds: Some(settings.max_audit_rounds.clamp(1, 32)),
-        max_infra_strikes: Some(settings.max_infra_strikes.clamp(1, 16)),
-        verify: existing_gate.verify,
-        deliverable: existing_gate.deliverable,
-        mode: existing_gate.mode,
-        min_lines: existing_gate.min_lines,
-    };
-
-    store.config.long_horizon = Some(LongHorizonConfigToml {
-        enabled: Some(settings.enabled),
-        mode: Some(normalize_lht_mode(&settings.mode)),
-        progress_via_git: Some(settings.progress_via_git),
-        max_nudges_per_item: Some(settings.max_nudges_per_item.clamp(1, 20)),
-        blocked_nudges_without_progress: Some(
-            settings.blocked_nudges_without_progress.clamp(1, 10),
-        ),
-        auto_continue: Some(settings.auto_continue),
-        max_auto_continue_rounds: Some(settings.max_auto_continue_rounds.clamp(1, 64)),
-        reinject_every_steps: store
+    tracing::info!("save_lht_settings: writing config");
+    with_config_mut(None, |store| {
+        let existing_gate = store
             .config
             .long_horizon
             .as_ref()
-            .and_then(|lh| lh.reinject_every_steps),
-        completion_gate: Some(completion_gate),
-        macro_loop: Some(MacroLoopConfigToml {
-            enabled: Some(settings.macro_loop_enabled),
-            max_macro_cycles: Some(settings.macro_loop_max_cycles.clamp(1, 8)),
-            max_craft_rounds_per_cycle: Some(settings.macro_loop_max_craft_rounds.clamp(1, 4)),
-            auto_enter_craft: Some(normalize_macro_auto_enter(
-                &settings.macro_loop_auto_enter_craft,
-            )),
-            craft_on_small_tasks: Some(settings.macro_loop_craft_on_small_tasks),
-            min_checklist_items_for_craft: Some(settings.macro_loop_min_checklist_items.max(1)),
-        }),
-    });
+            .and_then(|lh| lh.completion_gate.clone())
+            .unwrap_or_default();
 
-    tracing::info!("save_lht_settings: writing config");
-    store.save().map_err(|e| e.to_string())?;
+        let completion_gate = CompletionGateConfigToml {
+            auto_verify_replay: Some(normalize_gate_mode(&settings.auto_verify_replay)),
+            toolchain_gate: Some(normalize_gate_mode(&settings.toolchain_gate)),
+            stub_gate: Some(normalize_gate_mode(&settings.stub_gate)),
+            max_manifest_rounds: Some(settings.max_manifest_rounds.clamp(1, 32)),
+            max_audit_rounds: Some(settings.max_audit_rounds.clamp(1, 32)),
+            max_infra_strikes: Some(settings.max_infra_strikes.clamp(1, 16)),
+            verify: existing_gate.verify,
+            deliverable: existing_gate.deliverable,
+            mode: existing_gate.mode,
+            min_lines: existing_gate.min_lines,
+        };
+
+        store.config.long_horizon = Some(LongHorizonConfigToml {
+            enabled: Some(settings.enabled),
+            mode: Some(normalize_lht_mode(&settings.mode)),
+            progress_via_git: Some(settings.progress_via_git),
+            max_nudges_per_item: Some(settings.max_nudges_per_item.clamp(1, 20)),
+            blocked_nudges_without_progress: Some(
+                settings.blocked_nudges_without_progress.clamp(1, 10),
+            ),
+            auto_continue: Some(settings.auto_continue),
+            max_auto_continue_rounds: Some(settings.max_auto_continue_rounds.clamp(1, 64)),
+            reinject_every_steps: store
+                .config
+                .long_horizon
+                .as_ref()
+                .and_then(|lh| lh.reinject_every_steps),
+            completion_gate: Some(completion_gate),
+            macro_loop: Some(MacroLoopConfigToml {
+                enabled: Some(settings.macro_loop_enabled),
+                max_macro_cycles: Some(settings.macro_loop_max_cycles.clamp(1, 8)),
+                max_craft_rounds_per_cycle: Some(settings.macro_loop_max_craft_rounds.clamp(1, 4)),
+                auto_enter_craft: Some(normalize_macro_auto_enter(
+                    &settings.macro_loop_auto_enter_craft,
+                )),
+                craft_on_small_tasks: Some(settings.macro_loop_craft_on_small_tasks),
+                min_checklist_items_for_craft: Some(settings.macro_loop_min_checklist_items.max(1)),
+            }),
+        });
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     request_sidecar_restart(&ctx);
     Ok(())
 }
@@ -2607,7 +2777,6 @@ pub fn save_hooks_settings(
     settings: HooksSettings,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
     let mut hooks = Vec::with_capacity(settings.hooks.len());
     for entry in settings.hooks {
         let command = entry.command.trim();
@@ -2649,22 +2818,23 @@ pub fn save_hooks_settings(
         .filter(|s| !s.is_empty())
         .map(PathBuf::from);
 
-    let audit_jsonl = store
-        .config
-        .hooks
-        .as_ref()
-        .and_then(|h| h.audit_jsonl.clone());
-
-    store.config.hooks = Some(HooksConfigToml {
-        enabled: settings.enabled,
-        default_timeout_secs: settings.default_timeout_secs.filter(|&v| v > 0),
-        working_dir,
-        audit_jsonl,
-        hooks,
-    });
-
     tracing::info!("save_hooks_settings: writing config");
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        let audit_jsonl = store
+            .config
+            .hooks
+            .as_ref()
+            .and_then(|h| h.audit_jsonl.clone());
+        store.config.hooks = Some(HooksConfigToml {
+            enabled: settings.enabled,
+            default_timeout_secs: settings.default_timeout_secs.filter(|&v| v > 0),
+            working_dir,
+            audit_jsonl,
+            hooks,
+        });
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     request_sidecar_restart(&ctx);
     Ok(())
 }

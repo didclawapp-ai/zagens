@@ -32,25 +32,26 @@ export const DEFAULT_MAX_TOKENS = MODEL_MAX_TOKENS;
  *  without the user manually re-opening the dialog. */
 const LEGACY_LOW_MAX_TOKENS = 65536;
 
-/** SenseNova `/v1/models` `max_output_length` keyed by model id (desktop cache). */
-let senseNovaOutputLimits: Record<string, number> = {};
+/** Catalog `/v1/models` output limits keyed by model id (desktop cache). */
+let catalogOutputLimits: Record<string, number> = {};
 
-/** NVIDIA NIM `/v1/models` output limits keyed by model id (desktop cache). */
-let nvidiaNimOutputLimits: Record<string, number> = {};
+export function setCatalogOutputLimits(limits: Record<string, number>): void {
+  catalogOutputLimits = limits;
+}
 
-/** Agnes AI `/v1/models` output limits keyed by model id (desktop cache). */
-let agnesOutputLimits: Record<string, number> = {};
-
+/** @deprecated Use {@link setCatalogOutputLimits} */
 export function setSenseNovaOutputLimits(limits: Record<string, number>): void {
-  senseNovaOutputLimits = limits;
+  setCatalogOutputLimits(limits);
 }
 
+/** @deprecated Use {@link setCatalogOutputLimits} */
 export function setNvidiaNimOutputLimits(limits: Record<string, number>): void {
-  nvidiaNimOutputLimits = limits;
+  setCatalogOutputLimits(limits);
 }
 
+/** @deprecated Use {@link setCatalogOutputLimits} */
 export function setAgnesOutputLimits(limits: Record<string, number>): void {
-  agnesOutputLimits = limits;
+  setCatalogOutputLimits(limits);
 }
 
 export function isDeepSeekV4Model(model: string): boolean {
@@ -66,31 +67,22 @@ export function isDeepSeekV4Model(model: string): boolean {
 }
 
 function catalogLimitForModel(model: string): number | undefined {
-  const agnesLimit = agnesOutputLimits[model];
-  if (typeof agnesLimit === 'number' && agnesLimit > 0) {
-    return Math.min(agnesLimit, THIRD_PARTY_MAX_TOKENS);
-  }
-  const nvidiaLimit = nvidiaNimOutputLimits[model];
-  if (typeof nvidiaLimit === 'number' && nvidiaLimit > 0) {
-    return Math.min(nvidiaLimit, NVIDIA_NIM_MAX_COMPLETION_TOKENS);
-  }
-  const limit = senseNovaOutputLimits[model];
+  const limit = catalogOutputLimits[model];
   return typeof limit === 'number' && limit > 0 ? limit : undefined;
 }
 
 /** Model-aware output cap for the Composer / runtime API. */
 export function maxTokensCapForModel(model: string): number {
+  const catalog = catalogLimitForModel(model);
   if (isDeepSeekV4Model(model)) {
-    const catalog = catalogLimitForModel(model);
-    if (catalog != null && catalog > THIRD_PARTY_MAX_TOKENS) {
-      return Math.min(MODEL_MAX_TOKENS, catalog);
-    }
-    if (nvidiaNimOutputLimits[model] != null) {
-      return Math.min(MODEL_MAX_TOKENS, NVIDIA_NIM_MAX_COMPLETION_TOKENS);
+    if (catalog != null) {
+      if (catalog > THIRD_PARTY_MAX_TOKENS) {
+        return Math.min(MODEL_MAX_TOKENS, Math.min(catalog, NVIDIA_NIM_MAX_COMPLETION_TOKENS));
+      }
+      return Math.min(THIRD_PARTY_MAX_TOKENS, catalog);
     }
     return MODEL_MAX_TOKENS;
   }
-  const catalog = catalogLimitForModel(model);
   if (catalog != null) {
     return Math.min(THIRD_PARTY_MAX_TOKENS, catalog);
   }

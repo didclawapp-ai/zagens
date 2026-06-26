@@ -3,10 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n';
 import { confirmDialog } from '../lib/confirmDialog';
 import type { ModelProviderStatus, ProviderProbeResult } from '../types/modelProviders';
-import OpenRouterModelPicker from './OpenRouterModelPicker';
-import SenseNovaModelPicker from './SenseNovaModelPicker';
-import NvidiaNimModelPicker from './NvidiaNimModelPicker';
-import AgnesModelPicker from './AgnesModelPicker';
+import CatalogModelPicker from './CatalogModelPicker';
 
 interface Props {
   status: ModelProviderStatus;
@@ -126,13 +123,12 @@ export default function ModelProviderCard({
         providerId: status.id,
       });
       setProbeResult(result);
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setProbeBusy(false);
     }
-  }, [status.id, onRefresh]);
+  }, [status.id]);
 
   const busy = saveBusy || clearBusy || activateBusy || probeBusy || renameBusy || disabled;
 
@@ -300,32 +296,9 @@ export default function ModelProviderCard({
             </p>
           )}
 
-          {status.id === 'openrouter' && status.configured && (
-            <OpenRouterModelPicker
-              currentModel={status.model}
-              disabled={busy}
-              onModelChanged={onRefresh}
-            />
-          )}
-
-          {status.id === 'sensenova' && status.configured && (
-            <SenseNovaModelPicker
-              currentModel={status.model}
-              disabled={busy}
-              onModelChanged={onRefresh}
-            />
-          )}
-
-          {status.id === 'nvidia-nim' && status.configured && (
-            <NvidiaNimModelPicker
-              currentModel={status.model}
-              disabled={busy}
-              onModelChanged={onRefresh}
-            />
-          )}
-
-          {status.id === 'agnes' && status.configured && (
-            <AgnesModelPicker
+          {status.has_catalog_picker && status.configured && (
+            <CatalogModelPicker
+              providerId={status.id}
               currentModel={status.model}
               disabled={busy}
               onModelChanged={onRefresh}

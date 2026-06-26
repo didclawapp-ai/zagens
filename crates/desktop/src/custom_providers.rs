@@ -6,6 +6,7 @@ use tokio::sync::Notify;
 use zagens_config::{
     ConfigStore, CustomProviderToml, ProviderKind, custom_provider_keyring_slot,
     custom_provider_ui_id, parse_custom_provider_ui_id, slugify_custom_provider_id,
+    with_config_mut,
 };
 
 use crate::model_providers::{
@@ -68,6 +69,7 @@ pub fn custom_provider_statuses(
                 service_ok: None,
                 service_detail: None,
                 max_output_tokens: entry.max_output_tokens,
+                has_catalog_picker: false,
             }
         })
         .collect()
@@ -97,35 +99,39 @@ pub fn add_custom_model_provider(
     let base_url = normalize_base_url(&base_url)?;
     let max_output_tokens = max_output_tokens.filter(|&v| v > 0 && v <= 1_000_000);
 
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let mut slug = slugify_custom_provider_id(name);
-    if slug.is_empty() {
-        slug = "provider".to_string();
-    }
-    slug = unique_custom_id(&store, &slug);
-
-    store.config.custom_providers.insert(
-        slug.clone(),
-        CustomProviderToml {
-            display_name: name.to_string(),
-            base_url,
-            model: model.to_string(),
-            max_output_tokens,
-        },
-    );
+    let slug = {
+        let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+        let mut slug = slugify_custom_provider_id(name);
+        if slug.is_empty() {
+            slug = "provider".to_string();
+        }
+        unique_custom_id(&store, &slug)
+    };
 
     let slot = custom_provider_keyring_slot(&slug);
     zagens_secrets::Secrets::auto_detect()
         .set(&slot, key)
         .map_err(|e| format!("无法保存到系统密钥链: {e}"))?;
 
-    if set_active {
-        store.config.provider = ProviderKind::Custom;
-        store.config.custom_provider_id = Some(slug.clone());
-        store.config.default_text_model = Some(model.to_string());
-    }
+    with_config_mut(None, |store| {
+        store.config.custom_providers.insert(
+            slug.clone(),
+            CustomProviderToml {
+                display_name: name.to_string(),
+                base_url: base_url.clone(),
+                model: model.to_string(),
+                max_output_tokens,
+            },
+        );
 
-    store.save().map_err(|e| e.to_string())?;
+        if set_active {
+            store.config.provider = ProviderKind::Custom;
+            store.config.custom_provider_id = Some(slug.clone());
+            store.config.default_text_model = Some(model.to_string());
+        }
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     sidecar_restart.notify_one();
     Ok(custom_provider_ui_id(&slug))
 }
@@ -143,42 +149,41 @@ pub fn remove_custom_model_provider(
         .delete(&slot)
         .map_err(|e| format!("无法从系统密钥链删除: {e}"))?;
 
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    if store.config.custom_providers.remove(&slug).is_none() {
-        return Err(format!("未找到自定义接入: {slug}"));
-    }
-
-    let was_active = store.config.provider == ProviderKind::Custom
-        && store
-            .config
-            .custom_provider_id
-            .as_deref()
-            .is_some_and(|id| id == slug);
-    if was_active {
-        // 优先切到其他已配置的自定义接入，否则回退到 Deepseek
-        let secrets = zagens_secrets::Secrets::auto_detect();
-        let next_custom = store
-            .config
-            .custom_providers
-            .iter()
-            .find(|(remaining_slug, _)| {
-                let slot = custom_provider_keyring_slot(remaining_slug);
-                secrets.resolve(&slot).is_some()
-            })
-            .map(|(s, e)| (s.clone(), e.model.clone()));
-
-        if let Some((next_slug, next_model)) = next_custom {
-            store.config.custom_provider_id = Some(next_slug);
-            store.config.default_text_model = Some(next_model);
-            // provider 保持 ProviderKind::Custom
-        } else {
-            store.config.provider = ProviderKind::Deepseek;
-            store.config.custom_provider_id = None;
-            store.config.default_text_model = None;
+    with_config_mut(None, |store| {
+        if store.config.custom_providers.remove(&slug).is_none() {
+            return Err(format!("未找到自定义接入: {slug}"));
         }
-    }
 
-    store.save().map_err(|e| e.to_string())?;
+        let was_active = store.config.provider == ProviderKind::Custom
+            && store
+                .config
+                .custom_provider_id
+                .as_deref()
+                .is_some_and(|id| id == slug);
+        if was_active {
+            let secrets = zagens_secrets::Secrets::auto_detect();
+            let next_custom = store
+                .config
+                .custom_providers
+                .iter()
+                .find(|(remaining_slug, _)| {
+                    let slot = custom_provider_keyring_slot(remaining_slug);
+                    secrets.resolve(&slot).is_some()
+                })
+                .map(|(s, e)| (s.clone(), e.model.clone()));
+
+            if let Some((next_slug, next_model)) = next_custom {
+                store.config.custom_provider_id = Some(next_slug);
+                store.config.default_text_model = Some(next_model);
+            } else {
+                store.config.provider = ProviderKind::Deepseek;
+                store.config.custom_provider_id = None;
+                store.config.default_text_model = None;
+            }
+        }
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     sidecar_restart.notify_one();
     Ok(())
 }
@@ -211,32 +216,33 @@ pub fn save_custom_provider_credentials(
             .map_err(|e| format!("无法保存到系统密钥链: {e}"))?;
     }
 
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let entry = store
-        .config
-        .custom_providers
-        .get_mut(&slug)
-        .ok_or_else(|| format!("未找到自定义接入: {slug}"))?;
+    with_config_mut(None, |store| {
+        let entry = store
+            .config
+            .custom_providers
+            .get_mut(&slug)
+            .ok_or_else(|| format!("未找到自定义接入: {slug}"))?;
 
-    if let Some(url) = base_url {
-        entry.base_url = normalize_base_url(&url)?;
-    }
-    if let Some(m) = model
-        .map(|m| m.trim().to_string())
-        .filter(|m| !m.is_empty())
-    {
-        entry.model = m;
-    }
-    // None means "keep existing"; Some(0) means "clear / use default"
-    if let Some(limit) = max_output_tokens {
-        entry.max_output_tokens = if limit == 0 || limit > 1_000_000 {
-            None
-        } else {
-            Some(limit)
-        };
-    }
-
-    store.save().map_err(|e| e.to_string())?;
+        if let Some(url) = base_url.as_deref() {
+            entry.base_url = normalize_base_url(url)?;
+        }
+        if let Some(m) = model
+            .as_ref()
+            .map(|m| m.trim().to_string())
+            .filter(|m| !m.is_empty())
+        {
+            entry.model = m;
+        }
+        if let Some(limit) = max_output_tokens {
+            entry.max_output_tokens = if limit == 0 || limit > 1_000_000 {
+                None
+            } else {
+                Some(limit)
+            };
+        }
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     sidecar_restart.notify_one();
     Ok(())
 }
@@ -265,11 +271,13 @@ pub fn activate_custom_model_provider(
         return Err(format!("请先配置 {display_name} 的 API Key"));
     }
 
-    let mut store = store;
-    store.config.provider = ProviderKind::Custom;
-    store.config.custom_provider_id = Some(slug);
-    store.config.default_text_model = Some(model);
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        store.config.provider = ProviderKind::Custom;
+        store.config.custom_provider_id = Some(slug.to_string());
+        store.config.default_text_model = Some(model);
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     sidecar_restart.notify_one();
     Ok(())
 }
@@ -287,15 +295,16 @@ pub fn rename_custom_model_provider(
         return Err("模型商名称不能为空".to_string());
     }
 
-    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    let entry = store
-        .config
-        .custom_providers
-        .get_mut(&slug)
-        .ok_or_else(|| format!("未找到自定义接入: {slug}"))?;
-
-    entry.display_name = new_name.to_string();
-    store.save().map_err(|e| e.to_string())?;
+    with_config_mut(None, |store| {
+        let entry = store
+            .config
+            .custom_providers
+            .get_mut(&slug)
+            .ok_or_else(|| format!("未找到自定义接入: {slug}"))?;
+        entry.display_name = new_name.to_string();
+        Ok(())
+    })
+    .map_err(|e| e.to_string())?;
     sidecar_restart.notify_one();
     Ok(())
 }

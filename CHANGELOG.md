@@ -22,7 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Desktop (model providers · MP-4 P4b):** OpenRouter、SenseNova、Agnes AI、NVIDIA NIM 四家 catalog 商迁入 `CATALOG_PROVIDERS` 注册表；旧 IPC（list/set/activate）经 `adapters`/`catalog` 转发，删除 `nvidia_nim_provider.rs` 单体模块；新增 `every_catalog_preset_in_registry` 一致性单测。
+- **Desktop (model providers · MP-8 P5):** 统一 IPC `list_catalog_models` / `set_catalog_model`；`ModelProviderStatus.has_catalog_picker`；前端 `CatalogModelPicker` 替代四个 per-provider Picker；`output_limits` 由 catalog 响应驱动。
+
 ### Fixed
+
+- **Desktop (model providers):** 修复打开「模型接入」面板时 `get_model_providers_status` / `get_system_settings` 等 IPC 无限循环（挂载时不再误触发 `onSaved` 全量同步）；打包手测验收通过。
+- **Desktop + Runtime (SenseNova · DeepSeek V4):** 修复经 SenseNova 等第三方使用 `deepseek-v4-flash` 时 `max_tokens` 仍按 384K 发送导致 API 400（`MaxTokens invalid, should be in [1, 65536]`）；catalog 发布 ≤64K 上限时 V4 与 runtime 双侧均 respect catalog；手测验收通过。
+- **Desktop (model providers):** 修复 DeepSeek 主力模型点「检测服务」返回 **HTTP 404**（`normalize_models_url` 对 `api.deepseek.com` 命中根路径 `/models`）；手测验收通过。
 
 ## [0.8.4] - 2026-06-26
 

@@ -322,8 +322,10 @@ pub fn clamp_max_output_tokens_for_model(model: &str, requested: u32) -> u32 {
 }
 
 /// Provider catalog cap (e.g. SenseNova `max_output_length`) layered on top of
-/// {@link max_output_token_cap_for_model}. DeepSeek V4 models keep the main-model
-/// 384K budget even on third-party gateways unless the catalog limit is higher.
+/// {@link max_output_token_cap_for_model}. When the catalog publishes a limit at
+/// or below the generic third-party gate (64K), that value is the upstream API
+/// ceiling and must be honored even for DeepSeek V4. Higher catalog limits (e.g.
+/// some NVIDIA NIM entries) are combined with the V4 main-model cap.
 #[must_use]
 pub fn clamp_max_output_tokens_with_catalog_limit(
     model: &str,
@@ -338,8 +340,8 @@ pub fn clamp_max_output_tokens_with_catalog_limit(
         if limit > DEFAULT_MAX_OUTPUT_TOKENS {
             return requested.min(base_cap.min(limit));
         }
-        // Catalog still on the generic 64K gate — V4 uses the main-model cap.
-        return requested.min(base_cap);
+        // Third-party catalog (SenseNova, OpenRouter, …) — API rejects above this.
+        return requested.min(limit);
     }
     requested.min(base_cap.min(limit))
 }
@@ -493,10 +495,10 @@ mod max_output_tests {
     }
 
     #[test]
-    fn v4_on_sensenova_keeps_main_model_cap_when_catalog_is_64k() {
+    fn v4_on_sensenova_respects_third_party_catalog_cap() {
         assert_eq!(
             clamp_max_output_tokens_with_catalog_limit("deepseek-v4-flash", 393_216, Some(65_536)),
-            DEEPSEEK_V4_MAX_OUTPUT_TOKENS
+            DEFAULT_MAX_OUTPUT_TOKENS
         );
     }
 

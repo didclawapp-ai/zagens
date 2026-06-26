@@ -4,7 +4,8 @@ use std::fs;
 #[cfg(unix)]
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -1909,36 +1910,114 @@ impl ConfigStore {
                 format!("failed to create config directory {}", parent.display())
             })?;
         }
-        #[cfg(unix)]
-        {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&self.path)
-                .with_context(|| format!("failed to write config at {}", self.path.display()))?;
-            file.write_all(body.as_bytes())
-                .with_context(|| format!("failed to write config at {}", self.path.display()))?;
-            file.set_permissions(fs::Permissions::from_mode(0o600))
-                .with_context(|| {
-                    format!(
-                        "failed to set config permissions at {}",
-                        self.path.display()
-                    )
-                })?;
-        }
-        #[cfg(not(unix))]
-        {
-            fs::write(&self.path, body)
-                .with_context(|| format!("failed to write config at {}", self.path.display()))?;
-        }
-        Ok(())
+
+        let tmp_path = PathBuf::from(format!(
+            "{}.tmp.{}.{}",
+            self.path.display(),
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+
+        write_config_temp_file(&tmp_path, body)?;
+        atomic_rename_with_retry(&tmp_path, &self.path).inspect_err(|_| {
+            let _ = fs::remove_file(&tmp_path);
+        })
     }
 
     #[must_use]
     pub fn path(&self) -> &Path {
         &self.path
+    }
+}
+
+/// Process-wide mutex serializing desktop config load→mutate→save sequences.
+///
+/// Prevents in-process lost updates when two IPC handlers interleave reads and
+/// writes. Cross-process integrity is handled by atomic rename in [`ConfigStore::save`].
+static CONFIG_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// Load config, run a synchronous mutation closure, then save.
+///
+/// The closure must not perform I/O or `.await`; perform network/catalog work
+/// before calling this helper.
+pub fn with_config_mut<R>(
+    path: Option<PathBuf>,
+    f: impl FnOnce(&mut ConfigStore) -> Result<R, String>,
+) -> Result<R, String> {
+    let lock = CONFIG_WRITE_LOCK.get_or_init(|| Mutex::new(()));
+    let _guard = lock
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut store = ConfigStore::load(path).map_err(|e| e.to_string())?;
+    let result = f(&mut store)?;
+    store.save().map_err(|e| e.to_string())?;
+    Ok(result)
+}
+
+fn write_config_temp_file(tmp_path: &Path, body: &str) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(tmp_path)
+            .with_context(|| format!("failed to write temp config at {}", tmp_path.display()))?;
+        file.write_all(body.as_bytes())
+            .with_context(|| format!("failed to write temp config at {}", tmp_path.display()))?;
+        file.sync_all()
+            .with_context(|| format!("failed to flush temp config at {}", tmp_path.display()))?;
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .with_context(|| {
+                format!(
+                    "failed to set temp config permissions at {}",
+                    tmp_path.display()
+                )
+            })?;
+    }
+    #[cfg(not(unix))]
+    {
+        fs::write(tmp_path, body)
+            .with_context(|| format!("failed to write temp config at {}", tmp_path.display()))?;
+    }
+    Ok(())
+}
+
+fn atomic_rename_with_retry(from: &Path, to: &Path) -> Result<()> {
+    const MAX_ATTEMPTS: u32 = 3;
+    const INITIAL_BACKOFF_MS: u64 = 50;
+
+    for attempt in 0..MAX_ATTEMPTS {
+        match fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(err) if attempt + 1 < MAX_ATTEMPTS && rename_may_retry(&err) => {
+                std::thread::sleep(Duration::from_millis(
+                    INITIAL_BACKOFF_MS.saturating_mul(1 << attempt),
+                ));
+            }
+            Err(err) => {
+                return Err(err).with_context(|| {
+                    format!(
+                        "failed to rename temp config {} -> {}",
+                        from.display(),
+                        to.display()
+                    )
+                });
+            }
+        }
+    }
+    unreachable!("rename retry loop exits via return or Err")
+}
+
+fn rename_may_retry(err: &std::io::Error) -> bool {
+    #[cfg(windows)]
+    {
+        err.raw_os_error() == Some(32) // ERROR_SHARING_VIOLATION
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = err;
+        false
     }
 }
 
@@ -3091,5 +3170,100 @@ mod tests {
         assert_eq!(global.approval_policy.as_deref(), Some("on-request"));
         assert_eq!(global.sandbox_mode.as_deref(), Some("workspace-write"));
         assert_eq!(global.model.as_deref(), Some("project-only-model"));
+    }
+
+    #[test]
+    fn atomic_save_writes_parseable_complete_toml() -> Result<()> {
+        let temp_root = std::env::temp_dir().join(format!(
+            "zagens-config-atomic-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_root)?;
+        let config_path = temp_root.join(CONFIG_FILE_NAME);
+
+        let store = ConfigStore {
+            path: config_path.clone(),
+            config: ConfigToml {
+                default_text_model: Some("deepseek-v4-pro".to_string()),
+                ..ConfigToml::default()
+            },
+        };
+        store.save()?;
+
+        let raw = fs::read_to_string(&config_path)?;
+        let _: ConfigToml = toml::from_str(&raw).context("saved config must parse as full TOML")?;
+        assert!(raw.contains("default_text_model"));
+
+        let _ = fs::remove_dir_all(temp_root);
+        Ok(())
+    }
+
+    #[test]
+    fn with_config_mut_serializes_concurrent_writes() -> Result<()> {
+        use std::sync::{Arc, Barrier};
+        use std::thread;
+
+        let temp_root = std::env::temp_dir().join(format!(
+            "zagens-config-lock-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_root)?;
+        let config_path = temp_root.join(CONFIG_FILE_NAME);
+
+        let initial = ConfigStore {
+            path: config_path.clone(),
+            config: ConfigToml::default(),
+        };
+        initial.save()?;
+
+        let barrier = Arc::new(Barrier::new(2));
+        let path_a = config_path.clone();
+        let path_b = config_path.clone();
+        let b1 = barrier.clone();
+        let b2 = barrier.clone();
+
+        let t1 = thread::spawn(move || {
+            b1.wait();
+            with_config_mut(Some(path_a), |store| {
+                store.config.default_text_model = Some("model-a".into());
+                Ok(())
+            })
+        });
+        let t2 = thread::spawn(move || {
+            b2.wait();
+            with_config_mut(Some(path_b), |store| {
+                store.config.default_text_model = Some("model-b".into());
+                Ok(())
+            })
+        });
+
+        t1.join().unwrap().map_err(|e| anyhow::anyhow!(e))?;
+        t2.join().unwrap().map_err(|e| anyhow::anyhow!(e))?;
+
+        let final_store = ConfigStore::load(Some(config_path.clone()))?;
+        let model = final_store
+            .config
+            .default_text_model
+            .as_deref()
+            .unwrap_or_default();
+        assert!(
+            model == "model-a" || model == "model-b",
+            "expected last writer model, got {model}"
+        );
+
+        let raw = fs::read_to_string(&config_path)?;
+        let _: ConfigToml =
+            toml::from_str(&raw).context("concurrent save must leave valid TOML")?;
+
+        let _ = fs::remove_dir_all(temp_root);
+        Ok(())
     }
 }

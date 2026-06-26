@@ -13,6 +13,8 @@ export interface ModelProviderStatus {
   service_detail: string | null;
   /** Custom providers only: user-configured max_tokens cap (undefined = use default 65536) */
   max_output_tokens?: number | null;
+  /** Catalog-backed model picker (OpenRouter, SenseNova, …). */
+  has_catalog_picker: boolean;
 }
 
 export interface ProviderProbeResult {
@@ -21,52 +23,22 @@ export interface ProviderProbeResult {
   models: string[] | null;
 }
 
-export interface OpenRouterModelEntry {
+export type CatalogListVariant = 'flat' | 'free_paid';
+
+export interface CatalogModelEntry {
   id: string;
   name: string;
-  is_free: boolean;
+  context_length?: number | null;
+  max_output_length?: number | null;
+  description?: string | null;
+  is_free?: boolean | null;
 }
 
-export interface OpenRouterModelList {
-  free: OpenRouterModelEntry[];
-  paid: OpenRouterModelEntry[];
+export interface CatalogModelList {
+  variant: CatalogListVariant;
+  models: CatalogModelEntry[];
+  free?: CatalogModelEntry[] | null;
+  paid?: CatalogModelEntry[] | null;
   current_model: string | null;
-}
-
-export interface SenseNovaModelEntry {
-  id: string;
-  name: string;
-  description: string | null;
-  context_length: number | null;
-  max_output_length: number | null;
-}
-
-export interface SenseNovaModelList {
-  models: SenseNovaModelEntry[];
-  current_model: string | null;
-}
-
-export interface NvidiaNimModelEntry {
-  id: string;
-  name: string;
-  owned_by: string | null;
-  context_length: number | null;
-  max_output_length: number | null;
-}
-
-export interface NvidiaNimModelList {
-  models: NvidiaNimModelEntry[];
-  current_model: string | null;
-}
-
-export interface AgnesModelEntry {
-  id: string;
-  name: string;
-  context_length: number | null;
-  max_output_length: number | null;
-}
-
-export interface AgnesModelList {
-  models: AgnesModelEntry[];
-  current_model: string | null;
+  output_limits: Record<string, number>;
 }

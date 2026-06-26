@@ -5,7 +5,6 @@ mod custom_providers;
 mod disk_guard;
 mod export_path;
 mod model_providers;
-mod nvidia_nim_provider;
 mod runtime_proxy;
 mod sidecar;
 mod terminal;
@@ -234,6 +233,8 @@ fn main() {
             commands::clear_model_provider_credentials,
             commands::activate_model_provider,
             commands::probe_model_provider,
+            commands::list_catalog_models,
+            commands::set_catalog_model,
             commands::list_openrouter_models,
             commands::set_openrouter_model,
             commands::list_sensenova_models,

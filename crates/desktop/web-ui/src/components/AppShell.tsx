@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useT } from '../i18n';
 import ChatView from './ChatView';
 import type { SessionRestoreSource } from '../hooks/useSessionNavigation';
@@ -297,6 +298,11 @@ export default function AppShell({
     focusMode,
   });
 
+  const handleSavedApiKey = useCallback(() => {
+    onModelProvidersSaved();
+    toast.dismissAll();
+  }, [onModelProvidersSaved]);
+
   const harnessCardHasData = (cardId: HarnessCardId): boolean => {
     switch (cardId) {
       case 'checklist':
@@ -498,10 +504,7 @@ export default function AppShell({
             runtimeConn={runtimeConn}
             runtimeSessionEstablished={runtimeSessionEstablished}
             apiKeyConfigured={desktopApiKeyConfigured}
-            onSavedApiKey={() => {
-              onModelProvidersSaved();
-              toast.dismissAll();
-            }}
+            onSavedApiKey={handleSavedApiKey}
             theme={theme}
             onToggleTheme={onToggleTheme}
             platform={platform}

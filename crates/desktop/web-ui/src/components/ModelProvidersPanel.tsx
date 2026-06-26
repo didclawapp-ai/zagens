@@ -18,23 +18,25 @@ export default function ModelProvidersPanel({ onSaved, className = '' }: Props) 
   const [expandedId, setExpandedId] = useState<string | null>('deepseek');
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const refresh = useCallback(() => {
-    void (async () => {
-      try {
-        const list = await invoke<ModelProviderStatus[]>('get_model_providers_status');
-        setProviders(list);
-        onSaved();
-      } catch {
-        setProviders([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [onSaved]);
+  const loadProviders = useCallback(async () => {
+    try {
+      const list = await invoke<ModelProviderStatus[]>('get_model_providers_status');
+      setProviders(list);
+    } catch {
+      setProviders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /** User changed credentials/model — refresh panel and sync composer + key status. */
+  const refreshAndNotify = useCallback(() => {
+    void loadProviders().then(() => onSaved());
+  }, [loadProviders, onSaved]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    void loadProviders();
+  }, [loadProviders]);
 
   const primary = useMemo(
     () => providers.filter((p) => p.section === 'primary'),
@@ -68,7 +70,7 @@ export default function ModelProvidersPanel({ onSaved, className = '' }: Props) 
             status={status}
             expanded={expandedId === status.id}
             onToggle={() => toggleExpanded(status.id)}
-            onRefresh={refresh}
+            onRefresh={refreshAndNotify}
           />
         ))}
       </section>
@@ -83,7 +85,7 @@ export default function ModelProvidersPanel({ onSaved, className = '' }: Props) 
             status={status}
             expanded={expandedId === status.id}
             onToggle={() => toggleExpanded(status.id)}
-            onRefresh={refresh}
+            onRefresh={refreshAndNotify}
           />
         ))}
       </section>
@@ -99,10 +101,10 @@ export default function ModelProvidersPanel({ onSaved, className = '' }: Props) 
             status={status}
             expanded={expandedId === status.id}
             onToggle={() => toggleExpanded(status.id)}
-            onRefresh={refresh}
+            onRefresh={refreshAndNotify}
           />
         ))}
-        <CustomProviderAddForm onAdded={refresh} />
+        <CustomProviderAddForm onAdded={refreshAndNotify} />
       </section>
 
       <section className="mt-6 border-t border-divider pt-4">

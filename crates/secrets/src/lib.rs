@@ -427,65 +427,108 @@ impl Secrets {
     }
 }
 
-/// Environment variables runtime checks for a keyring slot (first = primary injection target).
-fn env_var_candidates_for_keyring_slot(slot: &str) -> &'static [&'static str] {
-    let lowered = slot.to_ascii_lowercase();
-    match lowered.as_str() {
-        "deepseek" => &["DEEPSEEK_API_KEY"],
-        "openrouter" => &["OPENROUTER_API_KEY"],
-        "novita" => &["NOVITA_API_KEY"],
-        // NVIDIA NIM falls back to `DEEPSEEK_API_KEY` last because the catalog endpoint
-        // accepts the same DeepSeek-issued key when no dedicated NVIDIA token is set.
-        "nvidia" | "nvidia-nim" | "nvidia_nim" | "nim" => {
-            &["NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY", "DEEPSEEK_API_KEY"]
-        }
-        "fireworks" | "fireworks-ai" => &["FIREWORKS_API_KEY"],
-        "sglang" | "sg-lang" => &["SGLANG_API_KEY"],
-        "vllm" | "v-llm" => &["VLLM_API_KEY"],
-        "ollama" | "ollama-local" => &["OLLAMA_API_KEY"],
-        "openai" => &["OPENAI_API_KEY"],
-        "agnes" | "agnes-ai" => &["AGNES_API_KEY", "AGNES_API_TOKEN", "APIHUB_AGNES_API_KEY"],
-        "sensenova" | "sense-nova" | "sense_nova" => &["SENSENOVA_API_KEY", "SENSENOVA_API_TOKEN"],
-        "vision" => &["VISION_API_KEY", "SILICONFLOW_API_KEY"],
-        _ => &[],
-    }
+/// Sidecar env injection registry: canonical slot → env var candidates (first = primary).
+pub struct KeyringSlotDef {
+    /// Keyring slot name (matches desktop preset / CLI login).
+    pub slot: &'static str,
+    /// Env vars runtime checks, in precedence order (first = sidecar injection target).
+    pub env_candidates: &'static [&'static str],
 }
 
-/// Every keyring slot the desktop (or CLI login) may populate. Sidecar spawn injects the
-/// primary env var for each slot that holds a value.
-const KEYRING_INJECTION_SLOTS: &[&str] = &[
-    "deepseek",
-    "openrouter",
-    "novita",
-    "nvidia-nim",
-    "fireworks",
-    "sglang",
-    "vllm",
-    "ollama",
-    "openai",
-    "agnes",
-    "sensenova",
-    "vision",
+/// Canonical keyring slots mirrored into the sidecar process environment on spawn.
+pub static KEYRING_SLOT_REGISTRY: &[KeyringSlotDef] = &[
+    KeyringSlotDef {
+        slot: "deepseek",
+        env_candidates: &["DEEPSEEK_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "openrouter",
+        env_candidates: &["OPENROUTER_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "novita",
+        env_candidates: &["NOVITA_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "nvidia-nim",
+        env_candidates: &["NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY", "DEEPSEEK_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "fireworks",
+        env_candidates: &["FIREWORKS_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "sglang",
+        env_candidates: &["SGLANG_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "vllm",
+        env_candidates: &["VLLM_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "ollama",
+        env_candidates: &["OLLAMA_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "openai",
+        env_candidates: &["OPENAI_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "agnes",
+        env_candidates: &["AGNES_API_KEY", "AGNES_API_TOKEN", "APIHUB_AGNES_API_KEY"],
+    },
+    KeyringSlotDef {
+        slot: "sensenova",
+        env_candidates: &["SENSENOVA_API_KEY", "SENSENOVA_API_TOKEN"],
+    },
+    KeyringSlotDef {
+        slot: "vision",
+        env_candidates: &["VISION_API_KEY", "SILICONFLOW_API_KEY"],
+    },
 ];
+
+fn registry_def_for_slot(slot: &str) -> Option<&'static KeyringSlotDef> {
+    let lowered = slot.to_ascii_lowercase();
+    let canonical = match lowered.as_str() {
+        "nvidia" | "nvidia_nim" | "nim" => "nvidia-nim",
+        "fireworks-ai" => "fireworks",
+        "sg-lang" => "sglang",
+        "v-llm" => "vllm",
+        "ollama-local" => "ollama",
+        "agnes-ai" => "agnes",
+        "sense-nova" | "sense_nova" => "sensenova",
+        other => other,
+    };
+    KEYRING_SLOT_REGISTRY
+        .iter()
+        .find(|def| def.slot == canonical)
+}
+
+/// Environment variables runtime checks for a keyring slot (first = primary injection target).
+fn env_var_candidates_for_keyring_slot(slot: &str) -> &'static [&'static str] {
+    registry_def_for_slot(slot)
+        .map(|def| def.env_candidates)
+        .unwrap_or(&[])
+}
 
 /// Whether [`inject_keyring_envs`] will map this slot into a sidecar env var.
 #[must_use]
 pub fn keyring_slot_has_sidecar_env_injection(slot: &str) -> bool {
-    !env_var_candidates_for_keyring_slot(slot).is_empty()
+    registry_def_for_slot(slot).is_some()
 }
 
 /// Inject keyring-held provider API keys into a child process environment.
 ///
 /// Runtime resolves credentials via **env → config file** (no keyring I/O). The desktop
-/// parent mirrors every keyring slot listed in [`KEYRING_INJECTION_SLOTS`] into the
+/// parent mirrors every keyring slot listed in [`KEYRING_SLOT_REGISTRY`] into the
 /// matching primary env var before starting the sidecar.
 pub fn inject_keyring_envs(cmd: &mut std::process::Command) {
     let secrets = Secrets::auto_detect();
-    for slot in KEYRING_INJECTION_SLOTS {
-        let Some(env_var) = env_var_candidates_for_keyring_slot(slot).first() else {
+    for def in KEYRING_SLOT_REGISTRY {
+        let Some(env_var) = def.env_candidates.first() else {
             continue;
         };
-        if let Some(key) = secrets.resolve(slot) {
+        if let Some(key) = secrets.resolve(def.slot) {
             cmd.env(env_var, &key);
         }
     }
@@ -543,11 +586,17 @@ mod tests {
     }
 
     #[test]
-    fn every_injection_slot_maps_to_env_var() {
-        for slot in KEYRING_INJECTION_SLOTS {
+    fn every_registry_slot_maps_to_env() {
+        for def in KEYRING_SLOT_REGISTRY {
             assert!(
-                keyring_slot_has_sidecar_env_injection(slot),
-                "keyring slot {slot} has no sidecar env mapping"
+                keyring_slot_has_sidecar_env_injection(def.slot),
+                "registry slot {} has no sidecar env mapping",
+                def.slot
+            );
+            assert!(
+                !def.env_candidates.is_empty(),
+                "registry slot {} has empty env_candidates",
+                def.slot
             );
         }
     }

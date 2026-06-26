@@ -88,12 +88,22 @@ export function useStoragePressure({
       .catch(() => {});
   }, [desktopHost, workspaceRoot, streaming, runPauseForCritical, t]);
 
+  // `refresh` closes over `runPauseForCritical`, whose identity churns every
+  // render because `streamRegistry` (passed from App) is a fresh object each
+  // render. Putting `refresh` in the effect's deps would re-run the effect on
+  // every render, calling `refresh()` synchronously → `setSnapshot` → re-render
+  // → effect re-run → ... an unbounded `get_storage_pressure` fetch loop.
+  // Hold the latest `refresh` in a ref and gate the effect on `desktopHost` only.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
   useEffect(() => {
     if (!desktopHost) return;
-    refresh();
-    const id = window.setInterval(refresh, POLL_MS);
+    const tick = () => refreshRef.current();
+    tick();
+    const id = window.setInterval(tick, POLL_MS);
     return () => window.clearInterval(id);
-  }, [desktopHost, refresh]);
+  }, [desktopHost]);
 
   useEffect(() => {
     if (!desktopHost || !pauseTurns || !streaming) return;
