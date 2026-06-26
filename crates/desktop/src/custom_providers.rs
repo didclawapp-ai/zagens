@@ -144,7 +144,7 @@ pub fn remove_custom_model_provider(
         .map_err(|e| format!("无法从系统密钥链删除: {e}"))?;
 
     let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
-    if !store.config.custom_providers.remove(&slug).is_some() {
+    if store.config.custom_providers.remove(&slug).is_none() {
         return Err(format!("未找到自定义接入: {slug}"));
     }
 

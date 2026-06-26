@@ -17,6 +17,7 @@ pub enum ModelProviderSection {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub struct ModelProviderPresetView {
     pub id: &'static str,
     pub display_name: &'static str,
@@ -63,7 +64,7 @@ pub struct ProviderProbeResult {
     pub models: Option<Vec<String>>,
 }
 
-struct ProviderPreset {
+pub(crate) struct ProviderPreset {
     id: &'static str,
     display_name: &'static str,
     kind: ProviderKind,
@@ -158,14 +159,11 @@ fn is_custom_provider_id(id: &str) -> bool {
     id.trim().starts_with(CUSTOM_PROVIDER_UI_ID_PREFIX)
 }
 
-fn provider_cfg<'a>(store: &'a ConfigStore, kind: ProviderKind) -> &'a ProviderConfigToml {
+fn provider_cfg(store: &ConfigStore, kind: ProviderKind) -> &ProviderConfigToml {
     store.config.providers.for_provider(kind)
 }
 
-fn provider_cfg_mut<'a>(
-    store: &'a mut ConfigStore,
-    kind: ProviderKind,
-) -> &'a mut ProviderConfigToml {
+fn provider_cfg_mut(store: &mut ConfigStore, kind: ProviderKind) -> &mut ProviderConfigToml {
     store.config.providers.for_provider_mut(kind)
 }
 
@@ -191,6 +189,7 @@ fn is_configured(
     cfg.api_key.as_ref().is_some_and(|k| !k.trim().is_empty())
 }
 
+#[allow(dead_code)]
 pub fn list_model_provider_presets() -> Vec<ModelProviderPresetView> {
     PRESETS
         .iter()
@@ -665,11 +664,11 @@ pub async fn list_openrouter_models() -> Result<OpenRouterModelList, String> {
     }
 
     // Persist the per-model output limits so the runtime can use them for all providers
-    if !output_limits.is_empty() {
-        if let Ok(mut store_mut) = ConfigStore::load(None) {
-            store_mut.config.providers.openrouter.model_output_limits = output_limits;
-            let _ = store_mut.save();
-        }
+    if !output_limits.is_empty()
+        && let Ok(mut store_mut) = ConfigStore::load(None)
+    {
+        store_mut.config.providers.openrouter.model_output_limits = output_limits;
+        let _ = store_mut.save();
     }
 
     free.sort_by(|a, b| {
