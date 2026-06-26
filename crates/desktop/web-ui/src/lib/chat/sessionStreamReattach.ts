@@ -1,13 +1,13 @@
 import { threadTurnStillActive } from '../../api/client';
 import { markLastAssistantStreaming } from './activeTurnStreamUi';
 import { restorePanelSliceToUi } from './sessionPanelReattach';
-import { removeThreadFromStreamingSet } from './streamContextStore';
+import { getActiveThreadIdsFromStore } from './threadStatusStore';
 import type { TurnChatMessage } from '../../hooks/useTurnSend';
 import type { StreamContextRegistry } from '../../hooks/useStreamContextRegistry';
 import type { ApprovalState } from '../../hooks/useTurnApproval';
 import type { ThreadContextSnapshot } from '../contextUsage';
 import type { LhtChipState } from '../lhtChip';
-import type { MutableRefObject, Dispatch, SetStateAction } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 
 export type StreamingReattachResult = {
   messages: TurnChatMessage[];
@@ -23,9 +23,7 @@ export async function applyStreamingReattach(
   threadId: string,
   messages: TurnChatMessage[],
   options: {
-    streamingThreadIdsRef: MutableRefObject<Set<string>>;
     streamRegistry?: StreamContextRegistry | null;
-    setStreamingThreadIds?: Dispatch<SetStateAction<Set<string>>>;
     setLhtChip?: Dispatch<SetStateAction<LhtChipState | null>>;
     applyThreadContextSnapshot?: (
       threadId: string,
@@ -38,7 +36,7 @@ export async function applyStreamingReattach(
     return { messages, composerLocked: false, pendingApproval: null };
   }
 
-  const inSet = options.streamingThreadIdsRef.current.has(tid);
+  const inStore = getActiveThreadIdsFromStore().has(tid);
   const ctx = options.streamRegistry?.getContext(tid);
   let stillActive = false;
   try {
@@ -52,20 +50,10 @@ export async function applyStreamingReattach(
       isStreaming: false,
       pendingApproval: null,
     });
-    if (inSet && options.setStreamingThreadIds) {
-      options.setStreamingThreadIds((prev) => {
-        const next = removeThreadFromStreamingSet(prev, tid);
-        return next ?? prev;
-      });
-    }
     return { messages, composerLocked: false, pendingApproval: null };
   }
 
   const pendingApproval = ctx?.pendingApproval ?? null;
-
-  if (!inSet && options.setStreamingThreadIds) {
-    options.setStreamingThreadIds((prev) => new Set(prev).add(tid));
-  }
 
   const { messages: marked } = markLastAssistantStreaming(messages);
   if (options.streamRegistry) {
@@ -96,7 +84,7 @@ export async function applyStreamingReattach(
 
   return {
     messages: marked as TurnChatMessage[],
-    composerLocked: true,
+    composerLocked: inStore || stillActive,
     pendingApproval,
   };
 }

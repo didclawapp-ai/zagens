@@ -14,6 +14,7 @@ mod window_registry;
 mod workspace_defaults;
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use tauri::{
     Manager, WindowEvent,
@@ -104,6 +105,7 @@ fn main() {
 
             let token = uuid::Uuid::new_v4().to_string();
             let sidecar_restart = Arc::new(Notify::new());
+            let sidecar_restart_force = Arc::new(AtomicBool::new(false));
             // Watch channel publishes the runtime port. Initial value `0` means "not ready yet";
             // the sidecar supervisor writes the real bound port after parsing `DS_PICK_READY`.
             // IPC handlers either `await` (get_runtime_port) or fast-fail (require_port).
@@ -112,6 +114,7 @@ fn main() {
                 runtime_port: runtime_port_rx,
                 runtime_token: token.clone(),
                 sidecar_restart: sidecar_restart.clone(),
+                sidecar_restart_force: sidecar_restart_force.clone(),
                 shutdown: shutdown.clone(),
                 probe_cache: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             });
@@ -128,6 +131,7 @@ fn main() {
                     runtime_port_tx,
                     &token_for_sidecar,
                     sidecar_restart.clone(),
+                    sidecar_restart_force,
                     shutdown_for_sidecar,
                 )
                 .await
@@ -236,6 +240,8 @@ fn main() {
             commands::set_sensenova_model,
             commands::list_nvidia_nim_models,
             commands::set_nvidia_nim_model,
+            commands::list_agnes_models,
+            commands::set_agnes_model,
             commands::get_vision_bridge_status,
             commands::save_vision_bridge,
             commands::clear_vision_bridge,
@@ -250,6 +256,8 @@ fn main() {
             commands::export_thread_trace_compare,
             commands::export_session_json,
             commands::restart_sidecar,
+            commands::force_sidecar_restart_now,
+            commands::preview_lht_preset,
             commands::get_system_settings,
             commands::save_system_settings,
             commands::get_lht_settings,

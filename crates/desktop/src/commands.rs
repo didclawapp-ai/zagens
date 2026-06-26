@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::sync::Notify;
@@ -64,6 +65,8 @@ pub struct AppContext {
     pub runtime_token: String,
     /// Wake the sidecar supervisor to restart `deepseek-runtime`'s HTTP server (reload `config.toml`).
     pub sidecar_restart: Arc<Notify>,
+    /// When set, the supervisor skips the active-turn gate and restarts immediately.
+    pub sidecar_restart_force: Arc<AtomicBool>,
     /// Signal the sidecar supervisor to shut down (kill the child process and exit).
     pub shutdown: Arc<Notify>,
     /// In-memory cache of the last probe result per provider_id: (ok, detail_message).
@@ -733,6 +736,19 @@ pub async fn set_nvidia_nim_model(
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
     crate::nvidia_nim_provider::set_nvidia_nim_model(model_id, &ctx.sidecar_restart).await
+}
+
+#[tauri::command]
+pub async fn list_agnes_models() -> Result<crate::model_providers::AgnesModelList, String> {
+    crate::model_providers::list_agnes_models().await
+}
+
+#[tauri::command]
+pub async fn set_agnes_model(
+    model_id: String,
+    ctx: tauri::State<'_, AppContext>,
+) -> Result<(), String> {
+    crate::model_providers::set_agnes_model(model_id, &ctx.sidecar_restart).await
 }
 
 #[derive(Debug, Serialize)]
@@ -1879,6 +1895,9 @@ fn collect_configured_models(cfg: &zagens_config::ConfigToml) -> Vec<String> {
     push_model_option(&mut out, &mut seen, providers.vllm.model.as_deref());
     push_model_option(&mut out, &mut seen, providers.ollama.model.as_deref());
     push_model_option(&mut out, &mut seen, providers.agnes.model.as_deref());
+    for id in &providers.agnes.available_models {
+        push_model_option(&mut out, &mut seen, Some(id.as_str()));
+    }
     push_model_option(&mut out, &mut seen, providers.sensenova.model.as_deref());
     for id in &providers.sensenova.available_models {
         push_model_option(&mut out, &mut seen, Some(id.as_str()));
@@ -2210,8 +2229,34 @@ pub fn apply_lht_preset(
     apply_lht_preset_overlay(&mut lh, preset);
     store.config.long_horizon = Some(lh);
     store.save().map_err(|e| e.to_string())?;
-    ctx.sidecar_restart.notify_one();
+    request_sidecar_restart(&ctx);
     get_lht_settings()
+}
+
+/// Preview a harness preset without writing config or restarting the sidecar.
+#[tauri::command]
+pub fn preview_lht_preset(preset_id: String) -> Result<LhtSettings, String> {
+    let preset = LhtPresetId::from_str_id(&preset_id)
+        .ok_or_else(|| format!("unknown LHT preset: {preset_id}"))?;
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let mut lh = store
+        .config
+        .long_horizon
+        .clone()
+        .unwrap_or_else(lht_product_defaults);
+    apply_lht_preset_overlay(&mut lh, preset);
+    let mut cfg = store.config.clone();
+    cfg.long_horizon = Some(lh);
+    Ok(lht_settings_from_config(&cfg))
+}
+
+fn request_sidecar_restart(ctx: &AppContext) {
+    ctx.sidecar_restart.notify_one();
+}
+
+fn force_sidecar_restart(ctx: &AppContext) {
+    ctx.sidecar_restart_force.store(true, Ordering::SeqCst);
+    ctx.sidecar_restart.notify_one();
 }
 
 #[tauri::command]
@@ -2276,7 +2321,7 @@ pub fn save_lht_settings(
 
     tracing::info!("save_lht_settings: writing config");
     store.save().map_err(|e| e.to_string())?;
-    ctx.sidecar_restart.notify_one();
+    request_sidecar_restart(&ctx);
     Ok(())
 }
 
@@ -2620,13 +2665,19 @@ pub fn save_hooks_settings(
 
     tracing::info!("save_hooks_settings: writing config");
     store.save().map_err(|e| e.to_string())?;
-    ctx.sidecar_restart.notify_one();
+    request_sidecar_restart(&ctx);
     Ok(())
 }
 
 #[tauri::command]
 pub fn restart_sidecar(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
-    ctx.sidecar_restart.notify_one();
+    force_sidecar_restart(&ctx);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn force_sidecar_restart_now(ctx: tauri::State<'_, AppContext>) -> Result<(), String> {
+    force_sidecar_restart(&ctx);
     Ok(())
 }
 

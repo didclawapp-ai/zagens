@@ -13,11 +13,15 @@ export const MODEL_PARAMS_STORAGE_KEY = 'zagens-desktop-model-params';
  * the answer; `max_tokens` is an upper bound, not a reservation — the model
  * stops when done, so this only removes the premature cap.
  *
- * Other third-party models (OpenRouter Agnes native ids, SenseNova `sensenova-*`, …)
+ * Other third-party models (OpenRouter, SenseNova `sensenova-*`, Agnes `agnes-*`, …)
  * share a unified 64K cap unless the provider catalog publishes a lower limit.
  */
 export const MODEL_MAX_TOKENS = 384 * 1024; // 393216 — DeepSeek V4 official cap
 export const THIRD_PARTY_MAX_TOKENS = 65_536;
+/** Agnes 2.0 chat models: 64K max output per official docs. */
+export const AGNES_CHAT_MAX_OUTPUT_TOKENS = 65_536;
+/** Agnes 2.0 chat models: 256K context per official docs. */
+export const AGNES_CHAT_CONTEXT_TOKENS = 256_000;
 /** NVIDIA NIM hosted chat APIs cap completion tokens separately from context length. */
 export const NVIDIA_NIM_MAX_COMPLETION_TOKENS = 262_144;
 export const DEFAULT_MAX_TOKENS = MODEL_MAX_TOKENS;
@@ -34,12 +38,19 @@ let senseNovaOutputLimits: Record<string, number> = {};
 /** NVIDIA NIM `/v1/models` output limits keyed by model id (desktop cache). */
 let nvidiaNimOutputLimits: Record<string, number> = {};
 
+/** Agnes AI `/v1/models` output limits keyed by model id (desktop cache). */
+let agnesOutputLimits: Record<string, number> = {};
+
 export function setSenseNovaOutputLimits(limits: Record<string, number>): void {
   senseNovaOutputLimits = limits;
 }
 
 export function setNvidiaNimOutputLimits(limits: Record<string, number>): void {
   nvidiaNimOutputLimits = limits;
+}
+
+export function setAgnesOutputLimits(limits: Record<string, number>): void {
+  agnesOutputLimits = limits;
 }
 
 export function isDeepSeekV4Model(model: string): boolean {
@@ -55,6 +66,10 @@ export function isDeepSeekV4Model(model: string): boolean {
 }
 
 function catalogLimitForModel(model: string): number | undefined {
+  const agnesLimit = agnesOutputLimits[model];
+  if (typeof agnesLimit === 'number' && agnesLimit > 0) {
+    return Math.min(agnesLimit, THIRD_PARTY_MAX_TOKENS);
+  }
   const nvidiaLimit = nvidiaNimOutputLimits[model];
   if (typeof nvidiaLimit === 'number' && nvidiaLimit > 0) {
     return Math.min(nvidiaLimit, NVIDIA_NIM_MAX_COMPLETION_TOKENS);

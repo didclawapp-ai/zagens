@@ -23,7 +23,7 @@ impl RuntimeThreadManager {
             .filter(|m| !m.trim().is_empty())
             .unwrap_or_else(|| "agent".to_string());
         let allow_shell = req.allow_shell.unwrap_or_else(|| self.config.allow_shell());
-        let trust_mode = req.trust_mode.unwrap_or(false);
+        let trust_mode = self.config.effective_trust_mode(req.trust_mode);
         let auto_approve = req.auto_approve.unwrap_or(false);
         let task_type =
             crate::task_type::resolve_task_type(req.task_type.as_deref(), &workspace, None);
@@ -51,6 +51,7 @@ impl RuntimeThreadManager {
             scratchpad_run_history: None,
             checklist_snapshot: None,
             plan_snapshot: None,
+            config_overlay: None,
         };
         {
             let store = self.store.clone();
@@ -70,7 +71,14 @@ impl RuntimeThreadManager {
         Ok(thread)
     }
 
-    pub async fn update_thread(&self, id: &str, req: UpdateThreadRequest) -> Result<ThreadRecord> {
+    pub async fn update_thread(
+        &self,
+        id: &str,
+        mut req: UpdateThreadRequest,
+    ) -> Result<ThreadRecord> {
+        if let Some(requested) = req.trust_mode {
+            req.trust_mode = Some(self.config.effective_trust_mode(Some(requested)));
+        }
         let workspace_change = req.workspace.clone();
         let prior_workspace = if workspace_change.is_some() {
             Some(self.load_thread_sync(id)?.workspace)

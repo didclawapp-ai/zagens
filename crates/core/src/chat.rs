@@ -366,6 +366,14 @@ pub fn context_window_for_model(model: &str) -> Option<u32> {
     if lower.contains("claude") {
         return Some(200_000);
     }
+    // Agnes AI chat models (agnes-2.0-flash, agnes-1.5-*): 256K context per official docs.
+    if lower.contains("agnes")
+        && !lower.contains("image")
+        && !lower.contains("video")
+        && !lower.contains("embed")
+    {
+        return Some(256_000);
+    }
     // Qwen / QwQ family — Qwen2.5+ generally support 128K context
     if lower.contains("qwen") || lower.contains("qwq") {
         return Some(128_000);
@@ -510,6 +518,24 @@ mod max_output_tests {
             ),
             DEFAULT_MAX_OUTPUT_TOKENS
         );
+    }
+
+    #[test]
+    fn native_agnes_clamps_to_catalog() {
+        assert_eq!(
+            clamp_max_output_tokens_with_catalog_limit("agnes-2.0-flash", 393_216, Some(65_536)),
+            DEFAULT_MAX_OUTPUT_TOKENS
+        );
+        assert_eq!(
+            clamp_max_output_tokens_with_catalog_limit("agnes-2.0-flash", 393_216, Some(32_768)),
+            32_768
+        );
+    }
+
+    #[test]
+    fn agnes_chat_context_window() {
+        assert_eq!(context_window_for_model("agnes-2.0-flash"), Some(256_000));
+        assert!(context_window_for_model("agnes-image-2.0-flash").is_none());
     }
 
     #[test]

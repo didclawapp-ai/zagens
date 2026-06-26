@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
+  appendStreamingTextDelta,
   enhanceAssistantParagraphBreaks,
   mergeAgentMessageSegment,
 } from './formatAssistantContent';
@@ -22,6 +23,14 @@ assert.equal(
   mergeAgentMessageSegment('hello', 'hello'),
   'hello',
   'skips duplicate completed segment',
+);
+
+assert.equal(appendStreamingTextDelta('Let', ' me'), 'Let me', 'incremental token append');
+assert.equal(appendStreamingTextDelta('Let me ', 'Let me '), 'Let me ', 'duplicate delta skipped');
+assert.equal(
+  appendStreamingTextDelta('Let me check', 'Let me check trust'),
+  'Let me check trust',
+  'cumulative snapshot replaces prefix',
 );
 
 const turnEvents = [

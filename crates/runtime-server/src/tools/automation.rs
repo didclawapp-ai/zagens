@@ -67,7 +67,7 @@ impl ToolSpec for AutomationCreateTool {
             "model": optional_str(&input, "model").map(ToString::to_string),
             "mode": optional_str(&input, "mode").map(ToString::to_string),
             "allow_shell": input.get("allow_shell").and_then(Value::as_bool),
-            "trust_mode": input.get("trust_mode").and_then(Value::as_bool),
+            "trust_mode": context.trust_mode,
             "auto_approve": input.get("auto_approve").and_then(Value::as_bool),
             "status": if input.get("paused").and_then(Value::as_bool).unwrap_or(false) {
                 AutomationStatus::Paused
@@ -196,7 +196,6 @@ impl ToolSpec for AutomationUpdateTool {
             "model": optional_str(&input, "model").map(ToString::to_string),
             "mode": optional_str(&input, "mode").map(ToString::to_string),
             "allow_shell": input.get("allow_shell").and_then(Value::as_bool),
-            "trust_mode": input.get("trust_mode").and_then(Value::as_bool),
             "auto_approve": input.get("auto_approve").and_then(Value::as_bool),
             "status": status,
         });

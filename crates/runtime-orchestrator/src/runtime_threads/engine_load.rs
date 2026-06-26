@@ -67,6 +67,7 @@ where
         ActiveThreadState {
             engine: engine.clone(),
             active_turn: None,
+            pending_config_refresh: false,
         },
     );
     touch_lru(&mut active.lru, &thread.id);

@@ -280,11 +280,18 @@ export function loadStoredInspector(): RightPanelView {
         /* ignore */
       }
     }
+    if (s === 'system') {
+      s = 'settings';
+      try {
+        localStorage.setItem(ACTIVE_INSPECTOR_STORAGE_KEY, 'settings');
+      } catch {
+        /* ignore */
+      }
+    }
     if (
       s === 'workspace' ||
       s === 'models' ||
       s === 'settings' ||
-      s === 'system' ||
       s === 'sandbox' ||
       s === 'mcp' ||
       s === 'usage' ||

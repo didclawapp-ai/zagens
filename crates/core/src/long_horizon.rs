@@ -2,7 +2,7 @@
 
 mod completion_gate;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub use completion_gate::{
     CompletionGateConfig, CompletionGateConfigToml, CompletionGateDeliverableEntry,
@@ -42,7 +42,7 @@ impl Default for AdversarialAuditConfig {
 }
 
 /// Deserializable `[long_horizon.adversarial_audit]` table for TOML.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct AdversarialAuditConfigToml {
     #[serde(default)]
     pub enabled: Option<bool>,
@@ -179,7 +179,7 @@ impl Default for MacroLoopConfig {
 }
 
 /// Deserializable `[long_horizon.macro_loop]` table.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct MacroLoopConfigToml {
     #[serde(default)]
     pub enabled: Option<bool>,
@@ -274,7 +274,7 @@ impl Default for LongHorizonConfig {
 }
 
 /// Deserializable `[long_horizon]` table for TOML.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct LongHorizonConfigToml {
     #[serde(default)]
     pub enabled: Option<bool>,

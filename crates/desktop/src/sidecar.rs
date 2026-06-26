@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -30,6 +31,8 @@ const MAX_CONNECT_REFUSED: u32 = 2;
 const MAX_BUSY_TIMEOUTS: u32 = 12;
 /// Coalesce rapid `sidecar_restart.notify_one()` bursts (e.g. saving API key + vision settings).
 const RESTART_DEBOUNCE_MS: u64 = 450;
+/// Poll while deferring a config restart until all turns are idle.
+const RESTART_ACTIVE_POLL_MS: u64 = 2000;
 /// Poll interval while waiting for `127.0.0.1:port` to drop LISTEN after `kill` (Windows EADDRINUSE / 10048).
 const PORT_FREE_POLL_MS: u64 = 75;
 const PORT_FREE_MAX_WAIT_MS: u64 = 10_000;
@@ -89,6 +92,101 @@ static SUPERVISOR_LOG_MUTEX: Mutex<()> = Mutex::new(());
 fn emit_sidecar_restarting(app: &AppHandle, reason: &str) {
     let payload = serde_json::json!({ "reason": reason });
     let _ = app.emit("sidecar://restarting", &payload);
+}
+
+/// Config restart is queued because one or more threads still have active turns.
+fn emit_sidecar_restart_pending(app: &AppHandle, active_count: usize) {
+    let payload = serde_json::json!({ "active_count": active_count });
+    let _ = app.emit("sidecar://restart-pending", &payload);
+}
+
+fn emit_sidecar_restart_pending_cleared(app: &AppHandle) {
+    let _ = app.emit("sidecar://restart-pending-cleared", &serde_json::json!({}));
+}
+
+#[derive(Debug, Deserialize)]
+struct ActiveTurnsProbe {
+    count: usize,
+}
+
+async fn fetch_active_turn_count(port: u16, token: &str) -> usize {
+    if port == 0 {
+        return 0;
+    }
+    let Some(client) = sidecar_probe_http() else {
+        return 0;
+    };
+    let url = format!("http://127.0.0.1:{port}/v1/runtime/active-turns");
+    let mut req = client.get(&url);
+    if !token.trim().is_empty() {
+        req = req.header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", token.trim()),
+        );
+    }
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => resp
+            .json::<ActiveTurnsProbe>()
+            .await
+            .map(|body| body.count)
+            .unwrap_or(0),
+        _ => 0,
+    }
+}
+
+async fn debounce_restart_notifications(restart: &Notify) {
+    loop {
+        tokio::select! {
+            _ = sleep(Duration::from_millis(RESTART_DEBOUNCE_MS)) => break,
+            _ = restart.notified() => {}
+        }
+    }
+}
+
+/// Wait until no active turns remain, or the user forces an immediate restart.
+async fn wait_for_idle_or_force_restart(
+    app: &AppHandle,
+    port: u16,
+    token: &str,
+    restart: &Notify,
+    force_now: &AtomicBool,
+    shutdown: &Notify,
+) -> bool {
+    let mut pending_emitted = false;
+    loop {
+        if force_now.swap(false, Ordering::SeqCst) {
+            supervisor_log("event=restart reason=config_change force=true");
+            if pending_emitted {
+                emit_sidecar_restart_pending_cleared(app);
+            }
+            return true;
+        }
+        let active = fetch_active_turn_count(port, token).await;
+        if active == 0 {
+            if pending_emitted {
+                emit_sidecar_restart_pending_cleared(app);
+            }
+            return true;
+        }
+        if !pending_emitted {
+            emit_sidecar_restart_pending(app, active);
+            pending_emitted = true;
+        }
+        supervisor_log(format!("event=restart_deferred active_turns={active}"));
+        tokio::select! {
+            biased;
+            _ = shutdown.notified() => {
+                if pending_emitted {
+                    emit_sidecar_restart_pending_cleared(app);
+                }
+                return false;
+            }
+            _ = restart.notified() => {
+                debounce_restart_notifications(restart).await;
+            }
+            _ = sleep(Duration::from_millis(RESTART_ACTIVE_POLL_MS)) => {}
+        }
+    }
 }
 
 /// Append a timestamped line to `~/.zagens/logs/supervisor.log` and mirror to stderr.
@@ -199,6 +297,9 @@ fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> 
     let mut std_cmd = std::process::Command::new(runtime_bin);
     std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
     std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "zagens");
+    // Desktop UI modes (YOLO / trust) may opt in per request; gate in runtime via
+    // `Config::effective_trust_mode` requires deployment-level permission.
+    std_cmd.env("DEEPSEEK_TRUST_MODE", "1");
     if let Some(py) = bundled_python_executable(app) {
         std_cmd.env("DEEPSEEK_BUNDLED_PYTHON", py);
     }
@@ -493,6 +594,7 @@ pub async fn start_and_monitor(
     port_tx: watch::Sender<u16>,
     token: &str,
     restart: Arc<Notify>,
+    restart_force: Arc<AtomicBool>,
     shutdown: Arc<Notify>,
 ) -> Result<()> {
     // `port` may be re-published after each spawn cycle when the sidecar reports the
@@ -639,11 +741,18 @@ pub async fn start_and_monitor(
                 }
                 _ = restart.notified() => {
                     supervisor_log("event=restart reason=config_change");
-                    loop {
-                        tokio::select! {
-                            _ = sleep(Duration::from_millis(RESTART_DEBOUNCE_MS)) => break,
-                            _ = restart.notified() => {}
-                        }
+                    debounce_restart_notifications(&restart).await;
+                    if !wait_for_idle_or_force_restart(
+                        app,
+                        port,
+                        token,
+                        &restart,
+                        &restart_force,
+                        &shutdown,
+                    )
+                    .await
+                    {
+                        return Ok(());
                     }
                     emit_sidecar_restarting(app, "config_change");
                     if let Some(mut ch) = child.take() {

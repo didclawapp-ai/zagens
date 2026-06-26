@@ -941,6 +941,7 @@ export default function RightPanel({
             onToggleTheme={onToggleTheme}
             streaming={streaming}
             onSettingsSaved={onSystemSettingsSaved}
+            threadId={resumedThreadId}
           />
         )}
 
@@ -949,7 +950,11 @@ export default function RightPanel({
         )}
 
         {view === 'lht-settings' && (
-          <LhtSettingsPanel desktopHost={desktopHost} streaming={streaming} />
+          <LhtSettingsPanel
+            desktopHost={desktopHost}
+            streaming={streaming}
+            threadId={resumedThreadId}
+          />
         )}
 
         {view === 'hooks' && (

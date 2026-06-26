@@ -60,7 +60,16 @@ export type StreamContext = {
   recoveryCtx: StreamRecoveryContext | null;
   panelSlice: PanelSlice;
   pendingApproval: ApprovalState | null;
+  /**
+   * Render-aux only — NOT the streaming authority (P3). The single source of
+   * truth for "is this thread producing" is `threadStatusStore` (fed by the
+   * always-on global status SSE). This flag only assists message-row rendering
+   * and the pre-`turn_started` draft gap; do not derive the spinner / composer
+   * lock from it.
+   */
   isStreaming: boolean;
+  /** Last mutation timestamp for idle context eviction (S0.2). */
+  lastActivityAt: number;
 };
 
 export function makeEmptyPanelSlice(): PanelSlice {
@@ -85,6 +94,7 @@ export function makeEmptyContext(threadId: string, sessionId: string | null): St
     panelSlice: makeEmptyPanelSlice(),
     pendingApproval: null,
     isStreaming: false,
+    lastActivityAt: Date.now(),
   };
 }
 
@@ -162,7 +172,12 @@ export function useStreamContextRegistry(): StreamContextRegistry {
       threadId: string,
       patch: Partial<StreamContext> | ((prev: StreamContext) => Partial<StreamContext>),
     ) => {
-      if (patchContextInMap(contextsRef.current, threadId, patch)) {
+      if (
+        patchContextInMap(contextsRef.current, threadId, (prev) => {
+          const delta = typeof patch === 'function' ? patch(prev) : patch;
+          return { ...delta, lastActivityAt: Date.now() };
+        })
+      ) {
         bump();
       }
     },

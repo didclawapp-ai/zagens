@@ -331,6 +331,7 @@ mod tests {
             scratchpad_run_history: None,
             checklist_snapshot: None,
             plan_snapshot: None,
+            config_overlay: None,
         };
         assert_eq!(
             resolve_session_label(&thread, Some("turn summary"), Locale::En),

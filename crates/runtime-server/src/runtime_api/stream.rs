@@ -245,6 +245,22 @@ pub(super) fn map_compat_stream_event(
             }
             Some(sse_json_seq(event.seq, "turn.completed", body))
         }
+        "thread.status" => {
+            let status = payload
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("idle");
+            Some(sse_json_seq(
+                event.seq,
+                "thread.status",
+                json!({
+                    "thread_id": event.thread_id,
+                    "turn_id": event.turn_id,
+                    "status": status,
+                    "seq": event.seq,
+                }),
+            ))
+        }
         "agent.spawned" => {
             let agent_id = payload
                 .get("agent_id")
@@ -420,6 +436,79 @@ pub(super) async fn stream_thread_events(
     ))
 }
 
+/// Global status SSE — snapshot on connect, then live `thread.status` tail only.
+pub(super) async fn stream_global_status_events(
+    State(state): State<RuntimeApiState>,
+) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, ApiError> {
+    let runtime_threads = state.runtime_threads.clone();
+    let mut live = state.runtime_threads.subscribe_events();
+    let stream = stream! {
+        // Connect snapshot: one authoritative `thread.status.snapshot` frame with
+        // the full active set so the client can reconcile (clear stale ghosts).
+        let snapshot = runtime_threads.thread_status_list().await;
+        let mut last_seq = 0_u64;
+        let mut threads = Vec::with_capacity(snapshot.len());
+        for (thread_id, entry) in snapshot {
+            last_seq = last_seq.max(entry.seq);
+            threads.push(json!({
+                "thread_id": thread_id,
+                "turn_id": entry.turn_id,
+                "status": entry.status.as_str(),
+                "seq": entry.seq,
+            }));
+        }
+        yield Ok(sse_json_seq(
+            last_seq,
+            "thread.status.snapshot",
+            json!({ "threads": threads }),
+        ));
+
+        loop {
+            match live.recv().await {
+                Ok(event) => {
+                    if event.event != "thread.status" {
+                        continue;
+                    }
+                    if event.seq <= last_seq {
+                        continue;
+                    }
+                    last_seq = event.seq;
+                    if let Some(mapped) = map_compat_stream_event(&event) {
+                        yield Ok(mapped);
+                    }
+                }
+                Err(RecvError::Lagged(_)) => {
+                    // Re-snapshot after a broadcast lag so the client can reconcile
+                    // both newly-active and now-idle threads it may have missed.
+                    let refreshed = runtime_threads.thread_status_list().await;
+                    let mut threads = Vec::with_capacity(refreshed.len());
+                    for (thread_id, entry) in refreshed {
+                        last_seq = last_seq.max(entry.seq);
+                        threads.push(json!({
+                            "thread_id": thread_id,
+                            "turn_id": entry.turn_id,
+                            "status": entry.status.as_str(),
+                            "seq": entry.seq,
+                        }));
+                    }
+                    yield Ok(sse_json_seq(
+                        last_seq,
+                        "thread.status.snapshot",
+                        json!({ "threads": threads }),
+                    ));
+                }
+                Err(RecvError::Closed) => break,
+            }
+        }
+    };
+
+    Ok(Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("keepalive"),
+    ))
+}
+
 pub(super) async fn stream_turn(
     State(state): State<RuntimeApiState>,
     Json(req): Json<StreamTurnRequest>,
@@ -442,7 +531,7 @@ pub(super) async fn stream_turn(
         .unwrap_or_else(|| state.workspace.clone());
     let mode = req.mode.clone().unwrap_or_else(|| "agent".to_string());
     let allow_shell = req.allow_shell.unwrap_or(state.config.allow_shell());
-    let trust_mode = req.trust_mode.unwrap_or(false);
+    let trust_mode = state.config.effective_trust_mode(req.trust_mode);
     let auto_approve = req.auto_approve.unwrap_or(false);
     let prompt = req.prompt;
     let task_type = crate::task_type::resolve_task_type(
@@ -822,6 +911,15 @@ mod tests {
                 "missing event: {ev}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn maps_thread_status() {
+        let r = record("thread.status", json!({ "status": "streaming" }));
+        let sse = map_compat_stream_event(&r).expect("should map thread.status");
+        let text = render(sse).await;
+        assert!(text.contains("event: thread.status"));
+        assert!(text.contains("streaming"));
     }
 
     #[test]

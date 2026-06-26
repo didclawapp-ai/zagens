@@ -466,12 +466,11 @@ fn redact_json_value(value: &mut Value, rules: &mut Vec<String>) {
                 if matches!(
                     key_lower.as_str(),
                     "api_key" | "authorization" | "token" | "secret" | "password" | "access_token"
-                ) && matches!(v, Value::String(s) if !s.is_empty())
+                ) && let Value::String(s) = v
+                    && !s.is_empty()
                 {
-                    if let Value::String(s) = v {
-                        *s = "[REDACTED]".to_string();
-                        rules.push(format!("field:{k}"));
-                    }
+                    *s = "[REDACTED]".to_string();
+                    rules.push(format!("field:{k}"));
                 }
                 redact_json_value(v, rules);
             }

@@ -94,6 +94,10 @@ pub struct ThreadRecord {
     pub checklist_snapshot: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_snapshot: Option<serde_json::Value>,
+    /// Per-session config overrides (C scheme). `None` = inherit global defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(skip)]
+    pub config_overlay: Option<super::config_overlay::ThreadConfigOverlay>,
 }
 
 impl ThreadRecord {

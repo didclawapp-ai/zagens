@@ -2,7 +2,7 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::task::{TaskCounts, TaskRecord, TaskStatus, TaskSummary, TasksResponse};
 
@@ -176,6 +176,71 @@ pub struct ErrorBody {
 /// One OpenAPI component schema export (`name`, `schema_for!` thunk).
 pub type SchemaExportFn = fn() -> schemars::Schema;
 
+/// Build a static `schemars::Schema` from a hand-written JSON value.
+///
+/// Used for wire types whose nested config (`zagens_core::long_horizon`,
+/// `features`) does not derive `JsonSchema`, so `schema_for!` is unavailable.
+/// Kept permissive (`additionalProperties: true`) for forward compatibility
+/// with the overlay `extras` catch-all.
+fn schema_from_json(value: Value) -> schemars::Schema {
+    serde_json::from_value(value).expect("static openapi schema is valid")
+}
+
+fn thread_config_overlay_schema() -> schemars::Schema {
+    schema_from_json(json!({
+        "type": "object",
+        "description": "Per-session config overlay (C scheme). Omitted/absent field = inherit global base. Unknown keys are preserved via the `extras` catch-all.",
+        "additionalProperties": true,
+        "properties": {
+            "long_horizon": { "type": "object", "additionalProperties": true },
+            "compaction": { "type": "object", "additionalProperties": true },
+            "features": { "type": "object", "additionalProperties": true },
+            "memory": { "type": "object", "additionalProperties": true },
+            "topic_memory": { "type": "object", "additionalProperties": true },
+            "lsp": { "type": "object", "additionalProperties": true },
+            "snapshots": { "type": "object", "additionalProperties": true },
+            "approval_policy": { "type": "string" },
+            "lht_composer_mode": { "type": "string", "enum": ["auto", "strict", "off"] }
+        }
+    }))
+}
+
+fn thread_config_response_schema() -> schemars::Schema {
+    schema_from_json(json!({
+        "type": "object",
+        "description": "Resolved per-thread config: global baseline, raw overlay, and merged effective view.",
+        "required": ["base", "effective"],
+        "properties": {
+            "base": { "$ref": "#/components/schemas/ThreadConfigOverlay" },
+            "overlay": { "$ref": "#/components/schemas/ThreadConfigOverlay" },
+            "effective": { "$ref": "#/components/schemas/ThreadConfigOverlay" }
+        }
+    }))
+}
+
+fn runtime_active_turns_schema() -> schemars::Schema {
+    schema_from_json(json!({
+        "type": "object",
+        "description": "Runtime-wide active turn probe used by the sidecar restart gate.",
+        "required": ["count", "threads"],
+        "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "threads": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["thread_id", "status"],
+                    "properties": {
+                        "thread_id": { "type": "string" },
+                        "turn_id": { "type": "string" },
+                        "status": { "type": "string" }
+                    }
+                }
+            }
+        }
+    }))
+}
+
 /// Core schemas exported to OpenAPI components.
 pub const SCHEMA_EXPORTS: &[(&str, SchemaExportFn)] = &[
     ("CoherenceState", || schemars::schema_for!(CoherenceState)),
@@ -240,4 +305,7 @@ pub const SCHEMA_EXPORTS: &[(&str, SchemaExportFn)] = &[
     ("TaskCounts", || schemars::schema_for!(TaskCounts)),
     ("TasksResponse", || schemars::schema_for!(TasksResponse)),
     ("TaskStatus", || schemars::schema_for!(TaskStatus)),
+    ("ThreadConfigOverlay", thread_config_overlay_schema),
+    ("ThreadConfigResponse", thread_config_response_schema),
+    ("RuntimeActiveTurns", runtime_active_turns_schema),
 ];

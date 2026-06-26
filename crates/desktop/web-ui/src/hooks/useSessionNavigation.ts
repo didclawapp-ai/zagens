@@ -70,7 +70,6 @@ export type UseSessionNavigationParams = {
   bindThreadSession?: (threadId: string, sessionId: string | null | undefined) => void;
   desktopHost?: boolean;
   setPendingComposerStream?: Dispatch<SetStateAction<boolean>>;
-  setStreamingThreadIds?: Dispatch<SetStateAction<Set<string>>>;
   showApprovalIfOwned?: (desktopHost: boolean, payload: ApprovalState) => void;
   setLhtChip?: Dispatch<SetStateAction<LhtChipState | null>>;
   applyThreadContextSnapshot?: (threadId: string, snapshot: ThreadContextSnapshot) => void;
@@ -123,7 +122,6 @@ export function useSessionNavigation({
   bindThreadSession,
   desktopHost = false,
   setPendingComposerStream,
-  setStreamingThreadIds,
   showApprovalIfOwned,
   setLhtChip,
   applyThreadContextSnapshot,
@@ -218,9 +216,7 @@ export function useSessionNavigation({
         return messages;
       }
       const reattach = await applyStreamingReattach(threadId, messages, {
-        streamingThreadIdsRef,
         streamRegistry,
-        setStreamingThreadIds,
         setLhtChip,
         applyThreadContextSnapshot,
       });
@@ -245,8 +241,6 @@ export function useSessionNavigation({
       setLhtChip,
       applyThreadContextSnapshot,
       streamRegistry,
-      streamingThreadIdsRef,
-      setStreamingThreadIds,
     ],
   );
 

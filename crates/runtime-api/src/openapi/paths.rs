@@ -164,6 +164,17 @@ pub fn build_paths() -> Map<String, Value> {
         )],
     );
     add(
+        "/v1/runtime/active-turns",
+        vec![json_op(
+            "get",
+            "getRuntimeActiveTurns",
+            "Runtime-wide active turns (restart gate)",
+            None,
+            "RuntimeActiveTurns",
+            u,
+        )],
+    );
+    add(
         "/v1/workspace/status",
         vec![json_op(
             "get",
@@ -252,6 +263,38 @@ pub fn build_paths() -> Map<String, Value> {
                 u,
             ),
         ],
+    );
+    add(
+        "/v1/threads/{id}/config",
+        vec![
+            json_op(
+                "get",
+                "getThreadConfig",
+                "Per-session config (base/overlay/effective)",
+                None,
+                "ThreadConfigResponse",
+                u,
+            ),
+            json_op(
+                "put",
+                "putThreadConfig",
+                "Patch per-session config overlay (zero restart, next turn)",
+                Some("ThreadConfigOverlay"),
+                "ThreadConfigResponse",
+                u,
+            ),
+        ],
+    );
+    add(
+        "/v1/threads/{id}/config/{field}",
+        vec![json_op(
+            "delete",
+            "deleteThreadConfigField",
+            "Clear one overlay section (inherit global)",
+            None,
+            "ThreadConfigResponse",
+            u,
+        )],
     );
     add(
         "/v1/threads/{id}/checklist",

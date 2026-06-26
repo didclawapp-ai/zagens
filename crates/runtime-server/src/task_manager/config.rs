@@ -38,7 +38,7 @@ impl TaskManagerConfig {
             }),
             default_mode: "agent".to_string(),
             allow_shell: config.allow_shell(),
-            trust_mode: false,
+            trust_mode: config.trust_mode(),
             max_subagents: config.max_subagents().clamp(1, MAX_SUBAGENTS),
         }
     }

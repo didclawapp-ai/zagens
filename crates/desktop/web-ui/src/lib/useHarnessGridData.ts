@@ -31,11 +31,12 @@ export interface HarnessGridDataSnapshot {
   taskGraph: HarnessTaskGraph | null;
 }
 
+/** Match LongHorizonPanel / TUI `has_activity` — not gated on `incomplete`. */
 function isActiveTaskGraph(graph: HarnessTaskGraph | null): boolean {
   if (!graph?.lht_enabled) {
     return false;
   }
-  return Boolean(graph.incomplete && (graph.phases.length > 0 || graph.checklist.length > 0));
+  return graph.phases.length > 0 || graph.checklist.length > 0;
 }
 
 export function useHarnessGridData({
@@ -162,14 +163,21 @@ export function useHarnessGridData({
     const onSidecarReady = () => {
       void loadGraph();
     };
+    // Checklist SSE arrives every tool mutation; task-graph SSE was turn-end only.
+    // Refetch snapshots immediately so the LHT harness card stays live mid-turn.
+    const onChecklistPush = () => {
+      void loadGraph();
+    };
     void loadGraph();
     window.addEventListener(PANEL_TASK_GRAPH_EVENT, onGraphPush);
+    window.addEventListener(PANEL_CHECKLIST_EVENT, onChecklistPush);
     window.addEventListener(SIDECAR_READY_PANEL_EVENT, onSidecarReady);
     const ms = streaming ? TASK_GRAPH_POLL_STREAMING_MS : TASK_GRAPH_POLL_IDLE_MS;
     const id = window.setInterval(() => void loadGraph(), ms);
     return () => {
       cancelled = true;
       window.removeEventListener(PANEL_TASK_GRAPH_EVENT, onGraphPush);
+      window.removeEventListener(PANEL_CHECKLIST_EVENT, onChecklistPush);
       window.removeEventListener(SIDECAR_READY_PANEL_EVENT, onSidecarReady);
       window.clearInterval(id);
     };

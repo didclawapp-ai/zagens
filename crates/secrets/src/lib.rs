@@ -258,27 +258,37 @@ impl FileKeyringStore {
                 use std::os::unix::fs::PermissionsExt;
                 let mut perms = fs::metadata(parent)?.permissions();
                 perms.set_mode(0o700);
-                let _ = fs::set_permissions(parent, perms);
+                apply_best_effort_permissions(parent, perms, "secrets parent directory");
             }
         }
         let body = serde_json::to_string_pretty(blob)?;
-        fs::write(&self.path, body)?;
+        let tmp_path = self.path.with_extension("json.tmp");
+        fs::write(&tmp_path, body)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            // Best-effort 0o600 — matches the parent-dir chmod above which
-            // is also `let _ = ...`. Filesystems that don't support Unix
-            // chmod (Docker bind-mounts of NTFS, network shares — #897)
-            // would otherwise fail the whole save here even though the
-            // blob already wrote successfully. The host's native ACLs
-            // are doing access control in those environments.
-            if let Ok(meta) = fs::metadata(&self.path) {
-                let mut perms = meta.permissions();
-                perms.set_mode(0o600);
-                let _ = fs::set_permissions(&self.path, perms);
-            }
+            let mut perms = fs::metadata(&tmp_path)?.permissions();
+            perms.set_mode(0o600);
+            apply_best_effort_permissions(&tmp_path, perms, "secrets temp file");
         }
+        fs::rename(&tmp_path, &self.path)?;
         Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn apply_best_effort_permissions(path: &Path, perms: fs::Permissions, label: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Err(e) = fs::set_permissions(path, perms) {
+        // ENOSYS / unsupported chmod on Docker bind-mounts of NTFS (#897).
+        if e.kind() != std::io::ErrorKind::Unsupported {
+            tracing::warn!(
+                path = %path.display(),
+                label,
+                error = %e,
+                "failed to chmod secrets path"
+            );
+        }
     }
 }
 

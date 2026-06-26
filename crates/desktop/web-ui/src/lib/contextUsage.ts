@@ -13,7 +13,7 @@ export interface ThreadDetailWithTurns {
   turns?: ThreadTurnRecordLite[];
 }
 
-import { isDeepSeekV4Model } from './modelParams';
+import { AGNES_CHAT_CONTEXT_TOKENS, isDeepSeekV4Model } from './modelParams';
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS = 1_000_000;
@@ -60,10 +60,15 @@ export function contextWindowTokensForModel(model: string | undefined): number {
   }
   if (
     lower.includes('ollama') ||
-    lower.includes('agnes') ||
     lower.includes('sensenova')
   ) {
     return 8192;
+  }
+  if (lower.includes('agnes')) {
+    if (lower.includes('image') || lower.includes('video')) {
+      return DEFAULT_CONTEXT_WINDOW_TOKENS;
+    }
+    return AGNES_CHAT_CONTEXT_TOKENS;
   }
   return DEFAULT_CONTEXT_WINDOW_TOKENS;
 }

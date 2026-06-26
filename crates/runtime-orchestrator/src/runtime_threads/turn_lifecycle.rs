@@ -194,6 +194,12 @@ where
         json!({ "turn": turn.clone() }),
     )
     .await?;
+    mgr.emit_thread_status(
+        thread_id,
+        Some(&turn_id),
+        super::thread_status::ThreadStreamStatus::Streaming,
+    )
+    .await?;
     mgr.emit_event(
         thread_id,
         Some(&turn_id),
@@ -211,6 +217,9 @@ where
     )
     .await?;
 
+    let mut start_params = host.prepare_start_turn_params(&thread, req, prompt).await?;
+    start_params.turn_id = turn_id.clone();
+
     {
         let mut active = mgr.active.lock().await;
         let Some(state) = active.engines.get_mut(thread_id) else {
@@ -219,14 +228,12 @@ where
         state.active_turn = Some(ActiveTurnState {
             turn_id: turn_id.clone(),
             interrupt_requested: false,
-            auto_approve: req.auto_approve.unwrap_or(thread.auto_approve),
-            trust_mode: req.trust_mode.unwrap_or(thread.trust_mode),
+            auto_approve: start_params.auto_approve,
+            trust_mode: start_params.trust_mode,
         });
         touch_lru(&mut active.lru, thread_id);
     }
 
-    let mut start_params = host.prepare_start_turn_params(&thread, req, prompt).await?;
-    start_params.turn_id = turn_id.clone();
     if let Err(e) = engine.start_turn(start_params).await {
         rollback_failed_turn_start(mgr, thread_id, &turn_id, e.to_string()).await?;
         return Err(anyhow!("Failed to start turn: {e}"));
@@ -312,6 +319,12 @@ where
         None,
         "turn.completed",
         json!({ "turn": turn }),
+    )
+    .await?;
+    mgr.emit_thread_status(
+        thread_id,
+        Some(turn_id),
+        super::thread_status::ThreadStreamStatus::Error,
     )
     .await?;
 

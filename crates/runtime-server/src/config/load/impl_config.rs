@@ -281,12 +281,11 @@ impl Config {
             .unwrap_or_default();
 
         // Custom provider may have a per-provider max_output_tokens override.
-        if self.is_custom_provider_active() {
-            if let Some(entry) = self.active_custom_provider() {
-                if let Some(cap) = entry.max_output_tokens.filter(|&v| v > 0) {
-                    limits.insert(entry.model.clone(), cap);
-                }
-            }
+        if self.is_custom_provider_active()
+            && let Some(entry) = self.active_custom_provider()
+            && let Some(cap) = entry.max_output_tokens.filter(|&v| v > 0)
+        {
+            limits.insert(entry.model.clone(), cap);
         }
         limits
     }
@@ -647,6 +646,23 @@ impl Config {
     #[must_use]
     pub fn allow_shell(&self) -> bool {
         self.allow_shell.unwrap_or(true)
+    }
+
+    /// Return whether trust mode is permitted at the deployment level.
+    #[must_use]
+    pub fn trust_mode(&self) -> bool {
+        self.trust_mode.unwrap_or(false)
+    }
+
+    /// Resolve a client-requested trust mode against deployment policy.
+    ///
+    /// When [`Self::trust_mode`] is false, API/UI requests cannot enable it.
+    #[must_use]
+    pub fn effective_trust_mode(&self, requested: Option<bool>) -> bool {
+        if !self.trust_mode() {
+            return false;
+        }
+        requested.unwrap_or(false)
     }
 
     /// Return the maximum number of concurrent sub-agents.

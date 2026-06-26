@@ -84,6 +84,7 @@ fn sample_thread(thread_id: &str) -> ThreadRecord {
         scratchpad_run_history: None,
         checklist_snapshot: None,
         plan_snapshot: None,
+        config_overlay: None,
     }
 }
 
@@ -148,6 +149,7 @@ async fn install_mock_engine(manager: &RuntimeThreadManager, thread_id: &str) ->
         ActiveThreadState {
             engine: harness.handle.clone(),
             active_turn: None,
+            pending_config_refresh: false,
         },
     );
     touch_lru(&mut active.lru, thread_id);
@@ -271,10 +273,9 @@ fn store_load_thread_rejects_newer_schema_version() {
 }
 
 #[test]
-fn current_runtime_schema_version_is_two_on_v066() {
-    // Locks the bump in (issue #124). Bump deliberately when persisted
-    // shape changes.
-    assert_eq!(CURRENT_RUNTIME_SCHEMA_VERSION, 2);
+fn current_runtime_schema_version_is_three() {
+    // Locks the bump for per-session config overlay (C scheme).
+    assert_eq!(CURRENT_RUNTIME_SCHEMA_VERSION, 3);
     assert_eq!(
         super::CURRENT_EVENT_SCHEMA_VERSION,
         CURRENT_RUNTIME_SCHEMA_VERSION
@@ -345,6 +346,7 @@ fn enforce_lru_capacity_does_not_loop_when_all_threads_are_active() {
                 auto_approve: true,
                 trust_mode: false,
             }),
+            pending_config_refresh: false,
         },
     );
     active.engines.insert(
@@ -357,6 +359,7 @@ fn enforce_lru_capacity_does_not_loop_when_all_threads_are_active() {
                 auto_approve: true,
                 trust_mode: false,
             }),
+            pending_config_refresh: false,
         },
     );
     active.lru.push_back("thr_a".to_string());
@@ -1031,6 +1034,23 @@ async fn multi_turn_continuity_same_thread() -> Result<()> {
         .count();
     assert_eq!(started, 2);
     assert_eq!(completed, 2);
+
+    let status_events: Vec<_> = events
+        .iter()
+        .filter(|ev| ev.event == "thread.status")
+        .collect();
+    assert!(
+        status_events
+            .iter()
+            .any(|ev| ev.payload.get("status").and_then(|v| v.as_str()) == Some("streaming")),
+        "expected thread.status streaming on turn start"
+    );
+    assert!(
+        status_events
+            .iter()
+            .any(|ev| ev.payload.get("status").and_then(|v| v.as_str()) == Some("idle")),
+        "expected thread.status idle on turn complete"
+    );
     Ok(())
 }
 
@@ -1972,7 +1992,9 @@ async fn resolve_approval_rejects_wrong_turn_id() -> Result<()> {
 
 #[tokio::test]
 async fn elevation_required_with_stale_active_turn_is_denied() -> Result<()> {
-    let manager = test_manager(test_runtime_dir())?;
+    let mut config = Config::default();
+    config.trust_mode = Some(true);
+    let manager = test_manager_with_config(test_runtime_dir(), config)?;
     let thread = manager
         .create_thread(CreateThreadRequest {
             model: None,
@@ -2589,6 +2611,7 @@ fn opening_manager_recovers_stale_queued_and_in_progress_work() -> Result<()> {
         scratchpad_run_history: None,
         checklist_snapshot: None,
         plan_snapshot: None,
+        config_overlay: None,
     };
     manager.store.save_thread(&thread)?;
 
@@ -3013,5 +3036,157 @@ async fn fork_at_user_message_does_not_mutate_source() -> Result<()> {
             "turn {tid} must remain on disk"
         );
     }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Per-session config overlay (C scheme) — §12 acceptance scenarios.
+// ---------------------------------------------------------------------------
+
+fn blank_create_request() -> CreateThreadRequest {
+    CreateThreadRequest {
+        model: None,
+        workspace: None,
+        mode: None,
+        allow_shell: None,
+        trust_mode: None,
+        auto_approve: None,
+        archived: false,
+        system_prompt: None,
+        task_id: None,
+        task_type: None,
+    }
+}
+
+/// Reproduces 2026-06-25: changing thread B's session config must not bleed into
+/// thread A. Two threads in the same manager resolve their effective config
+/// independently from a shared global base.
+#[tokio::test]
+async fn session_overlay_isolates_threads_and_resolves_independently() -> Result<()> {
+    use zagens_runtime_orchestrator::runtime_threads::{CompactionOverlay, ThreadConfigOverlay};
+
+    let manager = test_manager(test_runtime_dir())?;
+    let thread_a = manager.create_thread(blank_create_request()).await?;
+    let thread_b = manager.create_thread(blank_create_request()).await?;
+
+    // Override only B's compaction settings.
+    manager
+        .patch_thread_config_overlay(
+            &thread_b.id,
+            ThreadConfigOverlay {
+                compaction: Some(CompactionOverlay {
+                    auto_compact: Some(false),
+                    token_threshold: Some(42_000),
+                }),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let a = manager.load_thread_sync(&thread_a.id)?;
+    let b = manager.load_thread_sync(&thread_b.id)?;
+    assert!(
+        a.config_overlay.is_none(),
+        "A must remain on global defaults"
+    );
+    assert!(b.config_overlay.is_some(), "B must carry an overlay");
+
+    let base = Config::default();
+    let eff_a = crate::config::resolve_effective_config(&base, a.config_overlay.as_ref());
+    let eff_b = crate::config::resolve_effective_config(&base, b.config_overlay.as_ref());
+
+    // A inherits global (no compaction override); B sees its own threshold.
+    assert_eq!(
+        eff_a.compaction.as_ref().and_then(|c| c.token_threshold),
+        base.compaction.as_ref().and_then(|c| c.token_threshold),
+        "A's effective compaction must equal the global base"
+    );
+    assert_eq!(
+        eff_b.compaction.as_ref().and_then(|c| c.token_threshold),
+        Some(42_000),
+        "B's effective compaction must reflect its overlay"
+    );
+    assert_eq!(
+        eff_b.compaction.as_ref().and_then(|c| c.auto_compact),
+        Some(false)
+    );
+    Ok(())
+}
+
+/// Patching a thread's overlay while a turn is in flight must NOT unload the
+/// engine mid-turn; it defers via `pending_config_refresh` so the running turn
+/// finishes on its start-time snapshot (D2).
+#[tokio::test]
+async fn patch_overlay_defers_engine_refresh_while_turn_active() -> Result<()> {
+    use zagens_runtime_orchestrator::runtime_threads::ThreadConfigOverlay;
+
+    let manager = test_manager(test_runtime_dir())?;
+    let thread = manager.create_thread(blank_create_request()).await?;
+
+    {
+        let mut active = manager.active.lock().await;
+        active.engines.insert(
+            thread.id.clone(),
+            ActiveThreadState {
+                engine: mock_engine_handle().handle,
+                active_turn: Some(ActiveTurnState {
+                    turn_id: "turn_active".to_string(),
+                    interrupt_requested: false,
+                    auto_approve: false,
+                    trust_mode: false,
+                }),
+                pending_config_refresh: false,
+            },
+        );
+        touch_lru(&mut active.lru, &thread.id);
+    }
+
+    manager
+        .patch_thread_config_overlay(
+            &thread.id,
+            ThreadConfigOverlay {
+                lht_composer_mode: Some("off".to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let active = manager.active.lock().await;
+    let state = active
+        .engines
+        .get(&thread.id)
+        .expect("engine must be retained while a turn is active");
+    assert!(
+        state.pending_config_refresh,
+        "overlay change during an active turn must defer the engine refresh"
+    );
+    Ok(())
+}
+
+/// With no active turn, patching the overlay unloads the idle engine so the next
+/// turn rebuilds with the new effective config.
+#[tokio::test]
+async fn patch_overlay_unloads_idle_engine_for_next_turn() -> Result<()> {
+    use zagens_runtime_orchestrator::runtime_threads::ThreadConfigOverlay;
+
+    let manager = test_manager(test_runtime_dir())?;
+    let thread = manager.create_thread(blank_create_request()).await?;
+    let _ = install_mock_engine(&manager, &thread.id).await;
+
+    manager
+        .patch_thread_config_overlay(
+            &thread.id,
+            ThreadConfigOverlay {
+                lht_composer_mode: Some("strict".to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
+
+    let active = manager.active.lock().await;
+    assert!(
+        !active.engines.contains_key(&thread.id),
+        "idle engine must be unloaded so the next turn picks up the new overlay"
+    );
     Ok(())
 }

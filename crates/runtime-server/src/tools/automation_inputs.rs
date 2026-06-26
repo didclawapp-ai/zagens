@@ -51,7 +51,6 @@ struct AutomationCreateInput {
     pub model: Option<String>,
     pub mode: Option<AutomationModeInput>,
     pub allow_shell: Option<bool>,
-    pub trust_mode: Option<bool>,
     pub auto_approve: Option<bool>,
     #[schemars(extend("default" = false))]
     pub paused: Option<bool>,
@@ -85,7 +84,6 @@ struct AutomationUpdateInput {
     pub model: Option<String>,
     pub mode: Option<AutomationModeInput>,
     pub allow_shell: Option<bool>,
-    pub trust_mode: Option<bool>,
     pub auto_approve: Option<bool>,
     pub status: Option<AutomationStatusInput>,
 }

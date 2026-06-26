@@ -849,6 +849,12 @@ where
                             }),
                         )
                         .await?;
+                        mgr.emit_thread_status(
+                            &thread_id,
+                            Some(&turn_id),
+                            super::thread_status::ThreadStreamStatus::AwaitingApproval,
+                        )
+                        .await?;
 
                         let mgr_clone = mgr.clone();
                         let engine_handle = engine.clone();
@@ -1113,17 +1119,38 @@ where
     })
     .await?;
 
+    let thread_stream_status = match turn.status {
+        RuntimeTurnStatus::Failed => super::thread_status::ThreadStreamStatus::Error,
+        _ => super::thread_status::ThreadStreamStatus::Idle,
+    };
+    mgr.emit_thread_status(&thread_id, Some(&turn_id), thread_stream_status)
+        .await?;
+
     {
         let mut active = mgr.active.lock().await;
-        if let Some(state) = active.engines.get_mut(&thread_id)
-            && state
+        let pending_refresh = if let Some(state) = active.engines.get_mut(&thread_id) {
+            if state
                 .active_turn
                 .as_ref()
                 .is_some_and(|t| t.turn_id == turn_id)
-        {
-            state.active_turn = None;
+            {
+                state.active_turn = None;
+            }
+            state.pending_config_refresh
+        } else {
+            false
+        };
+        if pending_refresh && let Some(state) = active.engines.get_mut(&thread_id) {
+            state.pending_config_refresh = false;
         }
         touch_lru(&mut active.lru, &thread_id);
+        drop(active);
+        if pending_refresh && let Err(err) = mgr.unload_idle_thread_engine(&thread_id).await {
+            tracing::warn!(
+                thread_id = %thread_id,
+                "config refresh engine unload after turn: {err:#}"
+            );
+        }
     }
 
     if let Err(err) = super::turn_lifecycle::drain_queued_turn(mgr, host, &thread_id).await {

@@ -99,6 +99,11 @@ export default function IconRail({
       </div>
 
       <div className="icon-rail-group">
+        <IconRailButton label={t('sidebar.newSession')} onClick={onNewSession}>
+          <IconRailSvg>
+            <path d="M12 5v14M5 12h14" />
+          </IconRailSvg>
+        </IconRailButton>
         <IconRailButton
           label={t('iconRail.sessionList')}
           active={sessionStripOpen}
@@ -109,11 +114,6 @@ export default function IconRail({
           <IconRailSvg>
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <path d="M8 4v16M11 9h7M11 13h5M11 17h6" />
-          </IconRailSvg>
-        </IconRailButton>
-        <IconRailButton label={t('sidebar.newSession')} onClick={onNewSession}>
-          <IconRailSvg>
-            <path d="M12 5v14M5 12h14" />
           </IconRailSvg>
         </IconRailButton>
         <IconRailButton

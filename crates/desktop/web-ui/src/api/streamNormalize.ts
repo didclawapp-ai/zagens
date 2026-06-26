@@ -5,6 +5,12 @@
  */
 
 import { parseAgentListRow, type AgentListRowMeta } from '../lib/agentSpawnMeta';
+import {
+  normalizeThreadStreamStatus,
+  type ThreadStreamStatus,
+} from '../lib/chat/threadStatusStore';
+
+export type { ThreadStreamStatus };
 
 /** Stable SSE subset (API_DESIGN.md §3.2.1). Used for tests and documentation. */
 export const KNOWN_DESKTOP_SSE_EVENTS = new Set([
@@ -31,6 +37,7 @@ export const KNOWN_DESKTOP_SSE_EVENTS = new Set([
   'panel.context',
   'harness.task_graph',
   'harness.cycle_advanced',
+  'thread.status',
   'done',
 ]);
 
@@ -79,10 +86,28 @@ export type NormalizedStreamEvent =
   | { kind: 'panel_checklist'; checklist: unknown }
   | { kind: 'panel_context'; context: unknown }
   | { kind: 'panel_task_graph'; task_graph: unknown }
-  | { kind: 'harness_cycle_advanced'; from: number; to: number };
+  | { kind: 'harness_cycle_advanced'; from: number; to: number }
+  | { kind: 'thread_status'; threadId: string; status: ThreadStreamStatus; turnId?: string; seq?: number };
+
+function resolveEventSeq(
+  ev: { seq?: number; data: string },
+  j: Record<string, unknown>,
+): number | undefined {
+  if (typeof ev.seq === 'number') {
+    return ev.seq;
+  }
+  if (typeof j.seq === 'number') {
+    return j.seq;
+  }
+  const inner = j.payload as Record<string, unknown> | undefined;
+  if (inner && typeof inner.seq === 'number') {
+    return inner.seq;
+  }
+  return undefined;
+}
 
 export function normalizeDesktopStreamEvent(
-  ev: { event: string; data: string },
+  ev: { event: string; data: string; seq?: number },
   filter?: { turnId?: string },
 ): NormalizedStreamEvent | null {
   let j: Record<string, unknown>;
@@ -152,6 +177,23 @@ export function normalizeDesktopStreamEvent(
   }
   if (sse === 'status') {
     return { kind: 'status', message: String(j.message ?? '') };
+  }
+  if (sse === 'thread.status') {
+    const inner = j.payload as Record<string, unknown> | undefined;
+    const payload = (inner ?? j) as Record<string, unknown>;
+    const threadId = String(j.thread_id ?? payload.thread_id ?? '');
+    const status = normalizeThreadStreamStatus(payload.status ?? j.status);
+    if (!threadId || !status) return null;
+    const turnIdRaw = j.turn_id ?? payload.turn_id;
+    const turnId = turnIdRaw != null ? String(turnIdRaw) : undefined;
+    const seq = resolveEventSeq(ev, j);
+    return {
+      kind: 'thread_status',
+      threadId,
+      status,
+      ...(turnId ? { turnId } : {}),
+      ...(seq != null ? { seq } : {}),
+    };
   }
 
   // —— Compat SSE from `POST /v1/stream` (map_compat_stream_event) ——
@@ -265,9 +307,9 @@ export function normalizeDesktopStreamEvent(
     }
     const kind = String(item.kind ?? '');
     if (kind === 'thinking') {
-      const text =
-        (item.detail as string | undefined) ?? (item.summary as string | undefined) ?? '';
-      return text ? { kind: 'thinking_delta', content: text } : null;
+      // Live stream already applied incremental `item.delta` chunks; replay uses
+      // `rebuildMessagesFromThread.applyRawRecord` for the completed item body.
+      return null;
     }
     if (kind === 'tool_call' || kind === 'file_change' || kind === 'command_execution') {
       const tool = inner.tool as Record<string, unknown> | undefined;
@@ -392,6 +434,21 @@ export function normalizeDesktopStreamEvent(
     const from = Number(inner.from ?? 0);
     const to = Number(inner.to ?? 0);
     return { kind: 'harness_cycle_advanced', from, to };
+  }
+  if (recordEvent === 'thread.status') {
+    const payload = (inner ?? j) as Record<string, unknown>;
+    const threadId = String(j.thread_id ?? '');
+    const status = normalizeThreadStreamStatus(payload.status);
+    if (!threadId || !status) return null;
+    const turnId = j.turn_id != null ? String(j.turn_id) : undefined;
+    const seq = resolveEventSeq(ev, j);
+    return {
+      kind: 'thread_status',
+      threadId,
+      status,
+      ...(turnId ? { turnId } : {}),
+      ...(seq != null ? { seq } : {}),
+    };
   }
 
   return null;

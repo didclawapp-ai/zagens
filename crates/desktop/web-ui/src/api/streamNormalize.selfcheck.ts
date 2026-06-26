@@ -21,7 +21,39 @@ const completed = normalizeDesktopStreamEvent({
 });
 assert.equal(completed?.kind, 'turn_completed', 'turn.completed maps');
 
-assert.equal(KNOWN_DESKTOP_SSE_EVENTS.has('turn.started'), true);
-assert.equal(KNOWN_DESKTOP_SSE_EVENTS.has('craft.spawned'), false);
+assert.equal(KNOWN_DESKTOP_SSE_EVENTS.has('thread.status'), true);
+
+const threadStatus = normalizeDesktopStreamEvent({
+  event: 'thread.status',
+  data: JSON.stringify({
+    thread_id: 'thr_1',
+    turn_id: 'turn_1',
+    status: 'idle',
+    seq: 42,
+  }),
+  seq: 42,
+});
+assert.equal(threadStatus?.kind, 'thread_status');
+if (threadStatus?.kind === 'thread_status') {
+  assert.equal(threadStatus.threadId, 'thr_1');
+  assert.equal(threadStatus.status, 'idle');
+  assert.equal(threadStatus.seq, 42);
+}
+
+const rawThreadStatus = normalizeDesktopStreamEvent({
+  event: 'thread.status',
+  data: JSON.stringify({
+    event_schema_version: 2,
+    thread_id: 'thr_raw',
+    turn_id: 'turn_raw',
+    event: 'thread.status',
+    payload: { status: 'streaming' },
+  }),
+});
+assert.equal(rawThreadStatus?.kind, 'thread_status');
+if (rawThreadStatus?.kind === 'thread_status') {
+  assert.equal(rawThreadStatus.threadId, 'thr_raw');
+  assert.equal(rawThreadStatus.status, 'streaming');
+}
 
 console.log('streamNormalize A+.3 self-check passed');

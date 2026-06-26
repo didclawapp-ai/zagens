@@ -5,7 +5,8 @@
  * `runtime_cancel_sse` (scoped to `threadId` when provided — P0.1 multi-session).
  * Layer 2 (`interruptThreadTurn` HTTP): `Op::Interrupt` on the runtime — stops LLM/tools.
  *
- * UI **Stop** must call `stopThreadTurn` (layer 2 then layer 1). Layer 1 alone leaves the turn running.
+ * UI **Stop** calls `stopThreadTurn`: layer 1 first (instant UI cutoff), then layer 2.
+ * Layer 1 alone leaves the turn running on the backend.
  *
  * SSOT: docs/tech/API_DESIGN.md §2.1.1 · RUNTIME_ARCHITECTURE.md §8
  */
@@ -52,6 +53,9 @@ export async function stopThreadTurn(params: {
 }): Promise<TurnRecord | undefined> {
   const threadId = params.threadId.trim();
   const turnId = params.turnId.trim();
+  // Tear down the local SSE pipe first so the UI stops receiving deltas immediately.
+  disconnectThreadEventStream(params.streamControl, threadId || undefined);
+
   let interruptResult: TurnRecord | undefined;
   if (threadId && turnId) {
     try {
@@ -63,6 +67,5 @@ export async function stopThreadTurn(params: {
       }
     }
   }
-  disconnectThreadEventStream(params.streamControl, threadId || undefined);
   return interruptResult;
 }

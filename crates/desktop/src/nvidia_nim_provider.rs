@@ -99,7 +99,11 @@ fn truncate_probe_body(body: &str) -> String {
     if body.len() <= MAX {
         return body.to_string();
     }
-    format!("{}…", &body[..MAX])
+    let mut end = MAX;
+    while end > 0 && !body.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &body[..end])
 }
 
 fn nvidia_model_display_name(raw: &NvidiaNimModelRaw) -> String {

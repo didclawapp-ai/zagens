@@ -58,3 +58,15 @@ export interface NvidiaNimModelList {
   models: NvidiaNimModelEntry[];
   current_model: string | null;
 }
+
+export interface AgnesModelEntry {
+  id: string;
+  name: string;
+  context_length: number | null;
+  max_output_length: number | null;
+}
+
+export interface AgnesModelList {
+  models: AgnesModelEntry[];
+  current_model: string | null;
+}

@@ -39,8 +39,16 @@ import { useTurnSession } from './hooks/useTurnSession';
 import { useTurnApproval, type ApprovalState } from './hooks/useTurnApproval';
 import { useTurnStream } from './hooks/useTurnStream';
 import { useTurnSend, type TurnChatMessage } from './hooks/useTurnSend';
+import { useThreadStatusGlobalStream } from './hooks/useThreadStatusGlobalStream';
 import { useStreamContextRegistry, createSetMessagesForView } from './hooks/useStreamContextRegistry';
-import { removeThreadFromStreamingSet } from './lib/chat/streamContextStore';
+import {
+  collectStreamingSessionIds,
+} from './lib/chat/streamContextStore';
+import { evictIdleContextMessages } from './lib/chat/streamContextAccess';
+import {
+  getActiveThreadIdsFromStore,
+  subscribeThreadStatusStore,
+} from './lib/chat/threadStatusStore';
 import { parseWriteOfficeOutputPath } from './lib/officeDeliverable';
 import {
   type ComposerModelId,
@@ -178,8 +186,7 @@ export default function App() {
   const streamRegistry = useStreamContextRegistry();
 
   const {
-    streamingThreadIds,
-    setStreamingThreadIds,
+    activeThreadIds,
     pendingComposerStream,
     setPendingComposerStream,
     streaming,
@@ -197,11 +204,14 @@ export default function App() {
     onCancelSideEffects: onCancelStreamSideEffects,
   });
 
-  // Multi-session P0.4: ref mirror of `streamingThreadIds` so navigation can
-  // synchronously decide detach-vs-abort without re-subscribing to state.
+  // Multi-session P0.4: ref mirror of store active threads for navigation detach/abort.
   useEffect(() => {
-    streamingThreadIdsRef.current = streamingThreadIds;
-  }, [streamingThreadIds]);
+    const sync = () => {
+      streamingThreadIdsRef.current = getActiveThreadIdsFromStore();
+    };
+    sync();
+    return subscribeThreadStatusStore(sync);
+  }, []);
 
   const getViewPointers = useCallback(
     () => ({
@@ -247,79 +257,43 @@ export default function App() {
     streamRegistry.getContext(threadId)?.sessionId ?? null;
   bindThreadSessionRef.current = bindThreadSession;
 
-  const streamingSessionIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const threadId of streamingThreadIds) {
-      const ctx = streamRegistry.getContext(threadId);
-      if (ctx?.isStreaming === false) continue;
-      let sid = ctx?.sessionId ?? null;
-      if (!sid && threadId === resumedThreadId) {
-        sid = activeSessionId;
-      }
-      if (!sid) continue;
-      // Composer unlocked for the active session — strip stale sidebar spinner
-      // when registry / streamingThreadIds lag behind finishOnce (dual-track).
-      const isActiveSession =
-        sid === activeSessionId &&
-        (threadId === resumedThreadId ||
-          threadId === streamRegistry.activeThreadIdRef.current);
-      if (isActiveSession && !streaming) {
-        continue;
-      }
-      ids.add(sid);
-    }
-    return ids;
-  }, [
-    streamingThreadIds,
-    streamRegistry.version,
-    activeSessionId,
-    resumedThreadId,
-    streamRegistry,
-    streaming,
-  ]);
+  const streamingSessionIds = useMemo(
+    () =>
+      collectStreamingSessionIds({
+        activeThreadIds,
+        contexts: streamRegistry.contexts,
+        activeSessionId,
+        resumedThreadId,
+        activeThreadId: streamRegistry.activeThreadId,
+        pendingComposerStream,
+      }),
+    [
+      activeThreadIds,
+      streamRegistry.version,
+      streamRegistry.contexts,
+      streamRegistry.activeThreadId,
+      activeSessionId,
+      resumedThreadId,
+      pendingComposerStream,
+    ],
+  );
 
-  // When the active view unlocks, sweep stale in-flight markers for that thread.
-  const prevStreamingRef = useRef(streaming);
+  // Evict idle non-active context payloads to cap registry memory (S0.2).
   useEffect(() => {
-    const wasStreaming = prevStreamingRef.current;
-    prevStreamingRef.current = streaming;
-    if (streaming || wasStreaming) {
-      return;
+    const activeId =
+      streamRegistry.activeThreadId ??
+      resumedThreadId ??
+      streamRegistry.activeThreadIdRef.current ??
+      null;
+    for (const tid of streamRegistry.contexts.keys()) {
+      evictIdleContextMessages(
+        streamRegistry,
+        tid,
+        activeId,
+        sessionUiCacheRef.current,
+      );
     }
-    const tid =
-      resumedThreadId?.trim() || streamRegistry.activeThreadIdRef.current?.trim() || '';
-    if (!tid || !streamingThreadIds.has(tid)) {
-      return;
-    }
-    const knownSid =
-      streamRegistry.getContext(tid)?.sessionId ?? activeSessionIdRef.current;
-    streamRegistry.ensureContext(tid, knownSid);
-    streamRegistry.patchContext(tid, { isStreaming: false, pendingApproval: null });
-    setStreamingThreadIds((prev) => removeThreadFromStreamingSet(prev, tid) ?? prev);
-  }, [
-    streaming,
-    resumedThreadId,
-    streamingThreadIds,
-    streamRegistry,
-    setStreamingThreadIds,
-    activeSessionIdRef,
-  ]);
-
-  // Drop stale thread ids once registry records the turn as idle.
-  useEffect(() => {
-    setStreamingThreadIds((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const tid of prev) {
-        const ctx = streamRegistry.getContext(tid);
-        if (ctx?.isStreaming === false) {
-          next.delete(tid);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [streamRegistry.version, setStreamingThreadIds, streamRegistry]);
+  }, [streamRegistry.version, streamRegistry, resumedThreadId]);
 
   const {
     runtimeConn,
@@ -329,6 +303,8 @@ export default function App() {
     reconcileRuntimeAfterFetchFailure,
     notifyRuntimeTransient,
   } = useRuntimeConnection({ streaming, streamingRef, t, refreshSessionsRef });
+
+  useThreadStatusGlobalStream(runtimeConn);
 
   const {
     contextWindowTokens,
@@ -536,7 +512,6 @@ export default function App() {
     desktopHost,
     streamControllersRef,
     pendingSendKeyRef,
-    setStreamingThreadIds,
     setPendingComposerStream,
     setMessages: setMessagesForTurn,
     setResumedThreadId,
@@ -563,7 +538,6 @@ export default function App() {
     streamRegistry,
     bindThreadSession,
     onNavigateToSession: (sessionId) => handleSelectSessionRef.current(sessionId),
-    streamingThreadIdsRef,
     onToolCompleted: (toolName, success, output) => {
       if (!officeSession || !success || toolName !== 'write_office') return;
       const rel = parseWriteOfficeOutputPath(output);
@@ -594,7 +568,6 @@ export default function App() {
     bindThreadSession,
     desktopHost,
     setPendingComposerStream,
-    setStreamingThreadIds,
     showApprovalIfOwned,
     setLhtChip,
     applyThreadContextSnapshot,
@@ -658,7 +631,6 @@ export default function App() {
     handleSend,
     setMessages: setMessagesForTurn,
     setResumedThreadId,
-    setStreamingThreadIds,
     setPendingComposerStream,
     setThreadDetailForContext,
     setLastTurnOutputTokens,

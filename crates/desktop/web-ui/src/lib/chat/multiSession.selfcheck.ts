@@ -17,6 +17,8 @@ import {
 } from './sessionStripGrouping';
 import {
   collectReconcileThreadIds,
+  collectStreamingSessionIds,
+  contextHasActiveStream,
   deleteContextFromMap,
   draftContextKey,
   ensureContextInMap,
@@ -121,9 +123,96 @@ assert.equal(removeThreadFromStreamingSet(streaming, 'thr_missing'), null);
 const pruned = removeThreadFromStreamingSet(streaming, 'thr_a');
 assert.deepEqual([...pruned!], ['thr_b']);
 
-assert.deepEqual(collectReconcileThreadIds([], null), []);
-assert.deepEqual(collectReconcileThreadIds(['thr_a'], 'thr_b').sort(), ['thr_a', 'thr_b']);
-assert.deepEqual(collectReconcileThreadIds(['thr_a', 'thr_a'], 'thr_a'), ['thr_a']);
+import {
+  applyOptimisticThreadStop,
+  applyThreadStatusEvent,
+  detectThreadStatusDrift,
+  getActiveThreadIdsFromStore,
+  resetThreadStatusStoreForTests,
+} from './threadStatusStore';
+
+assert.deepEqual(collectReconcileThreadIds(null), []);
+resetThreadStatusStoreForTests();
+applyThreadStatusEvent({
+  threadId: 'thr_a',
+  status: 'streaming',
+  seq: 1,
+  source: 'test',
+});
+assert.deepEqual(collectReconcileThreadIds(null), ['thr_a']);
+assert.deepEqual(collectReconcileThreadIds('thr_b').sort(), ['thr_a', 'thr_b']);
+assert.deepEqual(collectReconcileThreadIds('thr_a'), ['thr_a']);
+resetThreadStatusStoreForTests();
+
+// ── SessionStrip streaming session ids (P3 store-driven) ─────────────────
+
+resetThreadStatusStoreForTests();
+const stripMap = new Map<string, StreamContext>();
+ensureContextInMap(stripMap, 'thr_live', 'sess_live');
+applyThreadStatusEvent({
+  threadId: 'thr_live',
+  status: 'streaming',
+  seq: 1,
+  source: 'test',
+});
+
+assert.equal(
+  contextHasActiveStream(stripMap.get('thr_live')),
+  false,
+  'store is SSOT — registry message flags alone do not drive spinner',
+);
+
+const stripIds = collectStreamingSessionIds({
+  activeThreadIds: getActiveThreadIdsFromStore(),
+  contexts: stripMap,
+  activeSessionId: 'sess_live',
+  resumedThreadId: 'thr_live',
+  activeThreadId: 'thr_live',
+  pendingComposerStream: false,
+});
+assert.equal(
+  stripIds.has('sess_live'),
+  true,
+  'sidebar spinner follows threadStatusStore active threads',
+);
+
+applyThreadStatusEvent({
+  threadId: 'thr_live',
+  status: 'idle',
+  seq: 2,
+  source: 'test',
+});
+const finishedStripIds = collectStreamingSessionIds({
+  activeThreadIds: getActiveThreadIdsFromStore(),
+  contexts: stripMap,
+  activeSessionId: 'sess_live',
+  resumedThreadId: 'thr_live',
+  activeThreadId: 'thr_live',
+  pendingComposerStream: false,
+});
+assert.equal(
+  finishedStripIds.has('sess_live'),
+  false,
+  'strip spinner when store reports idle',
+);
+
+ensureContextInMap(stripMap, draftContextKey('sess_draft'), 'sess_draft');
+patchContextInMap(stripMap, draftContextKey('sess_draft'), {
+  messages: [{ id: 'a0', role: 'assistant', content: '', isStreaming: true }],
+});
+assert.equal(
+  collectStreamingSessionIds({
+    activeThreadIds: getActiveThreadIdsFromStore(),
+    contexts: stripMap,
+    activeSessionId: 'sess_draft',
+    resumedThreadId: null,
+    activeThreadId: null,
+    pendingComposerStream: true,
+  }).has('sess_draft'),
+  true,
+  'pending composer on draft bucket shows sidebar spinner',
+);
+resetThreadStatusStoreForTests();
 
 assert.equal(makeEmptyPanelSlice().checklist, null);
 assert.equal(makeEmptyContext('thr_x', null).threadId, 'thr_x');
@@ -200,6 +289,7 @@ import {
   PANEL_SCRATCHPAD_EVENT,
   PANEL_TASK_GRAPH_EVENT,
   setPanelActiveThreadId,
+  shouldDispatchPanelForThread,
 } from '../panelChannel';
 
 // Minimal window/CustomEvent polyfill for the Node.js tsx runner.
@@ -277,6 +367,127 @@ assert.equal(countDispatched(PANEL_CHECKLIST_EVENT), 5, 'trimmed active matches'
 
 // Restore module state for subsequent test runs in the same process.
 setPanelActiveThreadId(null);
+
+// 7. Agent panel reuses the same active-thread guard (S0.1 hardening).
+setPanelActiveThreadId('thr_a');
+assert.equal(
+  shouldDispatchPanelForThread('thr_b'),
+  false,
+  'agent guard: non-active origin dropped',
+);
+assert.equal(
+  shouldDispatchPanelForThread('thr_a'),
+  true,
+  'agent guard: active origin passes',
+);
+setPanelActiveThreadId(null);
+
+// ── thread.status normalization (S2.1) ──────────────────────────────────
+
+import { normalizeThreadStreamStatus } from './threadStatusStore';
+
+assert.equal(normalizeThreadStreamStatus('streaming'), 'streaming');
+assert.equal(normalizeThreadStreamStatus('awaiting_approval'), 'awaiting_approval');
+assert.equal(normalizeThreadStreamStatus('idle'), 'idle');
+assert.equal(normalizeThreadStreamStatus('bogus'), null);
+
+// ── threadStatusStore (P3 authoritative) ───────────────────────────────
+
+resetThreadStatusStoreForTests();
+applyThreadStatusEvent({
+  threadId: 'thr_store',
+  status: 'streaming',
+  seq: 10,
+  source: 'test',
+});
+assert.equal(getActiveThreadIdsFromStore().has('thr_store'), true);
+applyThreadStatusEvent({
+  threadId: 'thr_store',
+  status: 'streaming',
+  seq: 9,
+  source: 'test',
+});
+assert.equal(getActiveThreadIdsFromStore().has('thr_store'), true, 'stale seq ignored');
+applyThreadStatusEvent({
+  threadId: 'thr_store',
+  status: 'idle',
+  seq: 20,
+  source: 'test',
+});
+assert.equal(getActiveThreadIdsFromStore().has('thr_store'), false);
+const drifts = detectThreadStatusDrift(new Set(['thr_store']));
+assert.equal(drifts.length, 1);
+assert.equal(drifts[0]?.legacyInSet, true);
+assert.equal(drifts[0]?.storeActive, false);
+resetThreadStatusStoreForTests();
+
+resetThreadStatusStoreForTests();
+applyThreadStatusEvent({
+  threadId: 'thr_stop',
+  status: 'streaming',
+  seq: 50,
+  source: 'test',
+});
+applyOptimisticThreadStop('thr_stop', 'turn_x');
+assert.equal(getActiveThreadIdsFromStore().has('thr_stop'), false);
+applyThreadStatusEvent({
+  threadId: 'thr_stop',
+  status: 'streaming',
+  seq: 51,
+  source: 'test',
+});
+assert.equal(getActiveThreadIdsFromStore().has('thr_stop'), false, 'stale streaming after optimistic stop');
+resetThreadStatusStoreForTests();
+
+// ── idle context message eviction (S0.2) ───────────────────────────────
+
+import {
+  evictIdleContextMessages,
+  IDLE_CONTEXT_EVICT_MS,
+} from './streamContextAccess';
+import type { StreamContextRegistry } from '../../hooks/useStreamContextRegistry';
+
+const evictMap = new Map<string, StreamContext>();
+ensureContextInMap(evictMap, 'thr_evict', 'sess_evict');
+patchContextInMap(evictMap, 'thr_evict', {
+  messages: [{ id: 'm1', role: 'user', content: 'hello' }],
+  isStreaming: false,
+  lastActivityAt: Date.now() - IDLE_CONTEXT_EVICT_MS - 1_000,
+  threadTurn: { threadId: 'thr_evict', turnId: 'turn_1' },
+});
+
+const evictCache = new Map<string, { id: string; role: 'user' | 'assistant' | 'system'; content: string }[]>();
+const evictRegistry = {
+  getContext: (tid: string | null | undefined) => {
+    const key = tid?.trim();
+    return key ? evictMap.get(key) : undefined;
+  },
+  patchContext: (tid: string, patch: Partial<StreamContext>) => {
+    patchContextInMap(evictMap, tid, patch);
+  },
+} as StreamContextRegistry;
+
+assert.equal(
+  evictIdleContextMessages(evictRegistry, 'thr_evict', 'thr_active', evictCache),
+  true,
+  'idle context evicted after threshold',
+);
+assert.equal(evictMap.get('thr_evict')?.messages.length, 0, 'messages cleared');
+assert.equal(evictMap.get('thr_evict')?.threadTurn.turnId, 'turn_1', 'threadTurn kept');
+assert.equal(evictMap.get('thr_evict')?.sessionId, 'sess_evict', 'sessionId kept');
+assert.equal(evictCache.get('sess_evict')?.[0]?.content, 'hello', 'messages cached');
+
+ensureContextInMap(evictMap, 'thr_active', 'sess_active');
+patchContextInMap(evictMap, 'thr_active', {
+  messages: [{ id: 'm2', role: 'user', content: 'active' }],
+  isStreaming: false,
+  lastActivityAt: Date.now() - IDLE_CONTEXT_EVICT_MS - 1_000,
+});
+assert.equal(
+  evictIdleContextMessages(evictRegistry, 'thr_active', 'thr_active', evictCache),
+  false,
+  'active view context not evicted',
+);
 
 // ── Per-send stream key isolation (cross-talk fix) ──────────────────────
 //

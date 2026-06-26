@@ -119,7 +119,7 @@ impl KernelEventWriter {
             .lock()
             .map_err(|_| anyhow::anyhow!("kernel event db mutex poisoned"))?;
         let log = KernelEventLog::new(&db);
-        Ok(log.load_turn_events(turn_id)?)
+        log.load_turn_events(turn_id)
     }
 
     /// Diagnostic snapshot for trace-export error messages: total `kernel_events`

@@ -17,11 +17,13 @@ pub(crate) mod kernel_replay;
 mod mcp;
 mod office;
 mod router;
+mod runtime_status;
 mod sessions;
 mod skills;
 mod state;
 mod stream;
 mod tasks;
+mod thread_config;
 mod threads;
 mod topic_memory;
 mod trace_compare;
@@ -45,6 +47,7 @@ pub(crate) use sessions::{
 };
 pub(crate) use skills::{create_skill, import_skill_local, install_skill_remote, list_skills};
 pub(crate) use tasks::{cancel_task, clear_tasks, create_task, get_task, list_tasks};
+pub(crate) use thread_config::{delete_thread_config_field, get_thread_config, put_thread_config};
 pub(crate) use threads::{
     browse_thread_workspace, browse_workspace_by_root, compact_thread, create_thread,
     edit_last_thread_turn, fork_thread, fork_thread_at_user_message, get_thread,
@@ -63,6 +66,7 @@ pub(crate) use workspace::workspace_status;
 
 pub use router::build_router;
 
+pub(crate) use runtime_status::get_runtime_active_turns;
 pub(crate) use sessions::ResumeTaskTracker;
 
 #[cfg(test)]

@@ -158,7 +158,7 @@ impl TaskManager {
                 .unwrap_or_else(|| self.cfg.default_workspace.clone()),
             mode: req.mode.unwrap_or_else(|| self.cfg.default_mode.clone()),
             allow_shell: req.allow_shell.unwrap_or(self.cfg.allow_shell),
-            trust_mode: req.trust_mode.unwrap_or(self.cfg.trust_mode),
+            trust_mode: self.cfg.trust_mode && req.trust_mode.unwrap_or(false),
             auto_approve: req.auto_approve.unwrap_or(true),
             status: TaskStatus::Queued,
             created_at: Utc::now(),

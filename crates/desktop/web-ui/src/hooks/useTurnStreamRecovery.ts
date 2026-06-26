@@ -30,8 +30,8 @@ import {
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
 import {
   collectReconcileThreadIds,
-  removeThreadFromStreamingSet,
 } from '../lib/chat/streamContextStore';
+import { applyThreadStatusEvent } from '../lib/chat/threadStatusStore';
 import {
   hasAnyActiveStreamHandle,
   invokeFinishOnce,
@@ -76,13 +76,10 @@ export type UseTurnStreamRecoveryParams = {
   resumedThreadIdRef: MutableRefObject<string | null>;
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
   setMessages: Dispatch<SetStateAction<TurnChatMessage[]>>;
-  setStreamingThreadIds: Dispatch<SetStateAction<Set<string>>>;
   setPendingComposerStream: Dispatch<SetStateAction<boolean>>;
   handleCancelStream: () => void;
   notifyRuntimeTransient: (message: string) => void;
   refreshThreadContext: (threadId: string) => Promise<void>;
-  /** All in-flight thread ids (P1: reconcile each, not only the active view). */
-  streamingThreadIdsRef?: MutableRefObject<Set<string>>;
   streamRegistry: StreamContextRegistry;
 };
 
@@ -111,12 +108,10 @@ export function useTurnStreamRecovery({
   resumedThreadIdRef,
   streamControllersRef,
   setMessages,
-  setStreamingThreadIds,
   setPendingComposerStream,
   handleCancelStream,
   notifyRuntimeTransient,
   refreshThreadContext,
-  streamingThreadIdsRef,
   streamRegistry,
 }: UseTurnStreamRecoveryParams): UseTurnStreamRecoveryResult {
   const detachReasonRef = useRef<StreamDetachReason | null>(null);
@@ -198,7 +193,6 @@ export function useTurnStreamRecovery({
       const controller = new AbortController();
       streamControllersRef.current.set(threadId, controller);
       writeThreadTurn(streamRegistry, threadId, turnId);
-      setStreamingThreadIds((prev) => new Set(prev).add(threadId));
       setPendingComposerStream(true);
 
       await pollThreadTurnEvents(
@@ -215,7 +209,6 @@ export function useTurnStreamRecovery({
       resolveEventDeliverForActive,
       resumedThreadIdRef,
       setPendingComposerStream,
-      setStreamingThreadIds,
       streamControllersRef,
       streamRegistry,
     ],
@@ -250,9 +243,8 @@ export function useTurnStreamRecovery({
 
       const threadId = recovery?.threadId || activeTurn.threadId || activeThreadId;
       if (threadId) {
-        setStreamingThreadIds((prev) => new Set(prev).add(threadId));
+        setPendingComposerStream(true);
       }
-      setPendingComposerStream(true);
 
       setMessages((prev) => {
         const lastId = lastAssistantMessageId(prev);
@@ -287,7 +279,6 @@ export function useTurnStreamRecovery({
       resumedThreadIdRef,
       setMessages,
       setPendingComposerStream,
-      setStreamingThreadIds,
       showDetachedToast,
       streamControllersRef,
       streamRegistry,
@@ -358,17 +349,20 @@ export function useTurnStreamRecovery({
         isStreaming: false,
         pendingApproval: null,
       });
+      // Self-heal the authoritative store when the probe detects the backend
+      // turn is no longer active but a `thread.status: idle` event was missed
+      // (disconnect / sidecar restart). Without this the spinner + composer
+      // lock — both derived from the store — would ghost permanently.
+      applyThreadStatusEvent({ threadId, status: 'idle', source: 'reconcile' });
       setMessages((prev) => {
         if (!anyAssistantStreaming(prev)) return prev;
         return clearStreamingAssistants(prev) as TurnChatMessage[];
       });
       setPendingComposerStream(false);
-      setStreamingThreadIds((prev) => removeThreadFromStreamingSet(prev, threadId) ?? prev);
     },
     [
       setMessages,
       setPendingComposerStream,
-      setStreamingThreadIds,
       streamRegistry,
     ],
   );
@@ -379,9 +373,10 @@ export function useTurnStreamRecovery({
         isStreaming: false,
         pendingApproval: null,
       });
-      setStreamingThreadIds((prev) => removeThreadFromStreamingSet(prev, threadId) ?? prev);
+      // Self-heal the authoritative store (see `clearStaleStreamingUi`).
+      applyThreadStatusEvent({ threadId, status: 'idle', source: 'reconcile' });
     },
-    [setStreamingThreadIds, streamRegistry],
+    [streamRegistry],
   );
 
   const resolveTurnIdForThread = useCallback(
@@ -444,7 +439,6 @@ export function useTurnStreamRecovery({
             return;
           }
           setMessages(messages as TurnChatMessage[]);
-          setStreamingThreadIds((prev) => new Set(prev).add(tid));
           setPendingComposerStream(true);
         } catch {
           /* keep last snapshot */
@@ -466,7 +460,6 @@ export function useTurnStreamRecovery({
           messages: marked as TurnChatMessage[],
           isStreaming: true,
         });
-        setStreamingThreadIds((prev) => new Set(prev).add(tid));
       } catch {
         /* keep last snapshot */
       }
@@ -479,7 +472,6 @@ export function useTurnStreamRecovery({
       resumeLiveTurnStream,
       setMessages,
       setPendingComposerStream,
-      setStreamingThreadIds,
       streamControllersRef,
       streamRegistry,
       streamingRef,
@@ -494,10 +486,7 @@ export function useTurnStreamRecovery({
       return;
     }
 
-    const threadIds = collectReconcileThreadIds(
-      streamingThreadIdsRef?.current ?? [],
-      resumedThreadIdRef.current,
-    );
+    const threadIds = collectReconcileThreadIds(resumedThreadIdRef.current);
     if (threadIds.length === 0) {
       return;
     }
@@ -508,7 +497,6 @@ export function useTurnStreamRecovery({
   }, [
     reconcileSingleThread,
     resumedThreadIdRef,
-    streamingThreadIdsRef,
   ]);
 
   const tryRecoverDetachedTurn = useCallback(async () => {
@@ -663,6 +651,7 @@ export function useTurnStreamRecovery({
 
   useEffect(() => {
     if (!desktopHost) return;
+    // Compensation sync when local SSE state drifts from server (S2.1 fallback).
     const id = setInterval(() => {
       void reconcileChatFromThreadReplayRef.current();
     }, ACTIVE_TURN_CHAT_RECONCILE_MS);

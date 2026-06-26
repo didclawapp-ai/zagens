@@ -383,6 +383,8 @@ const ja: TranslationMap = {
     lhtModeDisabledLabel: 'LHT·オフ',
     lhtModeAutoHint:
       'LHT 自動：モデルが plan した後 config の long_horizon を適用。クリックで 自動→厳格→オフ を循環。',
+    lhtModeAutoHintSession:
+      'LHT 自動：このセッションの有効 LHT 設定を継承。クリックで 自動→厳格→オフ を循環。',
     lhtModeStrictHint:
       'LHT 厳格：先に plan 必須。完了/未実装/verify 再実行/ツールチェーンゲートは enforce。クリックで循環。',
     lhtModeDisabledHint:
@@ -395,6 +397,10 @@ const ja: TranslationMap = {
     turnReconnecting: 'バックグラウンドのターンに再接続しました。進捗を同期中…',
     bgApprovalRequired: 'セッション {{thread}} が承認待ちです — 当該セッションに戻って対応してください。',
     bgStreamRunning: 'セッション {{thread}} はバックグラウンドで生成中です — いつでも戻って進捗を確認できます。',
+    concurrentStreamsWarn:
+      '同時にストリーミング中のセッションが多いため、パフォーマンスが低下する可能性があります。送信は可能です。',
+    concurrentStreamsLimit:
+      '同時ストリーミングの上限に達しました。一部のセッションが完了するまでお待ちください。',
     switchToSession: 'セッションに切り替え',
     runtimeSidecarRestart: 'Runtime が再起動したため、生成を停止しました',
     runtimeSidecarRestartReconnecting: 'ローカル Runtime が再起動しました。バックグラウンドのターンに再接続しています…',
@@ -1058,6 +1064,15 @@ const ja: TranslationMap = {
     sensenovaNoMatch: 'No matching models',
     sensenovaCurrent: 'Active',
     sensenovaContext: 'Context {{tokens}} tokens',
+    agnesModels: 'Model list',
+    agnesRefresh: 'Refresh',
+    agnesRefreshing: 'Refreshing…',
+    agnesLoading: 'Loading models…',
+    agnesSearch: 'Search by name or ID…',
+    agnesNoMatch: 'No matching models',
+    agnesCurrent: 'Current',
+    agnesContext: 'Context {{tokens}} tokens',
+    agnesMaxOutput: 'Max output {{tokens}} tokens',
     nvidiaNimModels: 'Model list',
     nvidiaNimRefresh: 'Refresh',
     nvidiaNimRefreshing: 'Refreshing…',
@@ -1207,8 +1222,27 @@ const ja: TranslationMap = {
     save: '保存して Runtime を再起動',
     saving: '保存中…',
     saveHint: '変更を適用するためローカル runtime sidecar が再起動されます。',
+    saveHintSession: 'このセッションのみに保存——次のターンで有効、再起動なし。',
+    scopeSection: 'スコープ',
+    scopeSession: 'このセッション',
+    scopeGlobal: 'グローバル既定',
+    scopeSessionHint:
+      '変更はこのセッションのみに適用されます（次のターンで有効、再起動なし）。グローバル専用設定はここでは無効です。',
+    scopeGlobalHint: 'グローバル既定を更新し、ランタイムを再起動します。',
+    sessionOverrideBadge: 'このセッションには設定の上書きがあります。',
+    sessionOverrideActiveWhileGlobal:
+      'このセッションにはまだ設定の上書きがあり、グローバル既定より優先されます。クリアするとグローバルを継承します。',
+    clearSessionOverride: 'セッション上書きをクリア',
+    clearSessionOverrideConfirm:
+      'このセッションの設定上書きを削除してグローバル既定に戻しますか？次のターンから有効です。',
     saveRestartsSidecar:
       '保存するとローカル runtime が再起動し、現在の生成が中断されます。フルリポ audit 中は、生成を停止するか完了してから保存してください。それでも保存しますか？',
+    sidecarRestartPending:
+      'グローバル設定はキューに入りました — アクティブな {{count}} セッションが終了すると自動的に runtime が再起動します。今すぐ再起動することもできます（中断されます）。',
+    sidecarRestartNow: '今すぐ再起動',
+    sidecarRestartForceConfirm:
+      '今すぐ runtime を再起動しますか？アクティブな {{count}} セッションが中断されます。',
+    restarting: '再起動中…',
     notAvailable: 'システム設定は Tauri デスクトップアプリでのみ利用できます。Zagens でこのパネルを開いてください。',
     diagInfo: 'Diagnostics',
     apiKey: 'API Key',
@@ -1466,6 +1500,21 @@ const ja: TranslationMap = {
     restarting: '再起動中…',
   },
   lhtSettings: {
+    scopeSection: '適用先',
+    scopeSession: '現在のセッション',
+    scopeGlobal: 'グローバル既定',
+    scopeSessionHint:
+      'セッション overlay に書き込み — 次ターンで有効、sidecar 再起動なし。',
+    scopeGlobalHint:
+      '~/.zagens/config.toml に書き込み — runtime を再起動（他セッション実行中は待機）。',
+    sessionOverrideBadge: 'このセッションには LHT 上書きがあります。',
+    sessionOverrideActiveWhileGlobal:
+      'このセッションにはまだ LHT 上書きがあり、グローバル既定より優先されます。クリアするとグローバルを継承します。',
+    clearSessionOverride: 'セッション上書きをクリア',
+    clearSessionOverrideConfirm:
+      'このセッションの LHT 上書きを削除してグローバル既定に戻しますか？次のターンから有効です。',
+    introSession:
+      '変更は現在のセッションにのみ適用され、次ターンで有効（runtime 再起動なし）。グローバル既定に切り替えると config.toml を編集できます。',
     intro:
       '~/.zagens/config.toml の [long_horizon] を編集。Composer 三態（LHT / LHT·厳格 / LHT·オフ）は次ターンで一部を上書き、再起動不要。',
     introShort:
@@ -1490,6 +1539,8 @@ const ja: TranslationMap = {
     advancedSettingsHint: 'nudge 回数・完了ゲート・マクロループなど。通常は変更不要。',
     saveAdvanced: '詳細設定を保存',
     saveAdvancedHint: '詳細項目の変更後に保存。作業モードは自動で config に書き込み。',
+    saveAdvancedHintSession:
+      '詳細項目の変更後に保存。このセッションのみ、次ターンで有効。',
     summaryLht_auto: 'オン·自動',
     summaryLht_strict: 'オン·厳格',
     summaryLht_off: 'オフ',

@@ -383,6 +383,8 @@ const en: TranslationMap = {
     lhtModeDisabledLabel: 'LHT·off',
     lhtModeAutoHint:
       'LHT auto: inherits [long_horizon] from config after the model plans. Click to cycle: auto → strict → off.',
+    lhtModeAutoHintSession:
+      'LHT auto: inherits this session’s effective LHT settings. Click to cycle: auto → strict → off.',
     lhtModeStrictHint:
       'LHT strict: plan-first + completion/stub/verify/toolchain gates enforced. Click to cycle.',
     lhtModeDisabledHint:
@@ -395,6 +397,10 @@ const en: TranslationMap = {
     turnReconnecting: 'Reconnected to the background turn — syncing progress…',
     bgApprovalRequired: 'Session {{thread}} needs approval — switch back to act on it.',
     bgStreamRunning: 'Session {{thread}} is still generating in the background — switch back anytime.',
+    concurrentStreamsWarn:
+      'Many sessions are streaming at once — performance may degrade. You can still send.',
+    concurrentStreamsLimit:
+      'Concurrent streaming session limit reached — wait for some sessions to finish.',
     switchToSession: 'Switch to session',
     runtimeSidecarRestart: 'Runtime restarted; generation stopped',
     runtimeSidecarRestartReconnecting: 'Local runtime restarted — reconnecting to the background turn…',
@@ -1058,6 +1064,15 @@ const en: TranslationMap = {
     sensenovaNoMatch: 'No matching models',
     sensenovaCurrent: 'Active',
     sensenovaContext: 'Context {{tokens}} tokens',
+    agnesModels: 'Model list',
+    agnesRefresh: 'Refresh',
+    agnesRefreshing: 'Refreshing…',
+    agnesLoading: 'Loading models…',
+    agnesSearch: 'Search by name or ID…',
+    agnesNoMatch: 'No matching models',
+    agnesCurrent: 'Current',
+    agnesContext: 'Context {{tokens}} tokens',
+    agnesMaxOutput: 'Max output {{tokens}} tokens',
     nvidiaNimModels: 'Model list',
     nvidiaNimRefresh: 'Refresh',
     nvidiaNimRefreshing: 'Refreshing…',
@@ -1207,8 +1222,27 @@ const en: TranslationMap = {
     save: 'Save & Restart Runtime',
     saving: 'Saving…',
     saveHint: 'The local runtime sidecar will restart to apply changes.',
+    saveHintSession: 'Saved to this session only — applies on the next turn, no restart.',
+    scopeSection: 'Scope',
+    scopeSession: 'This session',
+    scopeGlobal: 'Global default',
+    scopeSessionHint:
+      'Changes apply to this session only (next turn, no restart). Global-only settings are disabled here.',
+    scopeGlobalHint: 'Changes update the global default and restart the runtime.',
+    sessionOverrideBadge: 'This session has custom setting overrides.',
+    sessionOverrideActiveWhileGlobal:
+      'This session still has setting overrides that take priority over global defaults. Clear them to inherit global.',
+    clearSessionOverride: 'Clear session override',
+    clearSessionOverrideConfirm:
+      'Remove this session’s setting overrides and fall back to global defaults? Applies on the next turn.',
     saveRestartsSidecar:
       'Saving restarts the local runtime and interrupts the current generation. During a full-repo audit, stop generation or finish first. Save anyway?',
+    sidecarRestartPending:
+      'Global settings are queued — the runtime will restart automatically when {{count}} active session(s) finish. You can restart now to apply immediately (this will interrupt them).',
+    sidecarRestartNow: 'Restart now',
+    sidecarRestartForceConfirm:
+      'Restart the runtime now? This will interrupt {{count}} active session(s).',
+    restarting: 'Restarting…',
     notAvailable: 'System settings are only available in the Tauri desktop app. Please open this panel in Zagens.',
     diagInfo: 'Diagnostics',
     apiKey: 'API Key',
@@ -1466,6 +1500,21 @@ const en: TranslationMap = {
     restarting: 'Restarting…',
   },
   lhtSettings: {
+    scopeSection: 'Apply to',
+    scopeSession: 'Current session',
+    scopeGlobal: 'Global default',
+    scopeSessionHint:
+      'Writes per-session overlay — takes effect on the next turn with zero sidecar restart.',
+    scopeGlobalHint:
+      'Writes ~/.zagens/config.toml — restarts the runtime (queued while other sessions are active).',
+    sessionOverrideBadge: 'This session has custom LHT overrides.',
+    sessionOverrideActiveWhileGlobal:
+      'This session still has LHT overrides that take priority over global defaults. Clear them to inherit global.',
+    clearSessionOverride: 'Clear session override',
+    clearSessionOverrideConfirm:
+      'Remove this session’s LHT overrides and fall back to global defaults? Applies on the next turn.',
+    introSession:
+      'Changes apply to the current session on the next turn (no runtime restart). Switch to Global default to edit config.toml.',
     intro:
       'Writes ~/.zagens/config.toml [long_horizon]. Composer tri-state (LHT / LHT·strict / LHT·off) overrides some fields on the next turn without restart.',
     introShort:
@@ -1490,6 +1539,8 @@ const en: TranslationMap = {
     advancedSettingsHint: 'Nudge limits, completion gates, macro loop — usually leave defaults.',
     saveAdvanced: 'Save advanced settings',
     saveAdvancedHint: 'Required after editing advanced fields; work modes save automatically.',
+    saveAdvancedHintSession:
+      'Required after editing advanced fields; applies to this session on the next turn.',
     summaryLht_auto: 'on·auto',
     summaryLht_strict: 'on·strict',
     summaryLht_off: 'off',

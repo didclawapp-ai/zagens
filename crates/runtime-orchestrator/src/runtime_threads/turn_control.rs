@@ -57,6 +57,14 @@ where
         )
         .await?;
 
+        // Immediate idle so UI unlocks even when the per-thread SSE consumer is torn down (Stop).
+        self.set_thread_status(
+            thread_id,
+            Some(turn_id),
+            super::thread_status::ThreadStreamStatus::Idle,
+        )
+        .await?;
+
         self.store.load_turn(turn_id)
     }
 

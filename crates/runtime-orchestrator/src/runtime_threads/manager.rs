@@ -20,6 +20,7 @@ use crate::models::Message;
 use super::active::{ActiveThreads, RuntimeApprovalDecision};
 use super::persist::{RuntimeThreadStore, reconstruct_messages_for_store};
 use super::routing::load_routing_rules;
+use super::thread_status::ThreadStatusOwner;
 use super::turn_coordinator::TurnCoordinator;
 use super::types::*;
 use super::{RoutingRule, RuntimeThreadManagerConfig};
@@ -47,6 +48,7 @@ pub struct RuntimeThreadManager<P, R> {
     pub routing_rules: Arc<Mutex<Vec<RoutingRule>>>,
     pub routing_rules_path: PathBuf,
     pub coordinators: Arc<Mutex<TurnCoordinator>>,
+    pub thread_status: ThreadStatusOwner,
 }
 
 impl<P, R> RuntimeThreadManager<P, R>
@@ -77,6 +79,7 @@ where
             routing_rules: Arc::new(Mutex::new(routing_rules)),
             routing_rules_path,
             coordinators: Arc::new(Mutex::new(TurnCoordinator::default())),
+            thread_status: ThreadStatusOwner::new(),
         };
         manager.recover_interrupted_state()?;
         Ok(manager)
@@ -255,6 +258,12 @@ where
                     remember_for_session,
                 )
                 .await?;
+            self.emit_thread_status(
+                thread_id,
+                Some(turn_id),
+                super::thread_status::ThreadStreamStatus::Streaming,
+            )
+            .await?;
         } else {
             engine.deny_tool_call(tool_call_id).await?;
         }

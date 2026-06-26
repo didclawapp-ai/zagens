@@ -18,7 +18,7 @@ export const CHECKLIST_POLL_STREAMING_MS = 60_000;
 export const CHECKLIST_POLL_IDLE_MS = 5_000;
 
 /** LHT task graph (`harness.task_graph` SSE + GET fallback). */
-export const TASK_GRAPH_POLL_STREAMING_MS = 30_000;
+export const TASK_GRAPH_POLL_STREAMING_MS = 8_000;
 export const TASK_GRAPH_POLL_IDLE_MS = 8_000;
 
 /** CRAFT blackboard task list in AgentPanel. */

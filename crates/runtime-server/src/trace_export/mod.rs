@@ -110,16 +110,16 @@ pub fn build_trace_bundle_for_thread(
         // engine-internal UUID stored in sessions.db. Try (1) prefix/alias
         // resolve, then (2) time-window fallback using the turn's
         // started_at..ended_at range (see CHANGELOG [Unreleased] trace export fix).
-        if envelopes.is_empty() {
-            if let Ok(Some((alias_id, _count))) = writer.resolve_turn_id_alias(&turn.id) {
-                envelopes = writer
-                    .load_turn_envelopes_sync(&alias_id)
-                    .with_context(|| {
-                        format!("load kernel events for turn {} (alias {alias_id})", turn.id)
-                    })?;
-                if !envelopes.is_empty() {
-                    aliased.push((turn.id.clone(), alias_id));
-                }
+        if envelopes.is_empty()
+            && let Ok(Some((alias_id, _count))) = writer.resolve_turn_id_alias(&turn.id)
+        {
+            envelopes = writer
+                .load_turn_envelopes_sync(&alias_id)
+                .with_context(|| {
+                    format!("load kernel events for turn {} (alias {alias_id})", turn.id)
+                })?;
+            if !envelopes.is_empty() {
+                aliased.push((turn.id.clone(), alias_id));
             }
         }
         if envelopes.is_empty() {

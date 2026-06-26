@@ -225,7 +225,7 @@ pub fn embed_trace_compare_in_html(
 ) -> anyhow::Result<String> {
     use super::trace_bundle::embed_json_in_trace_shell;
     let json = trace_compare_to_json(doc)?;
-    embed_json_in_trace_shell(template, &json).map_err(Into::into)
+    embed_json_in_trace_shell(template, &json)
 }
 
 #[cfg(test)]

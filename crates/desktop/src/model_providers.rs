@@ -489,7 +489,11 @@ fn truncate_probe_body(body: &str) -> String {
     if body.len() <= MAX {
         return body.to_string();
     }
-    format!("{}…", &body[..MAX])
+    let mut end = MAX;
+    while end > 0 && !body.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &body[..end])
 }
 
 pub async fn probe_model_provider(provider_id: String) -> Result<ProviderProbeResult, String> {
@@ -905,6 +909,248 @@ pub async fn set_sensenova_model(
     Ok(())
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AgnesModelEntry {
+    pub id: String,
+    pub name: String,
+    pub context_length: Option<u64>,
+    pub max_output_length: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AgnesModelList {
+    pub models: Vec<AgnesModelEntry>,
+    pub current_model: Option<String>,
+}
+
+/// Agnes 2.0 chat models: 256K context, 64K max output (official docs).
+const AGNES_CHAT_CONTEXT_TOKENS: u32 = 256_000;
+const AGNES_CHAT_MAX_OUTPUT_TOKENS: u32 = 65_536;
+
+#[derive(Debug, Deserialize)]
+struct AgnesModelsResponse {
+    data: Option<Vec<AgnesModelRaw>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgnesModelRaw {
+    id: String,
+    name: Option<String>,
+    #[serde(default)]
+    max_model_len: Option<u64>,
+    #[serde(default)]
+    context_length: Option<u64>,
+    #[serde(default)]
+    max_output_length: Option<u64>,
+    #[serde(default)]
+    max_output_tokens: Option<u64>,
+    #[serde(default)]
+    max_tokens: Option<u64>,
+}
+
+fn agnes_display_name(raw: &AgnesModelRaw) -> String {
+    raw.name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(raw.id.as_str())
+        .to_string()
+}
+
+/// Chat/completions models only — image/video endpoints use different APIs.
+fn is_agnes_chat_model_id(id: &str) -> bool {
+    let lower = id.to_ascii_lowercase();
+    if lower.trim().is_empty() {
+        return false;
+    }
+    if lower.contains("embed") || lower.contains("moderation") {
+        return false;
+    }
+    if lower.contains("image") || lower.contains("video") {
+        return false;
+    }
+    true
+}
+
+fn agnes_first_positive_limit(candidates: impl IntoIterator<Item = Option<u64>>) -> Option<u64> {
+    candidates.into_iter().flatten().find(|&v| v > 0)
+}
+
+fn agnes_known_output_limit(model_id: &str) -> Option<u32> {
+    if is_agnes_chat_model_id(model_id) {
+        Some(AGNES_CHAT_MAX_OUTPUT_TOKENS)
+    } else {
+        None
+    }
+}
+
+fn agnes_output_limit(raw: &AgnesModelRaw) -> Option<u32> {
+    agnes_first_positive_limit([raw.max_output_length, raw.max_output_tokens, raw.max_tokens])
+        .and_then(|v| u32::try_from(v).ok())
+        .filter(|&v| v > 0)
+        .or_else(|| agnes_known_output_limit(&raw.id))
+}
+
+fn agnes_context_length(raw: &AgnesModelRaw) -> Option<u64> {
+    agnes_first_positive_limit([raw.context_length, raw.max_model_len]).or_else(|| {
+        if is_agnes_chat_model_id(&raw.id) {
+            Some(u64::from(AGNES_CHAT_CONTEXT_TOKENS))
+        } else {
+            None
+        }
+    })
+}
+
+fn agnes_output_limits_from_models(
+    models: &[AgnesModelEntry],
+) -> std::collections::BTreeMap<String, u32> {
+    let mut out = std::collections::BTreeMap::new();
+    for model in models {
+        if let Some(limit) = model.max_output_length.filter(|v| *v > 0) {
+            let Ok(limit_u32) = u32::try_from(limit) else {
+                continue;
+            };
+            out.insert(model.id.clone(), limit_u32);
+        }
+    }
+    out
+}
+
+async fn fetch_agnes_models_from_api() -> Result<Vec<AgnesModelEntry>, String> {
+    let preset = preset_by_id("agnes")?;
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let secrets = zagens_secrets::Secrets::auto_detect();
+    let api_key = secrets
+        .resolve(preset.keyring_slot)
+        .filter(|k| !k.trim().is_empty())
+        .ok_or_else(|| "请先保存 Agnes AI API Key".to_string())?;
+    let cfg = provider_cfg(&store, preset.kind);
+    let base_url = cfg
+        .base_url
+        .as_deref()
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or(preset.default_base_url);
+    let url = normalize_models_url(base_url);
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("HTTP 客户端初始化失败: {e}"))?;
+
+    let response = client
+        .get(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", api_key.trim()))
+        .header(CONTENT_TYPE, "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Agnes AI 请求失败: {e}"))?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!(
+            "Agnes AI 模型列表 HTTP {status}: {}",
+            truncate_probe_body(&body)
+        ));
+    }
+
+    let parsed: AgnesModelsResponse =
+        serde_json::from_str(&body).map_err(|e| format!("Agnes AI 响应解析失败: {e}"))?;
+
+    let mut models = Vec::new();
+    for raw in parsed.data.unwrap_or_default() {
+        if raw.id.trim().is_empty() || !is_agnes_chat_model_id(&raw.id) {
+            continue;
+        }
+        let max_output = agnes_output_limit(&raw);
+        models.push(AgnesModelEntry {
+            id: raw.id.clone(),
+            name: agnes_display_name(&raw),
+            context_length: agnes_context_length(&raw),
+            max_output_length: max_output.map(u64::from),
+        });
+    }
+
+    models.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+    });
+
+    if models.is_empty() {
+        return Err("Agnes AI 未返回可用模型".to_string());
+    }
+
+    Ok(models)
+}
+
+fn persist_agnes_catalog(
+    model_ids: &[String],
+    output_limits: &std::collections::BTreeMap<String, u32>,
+) -> Result<(), String> {
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    store.config.providers.agnes.available_models = model_ids.to_vec();
+    store.config.providers.agnes.model_output_limits = output_limits.clone();
+    store.save().map_err(|e| e.to_string())
+}
+
+pub async fn list_agnes_models() -> Result<AgnesModelList, String> {
+    let models = fetch_agnes_models_from_api().await?;
+    let ids: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
+    let limits = agnes_output_limits_from_models(&models);
+    let _ = persist_agnes_catalog(&ids, &limits);
+
+    let store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    let current_model = store
+        .config
+        .providers
+        .agnes
+        .model
+        .clone()
+        .filter(|m| !m.trim().is_empty())
+        .or_else(|| store.config.default_text_model.clone());
+
+    Ok(AgnesModelList {
+        models,
+        current_model,
+    })
+}
+
+pub async fn set_agnes_model(
+    model_id: String,
+    sidecar_restart: &Arc<Notify>,
+) -> Result<(), String> {
+    let model_id = model_id.trim().to_string();
+    if model_id.is_empty() {
+        return Err("请选择模型".to_string());
+    }
+
+    let preset = preset_by_id("agnes")?;
+    let secrets = zagens_secrets::Secrets::auto_detect();
+    if !is_configured(
+        preset,
+        &ConfigStore::load(None).map_err(|e| e.to_string())?,
+        &secrets,
+    ) {
+        return Err("请先配置 Agnes AI API Key".to_string());
+    }
+
+    let models = fetch_agnes_models_from_api().await?;
+    let ids: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
+    let limits = agnes_output_limits_from_models(&models);
+    persist_agnes_catalog(&ids, &limits)?;
+
+    let mut store = ConfigStore::load(None).map_err(|e| e.to_string())?;
+    apply_provider_defaults(&mut store, preset);
+    let cfg = provider_cfg_mut(&mut store, ProviderKind::Agnes);
+    cfg.model = Some(model_id.clone());
+    store.config.provider = ProviderKind::Agnes;
+    store.config.default_text_model = Some(model_id);
+    store.save().map_err(|e| e.to_string())?;
+    sidecar_restart.notify_one();
+    Ok(())
+}
+
 #[cfg(test)]
 mod keyring_injection_tests {
     use super::*;
@@ -955,5 +1201,42 @@ mod openrouter_tests {
             completion: Some("0".into()),
         };
         assert!(!openrouter_model_is_free("openai/gpt-4.1", Some(&pricing)));
+    }
+}
+
+#[cfg(test)]
+mod agnes_tests {
+    use super::*;
+
+    #[test]
+    fn chat_model_filter_excludes_image_and_video() {
+        assert!(is_agnes_chat_model_id("agnes-2.0-flash"));
+        assert!(is_agnes_chat_model_id("agnes-1.5-flash"));
+        assert!(!is_agnes_chat_model_id("agnes-image-2.0-flash"));
+        assert!(!is_agnes_chat_model_id("agnes-image-2.1-flash"));
+        assert!(!is_agnes_chat_model_id("agnes-video-v2.0"));
+    }
+
+    #[test]
+    fn known_output_limit_for_chat_models() {
+        assert_eq!(
+            agnes_known_output_limit("agnes-2.0-flash"),
+            Some(AGNES_CHAT_MAX_OUTPUT_TOKENS)
+        );
+        assert_eq!(agnes_known_output_limit("agnes-image-2.0-flash"), None);
+    }
+
+    #[test]
+    fn output_limit_prefers_api_field() {
+        let raw = AgnesModelRaw {
+            id: "agnes-2.0-flash".into(),
+            name: None,
+            max_model_len: None,
+            context_length: None,
+            max_output_length: Some(32_768),
+            max_output_tokens: None,
+            max_tokens: None,
+        };
+        assert_eq!(agnes_output_limit(&raw), Some(32_768));
     }
 }

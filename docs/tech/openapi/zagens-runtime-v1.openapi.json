@@ -639,7 +639,7 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0,
-            "default": 2
+            "default": 3
           },
           "id": {
             "type": "string"
@@ -750,7 +750,7 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0,
-            "default": 2
+            "default": 3
           },
           "id": {
             "type": "string"
@@ -811,7 +811,7 @@
             "type": "integer",
             "format": "uint32",
             "minimum": 0,
-            "default": 2
+            "default": 3
           },
           "id": {
             "type": "string"
@@ -1868,6 +1868,106 @@
           "tasks",
           "counts"
         ]
+      },
+      "ThreadConfigOverlay": {
+        "description": "Per-session config overlay (C scheme). Omitted/absent field = inherit global base. Unknown keys are preserved via the `extras` catch-all.",
+        "type": "object",
+        "properties": {
+          "long_horizon": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "compaction": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "features": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "memory": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "topic_memory": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "lsp": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "snapshots": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "approval_policy": {
+            "type": "string"
+          },
+          "lht_composer_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "strict",
+              "off"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "ThreadConfigResponse": {
+        "description": "Resolved per-thread config: global baseline, raw overlay, and merged effective view.",
+        "type": "object",
+        "properties": {
+          "base": {
+            "$ref": "#/components/schemas/ThreadConfigOverlay"
+          },
+          "overlay": {
+            "$ref": "#/components/schemas/ThreadConfigOverlay"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/ThreadConfigOverlay"
+          }
+        },
+        "required": [
+          "base",
+          "effective"
+        ]
+      },
+      "RuntimeActiveTurns": {
+        "description": "Runtime-wide active turn probe used by the sidecar restart gate.",
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "thread_id": {
+                  "type": "string"
+                },
+                "turn_id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "thread_id",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "count",
+          "threads"
+        ]
       }
     }
   },
@@ -2002,6 +2102,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResumeSessionResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/runtime/active-turns": {
+      "get": {
+        "operationId": "getRuntimeActiveTurns",
+        "summary": "Runtime-wide active turns (restart gate)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeActiveTurns"
                 }
               }
             }
@@ -2235,6 +2358,83 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ThreadRecord"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/config": {
+      "get": {
+        "operationId": "getThreadConfig",
+        "summary": "Per-session config (base/overlay/effective)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "operationId": "putThreadConfig",
+        "summary": "Patch per-session config overlay (zero restart, next turn)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadConfigOverlay"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadConfigResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/threads/{id}/config/{field}": {
+      "delete": {
+        "operationId": "deleteThreadConfigField",
+        "summary": "Clear one overlay section (inherit global)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadConfigResponse"
                 }
               }
             }

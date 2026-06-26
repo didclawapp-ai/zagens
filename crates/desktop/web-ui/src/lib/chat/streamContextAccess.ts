@@ -7,7 +7,10 @@ import type { SseTurnEvent } from '../../api/client';
 import type { StreamRecoveryContext } from '../../hooks/useTurnStreamRecovery';
 import type { FinishOnceOptions, StreamSessionControl } from '../../hooks/useTurnStream';
 import type { StreamContextRegistry } from '../../hooks/useStreamContextRegistry';
-import { lookupThreadIdForSession } from './streamContextStore';
+import { makeEmptyPanelSlice } from '../../hooks/useStreamContextRegistry';
+import type { CachedUiMessage } from './sessionUiCache';
+import { cacheSessionUiMessages } from './sessionUiCache';
+import { isActiveStreamView, lookupThreadIdForSession } from './streamContextStore';
 
 export type ThreadTurnPair = { threadId: string; turnId: string };
 
@@ -195,4 +198,44 @@ export function invokeFinishOnce(
   if (!tid) return;
   readRecoveryCtx(registry, tid)?.finishOnce(options);
   readStreamSession(registry, tid)?.finishOnce(options);
+}
+
+/** Idle contexts older than this may have messages/panelSlice evicted (S0.2). */
+export const IDLE_CONTEXT_EVICT_MS = 5 * 60 * 1000;
+
+/**
+ * Evict heavy fields from an idle, non-active context after `IDLE_CONTEXT_EVICT_MS`.
+ * Messages are cached to `sessionUiCache` first; threadTurn/sessionId are kept for reattach.
+ */
+export function evictIdleContextMessages(
+  registry: StreamContextRegistry | null | undefined,
+  threadId: string,
+  activeThreadId: string | null | undefined,
+  sessionUiCache: Map<string, CachedUiMessage[]>,
+  now = Date.now(),
+): boolean {
+  const tid = threadId.trim();
+  if (!registry || !tid) return false;
+  const ctx = registry.getContext(tid);
+  if (!ctx) return false;
+  if (ctx.isStreaming) return false;
+  if (isActiveStreamView(activeThreadId ?? null, tid)) return false;
+  const lastAt = ctx.lastActivityAt ?? 0;
+  if (now - lastAt < IDLE_CONTEXT_EVICT_MS) return false;
+  if (ctx.messages.length === 0 && ctx.panelSlice.checklist == null &&
+      ctx.panelSlice.taskGraph == null && ctx.panelSlice.context == null &&
+      ctx.panelSlice.scratchpad == null && ctx.panelSlice.lhtChip == null) {
+    return false;
+  }
+
+  const sessionId = ctx.sessionId?.trim();
+  if (sessionId && ctx.messages.length > 0) {
+    cacheSessionUiMessages(sessionUiCache, sessionId, ctx.messages);
+  }
+
+  registry.patchContext(tid, {
+    messages: [],
+    panelSlice: makeEmptyPanelSlice(),
+  });
+  return true;
 }

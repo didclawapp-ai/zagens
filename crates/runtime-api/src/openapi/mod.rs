@@ -106,8 +106,9 @@ pub fn export_openapi_json() -> String {
 mod tests {
     use super::*;
 
-    /// `router.rs` registers 54 path templates (2026-05-26); update if routes change.
-    const EXPECTED_PATH_TEMPLATES: usize = 54;
+    /// `router.rs` registers 57 path templates (2026-06-25: +per-session config GET/PUT,
+    /// config/{field} DELETE, runtime/active-turns); update if routes change.
+    const EXPECTED_PATH_TEMPLATES: usize = 57;
 
     #[test]
     fn openapi_path_templates_match_router() {

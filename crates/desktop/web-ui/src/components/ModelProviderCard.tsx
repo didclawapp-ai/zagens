@@ -6,6 +6,7 @@ import type { ModelProviderStatus, ProviderProbeResult } from '../types/modelPro
 import OpenRouterModelPicker from './OpenRouterModelPicker';
 import SenseNovaModelPicker from './SenseNovaModelPicker';
 import NvidiaNimModelPicker from './NvidiaNimModelPicker';
+import AgnesModelPicker from './AgnesModelPicker';
 
 interface Props {
   status: ModelProviderStatus;
@@ -317,6 +318,14 @@ export default function ModelProviderCard({
 
           {status.id === 'nvidia-nim' && status.configured && (
             <NvidiaNimModelPicker
+              currentModel={status.model}
+              disabled={busy}
+              onModelChanged={onRefresh}
+            />
+          )}
+
+          {status.id === 'agnes' && status.configured && (
+            <AgnesModelPicker
               currentModel={status.model}
               disabled={busy}
               onModelChanged={onRefresh}

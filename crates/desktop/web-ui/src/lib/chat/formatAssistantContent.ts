@@ -81,3 +81,28 @@ export function mergeAgentMessageSegment(current: string, incoming: string): str
   const sep = cur.endsWith('\n') ? '\n' : '\n\n';
   return `${current}${sep}${next}`;
 }
+
+/**
+ * Append an incremental streaming text delta without duplicating replay/coalesced chunks.
+ */
+export function appendStreamingTextDelta(current: string, incoming: string): string {
+  if (!incoming) {
+    return current;
+  }
+  if (!current) {
+    return incoming;
+  }
+  if (incoming === current) {
+    return current;
+  }
+  if (current.endsWith(incoming)) {
+    return current;
+  }
+  if (incoming.startsWith(current)) {
+    return incoming;
+  }
+  if (current.includes(incoming) && incoming.length >= 16) {
+    return current;
+  }
+  return current + incoming;
+}

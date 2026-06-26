@@ -6,6 +6,7 @@ import {
   makeEmptyContext,
   type StreamContext,
 } from '../../hooks/useStreamContextRegistry';
+import { getActiveThreadIdsFromStore } from './threadStatusStore';
 import type { TurnChatMessage } from '../../hooks/useTurnSend';
 
 export function ensureContextInMap(
@@ -179,16 +180,86 @@ export function removeThreadFromStreamingSet(
   return next;
 }
 
-/** Thread ids that may need periodic replay reconcile (P1 multi-session). */
-export function collectReconcileThreadIds(
-  streamingThreadIds: Iterable<string>,
-  activeThreadId: string | null,
-): string[] {
-  const ids = new Set<string>();
-  for (const raw of streamingThreadIds) {
-    const tid = raw.trim();
-    if (tid) ids.add(tid);
+type StreamContextStreamProbe = Pick<StreamContext, 'isStreaming' | 'messages' | 'sessionId'>;
+
+/** Thread or draft context still has an in-flight assistant turn. */
+export function contextHasActiveStream(
+  ctx: StreamContextStreamProbe | undefined,
+): boolean {
+  if (!ctx) return false;
+  if (ctx.isStreaming === true) return true;
+  return ctx.messages.some((m) => m.role === 'assistant' && m.isStreaming === true);
+}
+
+export type CollectStreamingSessionIdsOptions = {
+  /** Authoritative active thread ids from `threadStatusStore` (P3). */
+  activeThreadIds: Iterable<string>;
+  contexts: Map<string, StreamContext>;
+  activeSessionId: string | null | undefined;
+  resumedThreadId: string | null | undefined;
+  activeThreadId: string | null | undefined;
+  /** Brand-new session gap before `turn_started` / store status. */
+  pendingComposerStream: boolean;
+};
+
+function resolveContextSessionId(
+  threadId: string,
+  ctx: StreamContextStreamProbe,
+  activeSessionId: string | null | undefined,
+  resumedThreadId: string | null | undefined,
+): string | null {
+  if (threadId.startsWith('__draft__:')) {
+    return threadId.slice('__draft__:'.length) || null;
   }
+  if (threadId === NEW_SESSION_DRAFT_KEY) {
+    return activeSessionId?.trim() ?? null;
+  }
+  const sid = ctx.sessionId?.trim();
+  if (sid) return sid;
+  if (threadId === resumedThreadId?.trim()) {
+    return activeSessionId?.trim() ?? null;
+  }
+  return null;
+}
+
+/** Session ids to show the SessionStrip in-flight spinner (multi-session P0.4). */
+export function collectStreamingSessionIds(
+  options: CollectStreamingSessionIdsOptions,
+): Set<string> {
+  const ids = new Set<string>();
+  const evaluatedThreads = new Set<string>();
+  const activeSid = options.activeSessionId?.trim() ?? null;
+  const resumedTid = options.resumedThreadId?.trim() ?? null;
+
+  const maybeAdd = (sessionId: string | null) => {
+    const sid = sessionId?.trim();
+    if (sid) ids.add(sid);
+  };
+
+  for (const raw of options.activeThreadIds) {
+    const tid = raw.trim();
+    if (!tid || evaluatedThreads.has(tid)) continue;
+    evaluatedThreads.add(tid);
+    const ctx = options.contexts.get(tid);
+    const resolvedCtx = ctx ?? { isStreaming: false, messages: [], sessionId: null };
+    maybeAdd(resolveContextSessionId(tid, resolvedCtx, activeSid, resumedTid));
+  }
+
+  if (options.pendingComposerStream && activeSid && !ids.has(activeSid)) {
+    const draftKey = draftContextKey(activeSid);
+    const draftCtx =
+      options.contexts.get(draftKey) ?? options.contexts.get(NEW_SESSION_DRAFT_KEY);
+    if (contextHasActiveStream(draftCtx) || !resumedTid) {
+      maybeAdd(activeSid);
+    }
+  }
+
+  return ids;
+}
+
+/** Thread ids that may need periodic replay reconcile (P3: probe-only, store-driven). */
+export function collectReconcileThreadIds(activeThreadId: string | null): string[] {
+  const ids = new Set<string>(getActiveThreadIdsFromStore());
   const active = activeThreadId?.trim();
   if (active) ids.add(active);
   return [...ids];

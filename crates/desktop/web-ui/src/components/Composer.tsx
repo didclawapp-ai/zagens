@@ -433,6 +433,8 @@ interface Props {
   onWorkspaceChange: (ws: string) => void | Promise<void>;
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
+  /** Runtime thread id for session-scoped composer controls (LHT toggle). */
+  threadId?: string | null;
   /** Estimated context fill percentage (runtime snapshot or transcript fallback). */
   contextUsagePct: number;
   contextUsedTokens: number;
@@ -484,6 +486,7 @@ export default function Composer({
   workspace,
   onWorkspaceChange,
   resumedThreadActive = false,
+  threadId = null,
   contextUsagePct,
   contextUsedTokens,
   contextWindowTokens,
@@ -1147,6 +1150,7 @@ export default function Composer({
               onExportTraceReport={onExportTraceReport}
               onExportTraceCompare={onExportTraceCompare}
               onOpenRouting={onOpenRouting}
+              threadId={threadId}
             />
             <div className="min-w-[0.5rem] flex-1" />
             <div className="relative" ref={modelMenuRef}>

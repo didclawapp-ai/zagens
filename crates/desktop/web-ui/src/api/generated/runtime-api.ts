@@ -107,6 +107,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/v1/runtime/active-turns": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Runtime-wide active turns (restart gate) */
+        readonly get: operations["getRuntimeActiveTurns"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/v1/workspace/status": {
         readonly parameters: {
             readonly query?: never;
@@ -226,6 +243,41 @@ export type paths = {
         readonly head?: never;
         /** Patch thread */
         readonly patch: operations["updateThread"];
+        readonly trace?: never;
+    };
+    readonly "/v1/threads/{id}/config": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Per-session config (base/overlay/effective) */
+        readonly get: operations["getThreadConfig"];
+        /** Patch per-session config overlay (zero restart, next turn) */
+        readonly put: operations["putThreadConfig"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/v1/threads/{id}/config/{field}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        /** Clear one overlay section (inherit global) */
+        readonly delete: operations["deleteThreadConfigField"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
         readonly trace?: never;
     };
     readonly "/v1/threads/{id}/checklist": {
@@ -1117,7 +1169,7 @@ export type components = {
         readonly ThreadRecord: {
             /**
              * Format: uint32
-             * @default 2
+             * @default 3
              */
             readonly schema_version: number;
             readonly id: string;
@@ -1151,7 +1203,7 @@ export type components = {
         readonly TurnItemRecord: {
             /**
              * Format: uint32
-             * @default 2
+             * @default 3
              */
             readonly schema_version: number;
             readonly id: string;
@@ -1171,7 +1223,7 @@ export type components = {
         readonly TurnRecord: {
             /**
              * Format: uint32
-             * @default 2
+             * @default 3
              */
             readonly schema_version: number;
             readonly id: string;
@@ -1504,6 +1556,50 @@ export type components = {
             readonly tasks: readonly components["schemas"]["TaskSummary"][];
             readonly counts: components["schemas"]["TaskCounts"];
         };
+        /** @description Per-session config overlay (C scheme). Omitted/absent field = inherit global base. Unknown keys are preserved via the `extras` catch-all. */
+        readonly ThreadConfigOverlay: {
+            readonly long_horizon?: {
+                readonly [key: string]: unknown;
+            };
+            readonly compaction?: {
+                readonly [key: string]: unknown;
+            };
+            readonly features?: {
+                readonly [key: string]: unknown;
+            };
+            readonly memory?: {
+                readonly [key: string]: unknown;
+            };
+            readonly topic_memory?: {
+                readonly [key: string]: unknown;
+            };
+            readonly lsp?: {
+                readonly [key: string]: unknown;
+            };
+            readonly snapshots?: {
+                readonly [key: string]: unknown;
+            };
+            readonly approval_policy?: string;
+            /** @enum {string} */
+            readonly lht_composer_mode?: "auto" | "strict" | "off";
+        } & {
+            readonly [key: string]: unknown;
+        };
+        /** @description Resolved per-thread config: global baseline, raw overlay, and merged effective view. */
+        readonly ThreadConfigResponse: {
+            readonly base: components["schemas"]["ThreadConfigOverlay"];
+            readonly overlay?: components["schemas"]["ThreadConfigOverlay"];
+            readonly effective: components["schemas"]["ThreadConfigOverlay"];
+        };
+        /** @description Runtime-wide active turn probe used by the sidecar restart gate. */
+        readonly RuntimeActiveTurns: {
+            readonly count: number;
+            readonly threads: readonly {
+                readonly thread_id: string;
+                readonly turn_id?: string;
+                readonly status: string;
+            }[];
+        };
     };
     responses: never;
     parameters: never;
@@ -1647,6 +1743,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ResumeSessionResponse"];
+                };
+            };
+        };
+    };
+    readonly getRuntimeActiveTurns: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RuntimeActiveTurns"];
                 };
             };
         };
@@ -1839,6 +1955,70 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ThreadRecord"];
+                };
+            };
+        };
+    };
+    readonly getThreadConfig: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ThreadConfigResponse"];
+                };
+            };
+        };
+    };
+    readonly putThreadConfig: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ThreadConfigOverlay"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ThreadConfigResponse"];
+                };
+            };
+        };
+    };
+    readonly deleteThreadConfigField: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ThreadConfigResponse"];
                 };
             };
         };

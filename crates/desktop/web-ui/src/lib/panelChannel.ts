@@ -62,7 +62,8 @@ export function getPanelActiveThreadId(): string | null {
  * - `originThreadId` provided but no active registered → dispatch (filter off).
  * - `originThreadId` provided and active registered and they differ → drop.
  */
-function shouldDispatchPanelForThread(originThreadId: string | undefined): boolean {
+/** Shared active-view guard for panel dispatchers and agent stream apply (S0.1). */
+export function shouldDispatchPanelForThread(originThreadId: string | undefined): boolean {
   if (!originThreadId) return true;
   if (activePanelThreadId === null) return true;
   return originThreadId === activePanelThreadId;

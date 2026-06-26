@@ -16,6 +16,8 @@ pub struct ActiveTurnState {
 pub struct ActiveThreadState<P, R> {
     pub engine: EngineHandle<P, R>,
     pub active_turn: Option<ActiveTurnState>,
+    /// Set when overlay changes while a turn is active; engine unloads after turn ends.
+    pub pending_config_refresh: bool,
 }
 
 pub struct ActiveThreads<P, R> {

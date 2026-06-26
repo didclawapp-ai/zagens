@@ -3,15 +3,26 @@ import { useT, LOCALE_LABELS } from '../i18n';
 import type { Locale } from '../i18n';
 import type { RuntimeConnectionState } from '../api/client';
 import {
+  deleteThreadConfigField,
   fetchOfficeEnvironment,
   fetchSystemSettings,
+  fetchThreadConfig,
+  putThreadConfig,
   saveSystemSettings,
   type OfficeEnvironmentStatus,
   type SystemSettings,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
+import {
+  applyEffectiveOverlayToSystemSettings,
+  overlayHasSystemOverrides,
+  SYSTEM_OVERLAY_SECTIONS,
+  systemSettingsToOverlay,
+  type ThreadConfigResponse,
+} from '../lib/threadConfigOverlay';
 
 type Theme = 'light' | 'dark';
+type WriteScope = 'session' | 'global';
 
 interface Props {
   runtimeConn: RuntimeConnectionState;
@@ -23,6 +34,8 @@ interface Props {
   /** When true, saving settings restarts the sidecar and interrupts the active stream. */
   streaming?: boolean;
   onSettingsSaved?: (settings: SystemSettings) => void;
+  /** When set, session-scoped settings write to the thread overlay (zero restart). */
+  threadId?: string | null;
 }
 
 export default function SettingsPanel({
@@ -34,6 +47,7 @@ export default function SettingsPanel({
   onToggleTheme,
   streaming = false,
   onSettingsSaved,
+  threadId = null,
 }: Props) {
   const { t, locale, setLocale } = useT();
 
@@ -41,6 +55,24 @@ export default function SettingsPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [officeEnv, setOfficeEnv] = useState<OfficeEnvironmentStatus | null>(null);
+  const [writeScope, setWriteScope] = useState<WriteScope>(threadId?.trim() ? 'session' : 'global');
+  const [threadConfig, setThreadConfig] = useState<ThreadConfigResponse | null>(null);
+
+  const hasThread = Boolean(threadId?.trim());
+  const sessionScoped = hasThread && writeScope === 'session';
+  const hasSessionOverlay = overlayHasSystemOverrides(threadConfig?.overlay);
+
+  const loadSettings = useCallback(async () => {
+    const globalSettings = await fetchSystemSettings();
+    if (sessionScoped && threadId?.trim()) {
+      const cfg = await fetchThreadConfig(threadId.trim());
+      setThreadConfig(cfg);
+      setSettings(applyEffectiveOverlayToSystemSettings(cfg.effective, globalSettings));
+    } else {
+      setThreadConfig(null);
+      setSettings(globalSettings);
+    }
+  }, [sessionScoped, threadId]);
 
   useEffect(() => {
     if (!desktopHost) {
@@ -48,16 +80,17 @@ export default function SettingsPanel({
       return;
     }
     let cancelled = false;
-    fetchSystemSettings()
-      .then((s) => {
-        if (!cancelled) setSettings(s);
-      })
+    loadSettings()
       .catch(() => {})
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [desktopHost]);
+  }, [desktopHost, loadSettings]);
+
+  useEffect(() => {
+    setWriteScope(threadId?.trim() ? 'session' : 'global');
+  }, [threadId]);
 
   useEffect(() => {
     if (runtimeConn !== 'connected') {
@@ -79,6 +112,16 @@ export default function SettingsPanel({
 
   const handleSave = useCallback(async () => {
     if (!settings || !desktopHost) return;
+    if (sessionScoped && threadId?.trim()) {
+      setSaving(true);
+      try {
+        const cfg = await putThreadConfig(threadId.trim(), systemSettingsToOverlay(settings));
+        setThreadConfig(cfg);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     if (streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
       return;
     }
@@ -89,15 +132,58 @@ export default function SettingsPanel({
     } finally {
       setSaving(false);
     }
-  }, [settings, desktopHost, streaming, t, onSettingsSaved]);
+  }, [settings, desktopHost, sessionScoped, threadId, streaming, t, onSettingsSaved]);
+
+  const handleScopeChange = useCallback(
+    async (next: WriteScope) => {
+      if (next === writeScope) return;
+      setWriteScope(next);
+      setLoading(true);
+      try {
+        const globalSettings = await fetchSystemSettings();
+        if (next === 'session' && threadId?.trim()) {
+          const cfg = await fetchThreadConfig(threadId.trim());
+          setThreadConfig(cfg);
+          setSettings(applyEffectiveOverlayToSystemSettings(cfg.effective, globalSettings));
+        } else {
+          setThreadConfig(null);
+          setSettings(globalSettings);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [writeScope, threadId],
+  );
+
+  const handleClearSessionOverride = useCallback(async () => {
+    const id = threadId?.trim();
+    if (!id || !hasSessionOverlay) return;
+    if (!(await confirmDialog(t('settings.clearSessionOverrideConfirm')))) return;
+    setSaving(true);
+    try {
+      for (const section of SYSTEM_OVERLAY_SECTIONS) {
+        await deleteThreadConfigField(id, section).catch(() => {});
+      }
+      const globalSettings = await fetchSystemSettings();
+      const cfg = await fetchThreadConfig(id);
+      setThreadConfig(cfg);
+      setSettings(applyEffectiveOverlayToSystemSettings(cfg.effective, globalSettings));
+    } finally {
+      setSaving(false);
+    }
+  }, [threadId, hasSessionOverlay, t]);
 
   const update = useCallback(<K extends keyof SystemSettings>(key: K, value: SystemSettings[K]) => {
     setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
   }, []);
 
-  const selectCls = 'w-full rounded-lg border border-divider bg-canvas px-3 py-2 text-xs text-t-text focus:outline-none focus:ring-1 focus:ring-accent';
+  const selectCls = 'w-full rounded-lg border border-divider bg-canvas px-3 py-2 text-xs text-t-text focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50';
   const labelCls = 'text-[11px] font-medium text-t-text-secondary';
   const descCls = 'text-[10px] text-t-text-muted';
+  const sectionCls = 'text-[11px] font-semibold uppercase tracking-wider text-t-text-muted';
+  // Process-global fields stay on `config.toml` even in session scope; disable them there.
+  const globalDisabled = sessionScoped;
 
   return (
     <div className="p-4 space-y-5 overflow-y-auto h-full">
@@ -145,6 +231,49 @@ export default function SettingsPanel({
         <p className="text-xs text-t-text-muted leading-relaxed">{t('settings.notAvailable')}</p>
       )}
 
+      {hasThread && desktopHost && (
+        <section className="space-y-2 pb-3 border-b border-divider">
+          <p className={sectionCls}>{t('settings.scopeSection')}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(['session', 'global'] as const).map((scope) => (
+              <button
+                key={scope}
+                type="button"
+                disabled={saving}
+                onClick={() => void handleScopeChange(scope)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                  writeScope === scope
+                    ? 'bg-accent text-white'
+                    : 'border border-divider bg-canvas text-t-text-secondary hover:border-accent/40'
+                }`}
+              >
+                {t(scope === 'session' ? 'settings.scopeSession' : 'settings.scopeGlobal')}
+              </button>
+            ))}
+          </div>
+          <p className={descCls}>
+            {sessionScoped ? t('settings.scopeSessionHint') : t('settings.scopeGlobalHint')}
+          </p>
+          {hasSessionOverlay && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-accent leading-relaxed">
+                {sessionScoped
+                  ? t('settings.sessionOverrideBadge')
+                  : t('settings.sessionOverrideActiveWhileGlobal')}
+              </p>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void handleClearSessionOverride()}
+                className="rounded-full border border-divider bg-canvas px-3 py-1 text-[11px] font-medium text-t-text-secondary transition-colors hover:border-accent/40 disabled:opacity-50"
+              >
+                {t('settings.clearSessionOverride')}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
       {loading && (
         <p className="text-xs text-t-text-muted">{t('settings.loadingSettings')}</p>
       )}
@@ -160,6 +289,7 @@ export default function SettingsPanel({
                 type="text"
                 list="settings-model-suggestions"
                 className={selectCls}
+                disabled={globalDisabled}
                 value={settings.default_model}
                 onChange={(e) => update('default_model', e.target.value)}
                 placeholder={t('settings.defaultModelPlaceholder')}
@@ -179,6 +309,7 @@ export default function SettingsPanel({
               <span className={labelCls}>{t('settings.reasoningEffort')}</span>
               <select
                 className={selectCls}
+                disabled={globalDisabled}
                 value={settings.reasoning_effort}
                 onChange={(e) => update('reasoning_effort', e.target.value)}
               >
@@ -193,6 +324,7 @@ export default function SettingsPanel({
               <span className={labelCls}>{t('settings.costCurrency')}</span>
               <select
                 className={selectCls}
+                disabled={globalDisabled}
                 value={settings.cost_currency}
                 onChange={(e) => update('cost_currency', e.target.value)}
               >
@@ -218,7 +350,8 @@ export default function SettingsPanel({
                 </div>
                 <input
                   type="checkbox"
-                  className="shrink-0 w-4 h-4 accent-accent rounded"
+                  className="shrink-0 w-4 h-4 accent-accent rounded disabled:opacity-50"
+                  disabled={key === 'allow_shell' ? globalDisabled : false}
                   checked={settings[key] as boolean}
                   onChange={(e) => update(key as keyof SystemSettings, e.target.checked)}
                 />
@@ -246,9 +379,10 @@ export default function SettingsPanel({
                   type="range"
                   min={1}
                   max={20}
+                  disabled={globalDisabled}
                   value={settings.max_subagents}
                   onChange={(e) => update('max_subagents', Number(e.target.value))}
-                  className="flex-1 accent-accent"
+                  className="flex-1 accent-accent disabled:opacity-50"
                 />
                 <span className="text-xs text-t-text w-6 text-right">{settings.max_subagents}</span>
               </div>
@@ -263,11 +397,12 @@ export default function SettingsPanel({
                   min={120}
                   max={1800}
                   step={60}
+                  disabled={globalDisabled}
                   value={settings.subagent_step_timeout_secs}
                   onChange={(e) =>
                     update('subagent_step_timeout_secs', Number(e.target.value))
                   }
-                  className="flex-1 accent-accent"
+                  className="flex-1 accent-accent disabled:opacity-50"
                 />
                 <span className="text-xs text-t-text w-10 text-right tabular-nums">
                   {settings.subagent_step_timeout_secs}s
@@ -290,6 +425,7 @@ export default function SettingsPanel({
                   <span className="text-xs text-t-text-muted">{t(`settings.${i18nKey}` as any)}</span>
                   <select
                     className={selectCls}
+                    disabled={globalDisabled}
                     value={settings[key]}
                     onChange={(e) => update(key, e.target.value)}
                   >
@@ -387,6 +523,7 @@ export default function SettingsPanel({
               <span className={labelCls}>{t('settings.notifyMethod')}</span>
               <select
                 className={selectCls}
+                disabled={globalDisabled}
                 value={settings.notify_method}
                 onChange={(e) => update('notify_method', e.target.value)}
               >
@@ -404,6 +541,7 @@ export default function SettingsPanel({
                 type="number"
                 min={0}
                 className={selectCls}
+                disabled={globalDisabled}
                 value={settings.session_file_mb}
                 onChange={(e) => {
                   const v = Number(e.target.value);
@@ -450,7 +588,9 @@ export default function SettingsPanel({
             >
               {saving ? t('settings.saving') : t('settings.save')}
             </button>
-            <p className="text-[10px] text-t-text-muted mt-1.5 text-center">{t('settings.saveHint')}</p>
+            <p className="text-[10px] text-t-text-muted mt-1.5 text-center">
+              {sessionScoped ? t('settings.saveHintSession') : t('settings.saveHint')}
+            </p>
           </div>
         </>
       )}

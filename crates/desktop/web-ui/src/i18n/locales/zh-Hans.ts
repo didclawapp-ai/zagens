@@ -380,6 +380,8 @@ const zhHans = {
     lhtModeDisabledLabel: 'LHT·关',
     lhtModeAutoHint:
       'LHT 自动：模型 plan 后按 config.toml 的长程设置介入。点按循环：自动 → 严格 → 关。',
+    lhtModeAutoHintSession:
+      'LHT 自动：继承当前会话的有效 LHT 设置。点按循环：自动 → 严格 → 关。',
     lhtModeStrictHint:
       'LHT 严格：必须先 plan，完成门/半成品门/verify 复跑/工具链门均 enforce。点按循环。',
     lhtModeDisabledHint: 'LHT 已关闭：不注入续写 nudge、不跑完成门禁。点按循环回到自动。',
@@ -391,6 +393,8 @@ const zhHans = {
     turnReconnecting: '已重新连接后台回合，正在同步进度…',
     bgApprovalRequired: '会话 {{thread}} 需要审批 — 请切回该会话处理。',
     bgStreamRunning: '会话 {{thread}} 仍在后台生成 — 可随时切回查看进度。',
+    concurrentStreamsWarn: '当前并行流式会话较多，可能影响性能；仍可继续发送。',
+    concurrentStreamsLimit: '并行流式会话已达上限，请等待部分会话完成后再发送。',
     switchToSession: '切到该会话',
     runtimeSidecarRestart: '运行时已重启，生成已停止',
     runtimeSidecarRestartReconnecting: '本地运行时已重启，正在尝试重新连接后台回合…',
@@ -1049,6 +1053,15 @@ const zhHans = {
     sensenovaNoMatch: '无匹配模型',
     sensenovaCurrent: '当前',
     sensenovaContext: '上下文 {{tokens}} tokens',
+    agnesModels: '模型列表',
+    agnesRefresh: '刷新',
+    agnesRefreshing: '刷新中…',
+    agnesLoading: '正在加载模型…',
+    agnesSearch: '搜索模型名称或 ID…',
+    agnesNoMatch: '无匹配模型',
+    agnesCurrent: '当前',
+    agnesContext: '上下文 {{tokens}} tokens',
+    agnesMaxOutput: '最大输出 {{tokens}} tokens',
     nvidiaNimModels: '模型列表',
     nvidiaNimRefresh: '刷新',
     nvidiaNimRefreshing: '刷新中…',
@@ -1197,8 +1210,24 @@ const zhHans = {
     save: '保存设置并重启运行时',
     saving: '保存中…',
     saveHint: '保存后将自动重启本地 runtime sidecar 以应用更改。',
+    saveHintSession: '仅保存到当前会话——下一个 turn 生效，无需重启。',
+    scopeSection: '作用域',
+    scopeSession: '当前会话',
+    scopeGlobal: '全局默认',
+    scopeSessionHint: '更改仅作用于当前会话（下一个 turn 生效，无需重启）。仅全局设置在此禁用。',
+    scopeGlobalHint: '更改全局默认并重启运行时。',
+    sessionOverrideBadge: '此会话已有自定义设置覆盖。',
+    sessionOverrideActiveWhileGlobal:
+      '此会话仍存在设置覆盖，优先级高于全局默认。清除后将回落到全局默认。',
+    clearSessionOverride: '清除会话覆盖',
+    clearSessionOverrideConfirm: '移除此会话的设置覆盖并回落到全局默认？将在下一个 turn 生效。',
     saveRestartsSidecar:
       '保存将重启本地运行时，当前进行中的生成会中断。全量审核进行中建议先停止生成或审完再保存。继续保存？',
+    sidecarRestartPending:
+      '全局设置已排队 — 当 {{count}} 个活跃会话结束后将自动重启运行时。也可立即重启（会中断这些会话）。',
+    sidecarRestartNow: '立即重启',
+    sidecarRestartForceConfirm: '立即重启运行时？这将中断 {{count}} 个活跃会话。',
+    restarting: '重启中…',
     notAvailable: '系统设置仅在 Tauri 桌面端可用。请在 Zagens 应用中打开此面板。',
     diagInfo: '诊断信息',
     apiKey: 'API Key',
@@ -1450,6 +1479,19 @@ const zhHans = {
     restarting: '重启中…',
   },
   lhtSettings: {
+    scopeSection: '作用域',
+    scopeSession: '当前会话',
+    scopeGlobal: '全局默认',
+    scopeSessionHint: '写入会话级 overlay — 下一 turn 生效，不重启 sidecar。',
+    scopeGlobalHint:
+      '写入 ~/.zagens/config.toml — 会重启运行时（有其他会话在跑时会排队等待）。',
+    sessionOverrideBadge: '此会话已有 LHT 覆盖项。',
+    sessionOverrideActiveWhileGlobal:
+      '此会话仍存在 LHT 覆盖项，优先级高于全局默认。清除后将回落到全局默认。',
+    clearSessionOverride: '清除会话覆盖',
+    clearSessionOverrideConfirm: '移除此会话的 LHT 覆盖并回落到全局默认？将在下一个 turn 生效。',
+    introSession:
+      '更改仅作用于当前会话，下一 turn 生效（不重启运行时）。切换到「全局默认」可编辑 config.toml。',
     intro:
       '写入 ~/.zagens/config.toml 的 [long_horizon]。Composer 顶栏三态（LHT / LHT·严格 / LHT·关）在下一 turn 覆盖下方部分项，无需重启 sidecar。',
     introShort:
@@ -1474,6 +1516,7 @@ const zhHans = {
     advancedSettingsHint: 'nudge 次数、完成门禁、宏观循环等；日常无需修改。',
     saveAdvanced: '保存高级设置',
     saveAdvancedHint: '修改高级项后需保存；切换工作模式会自动写入 config。',
+    saveAdvancedHintSession: '修改高级项后需保存；仅作用于当前会话，下一 turn 生效。',
     summaryLht_auto: '开·自动',
     summaryLht_strict: '开·严格',
     summaryLht_off: '关',

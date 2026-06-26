@@ -363,15 +363,25 @@ function drainSseBlocks(buffer: string): { drained: SseTurnEvent[]; rest: string
     rest = rest.slice(idx + sep.length);
     let eventName = 'message';
     const dataLines: string[] = [];
+    let seq: number | undefined;
     for (const line of block.split(/\r?\n/)) {
       if (line.startsWith('event:')) {
         eventName = line.slice(6).trim();
       } else if (line.startsWith('data:')) {
         dataLines.push(line.slice(5).trimStart());
+      } else if (line.startsWith('id:')) {
+        const parsed = Number(line.slice(3).trim());
+        if (Number.isFinite(parsed)) {
+          seq = parsed;
+        }
       }
     }
     if (dataLines.length) {
-      drained.push({ event: eventName, data: dataLines.join('\n') });
+      drained.push({
+        event: eventName,
+        data: dataLines.join('\n'),
+        ...(seq != null ? { seq } : {}),
+      });
     }
   }
   return { drained, rest };
@@ -976,6 +986,29 @@ export async function patchThread(threadId: string, body: PatchThreadBody): Prom
   return patchJson(`/v1/threads/${encodeURIComponent(threadId)}`, body);
 }
 
+export type { ThreadConfigOverlay, ThreadConfigResponse } from '../lib/threadConfigOverlay';
+
+export async function fetchThreadConfig(threadId: string): Promise<import('../lib/threadConfigOverlay').ThreadConfigResponse> {
+  return fetchJson(`/v1/threads/${encodeURIComponent(threadId)}/config`);
+}
+
+export async function putThreadConfig(
+  threadId: string,
+  overlay: import('../lib/threadConfigOverlay').ThreadConfigOverlay,
+): Promise<import('../lib/threadConfigOverlay').ThreadConfigResponse> {
+  return putJson(`/v1/threads/${encodeURIComponent(threadId)}/config`, overlay);
+}
+
+/** Clear one session overlay section (e.g. `long_horizon`); the field falls back to global. */
+export async function deleteThreadConfigField(
+  threadId: string,
+  field: string,
+): Promise<void> {
+  return deleteJson(
+    `/v1/threads/${encodeURIComponent(threadId)}/config/${encodeURIComponent(field)}`,
+  );
+}
+
 export async function persistThreadSession(
   threadId: string,
   sessionId?: string | null,
@@ -1297,7 +1330,7 @@ function linkAbortSignals(
  * `arm_sse_cancel` on the host ensures a new turn replaces any prior stream; abort
  * after `turn.completed` closes the read without stacking connections.
  */
-function sseEventSeq(ev: SseTurnEvent & { seq?: number }): number | undefined {
+export function sseEventSeq(ev: SseTurnEvent & { seq?: number }): number | undefined {
   if (typeof ev.seq === 'number') {
     return ev.seq;
   }
@@ -1711,6 +1744,58 @@ export async function getThreadEvents(
   }
 }
 
+/** Dedicated bucket for the always-on global status SSE (P2/P1). */
+export const GLOBAL_STATUS_SSE_BUCKET = '__global_status__';
+
+/** Subscribe to `GET /v1/events/status` — snapshot on connect, then live `thread.status`. */
+export async function subscribeGlobalThreadStatusEvents(
+  onEvent: (ev: SseTurnEvent & { seq?: number }) => void,
+  options?: { signal?: AbortSignal },
+): Promise<void> {
+  const path = '/v1/events/status';
+  if (useTauriRuntimeProxy) {
+    return consumeThreadEventsSse(path, onEvent, {
+      signal: options?.signal,
+      threadId: GLOBAL_STATUS_SSE_BUCKET,
+    });
+  }
+  const res = await fetch(`${runtimeBase}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    signal: options?.signal,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) {
+    throw new Error('No response body');
+  }
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const { drained, rest } = drainSseBlocks(buffer);
+    buffer = rest;
+    for (const ev of drained) {
+      let seq: number | undefined;
+      try {
+        const p = JSON.parse(ev.data);
+        if (typeof p.seq === 'number') {
+          seq = p.seq;
+        }
+      } catch {
+        /* ignore */
+      }
+      onEvent({ ...ev, seq });
+    }
+  }
+}
+
 // ========== System Settings (Desktop Tauri) ==========
 
 export interface SystemSettings {
@@ -1910,6 +1995,16 @@ export type LhtPresetId = 'code-default' | 'long-refactor' | 'long-fix' | 'craft
 export async function applyLhtPreset(presetId: LhtPresetId): Promise<LhtSettings> {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<LhtSettings>('apply_lht_preset', { presetId });
+}
+
+export async function previewLhtPreset(presetId: LhtPresetId): Promise<LhtSettings> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<LhtSettings>('preview_lht_preset', { presetId });
+}
+
+export async function forceSidecarRestartNow(): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('force_sidecar_restart_now');
 }
 
 export type LhtComposerMode = 'auto' | 'strict' | 'off';

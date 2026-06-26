@@ -188,6 +188,9 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
     if let Ok(value) = std::env::var("DEEPSEEK_ALLOW_SHELL") {
         config.allow_shell = Some(value == "1" || value.eq_ignore_ascii_case("true"));
     }
+    if let Ok(value) = std::env::var("DEEPSEEK_TRUST_MODE") {
+        config.trust_mode = Some(value == "1" || value.eq_ignore_ascii_case("true"));
+    }
     if let Ok(value) = std::env::var("DEEPSEEK_APPROVAL_POLICY") {
         config.approval_policy = Some(value);
     }

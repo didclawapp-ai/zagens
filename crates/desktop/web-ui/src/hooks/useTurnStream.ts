@@ -9,7 +9,8 @@ import {
   type SetStateAction,
 } from 'react';
 import { getThreadDetail, threadTurnStillActive } from '../api/client';
-import { stopThreadTurn } from '../api/turnControl';
+import { disconnectThreadEventStream, stopThreadTurn } from '../api/turnControl';
+import { applyOptimisticThreadStop } from '../lib/chat/threadStatusStore';
 import { toast } from '../lib/toast';
 import {
   readStreamSession,
@@ -18,6 +19,7 @@ import {
   writeThreadTurn,
 } from '../lib/chat/streamContextAccess';
 import type { StreamContextRegistry } from './useStreamContextRegistry';
+import { useActiveThreadIds } from './useThreadStatusStore';
 
 export type FinishOnceOptions = {
   /** Skip backend active-turn re-lock (user Stop or local start failure). */
@@ -42,8 +44,8 @@ export type UseTurnStreamParams = {
 };
 
 export type UseTurnStreamResult = {
-  streamingThreadIds: Set<string>;
-  setStreamingThreadIds: Dispatch<SetStateAction<Set<string>>>;
+  /** Active thread ids from authoritative `threadStatusStore` (P3). */
+  activeThreadIds: Set<string>;
   pendingComposerStream: boolean;
   setPendingComposerStream: Dispatch<SetStateAction<boolean>>;
   streaming: boolean;
@@ -71,20 +73,18 @@ export function useTurnStream({
   onCancelSideEffects,
   cancelCleanupRef,
 }: UseTurnStreamParams): UseTurnStreamResult {
-  const [streamingThreadIds, setStreamingThreadIds] = useState<Set<string>>(() => new Set());
+  const activeThreadIds = useActiveThreadIds();
   const [pendingComposerStream, setPendingComposerStream] = useState(false);
 
   // Composer lock applies only to the active view's thread — background streams
   // must not disable input on a different session (multi-session P0.4).
   const streaming = useMemo(() => {
-    const tid = resumedThreadId;
+    const tid = resumedThreadId?.trim() ?? '';
     if (!tid) {
-      // Brand-new session (no thread yet): lock only while awaiting turn_started here.
       return pendingComposerStream;
     }
-    if (pendingComposerStream && streamingThreadIds.has(tid)) return true;
-    return streamingThreadIds.has(tid);
-  }, [pendingComposerStream, resumedThreadId, streamingThreadIds]);
+    return activeThreadIds.has(tid) || pendingComposerStream;
+  }, [activeThreadIds, pendingComposerStream, resumedThreadId]);
 
   const streamControllersRef = useRef<Map<string, AbortController>>(new Map());
   const pendingSendKeyRef = useRef<string | null>(null);
@@ -99,11 +99,6 @@ export function useTurnStream({
       if (!threadId) return;
       streamControllersRef.current.get(threadId)?.abort();
       streamControllersRef.current.delete(threadId);
-      setStreamingThreadIds((prev) => {
-        const next = new Set(prev);
-        next.delete(threadId);
-        return next;
-      });
       if (opts?.clearComposerLock !== false) {
         setPendingComposerStream(false);
       }
@@ -122,17 +117,17 @@ export function useTurnStream({
     const threadId = activeTurn.threadId || resumedThreadId || '';
     const turnId = activeTurn.turnId;
 
-    // Look up the controller by threadId first. If the thread is not yet
-    // resolved (brand-new session, `turn_started` pending), fall back to the
-    // per-send key recorded by `handleSend` — NOT a shared `__pending__` key,
-    // which could belong to a different concurrent send (multi-session
-    // cross-talk fix).
     const pendingKey = pendingSendKeyRef.current;
     const streamControl =
       (threadId ? streamControllersRef.current.get(threadId) : undefined) ??
       (pendingKey ? streamControllersRef.current.get(pendingKey) : undefined) ??
       streamControllersRef.current.get('__pending__') ??
       undefined;
+
+    if (threadId) {
+      applyOptimisticThreadStop(threadId, turnId || undefined);
+    }
+    disconnectThreadEventStream(streamControl, threadId || undefined);
 
     const session = readStreamSession(streamRegistry, threadId);
     if (session) {
@@ -191,8 +186,7 @@ export function useTurnStream({
   }, [handleCancelStream]);
 
   return {
-    streamingThreadIds,
-    setStreamingThreadIds,
+    activeThreadIds,
     pendingComposerStream,
     setPendingComposerStream,
     streaming,

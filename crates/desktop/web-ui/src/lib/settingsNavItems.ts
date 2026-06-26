@@ -9,7 +9,6 @@ export type SettingsNavTab = Extract<
   | 'routing'
   | 'topic-memory'
   | 'index'
-  | 'system'
   | 'sandbox'
   | 'lht-settings'
   | 'hooks'
@@ -38,7 +37,6 @@ export function buildSettingsNavItems(args: {
     { tab: 'routing', label: t('panels.routing'), show: !officeSession },
     { tab: 'topic-memory', label: t('sidebar.topicMemory'), show: !officeSession },
     { tab: 'index', label: t('panels.index'), show: !officeSession },
-    { tab: 'system', label: t('panels.system'), show: true },
     { tab: 'sandbox', label: t('panels.sandbox'), show: true },
     { tab: 'lht-settings', label: t('panels.lhtSettings'), show: !officeSession },
     { tab: 'hooks', label: t('sidebar.hooks'), show: desktopHost },

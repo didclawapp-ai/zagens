@@ -43,7 +43,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account ICMP connect v4",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V4,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[
             ConditionSpec::User,
             ConditionSpec::Protocol(IPPROTO_ICMP as u8),
@@ -55,7 +55,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account ICMP connect v6",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V6,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[
             ConditionSpec::User,
             ConditionSpec::Protocol(IPPROTO_ICMPV6 as u8),
@@ -67,7 +67,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account ICMP resource assignment v4",
         layer_key: FWPM_LAYER_ALE_RESOURCE_ASSIGNMENT_V4,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[
             ConditionSpec::User,
             ConditionSpec::Protocol(IPPROTO_ICMP as u8),
@@ -79,7 +79,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account ICMP resource assignment v6",
         layer_key: FWPM_LAYER_ALE_RESOURCE_ASSIGNMENT_V6,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[
             ConditionSpec::User,
             ConditionSpec::Protocol(IPPROTO_ICMPV6 as u8),
@@ -93,7 +93,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account DNS TCP or UDP port 53 v4",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V4,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[ConditionSpec::User, ConditionSpec::RemotePort(53)],
     },
     FilterSpec {
@@ -102,7 +102,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account DNS TCP or UDP port 53 v6",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V6,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[ConditionSpec::User, ConditionSpec::RemotePort(53)],
     },
     FilterSpec {
@@ -111,7 +111,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account DNS-over-TLS port 853 v4",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V4,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[ConditionSpec::User, ConditionSpec::RemotePort(853)],
     },
     FilterSpec {
@@ -120,7 +120,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account DNS-over-TLS port 853 v6",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V6,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[ConditionSpec::User, ConditionSpec::RemotePort(853)],
     },
     FilterSpec {
@@ -129,7 +129,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account SMB port 445 v4",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V4,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[ConditionSpec::User, ConditionSpec::RemotePort(445)],
     },
     FilterSpec {
@@ -138,7 +138,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account SMB port 445 v6",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V6,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[ConditionSpec::User, ConditionSpec::RemotePort(445)],
     },
     FilterSpec {
@@ -147,7 +147,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account SMB port 139 v4",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V4,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[ConditionSpec::User, ConditionSpec::RemotePort(139)],
     },
     FilterSpec {
@@ -156,7 +156,7 @@ pub(super) const FILTER_SPECS: &[FilterSpec] = &[
         description: "Block sandbox-account SMB port 139 v6",
         layer_key: FWPM_LAYER_ALE_AUTH_CONNECT_V6,
         action: FilterAction::Block,
-        weight: None,
+        weight: Some(2),
         conditions: &[ConditionSpec::User, ConditionSpec::RemotePort(139)],
     },
     // Offline semantics require a catch-all outbound block: protocol/port

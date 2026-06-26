@@ -62,6 +62,8 @@ type Props = {
   onExportTraceReport: () => void;
   onExportTraceCompare: () => void;
   onOpenRouting?: () => void;
+  /** Current runtime thread — session-scoped LHT toggle when set. */
+  threadId?: string | null;
 };
 
 function optionBtnClass(selected: boolean) {
@@ -110,6 +112,7 @@ export default function ComposerOverflowMenu({
   onExportTraceReport,
   onExportTraceCompare,
   onOpenRouting,
+  threadId = null,
 }: Props) {
   const { t } = useT();
   const sectionPrefix = useId();
@@ -275,7 +278,7 @@ export default function ComposerOverflowMenu({
           panelId={sectionPanelId('lht')}
         >
           <div className="px-2 py-1.5">
-            <LhtModeToggle disabled={disabled} />
+            <LhtModeToggle disabled={disabled} threadId={threadId} />
           </div>
           {lhtChip ? (
             <p

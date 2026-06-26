@@ -383,6 +383,8 @@ const ptBr: TranslationMap = {
     lhtModeDisabledLabel: 'LHT·off',
     lhtModeAutoHint:
       'LHT auto: herda [long_horizon] do config após o modelo planejar. Clique para alternar: auto → estrito → off.',
+    lhtModeAutoHintSession:
+      'LHT auto: herda as configurações LHT efetivas desta sessão. Clique para alternar: auto → estrito → off.',
     lhtModeStrictHint:
       'LHT estrito: plano primeiro + portões enforce. Clique para alternar.',
     lhtModeDisabledHint:
@@ -395,6 +397,10 @@ const ptBr: TranslationMap = {
     turnReconnecting: 'Reconectado ao turno em segundo plano — sincronizando progresso…',
     bgApprovalRequired: 'A sessão {{thread}} aguarda aprovação — volte a ela para continuar.',
     bgStreamRunning: 'A sessão {{thread}} ainda está gerando em segundo plano — volte quando quiser.',
+    concurrentStreamsWarn:
+      'Várias sessões estão em streaming — o desempenho pode cair. Você ainda pode enviar.',
+    concurrentStreamsLimit:
+      'Limite de sessões em streaming atingido — aguarde algumas sessões terminarem.',
     switchToSession: 'Ir para a sessão',
     runtimeSidecarRestart: 'Runtime reiniciado; geração interrompida',
     runtimeSidecarRestartReconnecting:
@@ -1059,6 +1065,15 @@ const ptBr: TranslationMap = {
     sensenovaNoMatch: 'No matching models',
     sensenovaCurrent: 'Active',
     sensenovaContext: 'Context {{tokens}} tokens',
+    agnesModels: 'Model list',
+    agnesRefresh: 'Refresh',
+    agnesRefreshing: 'Refreshing…',
+    agnesLoading: 'Loading models…',
+    agnesSearch: 'Search by name or ID…',
+    agnesNoMatch: 'No matching models',
+    agnesCurrent: 'Current',
+    agnesContext: 'Context {{tokens}} tokens',
+    agnesMaxOutput: 'Max output {{tokens}} tokens',
     nvidiaNimModels: 'Model list',
     nvidiaNimRefresh: 'Refresh',
     nvidiaNimRefreshing: 'Refreshing…',
@@ -1208,8 +1223,27 @@ const ptBr: TranslationMap = {
     save: 'Salvar e reiniciar runtime',
     saving: 'Salvando…',
     saveHint: 'O runtime sidecar local será reiniciado para aplicar as alterações.',
+    saveHintSession: 'Salvo apenas nesta sessão — aplica no próximo turno, sem reinício.',
+    scopeSection: 'Escopo',
+    scopeSession: 'Esta sessão',
+    scopeGlobal: 'Padrão global',
+    scopeSessionHint:
+      'As alterações aplicam-se apenas a esta sessão (próximo turno, sem reinício). Configurações apenas globais ficam desativadas aqui.',
+    scopeGlobalHint: 'As alterações atualizam o padrão global e reiniciam o runtime.',
+    sessionOverrideBadge: 'Esta sessão tem overrides de configuração personalizados.',
+    sessionOverrideActiveWhileGlobal:
+      'Esta sessão ainda tem overrides de configuração que têm prioridade sobre os padrões globais. Limpe-os para herdar o global.',
+    clearSessionOverride: 'Limpar override da sessão',
+    clearSessionOverrideConfirm:
+      'Remover os overrides de configuração desta sessão e voltar aos padrões globais? Aplica no próximo turno.',
     saveRestartsSidecar:
       'Salvar reinicia o runtime local e interrompe a geração atual. Durante auditoria de repositório completo, pare a geração ou conclua primeiro. Salvar mesmo assim?',
+    sidecarRestartPending:
+      'Configurações globais na fila — o runtime reiniciará automaticamente quando {{count}} sessão(ões) ativa(s) terminar(em). Você pode reiniciar agora (interromperá as sessões).',
+    sidecarRestartNow: 'Reiniciar agora',
+    sidecarRestartForceConfirm:
+      'Reiniciar o runtime agora? Isso interromperá {{count}} sessão(ões) ativa(s).',
+    restarting: 'Reiniciando…',
     notAvailable: 'Configurações do sistema estão disponíveis apenas no app desktop Tauri. Abra este painel no Zagens.',
     diagInfo: 'Diagnósticos',
     apiKey: 'API Key',
@@ -1467,6 +1501,21 @@ const ptBr: TranslationMap = {
     restarting: 'Reiniciando…',
   },
   lhtSettings: {
+    scopeSection: 'Aplicar a',
+    scopeSession: 'Sessão atual',
+    scopeGlobal: 'Padrão global',
+    scopeSessionHint:
+      'Grava overlay por sessão — entra em vigor no próximo turno, sem reiniciar o sidecar.',
+    scopeGlobalHint:
+      'Grava ~/.zagens/config.toml — reinicia o runtime (enfileira enquanto outras sessões estão ativas).',
+    sessionOverrideBadge: 'Esta sessão tem overrides LHT personalizados.',
+    sessionOverrideActiveWhileGlobal:
+      'Esta sessão ainda tem overrides LHT que têm prioridade sobre os padrões globais. Limpe-os para herdar o global.',
+    clearSessionOverride: 'Limpar override da sessão',
+    clearSessionOverrideConfirm:
+      'Remover os overrides LHT desta sessão e voltar aos padrões globais? Aplica no próximo turno.',
+    introSession:
+      'Alterações aplicam-se só à sessão atual no próximo turno (sem reiniciar o runtime). Mude para Padrão global para editar config.toml.',
     intro:
       'Grava [long_horizon] em ~/.zagens/config.toml. Tri-estado do Composer (LHT / LHT·estrito / LHT·off) sobrescreve campos no próximo turno.',
     introShort:
@@ -1491,6 +1540,8 @@ const ptBr: TranslationMap = {
     advancedSettingsHint: 'Limites de nudge, portões de conclusão, loop macro — em geral deixe o padrão.',
     saveAdvanced: 'Salvar configurações avançadas',
     saveAdvancedHint: 'Necessário após editar itens avançados; modos de trabalho salvam automaticamente.',
+    saveAdvancedHintSession:
+      'Necessário após editar itens avançados; aplica-se a esta sessão no próximo turno.',
     summaryLht_auto: 'ligado·auto',
     summaryLht_strict: 'ligado·estrito',
     summaryLht_off: 'desligado',

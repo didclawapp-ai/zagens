@@ -4,6 +4,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use zagens_core::engine::StartTurnParams;
 
+use crate::config::resolve_effective_config;
+
 use super::manager::parse_mode;
 use super::{RuntimeThreadManager, StartTurnRequest};
 use zagens_runtime_orchestrator::runtime_threads::RuntimeThreadHost;
@@ -53,12 +55,14 @@ impl RuntimeThreadHost<super::RuntimeEnginePolicy, super::RuntimeUserInputRespon
             (requested_model, None)
         };
         let allow_shell = req.allow_shell.unwrap_or(thread.allow_shell);
-        let trust_mode = req.trust_mode.unwrap_or(thread.trust_mode);
+        let requested_trust = req.trust_mode.unwrap_or(thread.trust_mode);
+        let trust_mode = self.config.effective_trust_mode(Some(requested_trust));
         let auto_approve = req.auto_approve.unwrap_or(thread.auto_approve);
+        let effective = resolve_effective_config(&self.config, thread.config_overlay.as_ref());
         let approval_mode = if auto_approve {
             zagens_core::approval::ApprovalMode::Auto
         } else {
-            self.config
+            effective
                 .approval_policy
                 .as_deref()
                 .and_then(zagens_core::approval::ApprovalMode::from_config_value)

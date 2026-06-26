@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useT } from '../i18n';
 import {
   applyLhtPreset,
+  deleteThreadConfigField,
   fetchLhtComposerMode,
   fetchLhtSettings,
+  fetchThreadConfig,
+  previewLhtPreset,
+  putThreadConfig,
   saveLhtComposerMode,
   saveLhtSettings,
   type LhtGateMode,
@@ -11,6 +15,12 @@ import {
   type LhtSettings,
 } from '../api/client';
 import { confirmDialog } from '../lib/confirmDialog';
+import {
+  lhtSettingsFromEffectiveOverlay,
+  lhtSettingsToOverlay,
+  overlayHasSessionOverrides,
+  type ThreadConfigResponse,
+} from '../lib/threadConfigOverlay';
 import {
   COMPOSER_MODE_FOR_PRESET,
   effectiveLhtEnabled,
@@ -25,6 +35,8 @@ import { LHT_COMPOSER_MODE_CHANGED_EVENT, type LhtComposerMode } from './LhtMode
 interface Props {
   desktopHost: boolean;
   streaming?: boolean;
+  /** When set, LHT writes go to per-session overlay (zero sidecar restart). */
+  threadId?: string | null;
 }
 
 const LHT_PRESETS: { id: LhtPresetId; labelKey: string; descKey: string }[] = [
@@ -45,7 +57,9 @@ function presetLabelKey(presetId: LhtPresetId): string {
   return row?.labelKey ?? 'lhtSettings.presetCodeDefault';
 }
 
-export default function LhtSettingsPanel({ desktopHost, streaming = false }: Props) {
+type WriteScope = 'session' | 'global';
+
+export default function LhtSettingsPanel({ desktopHost, streaming = false, threadId = null }: Props) {
   const { t } = useT();
   const [settings, setSettings] = useState<LhtSettings | null>(null);
   const [composerMode, setComposerMode] = useState<LhtComposerMode>('auto');
@@ -53,6 +67,31 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
   const [saving, setSaving] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activePreset, setActivePreset] = useState<LhtPresetId | 'custom'>('code-default');
+  const [writeScope, setWriteScope] = useState<WriteScope>(threadId?.trim() ? 'session' : 'global');
+  const [threadConfig, setThreadConfig] = useState<ThreadConfigResponse | null>(null);
+
+  const hasThread = Boolean(threadId?.trim());
+  const sessionScoped = hasThread && writeScope === 'session';
+  const hasSessionOverlay = overlayHasSessionOverrides(threadConfig?.overlay);
+
+  const loadPanelState = useCallback(async () => {
+    const globalSettings = await fetchLhtSettings();
+    let settings = globalSettings;
+    let mode: LhtComposerMode = 'auto';
+    let cfg: ThreadConfigResponse | null = null;
+    if (sessionScoped && threadId?.trim()) {
+      cfg = await fetchThreadConfig(threadId.trim());
+      const mapped = lhtSettingsFromEffectiveOverlay(cfg.effective, globalSettings);
+      settings = mapped.settings;
+      mode = mapped.composerMode;
+    } else {
+      mode = await fetchLhtComposerMode();
+    }
+    setThreadConfig(cfg);
+    setSettings(settings);
+    setComposerMode(mode);
+    setActivePreset(matchPresetFromSettings(settings));
+  }, [sessionScoped, threadId]);
 
   useEffect(() => {
     if (!desktopHost) {
@@ -60,22 +99,27 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
       return;
     }
     let cancelled = false;
-    Promise.all([fetchLhtSettings(), fetchLhtComposerMode()])
-      .then(([s, mode]) => {
-        if (!cancelled) {
-          setSettings(s);
-          setComposerMode(mode);
-          setActivePreset(matchPresetFromSettings(s));
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
+    (async () => {
+      try {
+        await loadPanelState();
+      } catch {
+        /* keep defaults */
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [desktopHost]);
+  }, [desktopHost, loadPanelState]);
+
+  useEffect(() => {
+    if (threadId?.trim()) {
+      setWriteScope((prev) => (prev === 'global' ? prev : 'session'));
+    } else {
+      setWriteScope('global');
+    }
+  }, [threadId]);
 
   useEffect(() => {
     if (!desktopHost) return;
@@ -95,6 +139,56 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
     return () => window.removeEventListener(LHT_COMPOSER_MODE_CHANGED_EVENT, onComposerModeChanged);
   }, [desktopHost]);
 
+  const handleScopeChange = useCallback(
+    async (next: WriteScope) => {
+      if (next === writeScope) return;
+      setWriteScope(next);
+      setLoading(true);
+      try {
+        const globalSettings = await fetchLhtSettings();
+        if (next === 'session' && threadId?.trim()) {
+          const cfg = await fetchThreadConfig(threadId.trim());
+          const mapped = lhtSettingsFromEffectiveOverlay(cfg.effective, globalSettings);
+          setThreadConfig(cfg);
+          setSettings(mapped.settings);
+          setComposerMode(mapped.composerMode);
+          setActivePreset(matchPresetFromSettings(mapped.settings));
+        } else {
+          setThreadConfig(null);
+          setSettings(globalSettings);
+          setComposerMode(await fetchLhtComposerMode());
+          setActivePreset(matchPresetFromSettings(globalSettings));
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [writeScope, threadId],
+  );
+
+  const handleClearSessionOverride = useCallback(async () => {
+    const id = threadId?.trim();
+    if (!id || !hasSessionOverlay) return;
+    if (!(await confirmDialog(t('lhtSettings.clearSessionOverrideConfirm')))) return;
+    setSaving(true);
+    try {
+      await deleteThreadConfigField(id, 'long_horizon');
+      await deleteThreadConfigField(id, 'lht_composer_mode');
+      const globalSettings = await fetchLhtSettings();
+      const cfg = await fetchThreadConfig(id);
+      const mapped = lhtSettingsFromEffectiveOverlay(cfg.effective, globalSettings);
+      setThreadConfig(cfg);
+      setSettings(mapped.settings);
+      setComposerMode(mapped.composerMode);
+      setActivePreset(matchPresetFromSettings(mapped.settings));
+      window.dispatchEvent(
+        new CustomEvent(LHT_COMPOSER_MODE_CHANGED_EVENT, { detail: mapped.composerMode }),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [threadId, hasSessionOverlay, t]);
+
   const update = useCallback(<K extends keyof LhtSettings>(key: K, value: LhtSettings[K]) => {
     setSettings((prev) => {
       if (!prev) return prev;
@@ -104,42 +198,66 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
     });
   }, []);
 
-  const syncComposerMode = useCallback(async (mode: LhtComposerMode) => {
-    await saveLhtComposerMode(mode);
-    setComposerMode(mode);
-    window.dispatchEvent(new CustomEvent(LHT_COMPOSER_MODE_CHANGED_EVENT, { detail: mode }));
-    const refreshed = await fetchLhtSettings();
-    setSettings(refreshed);
-    setActivePreset(matchPresetFromSettings(refreshed));
-  }, []);
+  const syncComposerMode = useCallback(
+    async (mode: LhtComposerMode) => {
+      if (sessionScoped && threadId?.trim()) {
+        const cfg = await putThreadConfig(threadId.trim(), { lht_composer_mode: mode });
+        setThreadConfig(cfg);
+      } else {
+        await saveLhtComposerMode(mode);
+      }
+      setComposerMode(mode);
+      window.dispatchEvent(new CustomEvent(LHT_COMPOSER_MODE_CHANGED_EVENT, { detail: mode }));
+      if (!sessionScoped) {
+        const refreshed = await fetchLhtSettings();
+        setSettings(refreshed);
+        setActivePreset(matchPresetFromSettings(refreshed));
+      }
+    },
+    [sessionScoped, threadId],
+  );
 
   const handleApplyPreset = useCallback(
     async (presetId: LhtPresetId) => {
       if (!desktopHost) return;
-      if (streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
+      if (!sessionScoped && streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
         return;
       }
       setSaving(true);
       try {
-        const next = await applyLhtPreset(presetId);
-        setSettings(next);
+        const pairedComposer = COMPOSER_MODE_FOR_PRESET[presetId];
+        if (sessionScoped && threadId?.trim()) {
+          const preview = await previewLhtPreset(presetId);
+          const cfg = await putThreadConfig(
+            threadId.trim(),
+            lhtSettingsToOverlay(preview, pairedComposer),
+          );
+          setThreadConfig(cfg);
+          setSettings(preview);
+          setComposerMode(pairedComposer);
+          window.dispatchEvent(
+            new CustomEvent(LHT_COMPOSER_MODE_CHANGED_EVENT, { detail: pairedComposer }),
+          );
+        } else {
+          const next = await applyLhtPreset(presetId);
+          setSettings(next);
+          if (pairedComposer !== composerMode) {
+            await syncComposerMode(pairedComposer);
+          }
+        }
         rememberLastPreset(presetId);
         setActivePreset(presetId);
-        const pairedComposer = COMPOSER_MODE_FOR_PRESET[presetId];
-        if (pairedComposer !== composerMode) {
-          await syncComposerMode(pairedComposer);
-        }
       } finally {
         setSaving(false);
       }
     },
-    [desktopHost, streaming, t, composerMode, syncComposerMode],
+    [desktopHost, sessionScoped, streaming, t, threadId, composerMode, syncComposerMode],
   );
 
   const handleComposerModeChange = useCallback(
     async (mode: LhtComposerMode) => {
       if (!desktopHost || mode === composerMode) return;
-      if (streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
+      if (!sessionScoped && streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
         return;
       }
       setSaving(true);
@@ -149,7 +267,7 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
         setSaving(false);
       }
     },
-    [desktopHost, composerMode, streaming, t, syncComposerMode],
+    [desktopHost, composerMode, sessionScoped, streaming, t, syncComposerMode],
   );
 
   const handleSave = useCallback(async () => {
@@ -161,17 +279,22 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
     if (enforcing && !(await confirmDialog(t('lhtSettings.enforceConfirm')))) {
       return;
     }
-    if (streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
+    if (!sessionScoped && streaming && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
       return;
     }
     setSaving(true);
     try {
-      await saveLhtSettings(settings);
+      if (sessionScoped && threadId?.trim()) {
+        const cfg = await putThreadConfig(threadId.trim(), lhtSettingsToOverlay(settings, composerMode));
+        setThreadConfig(cfg);
+      } else {
+        await saveLhtSettings(settings);
+      }
       setActivePreset(matchPresetFromSettings(settings));
     } finally {
       setSaving(false);
     }
-  }, [settings, desktopHost, streaming, t]);
+  }, [settings, desktopHost, sessionScoped, streaming, threadId, composerMode, t]);
 
   const selectCls =
     'w-full rounded-lg border border-divider bg-canvas px-3 py-2 text-xs text-t-text focus:outline-none focus:ring-1 focus:ring-accent';
@@ -202,8 +325,55 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
 
   return (
     <div className="p-4 space-y-5 overflow-y-auto h-full">
+      {hasThread && (
+        <section className="space-y-2 border-b border-divider pb-3">
+          <p className={sectionCls}>{t('lhtSettings.scopeSection')}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(['session', 'global'] as const).map((scope) => (
+              <button
+                key={scope}
+                type="button"
+                disabled={saving}
+                onClick={() => void handleScopeChange(scope)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                  writeScope === scope
+                    ? 'bg-accent text-white'
+                    : 'border border-divider bg-canvas text-t-text-secondary hover:border-accent/40'
+                }`}
+              >
+                {t(
+                  scope === 'session'
+                    ? 'lhtSettings.scopeSession'
+                    : 'lhtSettings.scopeGlobal',
+                )}
+              </button>
+            ))}
+          </div>
+          <p className={descCls}>
+            {sessionScoped ? t('lhtSettings.scopeSessionHint') : t('lhtSettings.scopeGlobalHint')}
+          </p>
+          {hasSessionOverlay && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-accent leading-relaxed">
+                {sessionScoped
+                  ? t('lhtSettings.sessionOverrideBadge')
+                  : t('lhtSettings.sessionOverrideActiveWhileGlobal')}
+              </p>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void handleClearSessionOverride()}
+                className="rounded-full border border-divider bg-canvas px-3 py-1 text-[11px] font-medium text-t-text-secondary transition-colors hover:border-accent/40 disabled:opacity-50"
+              >
+                {t('lhtSettings.clearSessionOverride')}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
       <p className="text-xs text-t-text-muted leading-relaxed border-b border-divider pb-3">
-        {t('lhtSettings.introShort')}
+        {sessionScoped ? t('lhtSettings.introSession') : t('lhtSettings.introShort')}
       </p>
 
       {!desktopHost && (
@@ -320,7 +490,9 @@ export default function LhtSettingsPanel({ desktopHost, streaming = false }: Pro
                     {saving ? t('settings.saving') : t('lhtSettings.saveAdvanced')}
                   </button>
                   <p className="text-[10px] text-t-text-muted mt-1.5 text-center">
-                    {t('lhtSettings.saveAdvancedHint')}
+                    {sessionScoped
+                      ? t('lhtSettings.saveAdvancedHintSession')
+                      : t('lhtSettings.saveAdvancedHint')}
                   </p>
                 </div>
               </div>

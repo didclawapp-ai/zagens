@@ -87,7 +87,7 @@ impl ToolSpec for TaskCreateTool {
             workspace: Some(workspace),
             mode: optional_str(&input, "mode").map(ToString::to_string),
             allow_shell: input.get("allow_shell").and_then(Value::as_bool),
-            trust_mode: input.get("trust_mode").and_then(Value::as_bool),
+            trust_mode: Some(context.trust_mode),
             auto_approve: input.get("auto_approve").and_then(Value::as_bool),
         };
         let task = task_from_value(

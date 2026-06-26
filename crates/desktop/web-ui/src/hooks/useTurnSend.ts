@@ -13,6 +13,7 @@ import {
   pollThreadTurnEvents,
   postStreamTurn,
   resumeSessionThread,
+  sseEventSeq,
   startThreadTurn,
   threadIdFromSseEvent,
   threadTurnStillActive,
@@ -63,6 +64,7 @@ import type { FinishOnceOptions } from './useTurnStream';
 import { saveStoredActiveSessionId } from '../lib/windowBridge';
 import { turnCacheHitPercent } from '../lib/cacheUsage';
 import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
+import { appendStreamingTextDelta } from '../lib/chat/formatAssistantContent';
 import {
   anyAssistantStreaming,
   clearStreamingAssistants,
@@ -73,6 +75,7 @@ import {
 import {
   isBackgroundStreamEvent,
 } from '../lib/chat/streamContextStore';
+import { getActiveThreadIdsFromStore } from '../lib/chat/threadStatusStore';
 import {
   clearActiveStreamHandles,
   readThreadTurn,
@@ -116,6 +119,10 @@ function nextSendKey(): string {
   return `__send_${++sendSeq}__`;
 }
 
+/** Soft warning / hard block for concurrent live SSE consumers (S1.2). */
+const MAX_CONCURRENT_STREAMING_WARN = 8;
+const MAX_CONCURRENT_STREAMING_LIMIT = 12;
+
 export type UseTurnSendParams = {
   t: (key: string, params?: Record<string, string>) => string;
   runtimeConn: RuntimeConnectionState;
@@ -133,7 +140,6 @@ export type UseTurnSendParams = {
   streamControllersRef: MutableRefObject<Map<string, AbortController>>;
   /** Per-send key for the pending controller (before turn_started resolves threadId). */
   pendingSendKeyRef: MutableRefObject<string | null>;
-  setStreamingThreadIds: Dispatch<SetStateAction<Set<string>>>;
   setPendingComposerStream: Dispatch<SetStateAction<boolean>>;
   setMessages: Dispatch<SetStateAction<TurnChatMessage[]>>;
   setResumedThreadId: Dispatch<SetStateAction<string | null>>;
@@ -151,7 +157,7 @@ export type UseTurnSendParams = {
   resetAgentPanel: () => void;
   onAgentSpawnToolStarted: (toolCallId: string, name: string, input: unknown) => void;
   onAgentSpawnToolCompleted: (toolCallId: string, toolName: string, mergedOutput: string) => void;
-  applyAgentStreamEvent: (norm: NormalizedStreamEvent) => boolean;
+  applyAgentStreamEvent: (norm: NormalizedStreamEvent, originThreadId?: string) => boolean;
   showApprovalIfOwned: (desktopHost: boolean, payload: ApprovalState) => void;
   /** Called after each tool finishes (office deliverable hook, etc.). */
   onToolCompleted?: (toolName: string, success: boolean, output: string) => void;
@@ -168,7 +174,6 @@ export type UseTurnSendParams = {
   bindThreadSession?: (threadId: string, sessionId: string | null | undefined) => void;
   /** Navigate to a persisted session (background turn complete toast action). */
   onNavigateToSession?: (sessionId: string) => void;
-  streamingThreadIdsRef?: MutableRefObject<Set<string>>;
 };
 
 export type UseTurnSendResult = {
@@ -196,7 +201,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     desktopHost,
     streamControllersRef,
     pendingSendKeyRef,
-    setStreamingThreadIds,
     setPendingComposerStream,
     setMessages,
     setResumedThreadId,
@@ -225,12 +229,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     streamRegistry,
     bindThreadSession,
     onNavigateToSession,
-    streamingThreadIdsRef,
   } = params;
 
   const lastPersistedTurnRef = useRef('');
-  const toolProgressPendingRef = useRef('');
-  const toolProgressRafRef = useRef<number | null>(null);
 
   const { shouldSkipFinishOnAbort, clearDetachedState } = useTurnStreamRecovery({
     t,
@@ -240,12 +241,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     resumedThreadIdRef,
     streamControllersRef,
     setMessages,
-    setStreamingThreadIds,
     setPendingComposerStream,
     handleCancelStream,
     notifyRuntimeTransient,
     refreshThreadContext,
-    streamingThreadIdsRef,
     streamRegistry,
   });
 
@@ -283,6 +282,15 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         return;
       }
 
+      const concurrentStreams = getActiveThreadIdsFromStore().size;
+      if (concurrentStreams >= MAX_CONCURRENT_STREAMING_LIMIT) {
+        toast.warning(t('composer.concurrentStreamsLimit'));
+        return;
+      }
+      if (concurrentStreams >= MAX_CONCURRENT_STREAMING_WARN) {
+        toast.warning(t('composer.concurrentStreamsWarn'));
+      }
+
       userStopRequestedRef.current = false;
       setPendingComposerStream(true);
 
@@ -307,7 +315,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
 
       const knownThreadAtSend = syncResolvedThread ?? resumedThreadIdRef.current;
       if (knownThreadAtSend) {
-        setStreamingThreadIds((prev) => new Set(prev).add(knownThreadAtSend));
         streamRegistry.ensureContext(knownThreadAtSend, ownerSessionId);
         bindThreadSession?.(knownThreadAtSend, ownerSessionId);
       }
@@ -362,20 +369,19 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       setLhtChip(null);
       resetAgentPanel();
       toast.dismissAll();
-      toolProgressPendingRef.current = '';
-      if (toolProgressRafRef.current != null) {
-        cancelAnimationFrame(toolProgressRafRef.current);
-        toolProgressRafRef.current = null;
-      }
       void (async () => {
+        let toolProgressPending = '';
+        let toolProgressRaf: number | null = null;
+        let lastEventSeq = 0;
+
         const ctx = {
           currentToolId: { current: null as string | null },
         };
 
         const flushToolProgressToState = () => {
-          const chunk = toolProgressPendingRef.current;
+          const chunk = toolProgressPending;
           if (!chunk) return;
-          toolProgressPendingRef.current = '';
+          toolProgressPending = '';
           setMessages((prev) => {
             const targetId = resolveStreamTargetId(prev, streamTarget);
             return prev.map((m) => {
@@ -405,9 +411,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         };
 
         const scheduleToolProgressFlush = () => {
-          if (toolProgressRafRef.current != null) return;
-          toolProgressRafRef.current = requestAnimationFrame(() => {
-            toolProgressRafRef.current = null;
+          if (toolProgressRaf != null) return;
+          toolProgressRaf = requestAnimationFrame(() => {
+            toolProgressRaf = null;
             flushToolProgressToState();
           });
         };
@@ -421,12 +427,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           streamRegistry.patchContext(tid, {
             isStreaming: false,
             pendingApproval: null,
-          });
-          setStreamingThreadIds((prev) => {
-            if (!prev.has(tid)) return prev;
-            const next = new Set(prev);
-            next.delete(tid);
-            return next;
           });
         };
 
@@ -530,7 +530,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         const completeBackgroundStream = () => {
           if (finished) return;
           finished = true;
-          userStopRequestedRef.current = false;
           if (!signal.aborted) {
             controller.abort();
           }
@@ -550,10 +549,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         const completeStreamUi = () => {
           if (finished) return;
           finished = true;
-          userStopRequestedRef.current = false;
-          if (toolProgressRafRef.current != null) {
-            cancelAnimationFrame(toolProgressRafRef.current);
-            toolProgressRafRef.current = null;
+          if (toolProgressRaf != null) {
+            cancelAnimationFrame(toolProgressRaf);
+            toolProgressRaf = null;
           }
           flushToolProgressToState();
           if (!signal.aborted) {
@@ -649,7 +647,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 return;
               }
               if (active) {
-                setStreamingThreadIds((prev) => new Set(prev).add(threadId));
                 setPendingComposerStream(true);
                 setMessages((prev) => {
                   const lastId = lastAssistantMessageId(prev);
@@ -727,6 +724,15 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         };
 
         const applyNorm = (norm: NormalizedStreamEvent) => {
+          if (norm.kind === 'thread_status') {
+            // Thread streaming status is owned exclusively by the always-on
+            // global status channel (`useThreadStatusGlobalStream`). Ignoring it
+            // on the per-thread content SSE avoids backlog replay re-activating a
+            // completed thread after `idle` (ghost spinner / composer lock), and
+            // keeps a single authoritative feed into `threadStatusStore`.
+            return;
+          }
+
           // Multi-session P0.3: resolve the owning thread for this event.
           // `turn_started` carries it explicitly; all subsequent events on the
           // same SSE consumer inherit the `ownerThreadId` closure value.
@@ -762,7 +768,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 });
                 bindThreadSession?.(eventThreadId, ownerSessionId);
                 scheduleThreadSessionPersist(eventThreadId);
-                setStreamingThreadIds((prev) => new Set(prev).add(eventThreadId));
                 break;
               case 'approval_required':
                 streamRegistry.patchContext(eventThreadId, {
@@ -883,7 +888,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 resumedThreadIdRef.current = norm.threadId;
                 setResumedThreadId(norm.threadId);
                 void registerWindowThread(norm.threadId);
-                setStreamingThreadIds((prev) => new Set(prev).add(norm.threadId));
                 setPendingComposerStream(false);
                 // Migrate the controller from the per-send key to the real
                 // threadId so that subsequent cancel/abort resolves correctly.
@@ -901,7 +905,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 const targetId = resolveStreamTargetId(prev, streamTarget);
                 return prev.map((m) => {
                   if (m.id !== targetId) return m;
-                  return { ...m, thinking: (m.thinking ?? '') + norm.content };
+                  return {
+                    ...m,
+                    thinking: appendStreamingTextDelta(m.thinking ?? '', norm.content),
+                  };
                 });
               });
               break;
@@ -910,7 +917,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 const targetId = resolveStreamTargetId(prev, streamTarget);
                 return prev.map((m) => {
                   if (m.id !== targetId) return m;
-                  return { ...m, content: m.content + norm.content };
+                  return {
+                    ...m,
+                    content: appendStreamingTextDelta(m.content, norm.content),
+                  };
                 });
               });
               break;
@@ -932,13 +942,13 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               break;
             }
             case 'tool_progress':
-              toolProgressPendingRef.current += norm.output;
+              toolProgressPending += norm.output;
               scheduleToolProgressFlush();
               break;
             case 'tool_completed': {
-              if (toolProgressRafRef.current != null) {
-                cancelAnimationFrame(toolProgressRafRef.current);
-                toolProgressRafRef.current = null;
+              if (toolProgressRaf != null) {
+                cancelAnimationFrame(toolProgressRaf);
+                toolProgressRaf = null;
               }
               flushToolProgressToState();
               const outStr = capToolOutputForDisplay(toolOutputString(norm.output));
@@ -1023,7 +1033,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             case 'agent_progress':
             case 'agent_completed':
             case 'agent_list':
-              applyAgentStreamEvent(norm);
+              applyAgentStreamEvent(norm, ownerThreadId || eventThreadId || undefined);
               break;
             case 'panel_scratchpad': {
               const raw = norm.scratchpad;
@@ -1068,8 +1078,15 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           }
         };
 
-        const deliverSseEvent = (ev: SseTurnEvent, filter?: { turnId: string }) => {
-          if (signal.aborted) return;
+        const deliverSseEvent = (ev: SseTurnEvent & { seq?: number }, filter?: { turnId: string }) => {
+          if (finished || signal.aborted) return;
+          const seq = sseEventSeq(ev);
+          if (seq != null) {
+            if (seq <= lastEventSeq) {
+              return;
+            }
+            lastEventSeq = seq;
+          }
           const norm = normalizeDesktopStreamEvent(ev, filter);
           if (norm) {
             applyNorm(norm);
@@ -1130,8 +1147,8 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         const routeIntentApi = resolveRouteIntentForApi(routeIntent, runMode);
 
         const repairStaleStreamingThreads = async () => {
-          const ids = streamingThreadIdsRef?.current;
-          if (!ids?.size) return;
+          const ids = getActiveThreadIdsFromStore();
+          if (!ids.size) return;
           await Promise.all(
             [...ids].map(async (tid) => {
               try {
@@ -1184,6 +1201,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               return;
             }
             const sinceSeq = detail.latest_seq ?? 0;
+            lastEventSeq = sinceSeq;
             const turnBody = {
               model: selectedModel,
               mode: streamOpts.mode,
@@ -1297,10 +1315,10 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 writeLiveDeliver(streamRegistry, sendThreadId, onSseEvent);
                 resumedThreadIdRef.current = sendThreadId;
                 setResumedThreadId(sendThreadId);
-                setStreamingThreadIds((prev) => new Set(prev).add(sendThreadId));
                 setPendingComposerStream(true);
                 syncRecoveryContext();
                 toast.warning(t('composer.turnStillRunning'));
+                lastEventSeq = detail.latest_seq ?? 0;
                 await pollThreadTurnEvents(
                   sendThreadId,
                   detail.latest_seq ?? 0,
@@ -1337,7 +1355,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       modelParams,
       desktopHost,
       streamControllersRef,
-      setStreamingThreadIds,
       setPendingComposerStream,
       setMessages,
       setResumedThreadId,
@@ -1360,7 +1377,6 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       t,
       streamRegistry,
       bindThreadSession,
-      streamingThreadIdsRef,
     ],
   );
 

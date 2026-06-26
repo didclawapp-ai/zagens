@@ -60,6 +60,7 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         // both — they list `~/global.md` inside the project array.
         instructions: override_cfg.instructions.or(base.instructions),
         allow_shell: override_cfg.allow_shell.or(base.allow_shell),
+        trust_mode: override_cfg.trust_mode.or(base.trust_mode),
         approval_policy: override_cfg.approval_policy.or(base.approval_policy),
         sandbox_mode: override_cfg.sandbox_mode.or(base.sandbox_mode),
         prefer_bwrap: override_cfg.prefer_bwrap.or(base.prefer_bwrap),

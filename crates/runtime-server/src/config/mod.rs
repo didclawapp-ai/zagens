@@ -43,11 +43,16 @@ pub const COMMON_DEEPSEEK_MODELS: &[&str] = &[
 
 pub(super) const API_KEYRING_SENTINEL: &str = "__KEYRING__";
 
+mod effective;
 mod load;
 mod providers;
 mod types;
 mod windows_sandbox;
 
+pub use effective::{
+    EffectiveLhtComposerMode, config_effective_view, resolve_effective_config,
+    resolve_lht_composer_mode,
+};
 pub use load::*;
 pub use providers::*;
 pub use types::*;

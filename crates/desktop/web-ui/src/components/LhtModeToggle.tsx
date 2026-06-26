@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
+import { fetchThreadConfig, putThreadConfig } from '../api/client';
 import { useT } from '../i18n';
 
 export const LHT_COMPOSER_MODE_CHANGED_EVENT = 'zagens-lht-composer-mode-changed';
 
 /**
  * Composer top-bar tri-state LHT override: auto → strict → off → auto.
- * Persisted to `settings.toml` as `lht_composer_mode`; read live by engine
- * spawn (next turn, no restart). `localStorage` mirrors for instant paint.
+ * With `threadId`, persisted via per-session overlay (zero sidecar restart).
+ * Without `threadId`, falls back to `settings.toml` / Tauri IPC.
  */
 export type LhtComposerMode = 'auto' | 'strict' | 'off';
 
@@ -43,29 +44,50 @@ async function readRuntimeMode(): Promise<LhtComposerMode | null> {
   }
 }
 
-async function writeRuntimeMode(mode: LhtComposerMode): Promise<void> {
+async function writeGlobalRuntimeMode(mode: LhtComposerMode): Promise<void> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('set_lht_composer_mode', { mode });
-    window.dispatchEvent(
-      new CustomEvent(LHT_COMPOSER_MODE_CHANGED_EVENT, { detail: mode }),
-    );
   } catch {
     /* browser dev */
   }
 }
 
-interface Props {
-  disabled?: boolean;
+function dispatchModeChanged(mode: LhtComposerMode): void {
+  window.dispatchEvent(
+    new CustomEvent(LHT_COMPOSER_MODE_CHANGED_EVENT, { detail: mode }),
+  );
 }
 
-export default function LhtModeToggle({ disabled = false }: Props) {
+interface Props {
+  disabled?: boolean;
+  /** When set, mode writes go to per-session overlay (no sidecar restart). */
+  threadId?: string | null;
+}
+
+export default function LhtModeToggle({ disabled = false, threadId = null }: Props) {
   const { t } = useT();
   const [mode, setMode] = useState<LhtComposerMode>(readStored);
+  const sessionScoped = Boolean(threadId?.trim());
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (sessionScoped && threadId?.trim()) {
+        try {
+          const cfg = await fetchThreadConfig(threadId.trim());
+          const raw = cfg.effective.lht_composer_mode;
+          const resolved: LhtComposerMode =
+            raw === 'strict' || raw === 'off' || raw === 'auto' ? raw : 'auto';
+          if (!cancelled) {
+            setMode(resolved);
+            persistLocal(resolved);
+          }
+          return;
+        } catch {
+          /* fall through to global */
+        }
+      }
       const runtime = await readRuntimeMode();
       if (!cancelled && runtime != null) {
         setMode(runtime);
@@ -75,6 +97,18 @@ export default function LhtModeToggle({ disabled = false }: Props) {
     return () => {
       cancelled = true;
     };
+  }, [sessionScoped, threadId]);
+
+  useEffect(() => {
+    const onComposerModeChanged = (event: Event) => {
+      const detail = (event as CustomEvent<LhtComposerMode>).detail;
+      if (detail === 'strict' || detail === 'off' || detail === 'auto') {
+        setMode(detail);
+        persistLocal(detail);
+      }
+    };
+    window.addEventListener(LHT_COMPOSER_MODE_CHANGED_EVENT, onComposerModeChanged);
+    return () => window.removeEventListener(LHT_COMPOSER_MODE_CHANGED_EVENT, onComposerModeChanged);
   }, []);
 
   const cycle = useCallback(() => {
@@ -82,10 +116,17 @@ export default function LhtModeToggle({ disabled = false }: Props) {
       const idx = CYCLE.indexOf(prev);
       const next = CYCLE[(idx + 1) % CYCLE.length] ?? 'auto';
       persistLocal(next);
-      void writeRuntimeMode(next);
+      void (async () => {
+        if (sessionScoped && threadId?.trim()) {
+          await putThreadConfig(threadId.trim(), { lht_composer_mode: next });
+        } else {
+          await writeGlobalRuntimeMode(next);
+        }
+        dispatchModeChanged(next);
+      })();
       return next;
     });
-  }, []);
+  }, [sessionScoped, threadId]);
 
   const label =
     mode === 'strict'
@@ -99,7 +140,9 @@ export default function LhtModeToggle({ disabled = false }: Props) {
       ? t('composer.lhtModeStrictHint')
       : mode === 'off'
         ? t('composer.lhtModeDisabledHint')
-        : t('composer.lhtModeAutoHint');
+        : sessionScoped
+          ? t('composer.lhtModeAutoHintSession')
+          : t('composer.lhtModeAutoHint');
 
   const chipClass =
     mode === 'strict'

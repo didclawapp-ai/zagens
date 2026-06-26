@@ -22,6 +22,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Desktop + Runtime (多会话 · C 方案 · per-session 配置):** `ThreadRecord.config_overlay`（schema v3）与 `resolve_effective_config` 三层合并；`GET/PUT/DELETE /v1/threads/{id}/config`；engine spawn / start-turn 读 effective 配置；overlay 变更 idle 时 unload engine、active turn 时 `pending_config_refresh`；LHT 设置面板在有当前会话时经 runtime API 写入 overlay（零 sidecar 重启）。 新增 `threadStatusStore`（seq 单调去重）；`GET /v1/events/status` 全局 status SSE（建连快照 + 实时 `thread.status`）；后端 `ThreadStatusOwner` 单 owner（idle=删除）；Stop/interrupt 即时发 idle。
+- **Desktop + Runtime (多会话 · C 方案 · P4/P5):** `GET /v1/runtime/active-turns`；sidecar 全局 config 重启门控（有 active turn 时默认排队至 idle，UI 横幅 +「立即重启」确认）；LHT 面板「当前会话 / 全局默认」作用域切换与 overlay 来源提示；Composer LHT 三态与会话 preset 经 overlay 写入；`preview_lht_preset` Tauri 命令（预览不写盘）。
+- **Desktop (多会话 · P3 UI 切换):** SessionStrip spinner、composer 锁、`streamingThreadIds` 全部派生自 `threadStatusStore`；删除 ~15 处乐观写与 App 两个 sweep effect；reconcile 降级为探活/补发，不再直接改 streaming 状态。
+
+### Fixed
+
+- **Security (audit 2026-06-26):** `trust_mode` 现由服务端 `config.toml` / `DEEPSEEK_TRUST_MODE` 门控（`Config::effective_trust_mode`）；API/stream/thread 创建与 patch 不再允许客户端单方面启用；`task_create` / `automation_create` 工具 schema 移除 `trust_mode` 输入，继承当前 `ToolContext`。Desktop sidecar 启动时设置 `DEEPSEEK_TRUST_MODE=1` 以保留 YOLO/信任模式 UI。
+- **Security (secrets):** 文件密钥库改为 temp-file + 原子 rename 写入；Unix chmod 失败时记录 warn（不再静默吞掉 EPERM 类错误）。
+- **Security (Windows WFP):** 端口/协议 block 过滤器显式 `weight=2`，避免 BFE 自动权重压过 loopback permit（weight 15）。
+- **Desktop (模型 probe):** `truncate_probe_body` 按字符边界截断，修复含中文/多字节 UTF-8 错误体时的 panic。 (1) LHT 面板新增「清除会话覆盖」（`DELETE /v1/threads/{id}/config/{field}`），并在切到「全局默认」但会话仍存覆盖时提示其优先级高于全局——修复此前切回全局后覆盖仍静默生效、且无 UI 入口清除的问题；(2) `ThreadConfigResponse` 增加 `base` 段（全局基线视图），便于 UI 区分「继承全局 / 会话覆盖」；(3) `ThreadConfigOverlay` 增加 `#[serde(flatten)] extras` 前向兼容兜底，新版本写入的未知字段经旧版本读取不再被丢弃（含往返单测）；(4) OpenAPI 补注册 `GET/PUT /v1/threads/{id}/config`、`DELETE …/config/{field}`、`GET /v1/runtime/active-turns` 路径与 `ThreadConfigOverlay`/`ThreadConfigResponse`/`RuntimeActiveTurns` schema（此前路由已上线但未进契约/生成的 TS 类型）。
+- **Desktop (多会话 · 系统设置面板会话级化):** 系统设置面板新增「当前会话 / 全局默认」作用域切换：会话级写入 `features`（web_search/exec_policy/subagents）、`approval_policy`、`compaction`、`memory`/`topic_memory`、`lsp`、`snapshots` 至线程 overlay（零重启、下一个 turn 生效）；进程级项（模型/推理强度/货币/沙箱/子代理上限与超时/通知方式/会话文件上限）在会话作用域下禁用并标注全局；附「清除会话覆盖」。`ThreadConfigOverlay` TS 模型补齐全部 overlay 段与 `SystemSettings ⇄ overlay` 映射器。
+- **Runtime (多会话 · C 方案 · 隔离回归测试):** 新增 3 条集成测试覆盖 §12 验收：两会话不同 overlay 独立解析（重演 2026-06-25 场景）、active turn 期间改 overlay 仅置 `pending_config_refresh` 不卸载引擎、idle 时改 overlay 立即卸载空闲引擎供下一 turn 重建。
+- **Lint:** 清理阻断 `clippy -D warnings` 的既有告警（`trace_compare`/`trace_bundle`/`kernel_event_writer` 的 `useless_conversion`/`needless_question_mark`、`impl_config`/`trace_export`/`engine_spawn` 的 `collapsible_if`/`needless as_deref`）。
+- **Desktop + Runtime (多会话 · 权威 store 收尾):** 让 `threadStatusStore` 成为唯一真相，消除重连/断线后的「幽灵生成中」：(1) 8s reconcile 探活路径接回权威 store（`clearStale/clearBackgroundStreamingUi` 发 `idle`），不再只补旧 registry；(2) `thread.status` 收敛为**单通道**喂入——per-thread 内容 SSE 不再写入 store，避免 backlog 重放在 idle 后复活线程；(3) 全局 status SSE 建连/lag 改发单帧 `thread.status.snapshot`（活跃集全量），前端按快照**对账**清理缺席的活跃条目；(4) 后端 `apply_local` 补 per-thread seq 单调 `debug_assert`；(5) 删除死代码 `threadStatusMirror.ts`（`normalizeThreadStreamStatus`/类型迁入 `threadStatusStore`）。
+- **Desktop (流式输出):** 修复推理/正文逐词重复——SSE `seq` 单调去重、`appendStreamingTextDelta` 安全合并、停止 `item.completed` thinking 全文二次 append；解析 SSE `id:` 作为 seq 回退。
+- **Desktop (Harness 长程任务卡片):** 修复会话进行中 LHT 浮卡不显示、仅在停止/回合结束后才出现的问题——清单 SSE 推送时同步刷新 task graph（后端 checklist 工具路径补发 `harness.task_graph`；前端监听 checklist 事件立即 GET 快照）；流式轮询间隔与 `hasLongHorizon` 判定与长程面板对齐。
+- **Desktop (Stop):** 点击停止后立即断开 SSE、乐观 idle 状态，并忽略迟到的 `streaming` 事件，避免 composer 短暂仍显示「生成中」或文字继续刷新。
+
 - **Desktop (模型接入面板 · Phase 1):** 设置菜单「API Key」改为「模型」；右侧面板分区展示主力模型（DeepSeek）与免费接入（OpenRouter、Ollama、Agnes AI、SenseNova）。填 Key 后自动写入 `~/.zagens/config.toml` + OS keyring 并重启 sidecar；支持「设为当前」切换 provider、Ollama/远端 **检测服务**。Runtime/config 新增 `agnes` / `sensenova` provider。Vision Bridge 移至面板「高级」折叠区。
 - **Desktop (模型接入 · Phase 2):** OpenRouter 展开后拉取 `/v1/models`，按 pricing 分 **免费/收费** 列表，搜索过滤，点选即 `set_openrouter_model` 并激活 provider。
 - **Desktop (模型接入 · SenseNova):** 展开 SenseNova 后从官方 `GET https://token.sensenova.cn/v1/models` 拉取模型列表；点选或「设为当前」时缓存至 `[providers.sensenova].available_models`，Composer 输入区模型下拉同步展示全部可用模型。
@@ -32,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Desktop web UI (multi-session architecture wrap-up):** Active transcript derived from `StreamContext` via draft buckets (`__new__` / `__draft__:{sessionId}`) and `migrateDraftToThread`; serialized `persist-session` per thread (`persistThreadSessionDeduped`); `test-multi-session` wired into `verify-workspace` and CI (ubuntu).
 - **Desktop web UI (multi-session registry SSOT):** Removed global `threadTurnRef` / `streamSessionRef` / `liveStreamDeliverRef` / `streamRecoveryContextRef`; per-thread handles live in `StreamContext` via `streamContextAccess.ts`.
 - **Runtime (`persist-session`):** `resolve_persist_session_id` claims orphan session hints and reverse-lookups by `runtime_thread_id` when client sid is stale — prevents duplicate sidebar rows during parallel detach/reattach.
+- **Desktop web UI (multi-session hardening S0–S1):** Agent stream events use the same active-thread guard as `panelChannel`; idle non-active `StreamContext` messages/panel slices evict to `sessionUiCache` after 5 minutes; `toolProgress` RAF state is per-send closure; concurrent streaming warns at 8 sessions and blocks new sends at 12.
+- **Runtime + Desktop web UI (multi-session S2.1):** Runtime emits durable `thread.status` SSE events (`streaming` / `awaiting_approval` / `idle` / `error`) on turn lifecycle; desktop mirrors them into `streamingThreadIds` and registry `isStreaming` (8s reconcile remains compensation sync).
 
 ### Changed
 
@@ -39,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop / Session list:** 模型生成中（含推理阶段）时，侧栏会话标题的运行 spinner 与主视图同步，不再误显示为已完成打勾。
+- **Desktop (模型接入 · Agnes AI):** 展开 Agnes AI 卡片后现从 `/v1/models` 拉取并展示模型列表，点选即 `set_agnes_model` 并激活 provider；catalog 写入 `[providers.agnes].available_models`，Composer 模型下拉同步。
+- **Desktop (模型接入 · Agnes AI · max_tokens):** 按 Agnes 2.0 文档解析 `/v1/models` 输出上限并写入 `[providers.agnes].model_output_limits`（默认 64K）；过滤 image/video 非 chat 模型；上下文用量估算改为 256K；Composer 与 runtime 双侧 catalog 自适应 clamp。
 - **Desktop (NVIDIA NIM · max_tokens):** 修复 catalog 误把 `max_model_len`（上下文）当作输出上限、DeepSeek V4 仍请求 384K 导致 `max_completion_tokens is too large: 384256`（NIM 上限 262144）的 HTTP 400；catalog 解析与 runtime `wire_max_tokens`、Composer 上限均钳制至 262144。
 - **Desktop (模型接入 · OpenRouter):** 选择 OpenRouter 模型后 Composer 现与 `config.toml` 的 `default_text_model` 同步；Runtime 将 OpenRouter 模型 ID 原样透传（不再误当作 DeepSeek ID 校验/回退默认模型），修复 sidecar 连接与请求模型不一致。
 - **Desktop (模型接入 · 密钥):** 模型面板与视觉桥接保存的密钥统一由 sidecar 启动时从系统密钥链注入对应环境变量（此前仅注入 `DEEPSEEK_API_KEY`）；覆盖 DeepSeek、OpenRouter、Ollama、Agnes、SenseNova 及 Novita/NVIDIA/OpenAI 等扩展 provider，并补全 Vision Bridge 的 `VISION_API_KEY`。

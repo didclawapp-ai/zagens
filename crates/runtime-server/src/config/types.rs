@@ -553,6 +553,9 @@ pub struct Config {
     /// missing optional file doesn't fail the launch.
     pub instructions: Option<Vec<String>>,
     pub allow_shell: Option<bool>,
+    /// When true, API clients may opt into trust mode per thread/turn.
+    /// Default false (deny-by-default); set via `config.toml` or `DEEPSEEK_TRUST_MODE`.
+    pub trust_mode: Option<bool>,
     pub approval_policy: Option<String>,
     pub sandbox_mode: Option<String>,
     /// Linux: prefer the Bubblewrap (bwrap) sandbox backend when installed
@@ -1031,6 +1034,7 @@ impl std::fmt::Debug for Config {
             )
             .field("default_text_model", &self.default_text_model)
             .field("allow_shell", &self.allow_shell)
+            .field("trust_mode", &self.trust_mode)
             .field("approval_policy", &self.approval_policy)
             .field("sandbox_mode", &self.sandbox_mode)
             .finish_non_exhaustive()

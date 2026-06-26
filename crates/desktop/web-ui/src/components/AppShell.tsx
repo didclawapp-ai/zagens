@@ -13,6 +13,7 @@ import HarnessFloatStack from './chrome/HarnessFloatStack';
 import { HARNESS_CARD_VIEWS } from '../lib/harnessCardViews';
 import TitleBar from './TitleBar';
 import StoragePressureBanner from './StoragePressureBanner';
+import SidecarRestartPendingBanner from './SidecarRestartPendingBanner';
 import type { StoragePressureSnapshot } from '../lib/storagePressure';
 import SkipToMainLink from './SkipToMainLink';
 import { createAgentWindow } from '../lib/windowBridge';
@@ -334,6 +335,7 @@ export default function AppShell({
     <div className="flex flex-col h-screen w-screen bg-canvas">
       <SkipToMainLink />
       <StoragePressureBanner snapshot={storageSnapshot} level={storageLevel} />
+      <SidecarRestartPendingBanner />
       <TitleBar
         desktopHost={desktopHost}
         onNewWindow={() => {
@@ -461,6 +463,7 @@ export default function AppShell({
               workspace={selectedWorkspace}
               onWorkspaceChange={onComposerWorkspaceChange}
               resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
+              threadId={resumedThreadId}
               contextUsagePct={contextUsagePct}
               contextUsedTokens={contextUsedTokens}
               contextWindowTokens={contextWindowTokens}

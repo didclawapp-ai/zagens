@@ -80,6 +80,9 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
         }
         if checklist_tool_needs_panel_push(tool_name) {
             let _ = self.emit_panel_checklist(thread_id, turn_id).await;
+            // Keep LHT harness card in sync with checklist SSE (desktop refetches
+            // task graph on checklist push; TUI reads the same snapshots).
+            let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
         }
         if scratchpad_tool_needs_panel_push(tool_name) && result.as_ref().is_ok_and(|o| o.success) {
             let _ = self.emit_panel_scratchpad(thread_id, turn_id).await;

@@ -157,6 +157,7 @@ mod tests {
             scratchpad_run_history: None,
             checklist_snapshot: None,
             plan_snapshot: None,
+            config_overlay: None,
         };
         assert_eq!(thread.scratchpad_history(), vec!["run-1".to_string()]);
     }
@@ -186,6 +187,7 @@ mod tests {
             scratchpad_run_history: None,
             checklist_snapshot: None,
             plan_snapshot: None,
+            config_overlay: None,
         };
         thread.record_scratchpad_run("audit-1");
         thread.record_scratchpad_run("audit-2");

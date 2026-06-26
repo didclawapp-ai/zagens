@@ -494,6 +494,7 @@ fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRec
         scratchpad_run_history,
         checklist_snapshot,
         plan_snapshot,
+        config_overlay: None,
     })
 }
 

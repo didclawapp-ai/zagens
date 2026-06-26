@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub mod active;
+pub mod config_overlay;
 pub mod engine_host;
 pub mod engine_load;
 pub mod event_coalesce;
@@ -20,7 +21,9 @@ pub mod prompt_inbox;
 pub mod routing;
 pub mod session_reconstruct;
 pub mod task_port;
+pub mod thread_config;
 pub mod thread_crud;
+pub mod thread_status;
 pub mod turn_control;
 pub mod turn_coordinator;
 pub mod turn_lifecycle;
@@ -37,12 +40,16 @@ pub use monitor::monitor_turn;
 pub use monitor_host::RuntimeThreadMonitorHost;
 pub use task_port::RuntimeThreadTaskPort;
 
+pub use config_overlay::{
+    CompactionOverlay, LspOverlay, MemoryOverlay, SnapshotsOverlay, ThreadConfigOverlay,
+    ThreadConfigResponse, TopicMemoryOverlay,
+};
 pub use persist::RuntimeThreadStore;
 pub use prompt_inbox::{PromptAdmission, PromptDelivery, PromptQueuedResponse};
 pub use turn_coordinator::TurnCoordinator;
 pub use types::*;
 
-pub const CURRENT_RUNTIME_SCHEMA_VERSION: u32 = 2;
+pub const CURRENT_RUNTIME_SCHEMA_VERSION: u32 = 3;
 
 /// Stable SSE / HTTP compat surface version (`API_DESIGN.md` §3.2.1).
 pub const CURRENT_EVENT_SCHEMA_VERSION: u32 = CURRENT_RUNTIME_SCHEMA_VERSION;

@@ -41,7 +41,6 @@ export type UseChatMessageActionsParams = {
   ) => void;
   setMessages: Dispatch<SetStateAction<TurnChatMessage[]>>;
   setResumedThreadId: Dispatch<SetStateAction<string | null>>;
-  setStreamingThreadIds: Dispatch<SetStateAction<Set<string>>>;
   setPendingComposerStream: Dispatch<SetStateAction<boolean>>;
   setThreadDetailForContext: Dispatch<SetStateAction<ThreadDetailWithTurns | null>>;
   setLastTurnOutputTokens: Dispatch<SetStateAction<number | null>>;
@@ -68,7 +67,6 @@ export function useChatMessageActions({
   handleSend,
   setMessages,
   setResumedThreadId,
-  setStreamingThreadIds,
   setPendingComposerStream,
   setThreadDetailForContext,
   setLastTurnOutputTokens,
@@ -207,7 +205,6 @@ export function useChatMessageActions({
       const newThreadId = thread.id;
       streamControllersRef.current.get(sourceThreadId)?.abort();
       streamControllersRef.current.delete(sourceThreadId);
-      setStreamingThreadIds(new Set());
       setPendingComposerStream(false);
       resetAgentPanel();
       resumedThreadIdRef.current = newThreadId;
@@ -251,7 +248,6 @@ export function useChatMessageActions({
     resetTurnPersistState,
     t,
     streamControllersRef,
-    setStreamingThreadIds,
     setPendingComposerStream,
     resumedThreadIdRef,
     setResumedThreadId,

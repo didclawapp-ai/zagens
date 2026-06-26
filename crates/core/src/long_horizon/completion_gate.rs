@@ -1,6 +1,6 @@
 //! Composable harness — completion gate manifest types (§6.1–6.2).
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Observe records gaps without reinject; enforce forces rework until pass or exhaustion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -210,7 +210,7 @@ impl CompletionGateConfig {
 }
 
 /// Deserializable `[long_horizon.completion_gate]` table.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct CompletionGateConfigToml {
     #[serde(default)]
     pub mode: Option<String>,
@@ -238,7 +238,7 @@ pub struct CompletionGateConfigToml {
     pub min_lines: Option<MinLinesGateToml>,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct MinLinesGateToml {
     #[serde(default)]
     pub frontend: Option<u32>,
@@ -250,7 +250,7 @@ pub struct MinLinesGateToml {
     pub backend_glob: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct CompletionGateVerifyToml {
     pub id: String,
     #[serde(default)]
@@ -263,7 +263,7 @@ pub struct CompletionGateVerifyToml {
     pub timeout_secs: Option<u32>,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct CompletionGateDeliverableToml {
     pub id: String,
     #[serde(default)]

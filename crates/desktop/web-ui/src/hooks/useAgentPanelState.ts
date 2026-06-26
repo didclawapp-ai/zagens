@@ -23,6 +23,7 @@ import {
   filterSubagentRowsForThread,
   type SubagentPollRow,
 } from '../lib/subagentStatePoll';
+import { shouldDispatchPanelForThread } from '../lib/panelChannel';
 import type { AgentState } from '../types/agent';
 
 type MessageLike = {
@@ -47,7 +48,7 @@ export type UseAgentPanelStateResult = {
   resetAgentPanel: () => void;
   onAgentSpawnToolStarted: (toolCallId: string, name: string, input: unknown) => void;
   onAgentSpawnToolCompleted: (toolCallId: string, toolName: string, mergedOutput: string) => void;
-  applyAgentStreamEvent: (norm: NormalizedStreamEvent) => boolean;
+  applyAgentStreamEvent: (norm: NormalizedStreamEvent, originThreadId?: string) => boolean;
   subagentActiveCount: number;
   narrativeSpawnSuspected: boolean;
 };
@@ -194,7 +195,10 @@ export function useAgentPanelState({
   );
 
   const applyAgentStreamEvent = useCallback(
-    (norm: NormalizedStreamEvent): boolean => {
+    (norm: NormalizedStreamEvent, originThreadId?: string): boolean => {
+      if (!shouldDispatchPanelForThread(originThreadId)) {
+        return false;
+      }
       if (!ownerThreadId) {
         return false;
       }

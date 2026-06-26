@@ -2,7 +2,7 @@
 
 use axum::Router;
 use axum::middleware;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 
 use zagens_runtime_api::{compose_router, require_runtime_token};
 
@@ -10,17 +10,18 @@ use super::stream;
 use super::{
     RuntimeApiState, add_mcp_server, browse_thread_workspace, browse_workspace_by_root,
     cancel_task, clear_tasks, compact_thread, create_automation, create_skill, create_task,
-    create_thread, delete_automation, delete_mcp_server, delete_session, discover_mcp,
-    edit_last_thread_turn, fork_thread, fork_thread_at_user_message, get_automation,
-    get_blackboard, get_kernel_thread_replay, get_kernel_turn_replay, get_mcp_server,
-    get_office_environment, get_resume_task, get_routing_rules, get_session, get_task, get_thread,
-    get_thread_checklist, get_thread_context, get_thread_harness_cycles,
+    create_thread, delete_automation, delete_mcp_server, delete_session,
+    delete_thread_config_field, discover_mcp, edit_last_thread_turn, fork_thread,
+    fork_thread_at_user_message, get_automation, get_blackboard, get_kernel_thread_replay,
+    get_kernel_turn_replay, get_mcp_server, get_office_environment, get_resume_task,
+    get_routing_rules, get_runtime_active_turns, get_session, get_task, get_thread,
+    get_thread_checklist, get_thread_config, get_thread_context, get_thread_harness_cycles,
     get_thread_harness_task_graph, get_thread_scratchpad_status, get_thread_trace_report,
     get_topic_memory, get_trace_compare, get_usage, import_skill_local, init_thread_scratchpad,
     install_skill_remote, interrupt_thread_turn, list_automation_runs, list_automations,
     list_blackboards, list_mcp_calls, list_mcp_servers, list_mcp_tools, list_sessions, list_skills,
     list_tasks, list_thread_snapshots, list_threads, list_threads_summary, merge_mcp_config_json,
-    pause_automation, persist_thread_session, read_thread_workspace_file,
+    pause_automation, persist_thread_session, put_thread_config, read_thread_workspace_file,
     read_workspace_file_by_root, rebuild_symbol_index, reload_mcp_config, resolve_approval,
     restore_thread_snapshot, resume_automation, resume_session_thread, resume_thread,
     run_automation, set_routing_rules, start_thread_turn, steer_thread_turn, update_automation,
@@ -38,6 +39,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         )
         .route("/v1/resume-tasks/{thread_id}", get(get_resume_task))
         .route("/v1/workspace/status", get(workspace_status))
+        .route("/v1/runtime/active-turns", get(get_runtime_active_turns))
         .route(
             "/v1/runtime/kernel-replay/thread/{thread_id}",
             get(get_kernel_thread_replay),
@@ -53,6 +55,14 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/threads", get(list_threads).post(create_thread))
         .route("/v1/threads/summary", get(list_threads_summary))
         .route("/v1/threads/{id}", get(get_thread).patch(update_thread))
+        .route(
+            "/v1/threads/{id}/config",
+            get(get_thread_config).put(put_thread_config),
+        )
+        .route(
+            "/v1/threads/{id}/config/{field}",
+            delete(delete_thread_config_field),
+        )
         .route("/v1/threads/{id}/checklist", get(get_thread_checklist))
         .route(
             "/v1/threads/{id}/harness/task-graph",
@@ -113,6 +123,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             get(read_thread_workspace_file),
         )
         .route("/v1/threads/{id}/events", get(stream::stream_thread_events))
+        .route(
+            "/v1/events/status",
+            get(stream::stream_global_status_events),
+        )
         .route(
             "/v1/threads/{id}/trace-report",
             get(get_thread_trace_report),
