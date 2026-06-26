@@ -97,6 +97,11 @@ function applyNormalized(state: HistoryState, norm: ReturnType<typeof normalizeD
       }
       state.assistantContent += norm.content;
       break;
+    case 'message_segment':
+      ensureAssistant(state);
+      state.assistantContent = mergeAgentMessageSegment(state.assistantContent, norm.content);
+      state.pendingParagraphBreak = true;
+      break;
     case 'tool_started':
       ensureAssistant(state);
       state.currentToolId = norm.id;

@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop web UI (chat transcript):** Turn end no longer leaves the assistant bubble truncated until re-selecting the session — compat SSE now maps `agent_message` `item.completed` to `message.segment`, live stream merges completed segments, and `completeStreamUi` reconciles from thread event replay when the persisted transcript is richer than the live snapshot.
 - **Security (audit 2026-06-26):** `trust_mode` 现由服务端 `config.toml` / `DEEPSEEK_TRUST_MODE` 门控（`Config::effective_trust_mode`）；API/stream/thread 创建与 patch 不再允许客户端单方面启用；`task_create` / `automation_create` 工具 schema 移除 `trust_mode` 输入，继承当前 `ToolContext`。Desktop sidecar 启动时设置 `DEEPSEEK_TRUST_MODE=1` 以保留 YOLO/信任模式 UI。
 - **Security (secrets):** 文件密钥库改为 temp-file + 原子 rename 写入；Unix chmod 失败时记录 warn（不再静默吞掉 EPERM 类错误）。
 - **Security (Windows WFP):** 端口/协议 block 过滤器显式 `weight=2`，避免 BFE 自动权重压过 loopback permit（weight 15）。

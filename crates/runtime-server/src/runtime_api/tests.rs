@@ -1224,6 +1224,32 @@ async fn stream_compat_mapping_handles_expected_runtime_events() -> Result<()> {
         "tool.completed must use engine tool id, not item id: {text}"
     );
 
+    let agent_done = RuntimeEventRecord {
+        schema_version: 1,
+        seq: 5,
+        timestamp: chrono::Utc::now(),
+        thread_id: "thr_test".to_string(),
+        turn_id: Some("turn_test".to_string()),
+        item_id: Some("item_agent".to_string()),
+        event: "item.completed".to_string(),
+        payload: json!({
+            "item": {
+                "id": "item_agent",
+                "kind": "agent_message",
+                "detail": "## Audit report\n\nDone."
+            }
+        }),
+    };
+    let mapped = map_compat_stream_event(&agent_done).context("missing message.segment event")?;
+    let stream = async_stream::stream! {
+        yield Ok::<_, Infallible>(mapped);
+    };
+    let body =
+        axum::body::to_bytes(Sse::new(stream).into_response().into_body(), usize::MAX).await?;
+    let text = String::from_utf8_lossy(&body);
+    assert!(text.contains("event: message.segment"));
+    assert!(text.contains("## Audit report"));
+
     let unknown = RuntimeEventRecord {
         schema_version: 1,
         seq: 4,

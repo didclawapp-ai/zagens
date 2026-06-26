@@ -97,6 +97,7 @@ pub(super) fn sse_json_seq(seq: u64, event: &str, payload: serde_json::Value) ->
 /// |------------------|------------------------|---------------------------|
 /// | `thinking.delta` | `item.delta` (thinking) | Reasoning / thinking increment |
 /// | `message.delta`  | `item.delta` (agent)   | Assistant text increment  |
+/// | `message.segment`| `item.completed` (agent) | Completed assistant segment body |
 /// | `tool.progress`  | `item.delta` (tool)    | Tool output streaming     |
 /// | `tool.started`   | `item.started` (tool)  | Tool call began           |
 /// | `tool.completed` | `item.completed` (tool)| Tool call finished        |
@@ -220,6 +221,21 @@ pub(super) fn map_compat_stream_event(
                     "error",
                     json!({ "message": message }),
                 ))
+            } else if kind == "agent_message" {
+                let content = item
+                    .get("detail")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| item.get("summary").and_then(|v| v.as_str()))
+                    .unwrap_or_default();
+                if content.is_empty() {
+                    None
+                } else {
+                    Some(sse_json_seq(
+                        event.seq,
+                        "message.segment",
+                        json!({ "content": content }),
+                    ))
+                }
             } else {
                 None
             }
@@ -771,6 +787,18 @@ mod tests {
         let text = render(sse).await;
         assert!(text.contains("event: tool.completed"));
         assert!(text.contains("\"success\":false"));
+    }
+
+    #[tokio::test]
+    async fn maps_agent_message_completed() {
+        let r = record(
+            "item.completed",
+            json!({"item": {"kind": "agent_message", "detail": "## Report\n\nDone."}}),
+        );
+        let sse = map_compat_stream_event(&r).expect("should map message.segment");
+        let text = render(sse).await;
+        assert!(text.contains("event: message.segment"));
+        assert!(text.contains("## Report"));
     }
 
     #[tokio::test]

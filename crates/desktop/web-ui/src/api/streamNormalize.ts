@@ -17,6 +17,7 @@ export const KNOWN_DESKTOP_SSE_EVENTS = new Set([
   'turn.started',
   'thinking.delta',
   'message.delta',
+  'message.segment',
   'tool.progress',
   'tool.started',
   'tool.completed',
@@ -68,6 +69,7 @@ export type NormalizedStreamEvent =
   | { kind: 'turn_started'; threadId: string; turnId: string }
   | { kind: 'thinking_delta'; content: string }
   | { kind: 'message_delta'; content: string }
+  | { kind: 'message_segment'; content: string }
   | { kind: 'tool_started'; id: string; name: string; input: unknown }
   | { kind: 'tool_progress'; output: string }
   | { kind: 'tool_completed'; id: string; success: boolean; output: unknown }
@@ -139,6 +141,9 @@ export function normalizeDesktopStreamEvent(
   }
   if (sse === 'message.delta') {
     return { kind: 'message_delta', content: String(j.content ?? '') };
+  }
+  if (sse === 'message.segment') {
+    return { kind: 'message_segment', content: String(j.content ?? '') };
   }
   if (sse === 'tool.progress') {
     return { kind: 'tool_progress', output: String(j.output ?? '') };
@@ -310,6 +315,17 @@ export function normalizeDesktopStreamEvent(
       // Live stream already applied incremental `item.delta` chunks; replay uses
       // `rebuildMessagesFromThread.applyRawRecord` for the completed item body.
       return null;
+    }
+    if (kind === 'agent_message') {
+      const text =
+        (item.detail as string | undefined) ??
+        (item.summary as string | undefined) ??
+        '';
+      const trimmed = text.trim();
+      if (!trimmed) {
+        return null;
+      }
+      return { kind: 'message_segment', content: trimmed };
     }
     if (kind === 'tool_call' || kind === 'file_change' || kind === 'command_execution') {
       const tool = inner.tool as Record<string, unknown> | undefined;

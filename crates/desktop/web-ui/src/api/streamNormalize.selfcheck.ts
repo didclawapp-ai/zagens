@@ -21,6 +21,26 @@ const completed = normalizeDesktopStreamEvent({
 });
 assert.equal(completed?.kind, 'turn_completed', 'turn.completed maps');
 
+const segment = normalizeDesktopStreamEvent({
+  event: 'message.segment',
+  data: JSON.stringify({ content: '## Report\n\nDone.' }),
+});
+assert.equal(segment?.kind, 'message_segment', 'message.segment maps');
+if (segment?.kind === 'message_segment') {
+  assert.equal(segment.content, '## Report\n\nDone.');
+}
+
+const agentCompleted = normalizeDesktopStreamEvent({
+  event: 'item.completed',
+  data: JSON.stringify({
+    event: 'item.completed',
+    payload: {
+      item: { kind: 'agent_message', detail: 'Final segment.' },
+    },
+  }),
+});
+assert.equal(agentCompleted?.kind, 'message_segment', 'item.completed agent_message maps to segment');
+
 assert.equal(KNOWN_DESKTOP_SSE_EVENTS.has('thread.status'), true);
 
 const threadStatus = normalizeDesktopStreamEvent({

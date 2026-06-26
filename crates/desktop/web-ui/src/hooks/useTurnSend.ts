@@ -20,7 +20,9 @@ import {
   type RuntimeConnectionState,
   type SseTurnEvent,
 } from '../api/client';
+import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
 import { persistThreadSessionDeduped } from '../lib/chat/persistThreadSessionDedup';
+import { sessionMessageRichness } from '../lib/chat/sessionMessagePick';
 import type { ComposerOutboundMessage } from '../components/Composer';
 import { normalizeDesktopStreamEvent, type NormalizedStreamEvent } from '../api/streamNormalize';
 import { notifyCraftBlackboardChanged } from '../lib/craftBlackboard';
@@ -64,7 +66,7 @@ import type { FinishOnceOptions } from './useTurnStream';
 import { saveStoredActiveSessionId } from '../lib/windowBridge';
 import { turnCacheHitPercent } from '../lib/cacheUsage';
 import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
-import { appendStreamingTextDelta } from '../lib/chat/formatAssistantContent';
+import { appendStreamingTextDelta, mergeAgentMessageSegment } from '../lib/chat/formatAssistantContent';
 import {
   anyAssistantStreaming,
   clearStreamingAssistants,
@@ -546,6 +548,30 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           }
         };
 
+        const syncTranscriptFromThread = (threadId: string) => {
+          void (async () => {
+            try {
+              const rebuilt = await rebuildMessagesFromThreadEvents(threadId);
+              if (rebuilt.length === 0) {
+                return;
+              }
+              setMessages((prev) => {
+                const cleared = clearStreamingAssistants(prev);
+                if (sessionMessageRichness(rebuilt) <= sessionMessageRichness(cleared)) {
+                  return prev;
+                }
+                const sid = activeSessionIdRef.current;
+                if (sid) {
+                  cacheSessionUiMessages(sessionUiCacheRef.current, sid, rebuilt);
+                }
+                return rebuilt as TurnChatMessage[];
+              });
+            } catch {
+              /* keep live snapshot */
+            }
+          })();
+        };
+
         const completeStreamUi = () => {
           if (finished) return;
           finished = true;
@@ -581,6 +607,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           const tid = finishedThreadId || readThreadTurn(streamRegistry, resumedThreadIdRef.current).threadId;
           if (tid) {
             void refreshThreadContext(tid);
+            syncTranscriptFromThread(tid);
           }
           maybePersistCompletedTurn();
         };
@@ -920,6 +947,18 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                   return {
                     ...m,
                     content: appendStreamingTextDelta(m.content, norm.content),
+                  };
+                });
+              });
+              break;
+            case 'message_segment':
+              setMessages((prev) => {
+                const targetId = resolveStreamTargetId(prev, streamTarget);
+                return prev.map((m) => {
+                  if (m.id !== targetId) return m;
+                  return {
+                    ...m,
+                    content: mergeAgentMessageSegment(m.content, norm.content),
                   };
                 });
               });
