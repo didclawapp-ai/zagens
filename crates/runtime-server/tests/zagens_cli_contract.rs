@@ -209,6 +209,32 @@ async fn zagens_cli_doctor_json_smoke() -> Result<()> {
     assert!(report.get("version").is_some());
     assert!(report.get("workspace").is_some());
     assert!(report.get("mcp").is_some());
+    assert!(report.get("context").is_some());
+
+    let _ = std::fs::remove_dir_all(&root);
+    Ok(())
+}
+
+#[tokio::test]
+async fn zagens_cli_open_url_validate_only() -> Result<()> {
+    let root = std::env::temp_dir().join(format!("zagens-open-url-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&root).context("create temp workspace")?;
+    let url = zagens_config::build_open_url(&root, Some("hello"), Some("code"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_zagens"))
+        .args(["open-url", url.as_str(), "--validate-only"])
+        .output()
+        .await
+        .context("run zagens open-url --validate-only")?;
+
+    assert!(
+        output.status.success(),
+        "open-url --validate-only failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("valid deep link"));
+    assert!(stdout.contains("task_type: code"));
 
     let _ = std::fs::remove_dir_all(&root);
     Ok(())

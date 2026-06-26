@@ -91,6 +91,8 @@ pub struct Cli {
 pub enum Commands {
     /// Run system diagnostics and check configuration
     Doctor(DoctorArgs),
+    /// Open a `zagens://` deep link (launch desktop when installed)
+    OpenUrl(OpenUrlArgs),
     /// Bootstrap MCP config and/or skills directories
     Setup(SetupArgs),
     /// Generate shell completions
@@ -234,6 +236,18 @@ pub struct DoctorArgs {
     /// Emit machine-readable JSON output (skips live API connectivity check)
     #[arg(long, default_value_t = false)]
     pub json: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct OpenUrlArgs {
+    /// `zagens://open?workspace=...&prompt=...&task_type=code`
+    pub url: String,
+    /// Parse/validate and emit JSON (still launches unless `--validate-only`)
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+    /// Validate only; do not launch the desktop app
+    #[arg(long, default_value_t = false)]
+    pub validate_only: bool,
 }
 
 #[derive(Args, Debug, Clone)]

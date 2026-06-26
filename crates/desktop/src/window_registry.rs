@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use uuid::Uuid;
+use zagens_config::DeepLinkOpen;
 
 pub const MAX_AGENT_WINDOWS: usize = 8;
 const PRODUCT_TITLE: &str = "Zagens";
@@ -19,6 +20,7 @@ struct RegistryInner {
     windows: HashMap<String, WindowRecord>,
     thread_owner: HashMap<String, String>,
     last_focused: String,
+    pending_deep_link: HashMap<String, DeepLinkOpen>,
 }
 
 #[derive(Clone)]
@@ -43,6 +45,7 @@ impl WindowRegistry {
                 windows: HashMap::new(),
                 thread_owner: HashMap::new(),
                 last_focused: "main".to_string(),
+                pending_deep_link: HashMap::new(),
             }),
         }
     }
@@ -150,6 +153,19 @@ impl WindowRegistry {
             .collect();
         out.sort_by(|a, b| a.label.cmp(&b.label));
         Ok(out)
+    }
+
+    pub fn stash_pending_deep_link(&self, label: &str, link: DeepLinkOpen) -> Result<(), String> {
+        let mut g = self.lock_inner()?;
+        g.pending_deep_link.insert(label.to_string(), link);
+        Ok(())
+    }
+
+    pub fn take_pending_deep_link(&self, label: &str) -> Option<DeepLinkOpen> {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|mut g| g.pending_deep_link.remove(label))
     }
 }
 
@@ -290,11 +306,10 @@ pub async fn create_agent_window_impl(
 
     let label = format!("pick-{}", Uuid::new_v4());
 
-    let window = build_agent_window(app, &label, &ws)?;
+    let _window = build_agent_window(app, &label, &ws)?;
     registry.register(&label, &ws)?;
     registry.set_last_focused(&label);
     notify_sidecar_ready_to_window(app, &label);
-    let _ = window.set_focus();
     Ok(label)
 }
 

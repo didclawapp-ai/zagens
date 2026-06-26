@@ -2,6 +2,7 @@
 
 mod commands;
 mod custom_providers;
+mod deep_link;
 mod disk_guard;
 mod export_path;
 mod model_providers;
@@ -20,6 +21,7 @@ use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+use tauri_plugin_deep_link::DeepLinkExt;
 use tokio::sync::Notify;
 use window_registry::WindowRegistry;
 use zagens_config::ConfigStore;
@@ -64,12 +66,19 @@ fn main() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(WindowRegistry::new());
 
     builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-        let ws = window_registry::parse_workspace_from_args(&argv);
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
+            if let Some(link) =
+                zagens_config::find_open_url_in_args(argv.iter().map(String::as_str))
+            {
+                let _ = deep_link::handle_open_deep_link(&app, link).await;
+                return;
+            }
+            let ws = window_registry::parse_workspace_from_args(&argv);
             let _ = window_registry::open_or_focus_workspace(&app, ws).await;
         });
     }));
@@ -148,6 +157,28 @@ fn main() {
                 let title = window_registry::window_title_for_workspace(&default_ws);
                 let _ = main.set_title(&title);
             }
+
+            let startup_args: Vec<String> = std::env::args().collect();
+            if let Some(link) =
+                zagens_config::find_open_url_in_args(startup_args.iter().map(String::as_str))
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = deep_link::handle_open_deep_link(&app_handle, link).await;
+                });
+            }
+
+            let handle_for_deep_link = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    if let Ok(link) = zagens_config::parse_open_url(url.as_ref()) {
+                        let app = handle_for_deep_link.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = deep_link::handle_open_deep_link(&app, link).await;
+                        });
+                    }
+                }
+            });
 
             let tray_image = app
                 .default_window_icon()
@@ -285,6 +316,7 @@ fn main() {
             window_registry::register_window_thread,
             window_registry::thread_owned_by_window,
             window_registry::close_current_window,
+            deep_link::take_pending_deep_link,
             update::get_update_status,
             update::install_app_update,
         ])

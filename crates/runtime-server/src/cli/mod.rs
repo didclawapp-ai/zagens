@@ -5,6 +5,7 @@ pub mod auto_route_cli;
 pub mod context;
 pub mod dispatch;
 pub mod doctor;
+pub mod doctor_context;
 pub mod entry;
 pub mod handlers;
 pub mod mcp_config;

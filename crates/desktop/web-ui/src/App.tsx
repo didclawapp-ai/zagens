@@ -31,6 +31,7 @@ import { useAgentPanelState } from './hooks/useAgentPanelState';
 import { useChatMessageActions } from './hooks/useChatMessageActions';
 import { useTraceExport } from './hooks/useTraceExport';
 import { useDesktopShell } from './hooks/useDesktopShell';
+import { useDeepLinkOpen } from './hooks/useDeepLinkOpen';
 import { useStoragePressure } from './hooks/useStoragePressure';
 import ShellLoadFailure from './components/ShellLoadFailure';
 import { useSessionNavigation } from './hooks/useSessionNavigation';
@@ -497,6 +498,14 @@ export default function App() {
     setActiveInspector,
     setRightPanelCollapsed,
     setAuditGridDismissed,
+  });
+
+  useDeepLinkOpen({
+    desktopHost,
+    shellPrefsReady,
+    setSelectedWorkspace,
+    setTaskTypePreference,
+    setComposerPrefill,
   });
 
   const { handleSend, resetTurnPersistState } = useTurnSend({

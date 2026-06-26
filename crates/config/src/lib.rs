@@ -15,12 +15,17 @@ pub use zagens_secrets::Secrets;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
+pub mod deep_link;
 mod hooks_config;
 mod lht_config;
 mod lht_presets;
 mod paths;
 mod ui_settings;
 mod windows;
+pub use deep_link::{
+    DEEP_LINK_OPEN_HOST, DEEP_LINK_SCHEME, DeepLinkError, DeepLinkOpen, build_open_url,
+    find_open_url_in_args, parse_open_url,
+};
 pub use hooks_config::{HookConditionToml, HookEventToml, HookToml, HooksConfigToml};
 pub use lht_config::{
     CompletionGateConfigToml, CompletionGateDeliverableToml, CompletionGateVerifyToml,

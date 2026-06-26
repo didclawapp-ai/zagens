@@ -10,6 +10,7 @@ use crate::cli::doctor::{
     McpServerDoctorStatus, doctor_api_target, doctor_check_mcp_server,
     doctor_timeout_recovery_lines,
 };
+use crate::cli::doctor_context::{build_context_report, print_context_human};
 use crate::cli::mcp_config::load_mcp_config;
 use crate::cli::setup::{
     ApiKeySource, count_dir_entries, default_plugins_dir, default_tools_dir,
@@ -57,6 +58,8 @@ async fn run_human(config: &Config, workspace: &Path, config_path_override: Opti
         ApiKeySource::Config => println!("  api_key: set (config)"),
         ApiKeySource::Keyring => println!("  api_key: set (keyring)"),
     }
+
+    print_context_human(config, workspace);
 
     println!();
     println!("{}", "MCP".bold());
@@ -171,6 +174,7 @@ fn run_json(config: &Config, workspace: &Path, config_path_override: Option<&Pat
             "note": "Skipped in --json mode; run `zagens doctor` for a live check.",
         },
         "capability": provider_capability_report(config),
+        "context": build_context_report(config, workspace),
     });
 
     println!("{}", serde_json::to_string_pretty(&report)?);

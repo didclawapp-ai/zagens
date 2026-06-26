@@ -11,6 +11,7 @@ pub async fn run(cli: Cli) -> Result<()> {
 
     match cli.command.clone().expect("subcommand checked in main") {
         Commands::Doctor(args) => handlers::doctor::run(&ctx, config_path, args).await,
+        Commands::OpenUrl(args) => handlers::open_url::run(args),
         Commands::Setup(args) => handlers::setup::run(&ctx, args),
         Commands::Completions { shell } => {
             handlers::completions::run(shell);

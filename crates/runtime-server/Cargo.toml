@@ -61,6 +61,7 @@ clap_complete.workspace = true
 colored = "3.0.0"
 dotenvy = "0.15.7"
 dirs.workspace = true
+open = "5.3"
 fd-lock = "4.0.4"
 futures-util = "0.3.31"
 regex = "1.11"

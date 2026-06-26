@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Deep Links (`zagens://open`):** Shared URL parser in `zagens-config`; `zagens open-url` validates and launches desktop; desktop handles argv + OS protocol, prefills Composer via `zagens://open-request`.
+- **CLI (`zagens doctor`):** Context diagnostics — resolved instruction paths (incl. pick-rules / project docs), skill discovery with warnings, hooks summary, config merge layers, and memory status; `--json` emits a `context` object with merge notes.
 - **Desktop (model providers · MP-4 P4b):** OpenRouter、SenseNova、Agnes AI、NVIDIA NIM 四家 catalog 商迁入 `CATALOG_PROVIDERS` 注册表；旧 IPC（list/set/activate）经 `adapters`/`catalog` 转发，删除 `nvidia_nim_provider.rs` 单体模块；新增 `every_catalog_preset_in_registry` 一致性单测。
 - **Desktop (model providers · MP-8 P5):** 统一 IPC `list_catalog_models` / `set_catalog_model`；`ModelProviderStatus.has_catalog_picker`；前端 `CatalogModelPicker` 替代四个 per-provider Picker；`output_limits` 由 catalog 响应驱动。
 

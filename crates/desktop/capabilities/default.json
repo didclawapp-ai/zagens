@@ -27,6 +27,7 @@
     "notification:default",
     "os:default",
     "process:default",
-    "updater:default"
+    "updater:default",
+    "deep-link:default"
   ]
 }
