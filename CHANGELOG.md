@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.3`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.3**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.4`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.4**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Prefer updating `[Unreleased]` incrementally going forward.
 
 ## [Unreleased]
+
+### Added
+
+### Fixed
+
+## [0.8.4] - 2026-06-26
+
+**Release highlights**
+
+- **Multi-session + per-session config:** Parallel background streaming with `threadStatusStore` SSOT; per-thread config overlay (LHT, approval, features) via `/v1/threads/{id}/config` without sidecar restart.
+- **Model providers panel:** DeepSeek plus OpenRouter, Ollama, Agnes AI, SenseNova, NVIDIA NIM, and custom OpenAI-compatible endpoints — catalog-aware `max_tokens` and keyring injection for all providers.
+- **Kernel Trace Report (KTR):** Offline HTML bundle export from Composer or `zagens trace`; CLI compare/serve and HTTP `/v1/threads/{id}/trace-report`.
+- **Security audit fixes:** Server-gated `trust_mode`, atomic secrets file writes, Windows WFP filter weights.
+- **Streaming reliability:** Complete assistant transcript at turn end; LHT float card during active turns; session-strip spinner sync.
 
 ### Added
 
