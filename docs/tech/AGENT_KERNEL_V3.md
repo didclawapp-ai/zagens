@@ -189,10 +189,9 @@ log_transcript_repair = true
 # log_transcript_repair_persist = false
 ```
 
-**Deprecated config strings (still parsed, behaviour = v3, startup warn):**
-
-- `machine = "legacy"`
-- `machine = "shadow"` — shadow bake removed; no runtime diff counters
+**`[kernel] machine` is a no-op** (forward-compat parse only). Any value maps to `v3`;
+a non-`v3` value (e.g. historical `"legacy"` / `"shadow"`) logs a single "ignored" startup
+warning. The deprecated `legacy` / `shadow` parse branches were removed.
 
 ---
 
@@ -227,10 +226,8 @@ cargo check --workspace
 
 Documented in maintainer design §6.2:
 
-- Merge compaction into `Effect::EmitArtifact`
-- Remove deprecated `[kernel] machine` legacy/shadow parse branches
-- Resume anchor-only policy hardening
-- Sidecar smoke after sidecar rebuild (LHT + short turn)
+- Merge compaction into `Effect::EmitArtifact` (touches `manual_compaction` / `scratchpad_compaction` golden fixtures + replay effect counts — needs its own change)
+- Sidecar smoke after rebuild (LHT + short turn) — covered by `scripts/lht-harness-smoke.ps1 -Full`
 
 ---
 

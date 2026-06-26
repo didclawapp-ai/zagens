@@ -926,17 +926,15 @@ impl Config {
     #[must_use]
     pub fn kernel_machine_mode(&self) -> crate::config::KernelMachineMode {
         let raw = self.kernel.as_ref().and_then(|k| k.machine.as_deref());
-        if crate::config::KernelMachineMode::config_used_deprecated_legacy(raw) {
-            tracing::warn!(
-                target: "kernel_v3",
-                "[kernel] machine = \"legacy\" is deprecated and runs v3; remove the setting or omit the key"
-            );
-        }
-        if crate::config::KernelMachineMode::config_used_deprecated_shadow(raw) {
-            tracing::warn!(
-                target: "kernel_v3",
-                "[kernel] machine = \"shadow\" is deprecated; v3 is the only mode — shadow bake removed"
-            );
+        if let Some(value) = raw {
+            let normalized = value.trim().to_ascii_lowercase();
+            if !normalized.is_empty() && normalized != "v3" {
+                tracing::warn!(
+                    target: "kernel_v3",
+                    value = %value,
+                    "[kernel] machine is ignored; v3 is the only turn machine — remove the key or set \"v3\""
+                );
+            }
         }
         crate::config::KernelMachineMode::parse(raw)
     }

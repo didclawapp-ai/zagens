@@ -2532,6 +2532,26 @@ pub fn verify_resume_anchor_effect_alignment(expected: u32, interpreted: u64) ->
     ))
 }
 
+/// Whether a resume anchor-effect mismatch is anomalous (worth a warning) vs benign.
+///
+/// On resume, a turn whose kernel events cannot be loaded or are empty is skipped,
+/// which legitimately lowers the interpreted anchor count below `expected`. That
+/// shortfall is **expected** and should not warn. Anything else — every turn loaded
+/// yet the counts still diverge, or *more* anchors interpreted than the thread
+/// projection recorded — indicates a real coherence problem.
+#[must_use]
+pub fn resume_anchor_alignment_is_anomalous(
+    expected: u32,
+    interpreted: u64,
+    turns_skipped: u64,
+) -> bool {
+    if interpreted == u64::from(expected) {
+        return false;
+    }
+    let benign_shortfall = interpreted < u64::from(expected) && turns_skipped > 0;
+    !benign_shortfall
+}
+
 /// Count replay-chain effects by kind (shadow / v3 turn-end logging).
 #[must_use]
 pub fn replay_effect_counts(events: &[KernelEvent]) -> ReplayEffectCounts {
@@ -3887,6 +3907,21 @@ mod tests {
         assert_eq!(hints.expected_anchor_effect_count, 4);
         assert!(verify_resume_anchor_effect_alignment(4, 4).is_none());
         assert!(verify_resume_anchor_effect_alignment(4, 3).is_some());
+    }
+
+    #[test]
+    fn resume_anchor_alignment_severity_policy() {
+        // Exact match is never anomalous, regardless of skips.
+        assert!(!resume_anchor_alignment_is_anomalous(4, 4, 0));
+        assert!(!resume_anchor_alignment_is_anomalous(4, 4, 2));
+        // Shortfall explained by skipped turns is benign.
+        assert!(!resume_anchor_alignment_is_anomalous(4, 3, 1));
+        assert!(!resume_anchor_alignment_is_anomalous(4, 0, 5));
+        // Shortfall with no skipped turns is a real coherence problem.
+        assert!(resume_anchor_alignment_is_anomalous(4, 3, 0));
+        // Over-interpretation is always anomalous (skips cannot explain a surplus).
+        assert!(resume_anchor_alignment_is_anomalous(4, 5, 0));
+        assert!(resume_anchor_alignment_is_anomalous(4, 5, 3));
     }
 
     #[test]

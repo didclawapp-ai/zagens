@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Runtime (Kernel V3 · 清债):** 移除 `[kernel] machine` 的 `legacy` / `shadow` 专用解析分支与 `config_used_deprecated_{legacy,shadow}` 辅助函数;`KernelMachineMode::parse` 现统一映射到 `v3`,任何非 `v3` 值在启动时只记录单条「machine is ignored」warn(此前 legacy/shadow 各一条)。配置仍前向兼容(未知值不报错)。
+
+### Fixed
+
+- **Runtime (Kernel V3 · resume anchor-only 加固):** thread 恢复时 anchor 效果对账不再对「因 turn 事件无法加载/为空被跳过而导致的 anchor 数偏少」误报 warn——新增纯函数 `resume_anchor_alignment_is_anomalous`(含单测),仅当「全部 turn 已加载却仍不一致」或「解释出的 anchor 反而多于投影记录」时才 warn,可解释的缺口降级为 info。
+
 ### Added
 
 - **Desktop (model providers · MP-4 P4b):** OpenRouter、SenseNova、Agnes AI、NVIDIA NIM 四家 catalog 商迁入 `CATALOG_PROVIDERS` 注册表；旧 IPC（list/set/activate）经 `adapters`/`catalog` 转发，删除 `nvidia_nim_provider.rs` 单体模块；新增 `every_catalog_preset_in_registry` 一致性单测。

@@ -2,7 +2,8 @@
 
 use zagens_core::engine::KernelTurnHost;
 use zagens_core::engine::turn_machine::{
-    Effect, KernelResumeHints, replay_turn_effects, verify_resume_anchor_effect_alignment,
+    Effect, KernelResumeHints, replay_turn_effects, resume_anchor_alignment_is_anomalous,
+    verify_resume_anchor_effect_alignment,
 };
 
 use super::effect_interpreter::EffectInterpreter;
@@ -124,15 +125,34 @@ impl Engine {
             hints.expected_anchor_effect_count,
             anchors_interpreted,
         ) {
-            tracing::warn!(
-                target: "kernel_resume",
-                %summary,
+            // A shortfall caused by turns we could not load/replay is expected; only a
+            // genuine divergence (all turns loaded yet counts differ, or a surplus)
+            // signals a coherence problem worth a warning.
+            if resume_anchor_alignment_is_anomalous(
+                hints.expected_anchor_effect_count,
                 anchors_interpreted,
-                expected,
                 turns_skipped,
-                turns_interpreted,
-                "resume anchor effect alignment diff"
-            );
+            ) {
+                tracing::warn!(
+                    target: "kernel_resume",
+                    %summary,
+                    anchors_interpreted,
+                    expected,
+                    turns_skipped,
+                    turns_interpreted,
+                    "resume anchor effect alignment diff"
+                );
+            } else {
+                tracing::info!(
+                    target: "kernel_resume",
+                    %summary,
+                    anchors_interpreted,
+                    expected,
+                    turns_skipped,
+                    turns_interpreted,
+                    "resume anchor effect shortfall explained by skipped turns"
+                );
+            }
         }
     }
 }
