@@ -54,6 +54,7 @@ export function useRuntimeConnection({
   const [runtimeSessionEstablished, setRuntimeSessionEstablished] = useState(false);
   const runtimeSessionEstablishedRef = useRef(false);
   const runtimeProbeFailStreakRef = useRef(0);
+  const hasConnectedOnceRef = useRef(false);
   const busyRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearBusyRecovery = useCallback(() => {
@@ -79,7 +80,10 @@ export function useRuntimeConnection({
   const retryConnectRef = useRef<() => void>(() => {});
 
   const notifyRuntimeTransient = useCallback(
-    (message: string) => {
+    (message: string, options?: { onlyAfterFirstConnect?: boolean }) => {
+      if (options?.onlyAfterFirstConnect && !hasConnectedOnceRef.current) {
+        return;
+      }
       toast.error(message, {
         tag: RUNTIME_TRANSIENT_TAG,
         duration: 0,
@@ -95,6 +99,7 @@ export function useRuntimeConnection({
   const reconcileRuntimeAfterFetchFailure = useCallback(() => {
     void probeRuntimeConnection({ light: streamingRef.current }).then((s) => {
       if (s === 'connected') {
+        hasConnectedOnceRef.current = true;
         runtimeProbeFailStreakRef.current = 0;
         setRuntimeSessionEstablished(true);
         setRuntimeConn('connected');
@@ -128,17 +133,22 @@ export function useRuntimeConnection({
       const ok = await waitForRuntimeReady({ timeoutMs: 60_000, intervalMs: 150 });
       const probed = await probeRuntimeConnection();
       if (probed === 'connected') {
+        hasConnectedOnceRef.current = true;
         setRuntimeSessionEstablished(true);
         runtimeProbeFailStreakRef.current = 0;
       }
       setRuntimeConn(probed);
       if (!ok) {
-        notifyRuntimeTransient(t('banner.runtimeUnreachableStartup', { url: runtimeUrl }));
+        notifyRuntimeTransient(t('banner.runtimeUnreachableStartup', { url: runtimeUrl }), {
+          onlyAfterFirstConnect: true,
+        });
         return;
       }
       await refreshSessionsRef.current();
     } catch (e) {
-      notifyRuntimeTransient(t('banner.retryFailed', { message: (e as Error).message }));
+      notifyRuntimeTransient(t('banner.retryFailed', { message: (e as Error).message }), {
+        onlyAfterFirstConnect: true,
+      });
       setRuntimeConn('offline');
     }
   }, [notifyRuntimeTransient, refreshSessionsRef, t]);
@@ -160,6 +170,7 @@ export function useRuntimeConnection({
         if (!cancelled) {
           const probed = await probeRuntimeConnection();
           if (probed === 'connected') {
+            hasConnectedOnceRef.current = true;
             setRuntimeSessionEstablished(true);
             runtimeProbeFailStreakRef.current = 0;
           }
@@ -169,13 +180,17 @@ export function useRuntimeConnection({
           return;
         }
         if (!ok) {
-          notifyRuntimeTransient(t('banner.runtimeUnreachable', { url: getRuntimeBase() }));
+          notifyRuntimeTransient(t('banner.runtimeUnreachable', { url: getRuntimeBase() }), {
+            onlyAfterFirstConnect: true,
+          });
           return;
         }
         await refreshSessionsRef.current();
       } catch (e) {
         if (!cancelled) {
-          notifyRuntimeTransient(t('banner.bootCheckFailed', { message: (e as Error).message }));
+          notifyRuntimeTransient(t('banner.bootCheckFailed', { message: (e as Error).message }), {
+            onlyAfterFirstConnect: true,
+          });
           setRuntimeConn('offline');
         }
       }
@@ -192,6 +207,7 @@ export function useRuntimeConnection({
     let cancelled = false;
     void probeRuntimeConnection({ light: true }).then((s) => {
       if (!cancelled && s === 'connected') {
+        hasConnectedOnceRef.current = true;
         runtimeProbeFailStreakRef.current = 0;
         setRuntimeSessionEstablished(true);
         setRuntimeConn('connected');
@@ -210,6 +226,7 @@ export function useRuntimeConnection({
         busyRecoveryTimerRef.current = setTimeout(() => {
           void probeRuntimeConnection({ light: streamingRef.current }).then((s) => {
             if (s === 'connected') {
+              hasConnectedOnceRef.current = true;
               runtimeProbeFailStreakRef.current = 0;
               setRuntimeSessionEstablished(true);
               setRuntimeConn('connected');
@@ -223,6 +240,7 @@ export function useRuntimeConnection({
 
     const applyProbe = (s: Exclude<RuntimeConnectionState, 'checking'>) => {
       if (s === 'connected') {
+        hasConnectedOnceRef.current = true;
         runtimeProbeFailStreakRef.current = 0;
         setRuntimeSessionEstablished(true);
         setRuntimeConn('connected');

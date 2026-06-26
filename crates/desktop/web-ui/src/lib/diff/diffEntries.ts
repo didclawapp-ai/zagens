@@ -10,6 +10,21 @@ export interface DiffEntry {
   toolName: string;
   messageId: string;
   status: ToolCardModel['status'];
+  added: number;
+  removed: number;
+}
+
+/** Count +/- lines in a unified diff (excludes ---/+++/@@ headers). */
+export function countUnifiedDiffLines(diffText: string): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const line of diffText.split(/\r?\n/)) {
+    if (!line) continue;
+    const marker = line[0];
+    if (marker === '+' && !line.startsWith('+++')) added += 1;
+    else if (marker === '-' && !line.startsWith('---')) removed += 1;
+  }
+  return { added, removed };
 }
 
 export function looksLikeDiff(text: string): boolean {
@@ -71,6 +86,7 @@ export function extractDiffEntries(messages: MessageWithTools[]): DiffEntry[] {
       const diffText = extractUnifiedDiff(tool.output ?? '');
       if (!diffText) continue;
       const fileName = parseFileNameFromToolInput(tool.input) ?? tool.name;
+      const { added, removed } = countUnifiedDiffLines(diffText);
       entries.push({
         id: tool.id,
         diffText,
@@ -78,6 +94,8 @@ export function extractDiffEntries(messages: MessageWithTools[]): DiffEntry[] {
         toolName: tool.name,
         messageId: msg.id,
         status: tool.status,
+        added,
+        removed,
       });
     }
   }

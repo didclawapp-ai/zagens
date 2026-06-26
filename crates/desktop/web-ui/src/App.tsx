@@ -7,6 +7,7 @@ import {
 import { useT } from './i18n';
 import AppShell from './components/AppShell';
 import OnboardingOverlay from './components/OnboardingOverlay';
+import StartupConnectOverlay from './components/StartupConnectOverlay';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
 import { useHarnessGridData } from './lib/useHarnessGridData';
 import { readSessionStripOpen, writeSessionStripOpen } from './hooks/useSessionStrip';
@@ -110,6 +111,7 @@ export default function App() {
   const lockedThreadTaskTypeRef = useRef<DesktopTaskTypeResolved | null>(null);
   const [routeIntent, setRouteIntent] = useState<DesktopRouteIntentOption>(() => loadRouteIntentPreference());
   const [startupOverlayOpen, setStartupOverlayOpen] = useState(false);
+  const [bootMainEntered, setBootMainEntered] = useState(false);
 
   const refreshSessionsRef = useRef<() => Promise<void>>(async () => {});
   const setRuntimeSessionEstablishedRef = useRef<Dispatch<SetStateAction<boolean>>>(() => {});
@@ -302,6 +304,8 @@ export default function App() {
     runtimeReachability,
     reconcileRuntimeAfterFetchFailure,
     notifyRuntimeTransient,
+    retryConnect,
+    dismissRuntimeTransient,
   } = useRuntimeConnection({ streaming, streamingRef, t, refreshSessionsRef });
 
   useThreadStatusGlobalStream(runtimeConn);
@@ -998,15 +1002,34 @@ export default function App() {
     setAuditGridDismissed((dismissed) => !dismissed);
   }, []);
 
+  const showConnectSplash =
+    desktopHost && !bootMainEntered && runtimeConn !== 'connected';
+  const showOnboardingWizard =
+    desktopHost && shellPrefsReady && startupOverlayOpen && bootMainEntered;
+
+  useEffect(() => {
+    if (desktopHost && runtimeConn === 'connected') {
+      setBootMainEntered(true);
+    }
+  }, [desktopHost, runtimeConn]);
+
+  useEffect(() => {
+    if (showConnectSplash) {
+      dismissRuntimeTransient();
+    }
+  }, [showConnectSplash, dismissRuntimeTransient, runtimeConn]);
+
   if (shellInitFailed) {
     return <ShellLoadFailure onRetry={refreshApiKeyStatus} />;
   }
 
   return (
     <>
-      {desktopHost && shellPrefsReady && startupOverlayOpen && (
+      {showConnectSplash ? (
+        <StartupConnectOverlay runtimeConn={runtimeConn} onRetry={retryConnect} />
+      ) : null}
+      {showOnboardingWizard ? (
         <OnboardingOverlay
-          runtimeConn={runtimeConn}
           apiKeyConfigured={desktopApiKeyConfigured}
           needsKeyStep={desktopApiKeyConfigured === false}
           needsModeStep={!onboardingComplete}
@@ -1018,7 +1041,8 @@ export default function App() {
             setStartupOverlayOpen(false);
           }}
         />
-      )}
+      ) : null}
+      {!showConnectSplash ? (
       <AppShell
       desktopHost={desktopHost}
       storagePauseTurns={storagePauseTurns}
@@ -1155,6 +1179,7 @@ export default function App() {
       onOpenTaskThread={handleOpenTaskThread}
       highlightTaskId={highlightTaskId}
       />
+      ) : null}
     </>
   );
 }

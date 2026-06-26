@@ -1,8 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { html } from 'diff2html';
 import 'diff2html/bundles/css/diff2html.min.css';
 import { useT } from '../i18n';
+import { countUnifiedDiffLines } from '../lib/diff/diffEntries';
 import { sanitizeHtmlForDisplay } from '../lib/sanitizeHtml';
+import DiffLineStats from './diff/DiffLineStats';
 
 interface Props {
   diffText: string;
@@ -23,6 +25,7 @@ export default function DiffCard({
 }: Props) {
   const { t } = useT();
   const containerRef = useRef<HTMLDivElement>(null);
+  const lineStats = useMemo(() => countUnifiedDiffLines(diffText), [diffText]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -60,6 +63,7 @@ export default function DiffCard({
           <span className="min-w-0 flex-1 truncate text-[10px] font-mono text-t-text-muted">
             {fileName}
           </span>
+          <DiffLineStats added={lineStats.added} removed={lineStats.removed} />
           {onOpenInPanel && (
             <button
               type="button"

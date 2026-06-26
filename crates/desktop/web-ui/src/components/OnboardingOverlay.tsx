@@ -1,19 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useT } from '../i18n';
-import type { RuntimeConnectionState } from '../api/client';
 import type { DesktopTaskTypePreference } from '../types/desktop';
 import { persistOnboardingComplete, persistTaskTypePreference } from '../lib/appPreferences';
 
 const DEEPSEEK_API_KEYS_URL = 'https://platform.deepseek.com/api_keys';
 
-/** Minimum splash duration so the connect progress feels deliberate (~2–3 s). */
-const CONNECT_MIN_MS = 2200;
-
-type Phase = 'connect' | 'key' | 'mode';
+type Phase = 'key' | 'mode';
 
 interface Props {
-  runtimeConn: RuntimeConnectionState;
   apiKeyConfigured: boolean | null;
   needsKeyStep: boolean;
   needsModeStep: boolean;
@@ -25,8 +20,16 @@ interface Props {
 
 const MODE_OPTIONS: DesktopTaskTypePreference[] = ['auto', 'code', 'office'];
 
+function resolveInitialPhase(
+  needsKeyStep: boolean,
+  needsModeStep: boolean,
+  apiKeyConfigured: boolean | null,
+): Phase {
+  if (needsKeyStep && apiKeyConfigured !== true) return 'key';
+  return 'mode';
+}
+
 export default function OnboardingOverlay({
-  runtimeConn,
   apiKeyConfigured,
   needsKeyStep,
   needsModeStep,
@@ -36,31 +39,25 @@ export default function OnboardingOverlay({
   onComplete,
 }: Props) {
   const { t } = useT();
-  const mountMsRef = useRef(Date.now());
-  const [phase, setPhase] = useState<Phase>('connect');
-  const [connectDone, setConnectDone] = useState(false);
+  const [phase, setPhase] = useState<Phase>(() =>
+    resolveInitialPhase(needsKeyStep, needsModeStep, apiKeyConfigured),
+  );
   const [key, setKey] = useState('');
   const [saveBusy, setSaveBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const setupSteps = useMemo(() => {
-    const steps: Phase[] = ['connect'];
+    const steps: Phase[] = [];
     if (needsKeyStep) steps.push('key');
     if (needsModeStep) steps.push('mode');
     return steps;
   }, [needsKeyStep, needsModeStep]);
 
-  const advanceFromConnect = useCallback(() => {
-    if (needsKeyStep && apiKeyConfigured !== true) {
-      setPhase('key');
-      return;
+  useEffect(() => {
+    if (!needsKeyStep && !needsModeStep) {
+      onComplete();
     }
-    if (needsModeStep) {
-      setPhase('mode');
-      return;
-    }
-    onComplete();
-  }, [apiKeyConfigured, needsKeyStep, needsModeStep, onComplete]);
+  }, [needsKeyStep, needsModeStep, onComplete]);
 
   const advanceFromKey = useCallback(() => {
     if (needsModeStep) {
@@ -69,30 +66,6 @@ export default function OnboardingOverlay({
     }
     onComplete();
   }, [needsModeStep, onComplete]);
-
-  // Animate connect progress; finish when runtime is connected, key status is known, and min duration elapsed.
-  useEffect(() => {
-    if (phase !== 'connect') return;
-    const tick = () => {
-      const elapsed = Date.now() - mountMsRef.current;
-      const connected = runtimeConn === 'connected';
-      const keyStatusKnown = apiKeyConfigured !== null;
-      const ready = connected && keyStatusKnown && elapsed >= CONNECT_MIN_MS;
-      if (ready) {
-        setConnectDone(true);
-        return;
-      }
-    };
-    tick();
-    const id = window.setInterval(tick, 50);
-    return () => window.clearInterval(id);
-  }, [phase, runtimeConn, apiKeyConfigured]);
-
-  useEffect(() => {
-    if (!connectDone || phase !== 'connect') return;
-    const id = window.setTimeout(advanceFromConnect, 350);
-    return () => window.clearTimeout(id);
-  }, [connectDone, phase, advanceFromConnect]);
 
   const handleSaveKey = useCallback(async () => {
     setError(null);
@@ -110,7 +83,6 @@ export default function OnboardingOverlay({
   }, [key, refreshApiKeyStatus, advanceFromKey]);
 
   const stepLabels: Record<Phase, string> = {
-    connect: t('onboarding.stepConnect'),
     key: t('onboarding.stepKey'),
     mode: t('onboarding.stepMode'),
   };
@@ -118,16 +90,12 @@ export default function OnboardingOverlay({
   const phaseIndex = setupSteps.indexOf(phase);
   const showStepRail = setupSteps.length > 1;
 
-  if (phase === 'connect') {
-    return (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-canvas">
-        <p className="text-sm text-t-text-muted">{t('onboarding.startingWait')}</p>
-      </div>
-    );
+  if (!needsKeyStep && !needsModeStep) {
+    return null;
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-md rounded-2xl bg-canvas-alt border border-border shadow-2xl overflow-hidden">
         <div className="px-6 pt-6 pb-4">
           <h1 className="text-lg font-semibold text-t-text">{t('onboarding.welcomeTitle')}</h1>

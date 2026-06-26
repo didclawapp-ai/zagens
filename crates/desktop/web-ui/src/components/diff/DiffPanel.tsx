@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DiffCard from '../DiffCard';
+import DiffLineStats from './DiffLineStats';
 import { useT } from '../../i18n';
 import {
   entryLabel,
@@ -119,7 +120,10 @@ export default function DiffPanel({ messages, onDetected, onRevealInFiles, activ
                   }`}
                   onClick={() => setSelectedId(e.id)}
                 >
-                  <span className="block truncate">{entryLabel(e)}</span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">{entryLabel(e)}</span>
+                    <DiffLineStats added={e.added} removed={e.removed} />
+                  </div>
                   <span className="block truncate text-[10px] opacity-70">{e.toolName}</span>
                 </button>
                 {onRevealInFiles && rel ? (
