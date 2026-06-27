@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { patchThread, type RuntimeConnectionState } from '../api/client';
-import type { RightPanelView } from '../components/RightPanel';
+import type { RightPanelView, WorkspaceTabId } from '../components/RightPanel';
 import type { PreviewState } from '../components/preview/types';
 import { loadWorkspaceFileIntoPreview, normalizeWorkspaceRelPath } from '../lib/openWorkspaceFile';
 import {
@@ -48,6 +48,12 @@ export function useWorkspacePanel({
     { text: string; nonce: number } | undefined
   >();
   const [filesRefreshNonce, setFilesRefreshNonce] = useState(0);
+  const [focusWorkspaceTab, setFocusWorkspaceTab] = useState<WorkspaceTabId | null>(null);
+  const [focusWorkspaceTabNonce, setFocusWorkspaceTabNonce] = useState(0);
+
+  const bumpFocusWorkspaceTab = useCallback(() => {
+    setFocusWorkspaceTabNonce((n) => n + 1);
+  }, []);
 
   const bumpFilesRefresh = useCallback(() => {
     setFilesRefreshNonce((n) => n + 1);
@@ -197,5 +203,9 @@ export function useWorkspacePanel({
     filesRefreshNonce,
     bumpFilesRefresh,
     handleOfficeDeliverableReady,
+    focusWorkspaceTab,
+    focusWorkspaceTabNonce,
+    setFocusWorkspaceTab,
+    bumpFocusWorkspaceTab,
   };
 }

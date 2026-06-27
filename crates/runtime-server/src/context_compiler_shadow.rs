@@ -464,4 +464,52 @@ mod tests {
         let reassembled = format!("{}{}", snapshot.static_base_text, snapshot.compaction_text);
         assert_eq!(reassembled, full_text);
     }
+
+    #[test]
+    fn compiler_snapshot_produces_conserved_assembly_report() {
+        use std::path::PathBuf;
+        use zagens_core::context_profile::{ContextThresholdOverrides, scaled_thresholds};
+        use zagens_core::engine::ContextAssemblyReport;
+
+        let workspace = PathBuf::from("/tmp");
+        let mut session = Session::new(
+            "deepseek-v4-pro".into(),
+            workspace.clone(),
+            false,
+            false,
+            PathBuf::from("/tmp/notes.txt"),
+            PathBuf::from("/tmp/mcp.json"),
+        );
+        session.system_prompt = Some(crate::models::SystemPrompt::Text("static prompt".into()));
+        session.messages.push(crate::models::Message {
+            role: "user".to_string(),
+            content: vec![crate::models::ContentBlock::Text {
+                text: "hello".into(),
+                cache_control: None,
+            }],
+        });
+
+        let snapshot = ContextCompilerStateSnapshot::from_session(&session, 0);
+        let compiler = build_compiler_from_snapshot(&snapshot);
+        let compiled = compiler.compile(&ContextProjection::from_session(&session, 0));
+        let message_tokens =
+            crate::compaction::estimate_input_tokens_conservative(&session.messages, None) as u32;
+        let report =
+            ContextAssemblyReport::from_compiled(&compiled).with_message_tokens(message_tokens);
+        let thresholds = scaled_thresholds("deepseek-v4-pro", ContextThresholdOverrides::default());
+        let breakdown = zagens_core::engine::build_context_usage_breakdown(
+            "deepseek-v4-pro",
+            Some(&report),
+            report.estimated_input_tokens,
+            1_000_000,
+            &thresholds,
+            true,
+            false,
+            session.messages.len(),
+        );
+        assert_eq!(
+            breakdown.category_token_sum(),
+            breakdown.estimated_input_tokens
+        );
+    }
 }

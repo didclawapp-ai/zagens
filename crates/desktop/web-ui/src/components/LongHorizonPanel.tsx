@@ -3,16 +3,19 @@ import {
   fetchThreadHarnessCycles,
   fetchThreadHarnessTaskGraph,
   getThreadContext,
+  getThreadContextBreakdown,
 } from '../api/client';
+import { ContextExplorerView } from './ContextExplorerView';
 import { useT } from '../i18n';
 import {
   HARNESS_CYCLE_ADVANCED_EVENT,
   PANEL_CONTEXT_EVENT,
+  PANEL_CONTEXT_USAGE_EVENT,
   PANEL_TASK_GRAPH_EVENT,
   type TaskGraphPanelPayload,
 } from '../lib/panelChannel';
 import { SIDECAR_READY_PANEL_EVENT } from '../lib/sidecarPanelRecovery';
-import type { ThreadContextSnapshot } from '../lib/contextUsage';
+import type { ContextUsageBreakdown, ThreadContextSnapshot } from '../lib/contextUsage';
 import {
   TASK_GRAPH_POLL_IDLE_MS,
   TASK_GRAPH_POLL_STREAMING_MS,
@@ -31,6 +34,10 @@ interface Props {
   /** Composer turn active (生成中) — timer ticks until this is false. */
   streaming?: boolean;
   pollFast?: boolean;
+  onNavigateContextCategory?: (categoryId: string) => void;
+  onArchiveContext?: () => void;
+  archivePending?: boolean;
+  canArchiveContext?: boolean;
 }
 
 function statusSymbol(status: string): string {
@@ -271,21 +278,46 @@ function TaskGraphView({ graph, t }: { graph: HarnessTaskGraph; t: (k: string, v
 
 function CycleView({
   cycles,
+  usage,
   t,
+  onNavigateContextCategory,
+  onArchiveContext,
+  archivePending,
+  canArchiveContext,
 }: {
   cycles: HarnessCycles | null;
+  usage: ContextUsageBreakdown | null;
   t: (k: string, vars?: Record<string, string>) => string;
+  onNavigateContextCategory?: (categoryId: string) => void;
+  onArchiveContext?: () => void;
+  archivePending?: boolean;
+  canArchiveContext?: boolean;
 }) {
   if (!cycles || (cycles.briefings.length === 0 && !(cycles.archives?.length))) {
-    return (
-      <p className="text-xs text-t-text-muted">{t('longHorizon.cyclesEmpty')}</p>
-    );
+    if (!usage) {
+      return (
+        <p className="text-xs text-t-text-muted">{t('longHorizon.cyclesEmpty')}</p>
+      );
+    }
   }
   return (
     <div className="space-y-3 text-xs text-t-text">
+      {usage ? (
+        <ContextExplorerView
+          breakdown={usage}
+          t={t}
+          compact
+          onNavigateCategory={onNavigateContextCategory}
+          onArchiveContext={onArchiveContext}
+          archivePending={archivePending}
+          canArchiveContext={canArchiveContext}
+        />
+      ) : null}
+      {cycles ? (
+        <>
       <p className="text-t-text-muted">
         {t('longHorizon.currentCycle', { n: String(cycles.current_cycle) })}
-        {cycles.context_pressure_pct != null
+        {!usage && cycles.context_pressure_pct != null
           ? ` · ${t('longHorizon.contextPressure', {
               pct: String(cycles.context_pressure_pct),
             })}`
@@ -315,6 +347,8 @@ function CycleView({
           })}
         </div>
       ))}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -377,13 +411,40 @@ function ContextThresholdBar({
 
 function ContextView({
   ctx,
+  usage,
   cycles,
   t,
+  onNavigateContextCategory,
+  onArchiveContext,
+  archivePending,
+  canArchiveContext,
 }: {
   ctx: ThreadContextSnapshot | null;
+  usage: ContextUsageBreakdown | null;
   cycles: HarnessCycles | null;
   t: (k: string, vars?: Record<string, string>) => string;
+  onNavigateContextCategory?: (categoryId: string) => void;
+  onArchiveContext?: () => void;
+  archivePending?: boolean;
+  canArchiveContext?: boolean;
 }) {
+  if (usage) {
+    return (
+      <div className="space-y-3">
+        <ContextExplorerView
+          breakdown={usage}
+          t={t}
+          onNavigateCategory={onNavigateContextCategory}
+          onArchiveContext={onArchiveContext}
+          archivePending={archivePending}
+          canArchiveContext={canArchiveContext}
+        />
+        {ctx?.should_compact ? (
+          <p className="text-xs text-amber-700 dark:text-amber-300">{t('longHorizon.shouldCompact')}</p>
+        ) : null}
+      </div>
+    );
+  }
   if (!ctx) {
     return <p className="text-xs text-t-text-muted">{t('longHorizon.contextEmpty')}</p>;
   }
@@ -717,12 +778,21 @@ function NodesView({
   );
 }
 
-export default function LongHorizonPanel({ threadId, streaming = false, pollFast = false }: Props) {
+export default function LongHorizonPanel({
+  threadId,
+  streaming = false,
+  pollFast = false,
+  onNavigateContextCategory,
+  onArchiveContext,
+  archivePending = false,
+  canArchiveContext = false,
+}: Props) {
   const { t } = useT();
   const [tab, setTab] = useState<LongHorizonPanelTab>('task');
   const [graph, setGraph] = useState<HarnessTaskGraph | null>(null);
   const [cycles, setCycles] = useState<HarnessCycles | null>(null);
   const [context, setContext] = useState<ThreadContextSnapshot | null>(null);
+  const [contextUsage, setContextUsage] = useState<ContextUsageBreakdown | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   /** Accumulated ms from frozen segments (same thread, no per-round reset at 100%). */
   const frozenMsRef = useRef(0);
@@ -781,10 +851,26 @@ export default function LongHorizonPanel({ threadId, streaming = false, pollFast
     }
   }, [pollFast, threadId]);
 
+  const fetchContextBreakdown = useCallback(async () => {
+    if (!threadId) {
+      setContextUsage(null);
+      return;
+    }
+    try {
+      const data = await getThreadContextBreakdown(threadId);
+      setContextUsage(data);
+    } catch {
+      if (!pollFast) {
+        setContextUsage(null);
+      }
+    }
+  }, [pollFast, threadId]);
+
   useEffect(() => {
     setGraph(null);
     setCycles(null);
     setContext(null);
+    setContextUsage(null);
     frozenMsRef.current = 0;
     segmentStartRef.current = null;
     setElapsedMs(0);
@@ -845,41 +931,58 @@ export default function LongHorizonPanel({ threadId, streaming = false, pollFast
         setContext(detail);
       }
     };
+    const onContextUsage = (ev: Event) => {
+      const detail = (ev as CustomEvent<ContextUsageBreakdown>).detail;
+      if (detail && typeof detail.estimated_input_tokens === 'number') {
+        setContextUsage(detail);
+      }
+    };
     const onCycleAdvanced = () => {
       void fetchCycles();
       void fetchGraph();
+      void fetchContextBreakdown();
     };
     const onSidecarReady = () => {
       void fetchGraph();
       void fetchCycles();
       void fetchContext();
+      void fetchContextBreakdown();
     };
     window.addEventListener(PANEL_TASK_GRAPH_EVENT, onPush);
     window.addEventListener(PANEL_CONTEXT_EVENT, onContext);
+    window.addEventListener(PANEL_CONTEXT_USAGE_EVENT, onContextUsage);
     window.addEventListener(HARNESS_CYCLE_ADVANCED_EVENT, onCycleAdvanced);
     window.addEventListener(SIDECAR_READY_PANEL_EVENT, onSidecarReady);
     void fetchGraph();
     void fetchCycles();
     void fetchContext();
+    void fetchContextBreakdown();
     const ms = pollFast ? TASK_GRAPH_POLL_STREAMING_MS : TASK_GRAPH_POLL_IDLE_MS;
     const id = window.setInterval(() => {
       void fetchGraph();
       if (tab === 'cycle') void fetchCycles();
-      if (tab === 'context') void fetchContext();
+      if (tab === 'context') {
+        void fetchContext();
+        void fetchContextBreakdown();
+      }
     }, ms);
     return () => {
       window.clearInterval(id);
       window.removeEventListener(PANEL_TASK_GRAPH_EVENT, onPush);
       window.removeEventListener(PANEL_CONTEXT_EVENT, onContext);
+      window.removeEventListener(PANEL_CONTEXT_USAGE_EVENT, onContextUsage);
       window.removeEventListener(HARNESS_CYCLE_ADVANCED_EVENT, onCycleAdvanced);
       window.removeEventListener(SIDECAR_READY_PANEL_EVENT, onSidecarReady);
     };
-  }, [fetchContext, fetchCycles, fetchGraph, pollFast, tab, threadId]);
+  }, [fetchContext, fetchContextBreakdown, fetchCycles, fetchGraph, pollFast, tab, threadId]);
 
   useEffect(() => {
     if (tab === 'cycle') void fetchCycles();
-    if (tab === 'context') void fetchContext();
-  }, [tab, fetchCycles, fetchContext]);
+    if (tab === 'context') {
+      void fetchContext();
+      void fetchContextBreakdown();
+    }
+  }, [tab, fetchContext, fetchContextBreakdown, fetchCycles]);
 
   const tabs: { id: LongHorizonPanelTab; label: string }[] = [
     { id: 'task', label: t('longHorizon.tabTask') },
@@ -938,8 +1041,29 @@ export default function LongHorizonPanel({ threadId, streaming = false, pollFast
           ) : (
             <TaskGraphView graph={graph!} t={t} />
           ))}
-        {tab === 'cycle' && <CycleView cycles={cycles} t={t} />}
-        {tab === 'context' && <ContextView ctx={context} cycles={cycles} t={t} />}
+        {tab === 'cycle' && (
+          <CycleView
+            cycles={cycles}
+            usage={contextUsage}
+            t={t}
+            onNavigateContextCategory={onNavigateContextCategory}
+            onArchiveContext={onArchiveContext}
+            archivePending={archivePending}
+            canArchiveContext={canArchiveContext}
+          />
+        )}
+        {tab === 'context' && (
+          <ContextView
+            ctx={context}
+            usage={contextUsage}
+            cycles={cycles}
+            t={t}
+            onNavigateContextCategory={onNavigateContextCategory}
+            onArchiveContext={onArchiveContext}
+            archivePending={archivePending}
+            canArchiveContext={canArchiveContext}
+          />
+        )}
         {tab === 'nodes' && (
           <NodesView
             nodes={graph?.recent_nodes ?? []}

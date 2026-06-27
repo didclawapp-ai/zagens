@@ -77,7 +77,9 @@ pub struct SeamConfig {
 impl Default for SeamConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            // Effective runtime default is `api_config.context.enabled.unwrap_or(false)`
+            // in `core/engine/build.rs` — keep struct Default aligned (P0-0).
+            enabled: false,
             verbatim_window_turns: VERBATIM_WINDOW_TURNS,
             l1_threshold: DEFAULT_L1_THRESHOLD,
             l2_threshold: DEFAULT_L2_THRESHOLD,
@@ -631,23 +633,45 @@ mod tests {
     fn seam_levels_fire_in_order() {
         // Cannot create DeepSeekClient without API key in test env.
         // Test the pure logic functions only.
-        let config = SeamConfig::default();
+        let config = SeamConfig {
+            enabled: true,
+            l1_threshold: 190_000,
+            l2_threshold: 380_000,
+            l3_threshold: 570_000,
+            ..SeamConfig::default()
+        };
 
-        assert_eq!(seam_level_for_active_input(&config, 100_000, None), None);
-        assert_eq!(seam_level_for_active_input(&config, 192_000, None), Some(1));
+        assert_eq!(seam_level_for_active_input(&config, 190_000, None), Some(1));
         assert_eq!(
-            seam_level_for_active_input(&config, 384_000, Some(1)),
+            seam_level_for_active_input(&config, 380_000, Some(1)),
             Some(2)
         );
         assert_eq!(
-            seam_level_for_active_input(&config, 576_000, Some(2)),
+            seam_level_for_active_input(&config, 570_000, Some(2)),
             Some(3)
         );
     }
 
     #[test]
+    fn seam_levels_use_scaled_defaults_when_enabled() {
+        let config = SeamConfig {
+            enabled: true,
+            l1_threshold: 190_000,
+            l2_threshold: 380_000,
+            l3_threshold: 570_000,
+            ..SeamConfig::default()
+        };
+        assert_eq!(seam_level_for_active_input(&config, 100_000, None), None);
+        assert_eq!(seam_level_for_active_input(&config, 190_000, None), Some(1));
+    }
+
+    #[test]
     fn seam_trigger_uses_active_request_size_not_lifetime_usage() {
-        let config = SeamConfig::default();
+        let config = SeamConfig {
+            enabled: true,
+            l1_threshold: 576_000,
+            ..SeamConfig::default()
+        };
         let lifetime_prompt_usage = 900_000usize;
         let active_request_input = 120_000usize;
 

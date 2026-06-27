@@ -123,6 +123,11 @@ pub enum Op {
         reply: oneshot::Sender<ThreadContextSnapshot>,
     },
 
+    /// Return Context Explorer breakdown (`GET …/context/breakdown`, P2b).
+    QueryContextBreakdown {
+        reply: oneshot::Sender<super::context_usage_breakdown::ContextUsageBreakdown>,
+    },
+
     /// Return derived LHT task graph JSON (`GET …/harness/task-graph`).
     QueryHarnessTaskGraph {
         reply: oneshot::Sender<serde_json::Value>,

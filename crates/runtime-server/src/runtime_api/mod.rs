@@ -53,12 +53,12 @@ pub(crate) use thread_config::{delete_thread_config_field, get_thread_config, pu
 pub(crate) use threads::{
     browse_thread_workspace, browse_workspace_by_root, compact_thread, create_thread,
     edit_last_thread_turn, fork_thread, fork_thread_at_user_message, get_thread,
-    get_thread_checklist, get_thread_context, get_thread_harness_cycles,
-    get_thread_harness_task_graph, get_thread_scratchpad_status, init_thread_scratchpad,
-    interrupt_thread_turn, list_thread_snapshots, list_threads, list_threads_summary,
-    persist_thread_session, read_thread_workspace_file, read_workspace_file_by_root,
-    resolve_approval, restore_thread_snapshot, resume_thread, revert_thread_workspace_turn,
-    start_thread_turn, steer_thread_turn, update_thread,
+    get_thread_checklist, get_thread_context, get_thread_context_breakdown,
+    get_thread_harness_cycles, get_thread_harness_task_graph, get_thread_scratchpad_status,
+    init_thread_scratchpad, interrupt_thread_turn, list_thread_snapshots, list_threads,
+    list_threads_summary, persist_thread_session, read_thread_workspace_file,
+    read_workspace_file_by_root, resolve_approval, restore_thread_snapshot, resume_thread,
+    revert_thread_workspace_turn, start_thread_turn, steer_thread_turn, update_thread,
 };
 pub(crate) use topic_memory::get_topic_memory;
 pub(crate) use trace_compare::get_trace_compare;

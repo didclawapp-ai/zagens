@@ -22,7 +22,7 @@ import { toast } from '../lib/toast';
 import type { PreviewState } from './preview/types';
 import type { ApprovalState } from '../hooks/useTurnApproval';
 import type { TurnChatMessage } from '../hooks/useTurnSend';
-import type { ThreadContextSnapshot } from '../lib/contextUsage';
+import type { ContextUsageBreakdown, ThreadContextSnapshot } from '../lib/contextUsage';
 import type { AgentState } from '../types/agent';
 import type {
   ComposerModelId,
@@ -133,6 +133,7 @@ export type AppShellProps = {
   contextUsedTokens: number;
   contextWindowTokens: number;
   threadContextSnapshot: ThreadContextSnapshot | null;
+  threadContextUsage?: ContextUsageBreakdown | null;
   lastTurnOutputTokens: number | null;
   lastCacheHitPercent: number | null;
   lhtChip?: import('../lib/lhtChip').LhtChipState | null;
@@ -172,6 +173,12 @@ export type AppShellProps = {
   focusFilesRelPath: string | null;
   filesRefreshNonce?: number;
   focusDiffNonce: number;
+  focusWorkspaceTab?: import('./RightPanel').WorkspaceTabId | null;
+  focusWorkspaceTabNonce?: number;
+  onNavigateContextCategory?: (categoryId: string) => void;
+  onArchiveContext?: () => void;
+  archivePending?: boolean;
+  canArchiveContext?: boolean;
   onRequestChecklist: () => void;
   onRequestAudit: () => void;
   auditGridVisible: boolean;
@@ -267,6 +274,7 @@ export default function AppShell({
   contextUsedTokens,
   contextWindowTokens,
   threadContextSnapshot,
+  threadContextUsage = null,
   lastTurnOutputTokens,
   lastCacheHitPercent,
   lhtChip,
@@ -302,6 +310,12 @@ export default function AppShell({
   focusFilesRelPath,
   filesRefreshNonce,
   focusDiffNonce,
+  focusWorkspaceTab = null,
+  focusWorkspaceTabNonce = 0,
+  onNavigateContextCategory,
+  onArchiveContext,
+  archivePending = false,
+  canArchiveContext = false,
   onRequestChecklist,
   onRequestAudit,
   auditGridVisible,
@@ -509,6 +523,7 @@ export default function AppShell({
               contextUsagePct={contextUsagePct}
               contextUsedTokens={contextUsedTokens}
               contextWindowTokens={contextWindowTokens}
+              threadContextUsage={threadContextUsage}
               contextSource={threadContextSnapshot?.source}
               compactionThresholdTokens={threadContextSnapshot?.compaction_threshold_tokens}
               lastApiInputTokens={threadContextSnapshot?.last_api_input_tokens ?? null}
@@ -557,6 +572,12 @@ export default function AppShell({
             focusFilesRelPath={focusFilesRelPath}
             filesRefreshNonce={filesRefreshNonce}
             focusDiffNonce={focusDiffNonce}
+            focusWorkspaceTab={focusWorkspaceTab}
+            focusWorkspaceTabNonce={focusWorkspaceTabNonce}
+            onNavigateContextCategory={onNavigateContextCategory}
+            onArchiveContext={onArchiveContext}
+            archivePending={archivePending}
+            canArchiveContext={canArchiveContext}
             agentStates={agentStates}
             onRequestChecklist={onRequestChecklist}
             onRequestAudit={onRequestAudit}

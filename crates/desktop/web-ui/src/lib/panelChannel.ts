@@ -12,12 +12,13 @@
  */
 
 import type { ScratchpadStatus } from '../api/client';
-import type { ThreadContextSnapshot } from './contextUsage';
+import type { ContextUsageBreakdown, ThreadContextSnapshot } from './contextUsage';
 import type { HarnessTaskGraph } from './types/longHorizon';
 
 export const PANEL_SCRATCHPAD_EVENT = 'deepseek-panel-scratchpad';
 export const PANEL_CHECKLIST_EVENT = 'deepseek-panel-checklist';
 export const PANEL_CONTEXT_EVENT = 'deepseek-panel-context';
+export const PANEL_CONTEXT_USAGE_EVENT = 'deepseek-panel-context-usage';
 export const PANEL_TASK_GRAPH_EVENT = 'deepseek-panel-task-graph';
 export const HARNESS_CYCLE_ADVANCED_EVENT = 'deepseek-harness-cycle-advanced';
 
@@ -96,6 +97,16 @@ export function dispatchPanelContext(
   if (!shouldDispatchPanelForThread(originThreadId)) return;
   window.dispatchEvent(
     new CustomEvent(PANEL_CONTEXT_EVENT, { detail: context }),
+  );
+}
+
+export function dispatchPanelContextUsage(
+  usage: ContextUsageBreakdown,
+  originThreadId?: string,
+): void {
+  if (!shouldDispatchPanelForThread(originThreadId)) return;
+  window.dispatchEvent(
+    new CustomEvent(PANEL_CONTEXT_USAGE_EVENT, { detail: usage }),
   );
 }
 

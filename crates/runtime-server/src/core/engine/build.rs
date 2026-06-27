@@ -124,28 +124,17 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
     let capacity_controller = CapacityController::new(lean.capacity.clone());
 
     let seam_manager = deepseek_client.as_ref().map(|main_client| {
+        let thresholds = api_config.context.resolved_thresholds_for(&lean.model);
         let seam_config = SeamConfig {
-            enabled: api_config.context.enabled.unwrap_or(false),
+            enabled: api_config.context_seam_enabled_for_model(&lean.model),
             verbatim_window_turns: api_config
                 .context
                 .verbatim_window_turns
                 .unwrap_or(crate::seam_manager::VERBATIM_WINDOW_TURNS),
-            l1_threshold: api_config
-                .context
-                .l1_threshold
-                .unwrap_or(crate::seam_manager::DEFAULT_L1_THRESHOLD),
-            l2_threshold: api_config
-                .context
-                .l2_threshold
-                .unwrap_or(crate::seam_manager::DEFAULT_L2_THRESHOLD),
-            l3_threshold: api_config
-                .context
-                .l3_threshold
-                .unwrap_or(crate::seam_manager::DEFAULT_L3_THRESHOLD),
-            cycle_threshold: api_config
-                .context
-                .cycle_threshold
-                .unwrap_or(crate::seam_manager::DEFAULT_CYCLE_THRESHOLD),
+            l1_threshold: thresholds.l1,
+            l2_threshold: thresholds.l2,
+            l3_threshold: thresholds.l3,
+            cycle_threshold: thresholds.cycle,
             seam_model: api_config
                 .context
                 .seam_model
@@ -251,6 +240,7 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         kernel_v3_approval_outcomes: std::collections::HashMap::new(),
         kernel_memory_query_sources: std::collections::BTreeSet::new(),
         kernel_v3_outer_boundary_grants: Default::default(),
+        last_context_assembly_report: None,
     };
 
     let hosts = EngineHostBundle {

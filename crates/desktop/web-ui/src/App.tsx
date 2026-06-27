@@ -35,6 +35,7 @@ import { useDeepLinkOpen } from './hooks/useDeepLinkOpen';
 import { useStoragePressure } from './hooks/useStoragePressure';
 import ShellLoadFailure from './components/ShellLoadFailure';
 import { useSessionNavigation } from './hooks/useSessionNavigation';
+import { useContextExplorerActions } from './hooks/useContextExplorerActions';
 import { useThreadContext } from './hooks/useThreadContext';
 import { useWorkspacePanel } from './hooks/useWorkspacePanel';
 import { useTurnSession } from './hooks/useTurnSession';
@@ -324,10 +325,12 @@ export default function App() {
     threadContextSnapshotRef,
     threadContextCacheRef,
     applyThreadContextSnapshot,
+    applyContextUsageBreakdown,
     restoreThreadContextFromCache,
     refreshThreadContext,
     contextUsedTokens,
     contextUsagePct,
+    threadContextUsage,
   } = useThreadContext({
     messages,
     resumedThreadId,
@@ -499,6 +502,10 @@ export default function App() {
     filesRefreshNonce,
     bumpFilesRefresh,
     handleOfficeDeliverableReady,
+    focusWorkspaceTab,
+    focusWorkspaceTabNonce,
+    setFocusWorkspaceTab,
+    bumpFocusWorkspaceTab,
   } = useWorkspacePanel({
     t,
     runtimeConn,
@@ -510,6 +517,27 @@ export default function App() {
     setActiveInspector,
     setRightPanelCollapsed,
     setAuditGridDismissed,
+  });
+
+  const {
+    navigateContextCategory,
+    archiveContext,
+    archivePending,
+    canArchiveContext,
+  } = useContextExplorerActions({
+    t,
+    resumedThreadId,
+    streaming,
+    setActiveInspector,
+    setRightPanelCollapsed,
+    setAuditGridDismissed,
+    setFocusWorkspaceTab,
+    bumpFocusWorkspaceTab,
+    onArchiveComplete: () => {
+      if (resumedThreadId) {
+        void refreshThreadContext(resumedThreadId);
+      }
+    },
   });
 
   useDeepLinkOpen({
@@ -552,6 +580,7 @@ export default function App() {
     refreshSessions,
     refreshThreadContext,
     applyThreadContextSnapshot,
+    applyContextUsageBreakdown,
     notifyRuntimeTransient,
     resetAgentPanel,
     onAgentSpawnToolStarted,
@@ -1159,6 +1188,7 @@ export default function App() {
       contextUsedTokens={contextUsedTokens}
       contextWindowTokens={contextWindowTokens}
       threadContextSnapshot={threadContextSnapshot}
+      threadContextUsage={threadContextUsage}
       lastTurnOutputTokens={lastTurnOutputTokens}
       lastCacheHitPercent={lastCacheHitPercent}
       lhtChip={lhtChip}
@@ -1206,6 +1236,12 @@ export default function App() {
       focusFilesRelPath={focusWorkspaceFilesRelPath}
       filesRefreshNonce={filesRefreshNonce}
       focusDiffNonce={focusWorkspaceDiffNonce}
+      focusWorkspaceTab={focusWorkspaceTab}
+      focusWorkspaceTabNonce={focusWorkspaceTabNonce}
+      onNavigateContextCategory={navigateContextCategory}
+      onArchiveContext={() => void archiveContext()}
+      archivePending={archivePending}
+      canArchiveContext={canArchiveContext}
       onRequestChecklist={handleRequestChecklist}
       onRequestAudit={handleRequestAudit}
       auditGridVisible={auditGridVisible}

@@ -128,7 +128,7 @@ fn catalog_models_url(base_url: &str, models_path: &str) -> String {
     let trimmed = base_url.trim().trim_end_matches('/');
     let path = models_path.trim();
     if path.is_empty() || path == "/models" {
-        if trimmed.ends_with("/v1") {
+        if zagens_config::has_trailing_api_version_segment(trimmed) {
             format!("{trimmed}/models")
         } else {
             format!("{trimmed}/v1/models")

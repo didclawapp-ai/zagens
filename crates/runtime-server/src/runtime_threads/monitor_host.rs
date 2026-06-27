@@ -114,6 +114,12 @@ impl RuntimeThreadMonitorHost<super::RuntimeEnginePolicy, super::RuntimeUserInpu
                 .await;
             return;
         }
+        if let Some(usage_json) = message.strip_prefix("long_horizon.context_usage:") {
+            let _ = self
+                .emit_panel_context_usage(thread_id, turn_id, usage_json)
+                .await;
+            return;
+        }
         if self.update_harness_telemetry_from_status(thread_id, message) {
             let _ = self.emit_panel_harness_task_graph(thread_id, turn_id).await;
         }

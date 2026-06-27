@@ -9,8 +9,10 @@
 pub mod approval;
 pub mod config;
 pub mod context;
+pub mod context_assembly;
 pub mod context_compiler;
 pub mod context_snapshot;
+pub mod context_usage_breakdown;
 pub mod dispatch;
 pub mod handle;
 pub mod host_bundle;
@@ -57,12 +59,19 @@ pub use context::{
     estimate_input_tokens_conservative, extract_compaction_summary_prompt,
     is_context_length_error_message, summarize_text, turn_response_headroom_tokens,
 };
+pub use context_assembly::{
+    ByteRange, ContextAssemblyReport, SourceSpan, explorer_category_for_source_id,
+};
 pub use context_compiler::{
     BudgetOverride, BudgetPolicy, CompileError, CompiledContext, ContextCompiler,
     ContextCompilerMode, ContextLayer, ContextProjection, ContextSource, RenderFn, RenderedBlock,
     SourceContribution, SourceId,
 };
 pub use context_snapshot::ThreadContextSnapshot;
+pub use context_usage_breakdown::{
+    ContextCategory, ContextNextAction, ContextUsageBreakdown, build_context_usage_breakdown,
+    categories_from_assembly_report, resolve_next_action,
+};
 pub use dispatch::{
     ToolParallelPlanFlags, caller_allowed_for_tool, caller_type_for_tool_use, final_tool_input,
     format_tool_error, is_mcp_tool_name, mcp_tool_approval_description, mcp_tool_is_parallel_safe,

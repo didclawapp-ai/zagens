@@ -108,6 +108,7 @@ impl RuntimeThreadManager {
             workshop: self.config.workshop.clone(),
             scratchpad: self.config.scratchpad_config(),
             long_horizon,
+            context_config: effective.context.clone(),
             llm_client_override: None,
             search_provider: {
                 let search = self.config.search_config();

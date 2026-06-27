@@ -680,6 +680,14 @@ export async function editLastThreadTurn(
   return postJson(`/v1/threads/${encodeURIComponent(threadId)}/edit-last-turn`, body);
 }
 
+/** Manual context compaction (`POST …/compact`) — Explorer archive entry (P2-4). */
+export async function compactThread(
+  threadId: string,
+  body?: { reason?: string },
+): Promise<{ thread: unknown; turn: TurnRecord }> {
+  return postJson(`/v1/threads/${encodeURIComponent(threadId)}/compact`, body ?? {});
+}
+
 /** Fork a thread at the Nth user message from the tail (backtrack depth). */
 export async function forkThreadAtUserMessage(
   threadId: string,
@@ -859,6 +867,14 @@ export async function getThreadDetail(threadId: string): Promise<ThreadDetailRes
 
 export async function getThreadContext(threadId: string): Promise<ThreadContextSnapshot> {
   return fetchJsonPoll(`/v1/threads/${encodeURIComponent(threadId)}/context`);
+}
+
+export async function getThreadContextBreakdown(
+  threadId: string,
+): Promise<import('../lib/contextUsage').ContextUsageBreakdown> {
+  return fetchJsonPoll(
+    `/v1/threads/${encodeURIComponent(threadId)}/context/breakdown`,
+  );
 }
 
 export async function fetchThreadChecklist(threadId: string): Promise<any> {

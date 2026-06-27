@@ -49,6 +49,8 @@ pub struct EngineConfigExt {
     pub search_api_key: Option<String>,
     /// Git worktree isolation (P1).
     pub worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig,
+    /// Snapshot of `[context]` for profile/threshold refresh on model switch (P1).
+    pub context_config: crate::config::ContextConfig,
     /// Test/dev override: skip `DeepSeekClient::new` and use this client.
     #[doc(hidden)]
     pub llm_client_override: Option<std::sync::Arc<dyn crate::llm_client::LlmClient>>,
@@ -67,6 +69,7 @@ impl Default for EngineConfigExt {
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
             worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
+            context_config: crate::config::ContextConfig::default(),
             llm_client_override: None,
         }
     }
@@ -166,6 +169,8 @@ pub struct EngineConfig {
     pub scratchpad: crate::scratchpad::ScratchpadConfig,
     /// Long-horizon code task harness (LHT Phase 1).
     pub long_horizon: zagens_core::long_horizon::LongHorizonConfig,
+    /// Resolved `[context]` snapshot for profile refresh on model switch (P1).
+    pub context_config: crate::config::ContextConfig,
     /// Test/dev override: skip `DeepSeekClient::new` and use this client instead.
     #[doc(hidden)]
     pub llm_client_override: Option<std::sync::Arc<dyn crate::llm_client::LlmClient>>,
@@ -220,6 +225,7 @@ impl Default for EngineConfig {
             workshop: None,
             scratchpad: crate::scratchpad::ScratchpadConfig::default(),
             long_horizon: zagens_core::long_horizon::LongHorizonConfig::default(),
+            context_config: crate::config::ContextConfig::default(),
             llm_client_override: None,
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
@@ -288,6 +294,7 @@ impl EngineConfig {
             search_provider: self.search_provider.clone(),
             search_api_key: self.search_api_key.clone(),
             worktrees: self.worktrees.clone(),
+            context_config: self.context_config.clone(),
             llm_client_override: self.llm_client_override.clone(),
         }
     }
@@ -337,6 +344,7 @@ impl EngineConfig {
             search_provider: self.search_provider,
             search_api_key: self.search_api_key,
             worktrees: self.worktrees,
+            context_config: self.context_config,
             llm_client_override: self.llm_client_override,
         };
         (lean, ext)
@@ -387,6 +395,7 @@ impl EngineConfig {
             workshop: ext.workshop,
             scratchpad: lean.scratchpad,
             long_horizon: lean.long_horizon,
+            context_config: ext.context_config,
             llm_client_override: ext.llm_client_override,
             search_provider: ext.search_provider,
             search_api_key: ext.search_api_key,

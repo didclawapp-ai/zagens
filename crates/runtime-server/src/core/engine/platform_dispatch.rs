@@ -123,6 +123,9 @@ impl EnginePlatformExt<crate::sandbox::SandboxPolicy, crate::tools::user_input::
             Op::QueryContext { reply } => {
                 engine.handle_query_context_op(reply);
             }
+            Op::QueryContextBreakdown { reply } => {
+                engine.handle_query_context_breakdown_op(reply);
+            }
             Op::QueryHarnessTaskGraph { reply } => {
                 engine.handle_query_harness_task_graph_op(reply).await;
             }
@@ -175,6 +178,13 @@ impl Engine {
         reply: oneshot::Sender<ThreadContextSnapshot>,
     ) {
         let _ = reply.send(self.engine_context_snapshot());
+    }
+
+    pub(in crate::core::engine) fn handle_query_context_breakdown_op(
+        &self,
+        reply: oneshot::Sender<zagens_core::engine::ContextUsageBreakdown>,
+    ) {
+        let _ = reply.send(self.engine_context_breakdown());
     }
 
     pub(in crate::core::engine) async fn handle_query_harness_task_graph_op(

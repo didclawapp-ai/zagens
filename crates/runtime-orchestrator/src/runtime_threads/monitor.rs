@@ -914,6 +914,7 @@ where
                 // reconciliation signal, not a user-facing harness decision).
                 if message.starts_with("long_horizon.checklist_persist:")
                     || message.starts_with("long_horizon.context_snapshot:")
+                    || message.starts_with("long_horizon.context_usage:")
                 {
                     // Reconciliation signals carrying full JSON — forward to
                     // the host to refresh persisted/cached panel state off the

@@ -14,6 +14,8 @@ use crate::engine::token_estimate::TokenEstimator;
 use crate::session::Session;
 use crate::working_set::WorkingSet;
 
+use super::context_assembly::{ContextAssemblyReport, SourceSpan, explorer_category_for_source_id};
+
 // ── Layer ─────────────────────────────────────────────────────────────────────
 
 /// KV-cache layout layer for a `ContextSource`.
@@ -223,6 +225,8 @@ pub struct CompiledContext {
     /// True when `compile_with_budget_override` had to drop or shrink sources
     /// to fit within the requested budget (P2-D).
     pub overflow_recovered: bool,
+    /// Per-source spans for Context Explorer (P2a).
+    pub assembly_report: ContextAssemblyReport,
 }
 
 // ── P2-D: Budget override types ───────────────────────────────────────────────
@@ -532,6 +536,7 @@ impl ContextCompiler {
             overflow_recovered,
             ..Default::default()
         };
+        let mut byte_cursor = 0usize;
         let all_enabled = enabled.is_empty() || enabled.len() != sorted.len();
         for (idx, src) in sorted.iter().enumerate() {
             let is_enabled = all_enabled || enabled[idx];
@@ -540,13 +545,38 @@ impl ContextCompiler {
             }
             let tok = source_tokens[idx];
             out.total_tokens = out.total_tokens.saturating_add(tok);
+
+            let mut byte_range = None;
+            let mut text_len = 0usize;
+            for block in &blocks_per_source[idx] {
+                if !block.text.is_empty() {
+                    text_len = text_len.saturating_add(block.text.len());
+                }
+                out.blocks.push(block.clone());
+            }
+            if text_len > 0 {
+                let start = byte_cursor;
+                byte_cursor = byte_cursor.saturating_add(text_len);
+                byte_range = Some(super::context_assembly::ByteRange {
+                    start,
+                    end: byte_cursor,
+                });
+            }
+
             out.contributions.push(SourceContribution {
                 source_id: src.id.clone(),
                 token_count: tok,
                 was_truncated: false,
             });
-            out.blocks.extend_from_slice(&blocks_per_source[idx]);
+            out.assembly_report.spans.push(SourceSpan {
+                source_id: src.id.0.to_string(),
+                category: explorer_category_for_source_id(&src.id).to_string(),
+                tokens: tok,
+                byte_range,
+            });
         }
+        out.assembly_report.compiler_source_tokens = out.total_tokens;
+        out.assembly_report.estimated_input_tokens = out.total_tokens;
         out
     }
 }

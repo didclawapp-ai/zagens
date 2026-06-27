@@ -978,13 +978,13 @@ fn default_context_seams_are_opt_in() {
 }
 
 #[test]
-fn cycle_runtime_config_default_keeps_768k() {
+fn cycle_runtime_config_default_uses_scaled_baseline_for_v4() {
     let config = Config::default();
     assert_eq!(
         config
             .cycle_runtime_config("deepseek-v4-pro")
             .threshold_for("deepseek-v4-pro"),
-        768_000
+        750_000
     );
 }
 

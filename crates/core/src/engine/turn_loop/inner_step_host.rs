@@ -106,6 +106,9 @@ pub trait InnerStepHost:
         None
     }
 
+    /// Push live context snapshot + Explorer breakdown (runtime override, P2-1).
+    async fn push_live_context_panel_events(&mut self) {}
+
     #[allow(clippy::too_many_arguments)]
     async fn execute_tool_plans(
         &mut self,

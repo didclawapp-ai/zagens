@@ -749,41 +749,17 @@ impl Config {
         }
     }
 
-    /// Resolved checkpoint-restart cycle config for the engine.
-    ///
-    /// Starts from the per-model defaults (`CycleConfig::default()`, 768K) and
-    /// applies any `[context] cycle_threshold` (global) / `[context.per_model.
-    /// <model>] cycle_threshold` (per-model) overrides, so the cycle boundary
-    /// is operator-tunable. With no override the default (768K) is unchanged.
-    ///
-    /// Note: `CycleConfig::threshold_for` checks `per_model` *before* the
-    /// top-level `threshold_tokens`, and the default config seeds per-model
-    /// entries for the V4 models — so a global override must also rewrite those
-    /// seeded entries, otherwise it would be shadowed for exactly those models.
+    /// Resolved checkpoint-restart cycle config for the engine (P1-2).
     #[must_use]
     pub fn cycle_runtime_config(&self, model: &str) -> crate::cycle_manager::CycleConfig {
-        use zagens_core::cycle::ModelCycleConfig;
+        let thresholds = self.context.resolved_thresholds_for(model);
+        zagens_core::context_profile::cycle_config_from_thresholds(model, &thresholds)
+    }
 
-        let mut cfg = crate::cycle_manager::CycleConfig::default();
-        if let Some(t) = self.context.cycle_threshold {
-            cfg.threshold_tokens = t;
-            for m in cfg.per_model.values_mut() {
-                m.threshold_tokens = t;
-            }
-        }
-        if let Some(t) = self
-            .context
-            .per_model
-            .as_ref()
-            .and_then(|pm| pm.get(model))
-            .and_then(|pm| pm.cycle_threshold)
-        {
-            cfg.per_model
-                .entry(model.to_string())
-                .or_insert_with(ModelCycleConfig::default)
-                .threshold_tokens = t;
-        }
-        cfg
+    /// Whether layered context (seam) is enabled for a model at assembly time.
+    #[must_use]
+    pub fn context_seam_enabled_for_model(&self, model: &str) -> bool {
+        self.context.seam_enabled_for_model(model)
     }
 
     /// 读取 session 文件上限（MB）：`[session] max_file_mb` > 环境变量 > 默认 5。
@@ -1015,5 +991,38 @@ impl Config {
             max_delay: cfg.max_delay.unwrap_or(defaults.max_delay),
             exponential_base: cfg.exponential_base.unwrap_or(defaults.exponential_base),
         }
+    }
+}
+
+impl ContextConfig {
+    /// Explicit threshold overrides for a model (P1-2).
+    #[must_use]
+    pub fn threshold_overrides_for(
+        &self,
+        model: &str,
+    ) -> zagens_core::context_profile::ContextThresholdOverrides {
+        let per = self.per_model.as_ref().and_then(|pm| pm.get(model));
+        zagens_core::context_profile::ContextThresholdOverrides {
+            l1: per.and_then(|p| p.l1_threshold).or(self.l1_threshold),
+            l2: per.and_then(|p| p.l2_threshold).or(self.l2_threshold),
+            l3: per.and_then(|p| p.l3_threshold).or(self.l3_threshold),
+            cycle: per.and_then(|p| p.cycle_threshold).or(self.cycle_threshold),
+        }
+    }
+
+    /// Resolved scaled thresholds for seam + cycle (P1-0/P1-2).
+    #[must_use]
+    pub fn resolved_thresholds_for(
+        &self,
+        model: &str,
+    ) -> zagens_core::context_profile::ScaledContextThresholds {
+        zagens_core::context_profile::scaled_thresholds(model, self.threshold_overrides_for(model))
+    }
+
+    /// Layered context enabled for a model when global `enabled` is unset.
+    #[must_use]
+    pub fn seam_enabled_for_model(&self, model: &str) -> bool {
+        self.enabled
+            .unwrap_or_else(|| zagens_core::context_profile::default_seam_enabled_for_model(model))
     }
 }

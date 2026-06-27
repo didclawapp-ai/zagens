@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Custom model providers:** OpenAI-compatible base URLs that already end with a version segment (e.g. Zhipu GLM `…/v4`) no longer get an extra `/v1` inserted before `chat/completions` or `/models` probes.
 - **CI scripts:** `check-architecture-freeze.ps1` uses `zagens-desktop` (was stale `deepseek-desktop`); `verify-workspace.ps1` now runs multi-session verification like the `.sh` twin; coverage-gate composite action ships missing `build-zagens.sh` / `run-gate.sh`.
 - **Runtime tests:** Fix 26 `zagens-cli --lib` regressions — `KernelEventWriter` drain on a blocking thread (no Tokio runtime in sync tests), `trust_mode` in task/automation tool schemas, `effective_trust_mode` test configs, stream schema version helper, doctor CN endpoint hint, capacity tool-replay return semantics, file path error message, provider drift skip for `custom`.
 - **R-015 longrun:** `runtime-longrun-baseline.ps1` no longer passes empty `--config` (sidecar failed to start); ADR RSS gate reads English `Process RSS peak` row; harness longrun pins `-Model deepseek-v4-pro` to match ADR scenario.

@@ -47,6 +47,90 @@ export interface ThreadContextSnapshot {
   source: string;
 }
 
+export type ContextNextAction =
+  | 'none'
+  | 'seam_l1'
+  | 'seam_l2'
+  | 'seam_l3'
+  | 'cycle'
+  | 'compact_suggested'
+  | 'overflow';
+
+export interface ContextCategory {
+  id: string;
+  label: string;
+  tokens: number;
+  item_count?: number;
+  children?: ContextCategory[];
+  user_action_hint?: string;
+}
+
+/** Context Explorer breakdown (`GET …/context/breakdown`, SSE `context.usage`). */
+export interface ContextUsageBreakdown {
+  model: string;
+  context_window_tokens: number;
+  estimated_input_tokens: number;
+  usage_percent: number;
+  profile: 'large' | 'medium' | 'small' | 'unknown' | string;
+  next_action: ContextNextAction;
+  categories: ContextCategory[];
+}
+
+export function contextExplorerCategoryColor(id: string): string {
+  switch (id) {
+    case 'system':
+      return '#3b82f6';
+    case 'tools':
+      return '#8b5cf6';
+    case 'rules':
+      return '#6366f1';
+    case 'skills':
+      return '#a855f7';
+    case 'mcp':
+      return '#ec4899';
+    case 'subagents':
+      return '#f97316';
+    case 'conversation':
+      return '#22c55e';
+    case 'summarized':
+      return '#eab308';
+    case 'structured':
+      return '#06b6d4';
+    default:
+      return '#94a3b8';
+  }
+}
+
+export function categoryTokenSum(breakdown: ContextUsageBreakdown): number {
+  return breakdown.categories.reduce((sum, c) => sum + c.tokens, 0);
+}
+
+/** Arc segments for the composer ring (fractions of full circle, capped by usage). */
+export function contextMeterRingSegments(
+  breakdown: ContextUsageBreakdown,
+): Array<{ id: string; color: string; start: number; length: number }> {
+  const window = breakdown.context_window_tokens;
+  if (window <= 0) {
+    return [];
+  }
+  const cap = Math.min(100, breakdown.usage_percent) / 100;
+  let cursor = 0;
+  const out: Array<{ id: string; color: string; start: number; length: number }> = [];
+  for (const cat of breakdown.categories) {
+    if (cat.tokens <= 0) continue;
+    const length = (cat.tokens / window) * cap;
+    if (length <= 0) continue;
+    out.push({
+      id: cat.id,
+      color: contextExplorerCategoryColor(cat.id),
+      start: cursor,
+      length,
+    });
+    cursor += length;
+  }
+  return out;
+}
+
 export function contextWindowTokensForModel(model: string | undefined): number {
   if (isDeepSeekV4Model(model ?? '')) {
     return DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS;

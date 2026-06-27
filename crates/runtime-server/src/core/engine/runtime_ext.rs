@@ -98,4 +98,6 @@ pub struct EngineRuntimeExt {
     pub kernel_memory_query_sources: std::collections::BTreeSet<String>,
     /// v3 outer-boundary grant counts for the active turn (batch 5b cont.).
     pub kernel_v3_outer_boundary_grants: V3OuterBoundaryTurnGrants,
+    /// Latest Context Explorer assembly report from the compiler path (P2a).
+    pub last_context_assembly_report: Option<zagens_core::engine::ContextAssemblyReport>,
 }

@@ -25,6 +25,7 @@ import {
   normalizeComposerModel,
 } from '../lib/composerModels';
 import { runModesForSession } from '../lib/taskTypeSession';
+import type { ContextUsageBreakdown } from '../lib/contextUsage';
 import { ComposerContextMeter } from './composer/ComposerContextMeter';
 import ComposerOverflowMenu from './composer/ComposerOverflowMenu';
 import WorktreeBranchIcon from './composer/WorktreeBranchIcon';
@@ -445,6 +446,8 @@ interface Props {
   contextUsagePct: number;
   contextUsedTokens: number;
   contextWindowTokens: number;
+  /** Runtime Explorer breakdown when available (P2). */
+  threadContextUsage?: ContextUsageBreakdown | null;
   /** `engine` | `store` when runtime `/context` succeeded. */
   contextSource?: string;
   /** Active compaction threshold from runtime (tokens). */
@@ -499,6 +502,7 @@ export default function Composer({
   contextUsagePct,
   contextUsedTokens,
   contextWindowTokens,
+  threadContextUsage = null,
   contextSource,
   compactionThresholdTokens,
   lastApiInputTokens = null,
@@ -988,6 +992,13 @@ export default function Composer({
       used: Math.round(contextUsedTokens).toLocaleString(),
       max: contextWindowTokens.toLocaleString(),
     }),
+    threadContextUsage && threadContextUsage.next_action !== 'none'
+      ? t(`contextExplorer.nextAction.${threadContextUsage.next_action}`)
+      : '',
+    ...(threadContextUsage?.categories ?? [])
+      .filter((c) => c.tokens > 0)
+      .slice(0, 6)
+      .map((c) => `${c.label}: ${c.tokens.toLocaleString()}`),
     lastApiTooltip,
     lastTurnOutputTokens != null && lastTurnOutputTokens > 0
       ? `${t('composer.lastTurnTokensTitle')}: ${t('composer.lastTurnTokens', {
@@ -1288,6 +1299,7 @@ export default function Composer({
               level={ctxFillClass}
               tooltip={contextMeterTooltip}
               ariaLabel={t('composer.contextMeterAria', { pct: String(Math.round(ctxPct)) })}
+              breakdown={threadContextUsage}
             />
             <button
               type="button"

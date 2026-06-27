@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
+use zagens_config::openai_compatible_api_url;
 
 use crate::logging;
 
@@ -64,34 +65,8 @@ pub(super) fn validate_base_url_security(base_url: &str) -> Result<()> {
     )
 }
 
-pub(super) fn versioned_base_url(base_url: &str) -> String {
-    let trimmed = base_url.trim_end_matches('/');
-    if trimmed.ends_with("/v1") || trimmed.ends_with("/beta") {
-        trimmed.to_string()
-    } else {
-        format!("{trimmed}/v1")
-    }
-}
-
-fn unversioned_base_url(base_url: &str) -> String {
-    let trimmed = base_url.trim_end_matches('/');
-    trimmed
-        .strip_suffix("/v1")
-        .or_else(|| trimmed.strip_suffix("/beta"))
-        .unwrap_or(trimmed)
-        .to_string()
-}
-
 pub(super) fn api_url(base_url: &str, path: &str) -> String {
-    let path = path.trim_start_matches('/');
-    if path.starts_with("beta/") {
-        return format!("{}/{}", unversioned_base_url(base_url), path);
-    }
-    format!(
-        "{}/{}",
-        versioned_base_url(base_url).trim_end_matches('/'),
-        path
-    )
+    openai_compatible_api_url(base_url, path)
 }
 
 // === DeepSeekClient ===

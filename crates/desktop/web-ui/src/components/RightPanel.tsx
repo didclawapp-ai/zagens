@@ -121,6 +121,12 @@ interface Props {
   focusFilesRelPath?: string | null;
   /** Bumped when chat or auto-detect should show the Diff workspace tab. */
   focusDiffNonce: number;
+  focusWorkspaceTab?: WorkspaceTabId | null;
+  focusWorkspaceTabNonce?: number;
+  onNavigateContextCategory?: (categoryId: string) => void;
+  onArchiveContext?: () => void;
+  archivePending?: boolean;
+  canArchiveContext?: boolean;
   onRequestDiff?: () => void;
   agentStates: AgentState[];
   /** Called when ChecklistPanel detects first data — parent switches view. */
@@ -204,6 +210,12 @@ export default function RightPanel({
   focusFilesNonce,
   focusFilesRelPath,
   focusDiffNonce,
+  focusWorkspaceTab = null,
+  focusWorkspaceTabNonce = 0,
+  onNavigateContextCategory,
+  onArchiveContext,
+  archivePending = false,
+  canArchiveContext = false,
   onRequestDiff,
   agentStates,
   onRequestChecklist,
@@ -367,6 +379,12 @@ export default function RightPanel({
       setWorkspaceTab('diff');
     }
   }, [focusDiffNonce]);
+
+  useEffect(() => {
+    if (focusWorkspaceTabNonce > 0 && focusWorkspaceTab) {
+      setWorkspaceTab(focusWorkspaceTab);
+    }
+  }, [focusWorkspaceTab, focusWorkspaceTabNonce]);
 
   const onRestore = useCallback(
     async (n: number) => {
@@ -916,6 +934,10 @@ export default function RightPanel({
             threadId={resumedThreadId ?? ''}
             streaming={streaming}
             pollFast={streaming || view === 'long-horizon'}
+            onNavigateContextCategory={onNavigateContextCategory}
+            onArchiveContext={onArchiveContext}
+            archivePending={archivePending}
+            canArchiveContext={canArchiveContext}
           />
         )}
 

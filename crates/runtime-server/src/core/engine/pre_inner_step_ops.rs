@@ -1,6 +1,7 @@
 //! v3 pre-inner-step planner execution (Phase 3b batch 5b).
 
 use zagens_core::chat::LlmClient;
+use zagens_core::context_profile::auto_compaction_allowed;
 use zagens_core::engine::turn_loop::live_turn_outer_planner::{
     plan_v3_pre_inner_step_baseline, pre_inner_step_baseline_effect_label,
 };
@@ -36,6 +37,7 @@ impl Engine {
             &mut compaction_paths,
         );
         self.config.compaction.enabled
+            && auto_compaction_allowed(&self.session.model, &self.config.cycle)
             && should_compact(
                 &self.session.messages,
                 &self.config.compaction,

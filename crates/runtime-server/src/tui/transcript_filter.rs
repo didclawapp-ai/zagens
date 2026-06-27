@@ -236,7 +236,7 @@ pub fn format_compact_count(n: usize) -> String {
 pub fn should_skip_harness_label(label: &str) -> bool {
     matches!(
         label,
-        "gate_skip" | "gate_pass" | "checklist_persist" | "context_snapshot"
+        "gate_skip" | "gate_pass" | "checklist_persist" | "context_snapshot" | "context_usage"
     )
 }
 

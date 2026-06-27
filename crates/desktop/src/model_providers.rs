@@ -465,29 +465,7 @@ pub async fn activate_model_provider_async(
 }
 
 fn normalize_models_url(base_url: &str) -> String {
-    let trimmed = base_url.trim().trim_end_matches('/');
-    // DeepSeek's `/models` endpoint lives at the API root
-    // (https://api-docs.deepseek.com/zh-cn/api/list-models: GET /models),
-    // NOT under `/v1` or `/beta`. The preset base_url is
-    // `https://api.deepseek.com/beta` (chosen so chat/completions can use
-    // beta features), but probing `/beta/models` 404s — strip the version
-    // segment for DeepSeek hosts and hit `<root>/models` instead.
-    let is_deepseek_host = trimmed
-        .split("://")
-        .nth(1)
-        .is_some_and(|rest| rest.starts_with("api.deepseek.com"));
-    if is_deepseek_host {
-        let root = trimmed
-            .strip_suffix("/v1")
-            .or_else(|| trimmed.strip_suffix("/beta"))
-            .unwrap_or(trimmed);
-        return format!("{root}/models");
-    }
-    if trimmed.ends_with("/v1") || trimmed.ends_with("/beta") {
-        format!("{trimmed}/models")
-    } else {
-        format!("{trimmed}/v1/models")
-    }
+    zagens_config::openai_compatible_models_url(base_url)
 }
 
 #[derive(Debug, Deserialize)]
@@ -638,6 +616,14 @@ mod normalize_models_url_tests {
         assert_eq!(
             normalize_models_url("https://api.example.com/v1"),
             "https://api.example.com/v1/models"
+        );
+    }
+
+    #[test]
+    fn keeps_v4_suffix_for_zhipu_style_bases() {
+        assert_eq!(
+            normalize_models_url("https://open.bigmodel.cn/api/paas/v4"),
+            "https://open.bigmodel.cn/api/paas/v4/models"
         );
     }
 

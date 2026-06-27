@@ -1052,6 +1052,73 @@ fn msg(role: &str, text: &str) -> Message {
         assert_eq!(config.auto_floor_tokens, 500_000);
     }
 
+    /// P0-6: engine auto gate blocks V4 even when `should_compact` would fire.
+    #[test]
+    fn auto_compaction_gate_blocks_large_profile_while_should_compact_stays_true() {
+        use zagens_core::context_profile::auto_compaction_allowed;
+        use zagens_core::cycle::CycleConfig;
+
+        let cycle = CycleConfig::default();
+        let config = CompactionConfig {
+            enabled: true,
+            token_threshold: 100,
+            auto_floor_tokens: 0,
+            ..Default::default()
+        };
+        let messages: Vec<Message> = (0..20).map(|_| msg("user", &"x".repeat(5000))).collect();
+        assert!(should_compact(&messages, &config, None, None, None));
+        assert!(!auto_compaction_allowed("deepseek-v4-pro", &cycle));
+        let would_run_auto = config.enabled
+            && auto_compaction_allowed("deepseek-v4-pro", &cycle)
+            && should_compact(&messages, &config, None, None, None);
+        assert!(
+            !would_run_auto,
+            "Large profile auto path must stay off when cycle is enabled"
+        );
+    }
+
+    /// P0-6: medium-window models keep auto compaction when threshold fires.
+    #[test]
+    fn auto_compaction_gate_allows_medium_profile_auto_path() {
+        use zagens_core::context_profile::auto_compaction_allowed;
+        use zagens_core::cycle::CycleConfig;
+
+        let cycle = CycleConfig::default();
+        let config = CompactionConfig {
+            enabled: true,
+            token_threshold: 100,
+            auto_floor_tokens: 0,
+            ..Default::default()
+        };
+        let messages: Vec<Message> = (0..20).map(|_| msg("user", &"x".repeat(5000))).collect();
+        assert!(auto_compaction_allowed("deepseek-chat", &cycle));
+        let would_run_auto = config.enabled
+            && auto_compaction_allowed("deepseek-chat", &cycle)
+            && should_compact(&messages, &config, None, None, None);
+        assert!(would_run_auto);
+    }
+
+    /// P0-6: overflow forced compaction bypasses the auto gate via `auto_floor_tokens = 0`.
+    #[test]
+    fn overflow_forced_compaction_config_bypasses_auto_gate_semantics() {
+        use zagens_core::context_profile::auto_compaction_allowed;
+        use zagens_core::cycle::CycleConfig;
+
+        let cycle = CycleConfig::default();
+        assert!(!auto_compaction_allowed("deepseek-v4-pro", &cycle));
+
+        let mut forced_config = CompactionConfig::default();
+        forced_config.enabled = true;
+        forced_config.token_threshold = 100;
+        forced_config.auto_floor_tokens = 0;
+
+        let messages: Vec<Message> = (0..20).map(|_| msg("user", &"x".repeat(5000))).collect();
+        assert!(
+            should_compact(&messages, &forced_config, None, None, None),
+            "overflow forced config must still invoke compaction when over threshold"
+        );
+    }
+
     #[test]
     fn test_plan_compaction_pins_error_messages() {
         let messages = vec![

@@ -171,6 +171,18 @@ where
             .map_err(|_| anyhow::anyhow!("engine dropped context query"))
     }
 
+    /// Query Context Explorer breakdown from the live engine session (P2b).
+    pub async fn query_context_breakdown(
+        &self,
+    ) -> Result<super::context_usage_breakdown::ContextUsageBreakdown> {
+        let (tx, rx) = oneshot::channel();
+        self.send(Op::QueryContextBreakdown { reply: tx }).await?;
+        tokio::time::timeout(Duration::from_secs(5), rx)
+            .await
+            .map_err(|_| anyhow::anyhow!("context breakdown query timed out"))?
+            .map_err(|_| anyhow::anyhow!("engine dropped context breakdown query"))
+    }
+
     /// Query derived long-horizon task graph from the live engine session.
     pub async fn query_harness_task_graph(&self) -> Result<serde_json::Value> {
         let (tx, rx) = oneshot::channel();

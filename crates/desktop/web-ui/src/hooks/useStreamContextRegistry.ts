@@ -29,7 +29,7 @@ import type { FinishOnceOptions, StreamSessionControl } from '../hooks/useTurnSt
 import type { StreamRecoveryContext } from '../hooks/useTurnStreamRecovery';
 import type { TurnChatMessage } from '../hooks/useTurnSend';
 import type { SseTurnEvent } from '../api/client';
-import type { ThreadContextSnapshot } from '../lib/contextUsage';
+import type { ThreadContextSnapshot, ContextUsageBreakdown } from '../lib/contextUsage';
 import type { HarnessTaskGraph } from '../lib/types/longHorizon';
 import type { ScratchpadStatus } from '../api/client';
 import type { LhtChipState } from '../lib/lhtChip';
@@ -39,6 +39,7 @@ export type PanelSlice = {
   checklist: unknown | null;
   taskGraph: HarnessTaskGraph | null;
   context: ThreadContextSnapshot | null;
+  contextUsage: ContextUsageBreakdown | null;
   scratchpad: ScratchpadStatus | null;
   lhtChip: LhtChipState | null;
 };
@@ -77,6 +78,7 @@ export function makeEmptyPanelSlice(): PanelSlice {
     checklist: null,
     taskGraph: null,
     context: null,
+    contextUsage: null,
     scratchpad: null,
     lhtChip: null,
   };

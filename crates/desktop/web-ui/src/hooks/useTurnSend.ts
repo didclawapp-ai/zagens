@@ -38,12 +38,14 @@ import {
   cacheSessionUiMessages,
   type CachedUiMessage,
 } from '../lib/chat/sessionUiCache';
-import type { ThreadContextSnapshot } from '../lib/contextUsage';
+import type { ContextUsageBreakdown, ThreadContextSnapshot } from '../lib/contextUsage';
+import { normalizeContextUsageBreakdown } from '../components/ContextExplorerView';
 import type { ModelParams } from '../components/ModelParamsDialog';
 import { modelSamplingForApi } from '../lib/modelParams';
 import {
   dispatchPanelChecklist,
   dispatchPanelContext,
+  dispatchPanelContextUsage,
   dispatchPanelScratchpad,
   dispatchPanelTaskGraph,
   dispatchHarnessCycleAdvanced,
@@ -156,6 +158,7 @@ export type UseTurnSendParams = {
   refreshSessions: () => Promise<void>;
   refreshThreadContext: (threadId: string) => Promise<void>;
   applyThreadContextSnapshot: (threadId: string, snap: ThreadContextSnapshot) => void;
+  applyContextUsageBreakdown: (threadId: string, breakdown: ContextUsageBreakdown) => void;
   notifyRuntimeTransient: (message: string) => void;
   resetAgentPanel: () => void;
   onAgentSpawnToolStarted: (toolCallId: string, name: string, input: unknown) => void;
@@ -218,6 +221,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     refreshSessions,
     refreshThreadContext,
     applyThreadContextSnapshot,
+    applyContextUsageBreakdown,
     notifyRuntimeTransient,
     resetAgentPanel,
     onAgentSpawnToolStarted,
@@ -857,6 +861,18 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 }
                 break;
               }
+              case 'context_usage': {
+                const usage = normalizeContextUsageBreakdown(norm.usage);
+                if (usage) {
+                  streamRegistry.patchContext(eventThreadId, {
+                    panelSlice: {
+                      ...streamRegistry.getContext(eventThreadId)!.panelSlice,
+                      contextUsage: usage,
+                    },
+                  });
+                }
+                break;
+              }
               case 'panel_scratchpad': {
                 const raw = norm.scratchpad;
                 if (raw && typeof raw === 'object' && 'run_id' in (raw as Record<string, unknown>)) {
@@ -1100,6 +1116,15 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               if (tid && panelCtx && typeof panelCtx.estimated_input_tokens === 'number') {
                 applyThreadContextSnapshot(tid, panelCtx);
                 dispatchPanelContext(panelCtx, ownerThreadId || eventThreadId || undefined);
+              }
+              break;
+            }
+            case 'context_usage': {
+              const usage = normalizeContextUsageBreakdown(norm.usage);
+              const tid = resumedThreadIdRef.current;
+              if (tid && usage) {
+                applyContextUsageBreakdown(tid, usage);
+                dispatchPanelContextUsage(usage, ownerThreadId || eventThreadId || undefined);
               }
               break;
             }

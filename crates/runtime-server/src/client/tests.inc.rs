@@ -101,6 +101,17 @@ fn api_url_routes_beta_paths_from_any_deepseek_base() {
 }
 
 #[test]
+fn api_url_keeps_non_v1_versioned_openai_compatible_bases() {
+    assert_eq!(
+        api_url(
+            "https://open.bigmodel.cn/api/paas/v4",
+            "chat/completions"
+        ),
+        "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    );
+}
+
+#[test]
 fn default_headers_include_custom_headers_when_configured() {
     let mut extra = HashMap::new();
     extra.insert("X-Model-Provider-Id".to_string(), "tongyi".to_string());

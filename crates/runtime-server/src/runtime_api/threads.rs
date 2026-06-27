@@ -1274,6 +1274,18 @@ pub(crate) async fn get_thread_context(
     Ok(Json(snapshot))
 }
 
+pub(crate) async fn get_thread_context_breakdown(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<zagens_core::engine::ContextUsageBreakdown>, ApiError> {
+    let breakdown = state
+        .runtime_threads
+        .get_thread_context_breakdown(&id)
+        .await
+        .map_err(map_thread_err)?;
+    Ok(Json(breakdown))
+}
+
 #[cfg(test)]
 mod resolve_persist_session_tests {
     use super::resolve_persist_session_id;

@@ -8,6 +8,7 @@ pub mod chat;
 pub mod coherence;
 pub mod compaction;
 pub mod context_partition;
+pub mod context_profile;
 pub mod cycle;
 pub mod engine;
 pub mod error_taxonomy;

@@ -175,6 +175,52 @@ impl RuntimeThreadManager {
         ))
     }
 
+    /// Context Explorer breakdown (P2b) — live engine or store reconstruction.
+    pub async fn get_thread_context_breakdown(
+        &self,
+        id: &str,
+    ) -> Result<zagens_core::engine::ContextUsageBreakdown> {
+        let thread = self.get_thread(id).await?;
+        let compaction = self.config.compaction_runtime_config(&thread.model);
+        let thresholds = self.config.context.resolved_thresholds_for(&thread.model);
+        let seam_enabled = self.config.context.seam_enabled_for_model(&thread.model);
+        let system = thread
+            .system_prompt
+            .as_ref()
+            .map(|s| SystemPrompt::Text(s.clone()));
+
+        {
+            let active = self.active.lock().await;
+            if let Some(state) = active.engines.get(id) {
+                let engine = state.engine.clone();
+                drop(active);
+                if let Ok(breakdown) = engine.query_context_breakdown().await {
+                    return Ok(breakdown);
+                }
+            }
+        }
+
+        let store = self.store.clone();
+        let thread_id = id.to_string();
+        let messages = tokio::task::spawn_blocking(move || -> Result<Vec<Message>> {
+            let turns = store.list_turns_for_thread(&thread_id)?;
+            reconstruct_messages_for_store(&store, &turns)
+        })
+        .await
+        .map_err(|e| anyhow!("get_thread_context_breakdown panicked: {e}"))??;
+
+        Ok(crate::context_snapshot::build_thread_context_breakdown(
+            &thread.model,
+            &messages,
+            system.as_ref(),
+            &compaction,
+            Some(&thread.workspace),
+            None,
+            thresholds,
+            seam_enabled,
+        ))
+    }
+
     pub async fn resume_thread(&self, id: &str) -> Result<ThreadRecord> {
         let thread = self.get_thread(id).await?;
         self.ensure_engine_loaded(&thread).await?;

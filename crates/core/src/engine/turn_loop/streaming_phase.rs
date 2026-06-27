@@ -63,6 +63,7 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
     // Phase 2 P2-message-path: V2 mode builds both system prompt and turn_meta from
     // ContextCompiler snapshot (single snapshot per step).  Shadow/Legacy return None.
     let compiler_ctx = host.compiler_request_context(active_tools.as_deref());
+    host.push_live_context_panel_events().await;
     let request = {
         let session = host.session_mut();
         let messages = match compiler_ctx

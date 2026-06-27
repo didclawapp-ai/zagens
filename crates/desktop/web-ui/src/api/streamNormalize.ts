@@ -36,6 +36,7 @@ export const KNOWN_DESKTOP_SSE_EVENTS = new Set([
   'panel.plan',
   'panel.scratchpad',
   'panel.context',
+  'context.usage',
   'harness.task_graph',
   'harness.cycle_advanced',
   'thread.status',
@@ -87,6 +88,7 @@ export type NormalizedStreamEvent =
   | { kind: 'panel_scratchpad'; scratchpad: unknown }
   | { kind: 'panel_checklist'; checklist: unknown }
   | { kind: 'panel_context'; context: unknown }
+  | { kind: 'context_usage'; usage: unknown }
   | { kind: 'panel_task_graph'; task_graph: unknown }
   | { kind: 'harness_cycle_advanced'; from: number; to: number }
   | { kind: 'thread_status'; threadId: string; status: ThreadStreamStatus; turnId?: string; seq?: number };
@@ -266,6 +268,9 @@ export function normalizeDesktopStreamEvent(
   if (sse === 'panel.context' && j.context != null) {
     return { kind: 'panel_context', context: j.context };
   }
+  if (sse === 'context.usage' && j.usage != null) {
+    return { kind: 'context_usage', usage: j.usage };
+  }
   if (sse === 'harness.task_graph' && j.task_graph != null) {
     return { kind: 'panel_task_graph', task_graph: j.task_graph };
   }
@@ -441,6 +446,10 @@ export function normalizeDesktopStreamEvent(
   if (recordEvent === 'panel.context' && inner) {
     const context = (inner.context ?? inner) as unknown;
     return { kind: 'panel_context', context };
+  }
+  if (recordEvent === 'context.usage' && inner) {
+    const usage = (inner.usage ?? inner) as unknown;
+    return { kind: 'context_usage', usage };
   }
   if (recordEvent === 'harness.task_graph' && inner) {
     const task_graph = (inner.task_graph ?? inner) as unknown;

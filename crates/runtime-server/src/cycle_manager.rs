@@ -48,13 +48,12 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::models::{
-    ContentBlock, Message, MessageRequest, SystemBlock, SystemPrompt, context_window_for_model,
-};
+use crate::models::{ContentBlock, Message, MessageRequest, SystemBlock, SystemPrompt};
 use crate::tools::plan::{PlanSnapshot, SharedPlanState};
 use crate::tools::subagent::{SharedSubAgentManager, SubAgentResult, SubAgentStatus};
 use crate::tools::todo::{SharedTodoList, TodoListSnapshot};
 use crate::working_set::WorkingSet;
+use zagens_core::context_profile::cycle_trigger_floor;
 
 /// JSONL header record emitted as the first line of an archived cycle file.
 const CYCLE_ARCHIVE_SCHEMA_VERSION: u32 = 1;
@@ -95,13 +94,11 @@ pub fn should_advance_cycle(
     if !cfg.enabled || in_flight {
         return false;
     }
-    let threshold = cfg.threshold_for(model) as u64;
+    let threshold = cfg.threshold_for(model);
     if threshold == 0 {
         return false;
     }
-    let trigger_floor = context_window_for_model(model)
-        .map(|window| u64::from(window).saturating_sub(reserved_response_headroom_tokens))
-        .map_or(threshold, |window_floor| threshold.min(window_floor));
+    let trigger_floor = cycle_trigger_floor(model, threshold, reserved_response_headroom_tokens);
     active_input_tokens >= trigger_floor
 }
 

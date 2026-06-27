@@ -6,6 +6,7 @@ use crate::compaction::CompactionConfig;
 use crate::context_snapshot::{ThreadContextSnapshot, build_thread_context_snapshot};
 use crate::core::events::Event;
 use crate::models::{Message, SystemPrompt};
+use zagens_core::engine::ContextUsageBreakdown;
 
 use super::Engine;
 
@@ -20,6 +21,7 @@ impl Engine {
 
     pub(in crate::core::engine) async fn apply_set_model_op(&mut self, model: String) {
         self.set_runtime_model(model);
+        self.refresh_context_profile_bindings();
         let _ = self
             .tx_event
             .send(Event::status(format!(
@@ -89,5 +91,46 @@ impl Engine {
             None,
             "engine",
         )
+    }
+
+    #[must_use]
+    pub(in crate::core::engine) fn engine_context_breakdown(&self) -> ContextUsageBreakdown {
+        let thresholds = self
+            .config_ext()
+            .context_config
+            .resolved_thresholds_for(&self.session.model);
+        let seam_enabled = self
+            .config_ext()
+            .context_config
+            .seam_enabled_for_model(&self.session.model);
+        let report = self.runtime_ext().last_context_assembly_report.as_ref();
+        crate::context_snapshot::build_thread_context_breakdown(
+            &self.session.model,
+            &self.session.messages,
+            self.session.system_prompt.as_ref(),
+            &self.config.compaction,
+            Some(&self.session.workspace),
+            report,
+            thresholds,
+            seam_enabled,
+        )
+    }
+
+    pub(in crate::core::engine) async fn push_live_context_panel_events(&self) {
+        if let Ok(json) = serde_json::to_string(&self.engine_context_snapshot()) {
+            let _ = self
+                .tx_event
+                .send(Event::status(format!(
+                    "long_horizon.context_snapshot:{json}"
+                )))
+                .await;
+        }
+        let breakdown = self.engine_context_breakdown();
+        if let Ok(json) = serde_json::to_string(&breakdown) {
+            let _ = self
+                .tx_event
+                .send(Event::status(format!("long_horizon.context_usage:{json}")))
+                .await;
+        }
     }
 }

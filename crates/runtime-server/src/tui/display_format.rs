@@ -18,6 +18,7 @@ pub fn should_skip_status_message(message: &str) -> bool {
     }
     if msg.starts_with("long_horizon.checklist_persist:")
         || msg.starts_with("long_horizon.context_snapshot:")
+        || msg.starts_with("long_horizon.context_usage:")
     {
         return true;
     }

@@ -23,6 +23,7 @@ mod capacity_flow;
 mod capacity_hold_ops;
 mod compaction_ops;
 mod context;
+mod context_profile_ops;
 mod context_recovery;
 mod context_trim;
 mod continuation_ops;

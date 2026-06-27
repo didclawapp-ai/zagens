@@ -12,7 +12,11 @@ use crate::models::{
     LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS, Message, SystemPrompt, context_window_for_model,
 };
 
+pub use zagens_core::context_profile::ScaledContextThresholds;
 pub use zagens_core::engine::context_snapshot::ThreadContextSnapshot;
+pub use zagens_core::engine::{
+    ContextAssemblyReport, ContextUsageBreakdown, build_context_usage_breakdown,
+};
 
 fn usage_percent_for(used: u32, window: u32) -> f64 {
     if window == 0 {
@@ -54,6 +58,33 @@ pub fn build_thread_context_snapshot(
         last_reported_input_tokens,
         source: source.to_string(),
     }
+}
+
+/// Build Explorer breakdown aligned with TUI compaction gates + scaled thresholds (P2b).
+#[must_use]
+pub fn build_thread_context_breakdown(
+    model: &str,
+    messages: &[Message],
+    system: Option<&SystemPrompt>,
+    compaction: &CompactionConfig,
+    workspace: Option<&Path>,
+    assembly_report: Option<&ContextAssemblyReport>,
+    thresholds: ScaledContextThresholds,
+    seam_enabled: bool,
+) -> ContextUsageBreakdown {
+    let estimated = estimate_input_tokens_conservative(messages, system);
+    let window = context_window_for_model(model).unwrap_or(LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS);
+    let should_compact_now = should_compact(messages, compaction, workspace, None, None);
+    build_context_usage_breakdown(
+        model,
+        assembly_report,
+        estimated as u32,
+        window,
+        &thresholds,
+        seam_enabled,
+        should_compact_now,
+        messages.len(),
+    )
 }
 
 #[cfg(test)]

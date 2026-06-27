@@ -235,6 +235,7 @@ async fn run_exec_agent(
         workshop: config.workshop.clone(),
         scratchpad: config.scratchpad_config(),
         long_horizon: config.long_horizon_config(),
+        context_config: config.context.clone(),
         llm_client_override,
         search_provider: search.provider.unwrap_or_default(),
         search_api_key: search.api_key,

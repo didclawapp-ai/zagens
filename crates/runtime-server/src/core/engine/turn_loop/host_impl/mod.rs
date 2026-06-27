@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::{Mutex as AsyncMutex, RwLock, mpsc};
 use zagens_core::chat::{ContentBlock, LlmClient, Message, Tool};
+use zagens_core::context_profile::auto_compaction_allowed;
 use zagens_core::engine::KernelTurnHost;
 use zagens_core::engine::context::estimate_input_tokens_conservative;
 use zagens_core::engine::hosts::McpHost;
@@ -692,6 +693,15 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
             compiler.compile(&proj)
         };
 
+        let message_tokens =
+            zagens_core::engine::estimate_input_tokens_conservative(&self.session.messages, None)
+                as u32;
+        let assembly_report = compiled
+            .assembly_report
+            .clone()
+            .with_message_tokens(message_tokens);
+        self.runtime_ext_mut().last_context_assembly_report = Some(assembly_report);
+
         // Determine which sources survived compilation (for eviction-aware assembly).
         let mut has_compaction = compiled
             .contributions
@@ -788,6 +798,10 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
         )
         .await
     }
+
+    async fn push_live_context_panel_events(&mut self) {
+        Engine::push_live_context_panel_events(self).await;
+    }
 }
 
 #[async_trait]
@@ -833,6 +847,7 @@ impl zagens_core::engine::turn_loop::TurnLoopOuterHost for Engine {
         );
 
         if !self.config.compaction.enabled
+            || !auto_compaction_allowed(&self.session.model, &self.config.cycle)
             || !should_compact(
                 &self.session.messages,
                 &self.config.compaction,
@@ -903,7 +918,9 @@ impl zagens_core::engine::turn_loop::TurnLoopOuterHost for Engine {
         let active = self.estimated_input_tokens() as u64;
         let headroom = crate::core::engine::context::turn_response_headroom_tokens();
         let model = self.session.model.clone();
-        let in_band = crate::long_horizon::in_lht_warning_band(active, headroom, &model);
+        let thresholds = self.scaled_context_thresholds();
+        let in_band =
+            crate::long_horizon::in_lht_warning_band(active, headroom, &model, &thresholds);
         let emit_warning = {
             let lh = &self.runtime_ext().long_horizon_state;
             in_band && !lh.last_warning_band_emitted
@@ -1018,19 +1035,12 @@ impl zagens_core::engine::turn_loop::TurnLoopOuterHost for Engine {
             return false;
         }
         // Push a live context-usage snapshot off the (mid-turn starved) op loop:
-        // the monitor forwards this as `panel.context`, so the Context tab /
-        // cycle-pressure bar update every step instead of freezing until turn
-        // end (where the op-loop `QueryContext` finally drains). Same channel as
-        // `checklist_persist`. Cheap relative to the per-step token estimate the
-        // cycle gate already computes below.
-        if let Ok(json) = serde_json::to_string(&self.engine_context_snapshot()) {
-            let _ = self
-                .tx_event
-                .send(Event::status(format!(
-                    "long_horizon.context_snapshot:{json}"
-                )))
-                .await;
-        }
+        // the monitor forwards this as `panel.context` + `context.usage`, so the
+        // Context tab / cycle-pressure bar update every step instead of freezing
+        // until turn end (where the op-loop `QueryContext` finally drains). Same
+        // channel as `checklist_persist`. Cheap relative to the per-step token
+        // estimate the cycle gate already computes below.
+        self.push_live_context_panel_events().await;
         // Reuse the exact between-turns gate (threshold + long-horizon
         // early-advance band) and handoff body. At this call site the streaming
         // phase and tool execution have completed, so `in_flight` is false —

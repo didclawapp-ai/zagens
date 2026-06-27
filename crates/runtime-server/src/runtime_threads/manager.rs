@@ -649,6 +649,25 @@ impl RuntimeThreadManager {
         Ok(())
     }
 
+    /// Zagens panel channel (C): push Context Explorer breakdown on SSE (P2-1).
+    pub(crate) async fn emit_panel_context_usage(
+        &self,
+        thread_id: &str,
+        turn_id: &str,
+        usage_json: &str,
+    ) -> Result<()> {
+        let usage: serde_json::Value = serde_json::from_str(usage_json)?;
+        self.emit_event(
+            thread_id,
+            Some(turn_id),
+            None,
+            "context.usage",
+            serde_json::json!({ "usage": usage }),
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Zagens panel channel (C): push context usage snapshot on SSE.
     pub(crate) async fn emit_panel_context(&self, thread_id: &str, turn_id: &str) -> Result<()> {
         match self.get_thread_context(thread_id).await {

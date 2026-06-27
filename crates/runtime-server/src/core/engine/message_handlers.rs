@@ -182,6 +182,7 @@ impl Engine {
 
         self.0.session.model = model;
         self.0.config.model.clone_from(&self.0.session.model);
+        self.refresh_context_profile_bindings();
         self.0.config.goal_objective = goal_objective;
         self.session.reasoning_effort = reasoning_effort;
         self.session.reasoning_effort_auto = reasoning_effort_auto;

@@ -10,9 +10,7 @@ use crate::cycle_manager::{
     CycleBriefing, StructuredState, archive_cycle, build_seed_messages, estimate_briefing_tokens,
     produce_briefing, should_advance_cycle,
 };
-use crate::long_horizon::{
-    context_pressure_ratio, in_lht_warning_band, should_lht_early_advance_cycle,
-};
+use crate::long_horizon::{context_pressure_ratio, should_lht_early_advance_cycle};
 use crate::models::SystemPrompt;
 use crate::prompts;
 
@@ -43,10 +41,17 @@ impl Engine {
         let lht_enabled = self.config.long_horizon.enabled;
         let threshold = should_advance_cycle(active, headroom, &model, &self.config.cycle, false);
         let lht_early = {
+            let thresholds = self.scaled_context_thresholds();
             let lh = &mut self.runtime_ext_mut().long_horizon_state;
             let pending = lh.pending_cycle_at_checkpoint;
-            let early =
-                should_lht_early_advance_cycle(active, headroom, &model, lht_enabled, pending);
+            let early = should_lht_early_advance_cycle(
+                active,
+                headroom,
+                &model,
+                lht_enabled,
+                pending,
+                &thresholds,
+            );
             if early {
                 lh.pending_cycle_at_checkpoint = false;
             }
@@ -116,117 +121,8 @@ impl Engine {
             )))
             .await;
 
-        // 1. Generate the model-curated briefing. Prefer the Flash seam
-        //    manager (#159) for cost and speed; fall back to the main model
-        //    (legacy produce_briefing) when the seam manager isn't available.
-        //
-        // M5: calls go through the `SeamHost` trait — same call shape,
-        // explicit UFCS to keep the trait import obvious at the seam.
-        let briefing_text = if let Some(ref seam_mgr) = self.seam {
-            use zagens_core::engine::hosts::SeamHost;
-            let seams =
-                SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
-            let state_text = {
-                let s = StructuredState::capture(
-                    mode.label(),
-                    self.config.workspace.clone(),
-                    std::env::current_dir().ok(),
-                    &self.session.working_set,
-                    &self.config_ext().todos,
-                    &self.config_ext().plan_state,
-                    Some(&self.runtime_ext().subagent_manager),
-                )
-                .await;
-                s.to_system_block()
-            };
-            match SeamHost::produce_flash_briefing(seam_mgr.as_ref(), &seams, state_text.as_deref())
-                .await
-            {
-                Ok(text) => text,
-                Err(err) => {
-                    crate::logging::warn(format!(
-                        "Flash briefing failed, falling back to main model: {err}"
-                    ));
-                    match produce_briefing(
-                        client.as_ref(),
-                        &self.session.model,
-                        &self.session.messages,
-                        max_briefing_tokens,
-                    )
-                    .await
-                    {
-                        Ok(text) => text,
-                        Err(err2) => {
-                            crate::logging::warn(format!(
-                                "Cycle briefing turn failed; skipping cycle advance: {err2}"
-                            ));
-                            let _ = self
-                                .tx_event
-                                .send(Event::status(format!(
-                                    "鈫?cycle handoff failed (continuing in cycle {from}): {err2}"
-                                )))
-                                .await;
-                            return false;
-                        }
-                    }
-                }
-            }
-        } else {
-            match produce_briefing(
-                client.as_ref(),
-                &self.session.model,
-                &self.session.messages,
-                max_briefing_tokens,
-            )
-            .await
-            {
-                Ok(text) => text,
-                Err(err) => {
-                    crate::logging::warn(format!(
-                        "Cycle briefing turn failed; skipping cycle advance: {err}"
-                    ));
-                    let _ = self
-                        .tx_event
-                        .send(Event::status(format!(
-                            "鈫?cycle handoff failed (continuing in cycle {from}): {err}"
-                        )))
-                        .await;
-                    return false;
-                }
-            }
-        };
-
-        let briefing_tokens = estimate_briefing_tokens(&briefing_text);
-        let now = chrono::Utc::now();
-        let briefing = CycleBriefing {
-            cycle: to,
-            timestamp: now,
-            briefing_text: briefing_text.clone(),
-            token_estimate: briefing_tokens,
-        };
-
-        // 2. Archive the cycle to disk. If the archive write fails we still
-        //    proceed with the swap 鈥?the briefing alone preserves enough
-        //    state to continue, and the user can recover the lost archive
-        //    from their session log if needed.
-        match archive_cycle(
-            &self.session.id,
-            to,
-            &self.session.messages,
-            &self.session.model,
-            archive_started,
-        ) {
-            Ok(path) => {
-                crate::logging::info(format!("Cycle {to} archived to {}", path.display()));
-            }
-            Err(err) => {
-                crate::logging::warn(format!(
-                    "Failed to archive cycle {to}; continuing with swap: {err}"
-                ));
-            }
-        }
-
-        // 3. Capture structured state. Locks are held only for the snapshot.
+        // P0-4: capture structured state before briefing so a failed briefing
+        // turn can still seed the next cycle from deterministic state alone.
         let state = StructuredState::capture(
             mode.label(),
             self.config.workspace.clone(),
@@ -247,26 +143,124 @@ impl Engine {
                 None => line,
             });
         }
+        let state_text = state_block.clone();
 
-        // 4. Build the seed messages. The next cycle starts with the
+        // 1. Generate the model-curated briefing. Prefer Flash seam manager;
+        //    fall back to main model; on total failure continue with state-only seed.
+        let briefing_text = if let Some(ref seam_mgr) = self.seam {
+            use zagens_core::engine::hosts::SeamHost;
+            let seams =
+                SeamHost::collect_seam_texts(seam_mgr.as_ref(), &self.session.messages).await;
+            match SeamHost::produce_flash_briefing(seam_mgr.as_ref(), &seams, state_text.as_deref())
+                .await
+            {
+                Ok(text) => Some(text),
+                Err(err) => {
+                    crate::logging::warn(format!(
+                        "Flash briefing failed, falling back to main model: {err}"
+                    ));
+                    match produce_briefing(
+                        client.as_ref(),
+                        &self.session.model,
+                        &self.session.messages,
+                        max_briefing_tokens,
+                    )
+                    .await
+                    {
+                        Ok(text) => Some(text),
+                        Err(err2) => {
+                            crate::logging::warn(format!(
+                                "Cycle briefing turn failed; continuing with structured state only: {err2}"
+                            ));
+                            let _ = self
+                                .tx_event
+                                .send(Event::status(format!(
+                                    "↻ cycle handoff degraded to structured state only (cycle {from} → {to}): {err2}"
+                                )))
+                                .await;
+                            None
+                        }
+                    }
+                }
+            }
+        } else {
+            match produce_briefing(
+                client.as_ref(),
+                &self.session.model,
+                &self.session.messages,
+                max_briefing_tokens,
+            )
+            .await
+            {
+                Ok(text) => Some(text),
+                Err(err) => {
+                    crate::logging::warn(format!(
+                        "Cycle briefing turn failed; continuing with structured state only: {err}"
+                    ));
+                    let _ = self
+                        .tx_event
+                        .send(Event::status(format!(
+                            "↻ cycle handoff degraded to structured state only (cycle {from} → {to}): {err}"
+                        )))
+                        .await;
+                    None
+                }
+            }
+        };
+
+        let briefing = briefing_text.as_ref().map(|briefing_text| {
+            let briefing_tokens = estimate_briefing_tokens(briefing_text);
+            CycleBriefing {
+                cycle: to,
+                timestamp: chrono::Utc::now(),
+                briefing_text: briefing_text.clone(),
+                token_estimate: briefing_tokens,
+            }
+        });
+        let briefing_tokens = briefing.as_ref().map(|b| b.token_estimate).unwrap_or(0);
+
+        // 2. Archive the cycle to disk. If the archive write fails we still
+        //    proceed with the swap — the structured state alone preserves enough
+        //    state to continue, and the user can recover the lost archive
+        //    from their session log if needed.
+        match archive_cycle(
+            &self.session.id,
+            to,
+            &self.session.messages,
+            &self.session.model,
+            archive_started,
+        ) {
+            Ok(path) => {
+                crate::logging::info(format!("Cycle {to} archived to {}", path.display()));
+            }
+            Err(err) => {
+                crate::logging::warn(format!(
+                    "Failed to archive cycle {to}; continuing with swap: {err}"
+                ));
+            }
+        }
+
+        // 3. Build the seed messages. The next cycle starts with the
         //    base system prompt (refreshed below) and these seeds.
         let seed_messages = build_seed_messages(
             state_block.as_deref(),
-            Some(&briefing),
-            None, // pending_user_message 鈥?pulled from steer/queue elsewhere
+            briefing.as_ref(),
+            None, // pending_user_message — pulled from steer/queue elsewhere
         );
 
-        // 5. Atomic swap.
+        // 4. Atomic swap.
         self.session.messages = seed_messages;
         self.session.cycle_count = to;
-        self.session.current_cycle_started = now;
-        self.session.cycle_briefings.push(briefing.clone());
+        self.session.current_cycle_started = chrono::Utc::now();
+        if let Some(ref brief) = briefing {
+            self.session.cycle_briefings.push(brief.clone());
+        }
         // Reset seam tracking for the new cycle. M5: trait dispatch.
         if let Some(ref seam_mgr) = self.seam {
             use zagens_core::engine::hosts::SeamHost;
             SeamHost::reset(seam_mgr.as_ref()).await;
         }
-        // Drop any compaction summary 鈥?that path is incompatible with the
+        // Drop any compaction summary — that path is incompatible with the
         // fresh-context model and would Frankenstein-merge with the briefing.
         self.session.compaction_summary_prompt = None;
         self.refresh_system_prompt(mode);
@@ -281,14 +275,16 @@ impl Engine {
                 .clone()
                 .unwrap_or_else(|| self.session.id.clone());
             let step_idx = self.runtime_ext().kernel_active_step;
-            emit_kernel_event(
-                self,
-                KernelEvent::CycleBriefingInjected {
-                    turn_id: turn_id.clone(),
-                    cycle: to,
-                    step_idx,
-                },
-            );
+            if briefing.is_some() {
+                emit_kernel_event(
+                    self,
+                    KernelEvent::CycleBriefingInjected {
+                        turn_id: turn_id.clone(),
+                        cycle: to,
+                        step_idx,
+                    },
+                );
+            }
             if self
                 .runtime_ext_mut()
                 .kernel_active_cycle_boundary
@@ -309,20 +305,26 @@ impl Engine {
             }
         }
 
-        let _ = self
-            .tx_event
-            .send(Event::CycleAdvanced {
-                from,
-                to,
-                briefing: briefing.clone(),
-            })
-            .await;
-        let _ = self
-            .tx_event
-            .send(Event::status(format!(
-                "鈫?context refreshed (cycle {from} 鈫?{to}, briefing: {briefing_tokens} tokens carried)"
-            )))
-            .await;
+        if let Some(ref brief) = briefing {
+            let _ = self
+                .tx_event
+                .send(Event::CycleAdvanced {
+                    from,
+                    to,
+                    briefing: brief.clone(),
+                })
+                .await;
+        }
+        let status = if briefing.is_some() {
+            format!(
+                "↻ context refreshed (cycle {from} → {to}, briefing: {briefing_tokens} tokens carried)"
+            )
+        } else {
+            format!(
+                "↻ context refreshed (cycle {from} → {to}, structured state only — no briefing)"
+            )
+        };
+        let _ = self.tx_event.send(Event::status(status)).await;
 
         if lht_enabled {
             let plan = self.config_ext().plan_state.lock().await.snapshot();

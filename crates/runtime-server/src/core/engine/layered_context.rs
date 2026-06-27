@@ -101,7 +101,14 @@ impl Engine {
             {
                 Ok(text) => text,
                 Err(err) => {
-                    crate::logging::warn(format!("L{level} soft seam failed: {err}"));
+                    crate::logging::warn(format!(
+                        "L{level} soft seam failed (no compaction fallback): {err}"
+                    ));
+                    tracing::info!(
+                        target: "context_profile",
+                        level,
+                        "seam checkpoint failed; continuing without destructive compaction"
+                    );
                     return;
                 }
             }
@@ -121,7 +128,14 @@ impl Engine {
             {
                 Ok(text) => text,
                 Err(err) => {
-                    crate::logging::warn(format!("L{level} recompact failed: {err}"));
+                    crate::logging::warn(format!(
+                        "L{level} recompact failed (no compaction fallback): {err}"
+                    ));
+                    tracing::info!(
+                        target: "context_profile",
+                        level,
+                        "seam recompact failed; continuing without destructive compaction"
+                    );
                     return;
                 }
             }

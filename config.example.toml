@@ -351,17 +351,27 @@ exponential_base = 2.0
 # ─────────────────────────────────────────────────────────────────────────────────
 # Auto-compaction is edited in Zagens → Settings (or `[compaction]` here).
 # Threshold defaults to 80% of the active model context window when unset.
+#
+# Large-profile models (window ≥ 500K, e.g. deepseek-v4-pro) disable **automatic**
+# compaction in the engine when `[cycle] enabled = true` — use Seam/Cycle instead.
+# Manual `/compact`, `Op::CompactContext`, and overflow forced compaction are
+# unaffected. Do **not** set `auto_floor_tokens = 0` to disable V4 auto; that
+# removes the floor and makes auto compaction *more* likely.
 [compaction]
 # auto_compact = false
 # token_threshold = 800000
+# auto_floor_tokens = 500000   # default MINIMUM_AUTO_COMPACTION_TOKENS; keep unless you know why
 
-# Append-only Flash seams are experimental and opt-in while the v0.7.5
-# context/cache audit validates prefix-cache behavior.
+# Append-only Flash seams: Large-profile models (window ≥ 500K, e.g. deepseek-v4-pro)
+# default to **enabled** when this flag is unset. Set `enabled = false` globally
+# to opt out (see §6.4 escape hatch in context-transition plan). Medium/Small
+# profiles stay off unless explicitly enabled.
 [context]
-enabled = false
+# enabled = false
 verbatim_window_turns = 16
-# Thresholds are based on the active request input estimate, not lifetime
-# summed API usage.
+# Thresholds below are **1M-window documentation examples** only. At runtime,
+# Large profile uses `window × {19%, 38%, 57%, 75%}` baselines unless you set
+# an explicit override here or under `[context.per_model.<model>]`.
 l1_threshold = 192000
 l2_threshold = 384000
 l3_threshold = 576000
