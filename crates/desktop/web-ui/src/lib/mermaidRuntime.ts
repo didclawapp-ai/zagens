@@ -58,7 +58,7 @@ export function ensureMermaidInitialized(theme: Theme): void {
   }
   mermaid.initialize({
     startOnLoad: false,
-    theme: theme === 'dark' ? 'dark' : 'default',
+    theme: theme === 'light' ? 'default' : 'dark',
     // Trusted paths skip DOMPurify; loose avoids Mermaid's internal second sanitize pass.
     securityLevel: 'loose',
     // Match Cursor/GitHub: HTML labels in foreignObject (layout correct). Black-box guard in post-process.

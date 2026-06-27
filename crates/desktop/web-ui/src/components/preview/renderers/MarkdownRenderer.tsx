@@ -79,9 +79,9 @@ const md = new MarkdownIt({
 
 applyMermaidFenceRule(md);
 
-function resolvePreviewTheme(theme?: Theme): Theme {
+function resolvePreviewTheme(theme?: Theme): 'light' | 'dark' {
   if (theme) {
-    return theme;
+    return theme === 'light' ? 'light' : 'dark';
   }
   if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) {
     return 'dark';

@@ -3,6 +3,7 @@ import { ensureMermaidInitialized, renderMermaidToSvg } from '../lib/mermaidRunt
 import { mountMermaidSvgInline } from '../lib/mermaidSvgPostProcess';
 import { isMermaidSvgThreatError } from '../lib/mermaidSvgSecurity';
 import { useT } from '../i18n';
+import type { Theme } from '../lib/appPreferences';
 
 interface Message {
   id: string;
@@ -24,8 +25,13 @@ interface MermaidRenderEntry {
 
 interface Props {
   messages: Message[];
-  theme: 'light' | 'dark';
+  theme: Theme;
   onDetected?: () => void;
+}
+
+/** Mermaid panel only distinguishes light vs dark; dusk renders as dark. */
+function isDarkCanvas(theme: Theme): boolean {
+  return theme !== 'light';
 }
 
 const ZOOM_MIN = 25;
@@ -495,7 +501,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
   }, []);
 
   const handleExport = useCallback((digest: string, svgText: string, blockIdx: number) => {
-    svgToPngDataUrl(svgText, 2, theme === 'dark').then((dataUrl) => {
+    svgToPngDataUrl(svgText, 2, isDarkCanvas(theme)).then((dataUrl) => {
       const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       triggerDownload(dataUrl, `mermaid-${blockIdx + 1}-${ts}.png`);
     }).catch((e) => {
@@ -790,10 +796,10 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
         return (
           <div
             className="fixed inset-0 z-[100] flex flex-col"
-            style={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)' }}
+            style={{ backgroundColor: isDarkCanvas(theme) ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.92)' }}
           >
             {/* Fullscreen toolbar */}
-            <div className="flex items-center shrink-0" style={{ backgroundColor: theme === 'dark' ? '#1e1e1e' : '#f5f5f5' }}>
+            <div className="flex items-center shrink-0" style={{ backgroundColor: isDarkCanvas(theme) ? '#1e1e1e' : '#f5f5f5' }}>
               <span className="ml-3 text-xs text-t-text-muted tabular-nums">
                 {t('mermaid.diagramOf', { n: String(fsBlockIdx + 1), total: String(blocks.length) })}
               </span>
@@ -830,7 +836,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
                       <button
                         type="button"
                         className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-t-text-muted hover:text-t-text hover:bg-hover/30 transition-colors"
-                        style={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}
+                        style={{ backgroundColor: isDarkCanvas(theme) ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}
                         onClick={() => setFullscreenBlock(blocks[prevIdx].digest)}
                         title={t('mermaid.diagramN', { n: String(prevIdx + 1) })}
                       >
@@ -849,7 +855,7 @@ export default function MermaidPanel({ messages, theme, onDetected }: Props) {
                       <button
                         type="button"
                         className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-t-text-muted hover:text-t-text hover:bg-hover/30 transition-colors"
-                        style={{ backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}
+                        style={{ backgroundColor: isDarkCanvas(theme) ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)' }}
                         onClick={() => setFullscreenBlock(blocks[nextIdx].digest)}
                         title={t('mermaid.diagramN', { n: String(nextIdx + 1) })}
                       >

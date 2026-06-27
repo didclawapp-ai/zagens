@@ -12,6 +12,7 @@ import {
   type OfficeEnvironmentStatus,
   type SystemSettings,
 } from '../api/client';
+import type { Theme } from '../lib/appPreferences';
 import { confirmDialog } from '../lib/confirmDialog';
 import {
   applyEffectiveOverlayToSystemSettings,
@@ -21,7 +22,6 @@ import {
   type ThreadConfigResponse,
 } from '../lib/threadConfigOverlay';
 
-type Theme = 'light' | 'dark';
 type WriteScope = 'session' | 'global';
 
 interface Props {
@@ -561,7 +561,11 @@ export default function SettingsPanel({
                 onClick={onToggleTheme}
                 className="text-xs text-accent hover:underline"
               >
-                {theme === 'light' ? t('settings.themeLight') : t('settings.themeDark')}
+                {theme === 'light'
+                  ? t('settings.themeLight')
+                  : theme === 'dark'
+                    ? t('settings.themeDark')
+                    : t('settings.themeDusk')}
               </button>
             </label>
 

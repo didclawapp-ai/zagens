@@ -9,10 +9,14 @@ import type {
 import { DESKTOP_RUN_MODE_LABELS } from '../../types/desktop';
 import { approvalPolicySettingsKey } from '../../lib/approvalPolicy';
 import type { LhtChipState } from '../../lib/lhtChip';
+import { toast } from '../../lib/toast';
 import LhtModeToggle from '../LhtModeToggle';
 import OverflowMenu from '../chrome/OverflowMenu';
 import { IconBolt } from '../icons/FlatIcons';
 import ComposerOverflowSection from './ComposerOverflowSection';
+import WorktreeBranchIcon from './WorktreeBranchIcon';
+
+const COMPOSER_WORKTREE_TOGGLE_TAG = 'composer-worktree-toggle';
 
 const TASK_TYPE_LABEL_KEYS: Record<
   DesktopTaskTypePreference | DesktopTaskTypeResolved,
@@ -35,7 +39,7 @@ const RUN_MODE_HINT_KEYS: Record<DesktopRunModeId, TranslationKey> = {
   yolo: 'composer.runModeYoloHint',
 };
 
-type SectionId = 'autoApprove' | 'runMode' | 'taskType' | 'lht';
+type SectionId = 'autoApprove' | 'runMode' | 'taskType' | 'worktree' | 'lht';
 
 type Props = {
   open: boolean;
@@ -64,6 +68,11 @@ type Props = {
   onOpenRouting?: () => void;
   /** Current runtime thread — session-scoped LHT toggle when set. */
   threadId?: string | null;
+  /** New sessions: allocate an isolated git worktree under the repo root. */
+  useWorktree?: boolean;
+  onUseWorktreeChange?: (next: boolean) => void;
+  /** Session is bound to a restored runtime thread. */
+  resumedThreadActive?: boolean;
 };
 
 function optionBtnClass(selected: boolean) {
@@ -113,6 +122,9 @@ export default function ComposerOverflowMenu({
   onExportTraceCompare,
   onOpenRouting,
   threadId = null,
+  useWorktree = false,
+  onUseWorktreeChange,
+  resumedThreadActive = false,
 }: Props) {
   const { t } = useT();
   const sectionPrefix = useId();
@@ -268,6 +280,42 @@ export default function ComposerOverflowMenu({
           );
         })}
       </ComposerOverflowSection>
+
+      {!resumedThreadActive && onUseWorktreeChange ? (
+        <ComposerOverflowSection
+          title={t('composer.useWorktree')}
+          summary={useWorktree ? t('composer.useWorktreeOnLabel') : t('composer.overflowOff')}
+          expanded={expanded === 'worktree'}
+          onToggle={() => toggleSection('worktree')}
+          panelId={sectionPanelId('worktree')}
+        >
+          <p className="px-3 pb-1 text-[11px] leading-snug text-t-text-muted">
+            {t('composer.useWorktreeTitle')}
+          </p>
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={useWorktree}
+            disabled={disabled}
+            title={useWorktree ? t('composer.useWorktreeOnHint') : t('composer.useWorktreeOffHint')}
+            onClick={() => {
+              const next = !useWorktree;
+              onUseWorktreeChange(next);
+              toast.dismissByTag(COMPOSER_WORKTREE_TOGGLE_TAG);
+              toast.info(
+                t(next ? 'composer.useWorktreeToggledOn' : 'composer.useWorktreeToggledOff'),
+                { tag: COMPOSER_WORKTREE_TOGGLE_TAG, duration: 4500 },
+              );
+            }}
+            className={`mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors ${
+              useWorktree ? 'bg-accent-soft text-accent' : 'text-t-text hover:bg-hover'
+            }`}
+          >
+            <WorktreeBranchIcon className="size-4 shrink-0" />
+            <span>{useWorktree ? t('composer.useWorktreeOnLabel') : t('composer.useWorktreeOffLabel')}</span>
+          </button>
+        </ComposerOverflowSection>
+      ) : null}
 
       {!officeSession ? (
         <ComposerOverflowSection

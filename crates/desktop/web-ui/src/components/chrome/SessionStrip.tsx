@@ -24,31 +24,27 @@ export type SessionStripProps = {
 
 function SessionStatusIcon({ streaming }: { streaming: boolean }) {
   const { t } = useT();
-  if (streaming) {
-    return (
-      <span
-        className="session-row-spinner"
-        title={t('common.sessionStreaming')}
-        aria-label={t('common.sessionStreaming')}
-      />
-    );
-  }
   return (
-    <svg
-      className="session-row-check"
-      viewBox="0 0 16 16"
-      aria-hidden
-      focusable="false"
-    >
-      <path
-        d="M3.25 8.25 6.25 11.25 12.75 4.75"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <span className="session-row-status" aria-hidden={!streaming}>
+      {streaming ? (
+        <span
+          className="session-row-spinner"
+          title={t('common.sessionStreaming')}
+          aria-label={t('common.sessionStreaming')}
+        />
+      ) : (
+        <svg className="session-row-check" viewBox="0 0 16 16" aria-hidden focusable="false">
+          <path
+            d="M3.25 8.25 6.25 11.25 12.75 4.75"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </span>
   );
 }
 
@@ -67,6 +63,16 @@ export default function SessionStrip({
   const [expandedDates, setExpandedDates] = useState<Set<string>>(() => new Set());
 
   const dateGroups = useMemo(() => groupSessionsByDate(sessions), [sessions]);
+
+  const relativeDateLabel = (sortKey: number, fallback: string): string => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMs = today.getTime();
+    const dayMs = 86_400_000;
+    if (sortKey === todayMs) return t('sidebar.sessionsToday');
+    if (sortKey === todayMs - dayMs) return t('sidebar.sessionsYesterday');
+    return fallback;
+  };
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -101,8 +107,8 @@ export default function SessionStrip({
           <span className="session-row-title truncate">
             {session.name || session.id.slice(0, 8)}
             {wtLabel ? (
-              <span className="session-row-worktree ml-1 opacity-70" title={wtLabel}>
-                · WT
+              <span className="session-row-worktree" title={wtLabel}>
+                WT
               </span>
             ) : null}
           </span>
@@ -110,14 +116,23 @@ export default function SessionStrip({
         {onDeleteSession ? (
           <button
             type="button"
+            aria-label={t('sidebar.deleteSessionTitle')}
             title={t('sidebar.deleteSessionTitle')}
             onClick={(event) => {
               event.stopPropagation();
               onDeleteSession(session.id);
             }}
-            className="shrink-0 px-2 py-2 text-t-text-muted hover:text-t-error opacity-0 group-hover:opacity-100 transition-opacity"
+            className="session-row-delete"
           >
-            ×
+            <svg viewBox="0 0 16 16" aria-hidden focusable="false">
+              <path
+                d="M4 4 12 12 M12 4 4 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
           </button>
         ) : null}
       </div>
@@ -159,7 +174,9 @@ export default function SessionStrip({
 
           return (
             <section key={group.dateKey} className="session-strip-group" aria-label={group.dateKey}>
-              <h3 className="session-strip-date">{group.dateKey}</h3>
+              <h3 className="session-strip-date">
+                {relativeDateLabel(group.sortKey, group.dateKey)}
+              </h3>
               {visibleSessions.map(renderSessionRow)}
               {!expanded && hasOverflow ? (
                 <button

@@ -19,7 +19,26 @@ import {
 } from './defaultWorkspace';
 import { workspaceStorageKey } from './windowBridge';
 
-export type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark' | 'dusk';
+
+/** Selectable themes in display/cycle order. */
+export const THEME_ORDER: readonly Theme[] = ['light', 'dark', 'dusk'];
+
+/** Themes that render on a dark base (drives `dark`-class dependent subsystems). */
+export function isDarkTheme(theme: Theme): boolean {
+  return theme !== 'light';
+}
+
+/** Collapse a theme to the binary color scheme used by mermaid / terminal / preview. */
+export function colorSchemeForTheme(theme: Theme): 'light' | 'dark' {
+  return theme === 'light' ? 'light' : 'dark';
+}
+
+/** Next theme in the cycle (used by the single-button toggle). */
+export function nextTheme(theme: Theme): Theme {
+  const idx = THEME_ORDER.indexOf(theme);
+  return THEME_ORDER[(idx + 1) % THEME_ORDER.length];
+}
 
 export const ACTIVE_INSPECTOR_STORAGE_KEY = 'zagens-desktop-active-inspector';
 export const RIGHT_PANEL_COLLAPSED_STORAGE_KEY = 'zagens-desktop-right-panel-collapsed';
@@ -201,7 +220,7 @@ export async function ensureDefaultComposerWorkspace(
 export function loadTheme(): Theme {
   try {
     const stored = localStorage.getItem('deepseek-theme');
-    if (stored === 'dark' || stored === 'light') return stored;
+    if (stored === 'dark' || stored === 'light' || stored === 'dusk') return stored;
   } catch {
     /* ignore */
   }
@@ -366,9 +385,8 @@ export function persistNotifyMethod(method: string): void {
 
 export function applyTheme(theme: Theme) {
   const root = document.documentElement;
-  if (theme === 'dark') {
-    root.classList.add('dark');
-  } else {
-    root.classList.remove('dark');
-  }
+  // Dusk renders on a dark base, so it keeps the `dark` class (so all dark-aware
+  // subsystems work) and layers `theme-dusk` to override the palette tokens.
+  root.classList.toggle('dark', isDarkTheme(theme));
+  root.classList.toggle('theme-dusk', theme === 'dusk');
 }

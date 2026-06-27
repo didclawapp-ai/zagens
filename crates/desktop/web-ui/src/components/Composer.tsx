@@ -27,6 +27,7 @@ import {
 import { runModesForSession } from '../lib/taskTypeSession';
 import { ComposerContextMeter } from './composer/ComposerContextMeter';
 import ComposerOverflowMenu from './composer/ComposerOverflowMenu';
+import WorktreeBranchIcon from './composer/WorktreeBranchIcon';
 import { IconArrowUp } from './icons/FlatIcons';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
 import {
@@ -38,15 +39,6 @@ import { toast } from '../lib/toast';
 
 const COMPOSER_ERROR_TAG = 'composer-error';
 const COMPOSER_TRANSCRIBING_TAG = 'composer-transcribing';
-const COMPOSER_WORKTREE_TOGGLE_TAG = 'composer-worktree-toggle';
-
-function WorktreeBranchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden className="shrink-0">
-      <path d="M6 3v12 M18 6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.59 13.51l6.83 3.98" />
-    </svg>
-  );
-}
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
@@ -1142,34 +1134,6 @@ export default function Composer({
                 </svg>
               </button>
             </div>
-            {!resumedThreadActive && onUseWorktreeChange ? (
-              <button
-                type="button"
-                className={
-                  useWorktree
-                    ? 'composer-chip active shrink-0'
-                    : 'composer-chip composer-worktree-chip-off shrink-0'
-                }
-                disabled={disabled}
-                aria-pressed={useWorktree}
-                aria-label={
-                  useWorktree ? t('composer.useWorktreeOnHint') : t('composer.useWorktreeOffHint')
-                }
-                title={useWorktree ? t('composer.useWorktreeOnHint') : t('composer.useWorktreeOffHint')}
-                onClick={() => {
-                  const next = !useWorktree;
-                  onUseWorktreeChange(next);
-                  toast.dismissByTag(COMPOSER_WORKTREE_TOGGLE_TAG);
-                  toast.info(
-                    t(next ? 'composer.useWorktreeToggledOn' : 'composer.useWorktreeToggledOff'),
-                    { tag: COMPOSER_WORKTREE_TOGGLE_TAG, duration: 4500 },
-                  );
-                }}
-              >
-                <WorktreeBranchIcon />
-                {useWorktree ? t('composer.useWorktreeOnLabel') : t('composer.useWorktreeOffLabel')}
-              </button>
-            ) : null}
             {resumedThreadActive && activeWorktreeName ? (
               <span
                 className="composer-chip active shrink-0"
@@ -1205,6 +1169,9 @@ export default function Composer({
               onExportTraceCompare={onExportTraceCompare}
               onOpenRouting={onOpenRouting}
               threadId={threadId}
+              useWorktree={useWorktree}
+              onUseWorktreeChange={onUseWorktreeChange}
+              resumedThreadActive={resumedThreadActive}
             />
             <div className="min-w-[0.5rem] flex-1" />
             <div className="relative" ref={modelMenuRef}>

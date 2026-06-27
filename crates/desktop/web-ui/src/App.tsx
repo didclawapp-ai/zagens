@@ -81,6 +81,7 @@ import {
   loadTaskTypePreference,
   syncTaskTypePreferencePersist,
   loadTheme,
+  nextTheme,
   RIGHT_PANEL_COLLAPSED_STORAGE_KEY,
   ROUTE_INTENT_STORAGE_KEY,
   type Theme,
@@ -912,7 +913,7 @@ export default function App() {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    handleThemeChange(theme === 'light' ? 'dark' : 'light');
+    handleThemeChange(nextTheme(theme));
   }, [theme, handleThemeChange]);
 
   useEffect(() => {

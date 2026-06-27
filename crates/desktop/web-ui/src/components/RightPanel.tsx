@@ -64,7 +64,7 @@ export type RightPanelView =
 
 export type WorkspaceTabId = 'restore' | 'files' | 'rules' | 'terminal' | 'diff';
 
-type Theme = 'light' | 'dark';
+type Theme = import('../lib/appPreferences').Theme;
 
 const WORKSPACE_TAB_KEY = 'zagens-desktop-right-workspace-tab';
 const PANEL_WIDTH_KEY = 'zagens-desktop-right-panel-width';
