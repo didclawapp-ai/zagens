@@ -214,7 +214,7 @@ fn resolve_worktree_base_ref(git_root: &Path, configured: Option<&str>) -> Resul
     }
     let head = run_git(git_root, &["symbolic-ref", "--short", "HEAD"])?;
     if head.status.success() {
-        return Ok(stdout_trim(&head)?);
+        return stdout_trim(&head);
     }
     Ok("HEAD".to_string())
 }

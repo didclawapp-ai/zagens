@@ -6,7 +6,6 @@
 //! module keeps live engine orchestration (`RuntimeThreadManager`, monitors, …).
 
 pub use chrono::Utc;
-pub use uuid::Uuid;
 
 pub use crate::config::DEFAULT_TEXT_MODEL;
 pub use crate::context_snapshot::{ThreadContextSnapshot, build_thread_context_snapshot};

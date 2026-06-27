@@ -47,6 +47,9 @@ check "Lib tests (zagens-cli)" \
 check "Runtime sidecar contract" \
   cargo test -p zagens-cli --lib sidecar_contract_full_lifecycle --locked
 
+check "Runtime sidecar binary contract" \
+  cargo test -p zagens-cli --test sidecar_binary_contract --locked
+
 check "Headless CLI binary contract" \
   cargo test -p zagens-cli --test zagens_cli_contract --locked
 
@@ -68,7 +71,7 @@ if "$WITH_LONGRUN"; then
     echo "==> Skipping longrun stress test (DEEPSEEK_API_KEY not set)"
   else
     check "R-015 longrun baseline (3 × 50 turns)" \
-      pwsh -File scripts/runtime-longrun-baseline.ps1 -Runs 3 -Gate
+      pwsh -File scripts/runtime-longrun-baseline.ps1 -Runs 3 -Gate -Model deepseek-v4-pro
   fi
 fi
 

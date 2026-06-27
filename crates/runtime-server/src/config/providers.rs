@@ -263,6 +263,10 @@ mod provider_drift_tests {
     #[test]
     fn every_facade_provider_kind_parses_into_runtime_api_provider() {
         for kind in ProviderKind::ALL {
+            if *kind == ProviderKind::Custom {
+                // User-defined slugs live under `[custom_providers]`; no fixed runtime alias.
+                continue;
+            }
             let name = kind.as_str();
             let api = ApiProvider::parse(name).unwrap_or_else(|| {
                 panic!("facade ProviderKind '{name}' has no runtime ApiProvider mapping")

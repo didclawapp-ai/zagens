@@ -163,7 +163,7 @@ export function useWorkspacePanel({
         setSelectedWorkspace(typeof updated.workspace === 'string' ? updated.workspace : trimmed);
       } catch (e) {
         const err = e as Error & { status?: number };
-        let msg = err.message ?? String(e);
+        const msg = err.message ?? String(e);
         if (/active turn|finish or interrupt/i.test(msg)) {
           toast.warning(t('banner.activeTurnBlocking'));
         } else {

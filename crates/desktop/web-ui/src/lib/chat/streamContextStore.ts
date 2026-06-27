@@ -1,6 +1,6 @@
 /**
  * Pure Map helpers for per-thread stream contexts (multi-session P0.2).
- * Used by `useStreamContextRegistry` and `multiSession.selfcheck.ts`.
+ * Used by `useStreamContextRegistry` and `multiSession.test.ts`.
  */
 import {
   makeEmptyContext,

@@ -58,7 +58,7 @@ When unsure, **draft + list risk** for maintainer review instead of shipping qui
 **Cursor:** `globs: "**/*.rs"`, `alwaysApply: false`
 
 - **Toolchain:** MSRV **1.88+**; dev/CI pin **`rust-toolchain.toml`** (currently **1.96**). No nightly `feature`; `let_chains` in `if`/`while` is OK on 1.88+.
-- **Verify before push:** `bash scripts/ci/verify-lint.sh` (CI Lint mirror). Full gate: `bash scripts/ci/verify-workspace.sh`. Optional hooks: `scripts/ci/install-git-hooks.sh`.
+- **Verify before push:** `just verify` (L1) or `just verify-all` (L3 push gate). PR gate: `just check` (L2). Web UI: `just web-check`. Tier guide: [`justfile`](justfile) header + [LOCAL_DEV_VERIFY.md §4](LOCAL_DEV_VERIFY.md#4-统一测试架构just). Optional hooks: `just hooks`. See [`.vscode/tasks.json`](.vscode/tasks.json).
 - **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features -- -D warnings` before claiming the change compiles.
 - **Modules:** prefer **smaller sources** (~1000 lines soft cap); split rather than growing one file (see §3).
 - **CLI entry:** prefer documenting **`deepseek`** (dispatcher); not `deepseek-tui` alone for general flows.

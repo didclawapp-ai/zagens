@@ -22,7 +22,7 @@ export function isWorkspacePathlike(s: string): boolean {
   if (t.length === 0 || t.length > 480) {
     return false;
   }
-  if (/[\s<>{}[\]`'\"]/.test(t) || t.includes('\n')) {
+  if (/[\s<>{}[\]`'"]/.test(t) || t.includes('\n')) {
     return false;
   }
   if (/^(https?|mailto|ftp|vscode|file):/i.test(t)) {

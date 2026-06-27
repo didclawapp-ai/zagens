@@ -250,12 +250,17 @@ zagens serve --http --port 7878
 
 | 命令 | 说明 |
 |------|-------------|
-| `bash scripts/ci/verify-lint.sh` | CI Lint 镜像 |
-| `bash scripts/ci/verify-workspace.sh` | Lint + 全 workspace 测试 |
-| `cargo test --workspace --all-features` | 运行全部测试 |
+| `just check` | **PR 门禁：** verify + 全量测试 + web-check（[`justfile`](justfile) L2） |
+| `just verify-all` | **推送门禁：** verify + 测试 + multi-session + lockfile（L3） |
+| `just verify` | CI Lint 镜像 — toolchain + prebuild + fmt + clippy（L1） |
+| `just web-check` | Web UI：tsc + ESLint + Vitest |
+| `just --list` | 全部 recipe（层级说明见 justfile 头部） |
+| `bash scripts/ci/verify-lint.sh` | 同 `just verify`（直接脚本） |
+| `bash scripts/ci/verify-workspace.sh` | 同 `just verify-all` |
+| `cargo test --workspace --all-features` | 仅 Rust 测试（`just test-all` 会额外 prebuild） |
 | `cd crates/desktop && cargo tauri dev` | 开发模式启动桌面 |
 
-Windows：`pwsh -File scripts/ci/verify-lint.ps1`
+Windows：`just verify` 或 `pwsh -File scripts/ci/verify-lint.ps1`。Cursor：**运行任务 → Zagens:***
 
 ```
 zagens/

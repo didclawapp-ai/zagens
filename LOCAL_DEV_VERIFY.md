@@ -6,11 +6,13 @@
 
 | 路径 | 作用 |
 |------|------|
+| [`justfile`](justfile) | **统一命令入口**（`just verify` / `just check` / `just --list`）；Cursor 可点 [`.vscode/tasks.json`](.vscode/tasks.json) |
 | [`rust-toolchain.toml`](rust-toolchain.toml) | 开发/CI 钉死的 Rust 版本（当前 **1.96.0**） |
 | [`scripts/ci/verify-lint.sh`](scripts/ci/verify-lint.sh) | 镜像 CI **Lint** job（bash） |
 | [`scripts/ci/verify-lint.ps1`](scripts/ci/verify-lint.ps1) | 同上（PowerShell / Windows） |
 | [`scripts/ci/verify-lint-linux.ps1`](scripts/ci/verify-lint-linux.ps1) | 在 WSL/Docker 里跑 Linux 版 Lint（**仅手动**，覆盖 `#[cfg(unix)]` 盲区） |
-| [`scripts/ci/verify-workspace.sh`](scripts/ci/verify-workspace.sh) | Lint + 全 workspace 测试 + lockfile 漂移 |
+| [`scripts/ci/verify-workspace.sh`](scripts/ci/verify-workspace.sh) | Lint + 全 workspace 测试 + multi-session + lockfile 漂移 |
+| [`scripts/ci/test-multi-session.sh`](scripts/ci/test-multi-session.sh) | 并行流式 / SSE 集成 + web-ui Vitest/ESLint |
 | [`scripts/ci/install-git-hooks.sh`](scripts/ci/install-git-hooks.sh) | 安装 pre-commit / pre-push |
 | [`scripts/ci/harness-regression.sh`](scripts/ci/harness-regression.sh) | Headless 回归套件（lib 测试 + CLI 契约 + mock LLM E2E + coverage-gate）；`--with-longrun` 启用 35min+ 压测 |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | 远程 CI 定义（含 `coverage-gate --no-fail` 报告步骤） |
@@ -28,7 +30,7 @@
 |------|----------|----------|--------------|
 | **日常编译** | `cargo build` / `cargo test` | 能编过、测试过 | 正常开发即可 |
 | **Git hooks** | `git commit` / `git push` | commit：fmt；push：按 [`ci-push-gate.sh`](scripts/ci/ci-push-gate.sh) 决定是否跑 `verify-lint` | 克隆后执行一次 `install-git-hooks` |
-| **手动脚本** | 大改前、发版前、没装 hook 的机器 | 同 CI 或更严（含 test） | 主动跑 `verify-lint` / `verify-workspace` |
+| **手动脚本** | 大改前、发版前、没装 hook 的机器 | 同 CI 或更严（含 test） | `just verify` / `just verify-all` 或 `verify-lint` / `verify-workspace` |
 | **Coverage gate** | CRAFT 任务收尾、发版前快检 | fmt/clippy/compile（可选 test）+ checklist + CRAFT verdict | `zagens coverage-gate [--run-tests] [--json]` |
 | **Harness 回归** | PR 合并前手动验证 / CI 每日自动 | lib 测试 + CLI 契约 + mock LLM E2E + gate | `bash scripts/ci/harness-regression.sh`（加 `--with-longrun` 跑 35min+ 压测） |
 
@@ -89,9 +91,79 @@ pwsh scripts/ci/install-git-hooks.ps1
 
 ---
 
-## 4. 脚本说明
+## 4. 统一测试架构（`just`）
 
-### 4.1 `verify-lint` — 镜像 CI Lint
+安装 [just](https://github.com/casey/just) 后，在仓库根目录用 **`just --list`** 查看全部 recipe。编排层按**层级**组织（由轻到重），底层仍委托现有 `scripts/ci/*`，不重复实现逻辑。
+
+### 4.1 层级一览
+
+| 层级 | 命令 | 适用场景 | 包含内容 |
+|------|------|----------|----------|
+| **L0** | `just fmt` / `just web-test` / `just web-lint` … | 日常迭代、单点排查 | 单一关注点（格式化、Vitest、ESLint、tsc 等） |
+| **L1** | `just verify` / `just lint` / `just test-all` | 改完 Rust/Web 后快速验 | `verify` = CI Lint 镜像；`lint`/`test-all` 会先 **prebuild**（web-ui dist + sidecar） |
+| **L2** | `just check` | **开 PR 前** | `verify` + 全 workspace 测试 + `web-check`（tsc + ESLint + Vitest） |
+| **L3** | `just verify-all` | **推送 / 合并前** | L2 超集 + multi-session 集成 + `Cargo.lock` 漂移检查 |
+| **L4** | `just contract` / `openapi` / `harness` / `gate` / … | 契约、回归、发版 | 见 §4.3；聚合：`l4-contracts` / `l4-ci-smoke` / `l4-full` |
+
+**prebuild**（`just prebuild`）：确保 `web-ui/dist` 存在并预编译 `zagens-runtime` sidecar。Desktop 的 clippy/测试依赖此步骤；`verify`、`lint`、`test-all` 会自动触发。
+
+**web-check**（`just web-check`）：`web-typecheck` + `web-lint` + `web-test` 三合一，改 web-ui 时用。
+
+### 4.2 常用命令
+
+```bash
+just --list          # 列出所有 recipe（含层级注释）
+just verify          # L1：镜像 CI Lint（toolchain + prebuild + fmt + clippy）
+just check           # L2：PR 门禁（verify + test-all + web-check）
+just verify-all      # L3：推送门禁（verify + test-all + multi-session + lockfile）
+just test zagens-cli # L1：单 crate 测试（desktop 需先 prebuild）
+just web-check       # L0/L1：前端 typecheck + lint + Vitest
+just hooks           # 安装 git hooks
+```
+
+Windows 同样可用（recipe 会自动选 `.ps1` 脚本）。**图形化：** Cursor / VS Code → **Terminal → Run Task…** → 选择 **Zagens:** 开头的任务。
+
+> **Windows 注意：** `just harness` 调用 bash 脚本，需 **Git Bash** 或 **WSL** 在 `PATH` 中。
+
+### 4.3 L4 细粒度命令（契约 / 回归 / 发版）
+
+L4 覆盖 CI 中**不在** L1–L3 日常门禁里的专项检查。按场景选**单项**或**聚合**：
+
+| 分类 | 单项命令 | 说明 |
+|------|----------|------|
+| **架构 / API** | `just contract` | D17 全量：架构测试 + OpenAPI/api-types 漂移 |
+| | `just architecture` | 仅 `architecture_invariants` + `architecture_boundary` |
+| | `just openapi` | OpenAPI JSON + `runtime-api.ts` 漂移检查 |
+| | `just openapi-export` / `openapi-sync` | 改 runtime API 后重新导出 / 同步 TS 类型 |
+| | `just api-types` | 仅从已检入 OpenAPI 重新生成 TS |
+| **Runtime 契约** | `just runtime-contracts` | sidecar + CLI + mock E2E 四项（CI ubuntu 额外步骤） |
+| | `just sidecar-contract` / `sidecar-binary` / `cli-contract` / `exec-mock-e2e` | 单项排查 |
+| **版本 / 锁文件** | `just versions` | workspace + desktop 版本一致性（CI Lint） |
+| | `just lockfile` | `Cargo.lock` 漂移（`verify-all` 末尾也会跑） |
+| **Harness / Gate** | `just harness` | headless 回归（lib + 契约 + gate-smoke） |
+| | `just harness-longrun` | 上述 + R-015 长时基线（需 `DEEPSEEK_API_KEY`） |
+| | `just gate-smoke` / `gate-tests` | coverage-gate 报告 / 含 `--run-tests` |
+| | `just longrun-dry` / `longrun` | R-015 基线 dry-run / 完整 gate |
+| **工具 / 跨平台** | `just trace-report` | Kernel trace report 导出冒烟 |
+| | `just docs` | `cargo doc -D warnings`（CI schedule） |
+| | `just verify-linux` | **Windows 专用**：WSL/Docker 跑 Linux Lint |
+| **发版** | `just pre-publish` | crates.io 发布前清单（可加 `--skip-tests`） |
+| | `just release-check` | 同 `pre-publish`（维护者入口） |
+
+**L4 聚合（推荐）：**
+
+| 聚合 | 命令 | 适用 |
+|------|------|------|
+| 契约面 | `just l4-contracts` | 改 API / 架构边界后 |
+| CI ubuntu smoke | `just l4-ci-smoke` | 镜像 CI Test job 末尾 extras |
+| Harness 回归 | `just l4-regression` | 同 `just harness` |
+| 扩展全套 | `just l4-full` | 发版前 / 大重构：`l4-contracts` + harness + trace + docs |
+
+---
+
+## 5. 脚本说明
+
+### 5.1 `verify-lint` — 镜像 CI Lint
 
 与 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 中 **Lint** job 对齐：
 
@@ -107,11 +179,12 @@ bash scripts/ci/verify-lint.sh
 pwsh scripts/ci/verify-lint.ps1
 ```
 
-### 4.2 `verify-workspace` — 发版前全量门控
+### 5.2 `verify-workspace` — 发版前全量门控
 
 在 `verify-lint` 之后追加：
 
 - `cargo test --workspace --all-features --locked`
+- **multi-session** 并行流式验证（Rust SSE 集成 + web-ui `npm run lint` + `npm test`）
 - 检查 `Cargo.lock` 未被测试过程意外改写
 
 ```bash
@@ -119,7 +192,7 @@ bash scripts/ci/verify-workspace.sh
 pwsh scripts/ci/verify-workspace.ps1
 ```
 
-### 4.3 `verify-lint-linux` — 跨平台 cfg 盲区（仅手动）
+### 5.3 `verify-lint-linux` — 跨平台 cfg 盲区（仅手动）
 
 > **何时用：** 改动了带 `#[cfg(unix)]` / `#[cfg(target_os = "…")]` 等条件编译的代码（典型为 `crates/desktop/src/` 下的 `disk_guard.rs`、`sidecar.rs`、`terminal.rs` 等），且你在 **Windows** 上开发时。
 
@@ -144,18 +217,22 @@ pwsh scripts/ci/verify-lint-linux.ps1 -Engine docker
 
 > 提示：发版前 CI 会在 tag 上跑完整 Lint + Test 矩阵（见 `cd.yml` 的 `workflow_run` 门禁）；本脚本只是把 Linux clippy 盲区提前到推送前。
 
-### 4.4 与 CI 的对应关系
+### 5.4 与 CI 的对应关系
 
 | CI Job | 本地等价 |
 |--------|----------|
-| Lint（fmt + clippy，**当前 OS**） | `verify-lint` 或 pre-push hook |
+| Lint（fmt + clippy，**当前 OS**） | `just verify` / `verify-lint` 或 pre-push hook |
 | Lint（**Linux 分支 / `cfg(unix)`**） | `verify-lint-linux`（仅手动；Windows 开发改了跨平台代码时） |
-| Test（三平台 test） | `verify-workspace`（仅当前 OS；完整矩阵仍在 CI；**CI 上需 Lint 通过后才启动**） |
-| Version drift | `bash scripts/release/check-versions.sh` |
+| Test（三平台 test） | `just verify-all` / `verify-workspace`（仅当前 OS；完整矩阵仍在 CI；**CI 上需 Lint 通过后才启动**） |
+| Multi-session 集成 | `just multi-session` / `test-multi-session`（含 web-ui lint + Vitest） |
+| Web UI（Vitest + ESLint + tsc） | `just web-check` 或分项 `web-test` / `web-lint` / `web-typecheck` |
+| PR 前聚合 | `just check`（verify + test-all + web-check） |
+| L4 契约聚合 | `just l4-contracts` / `l4-ci-smoke` / `l4-full`（见 LOCAL_DEV_VERIFY §4.3） |
+| Version drift | `just versions` / `bash scripts/release/check-versions.sh` |
 
 ---
 
-## 5. 推荐工作流
+## 6. 推荐工作流
 
 ```mermaid
 flowchart LR
@@ -169,12 +246,13 @@ flowchart LR
 1. **平时：** `cargo build`、`cargo test -p …` 快速迭代。  
 2. **提交：** hook 自动 fmt 检查；失败则 `cargo fmt --all` 后重试。  
 3. **推送：** hook 自动 `verify-lint`；通过后再到 GitHub。  
-4. **大功能 / 合并前：** 主动跑 `verify-workspace`。  
-5. **改 OpenAPI / 发版：** 另见 CI 中的 OpenAPI drift 步骤与 [`scripts/export-runtime-openapi.ps1`](scripts/export-runtime-openapi.ps1)。发版打 `zagens-v*` tag 后，CI 全绿会自动触发 [`.github/workflows/cd.yml`](.github/workflows/cd.yml) 构建安装包并同步官网。
+4. **开 PR 前：** 跑 `just check`（Rust lint + 全量测试 + 前端质量）。  
+5. **推送 / 大功能合并前：** 跑 `just verify-all`（含 multi-session + lockfile 检查）。  
+6. **改 OpenAPI / 发版：** 另见 `just openapi`、CI 中的 OpenAPI drift 步骤与 [`scripts/export-runtime-openapi.ps1`](scripts/export-runtime-openapi.ps1)。发版打 `zagens-v*` tag 后，CI 全绿会自动触发 [`.github/workflows/cd.yml`](.github/workflows/cd.yml) 构建安装包并同步官网。
 
 ---
 
-## 6. 常见问题
+## 7. 常见问题
 
 ### 本地 1.94，CI 1.96，为什么之前会挂？
 
@@ -210,7 +288,7 @@ cd crates/desktop/web-ui && npm ci && npm run build
 
 ---
 
-## 7. 历史背景（2026-06）
+## 8. 历史背景（2026-06）
 
 主仓大推送后 CI 连续暴露：fmt 漂移、Unix 缺 `libc`、Rust 1.96 clippy 新规则等。随后引入工具链钉死 + 本地 `verify-lint` + pre-push hook，使推送前与 CI Lint 对齐。
 
@@ -218,7 +296,7 @@ cd crates/desktop/web-ui && npm ci && npm run build
 
 ---
 
-## 8. 维护说明
+## 9. 维护说明
 
 - 升级钉死版本：改 [`rust-toolchain.toml`](rust-toolchain.toml)，并在 CI lint job 的 toolchain 断言（`rustc --version | grep 1.96.0`）中同步。`verify-lint-linux.ps1` 与 `cd.yml` 构建 job 也用 `rust-toolchain.toml` 的版本，无需单独改。  
 - 新增 Lint 步骤：先改 `verify-lint.sh` / `.ps1`，再改 `.github/workflows/ci.yml`，最后更新本文档；跨平台 `cfg` 代码记得用 `verify-lint-linux.ps1` 自查。  

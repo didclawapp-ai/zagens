@@ -8,7 +8,7 @@ cargo test -p zagens-cli --test architecture_invariants --locked
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> architecture_boundary (desktop)"
-cargo test -p deepseek-desktop --test architecture_boundary --locked
+cargo test -p zagens-desktop --test architecture_boundary --locked
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> OpenAPI contract"

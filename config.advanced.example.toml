@@ -1,0 +1,142 @@
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  Zagens — Advanced provider recipes (power users / developers)               ║
+# ║                                                                              ║
+# ║  Path: ~/.zagens/config.advanced.example.toml                                ║
+# ║  NOT loaded automatically — copy snippets into ~/.zagens/config.toml,        ║
+# ║  then restart the runtime sidecar (Zagens relaunch or sidecar restart).      ║
+# ║                                                                              ║
+# ║  Zagens UI stays on DeepSeek V4 by default. Other models are experimental:   ║
+# ║  LHT gates, thinking/reasoning_effort, CRAFT, and prompts are tuned for V4.  ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ── How to switch provider ─────────────────────────────────────────────────────
+# 1. Uncomment / fill the `[providers.*]` block below.
+# 2. Set top-level `provider = "..."` in config.toml (must match a configured block).
+# 3. Set `default_text_model` if the provider model id differs from DeepSeek names.
+# 4. Restart sidecar. Open a new thread to avoid stale engine state.
+#
+# Env vars override file values (see each provider). Keys can also go in OS env
+# instead of this file — never commit real secrets.
+
+# provider = "openrouter"   # openrouter | openai | ollama | vllm | sglang | novita | fireworks | nvidia-nim
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# OpenRouter (OpenAI-compatible gateway — Claude, GPT, Gemini, DeepSeek, …)
+# ─────────────────────────────────────────────────────────────────────────────────
+# Docs: https://openrouter.ai/docs
+# Model list: https://openrouter.ai/models
+#
+# Env: OPENROUTER_API_KEY, OPENROUTER_BASE_URL (optional), OPENROUTER_MODEL (optional)
+#
+# [providers.openrouter]
+# api_key = "YOUR_OPENROUTER_KEY"
+# base_url = "https://openrouter.ai/api/v1"
+# model = "anthropic/claude-sonnet-4"
+#
+# Popular model ids (verify on OpenRouter before pinning):
+#   anthropic/claude-sonnet-4
+#   anthropic/claude-3.5-sonnet
+#   openai/gpt-4.1
+#   openai/gpt-4o
+#   google/gemini-2.5-pro-preview
+#   google/gemini-2.0-flash-001
+#   deepseek/deepseek-v4-pro
+#   deepseek/deepseek-v4-flash
+#   meta-llama/llama-3.3-70b-instruct
+#   qwen/qwen-2.5-coder-32b-instruct
+#
+# Optional OpenRouter attribution headers (recommended by OpenRouter):
+# http_headers = { "HTTP-Referer" = "https://zagens.local", "X-Title" = "Zagens" }
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# OpenAI (direct API)
+# ─────────────────────────────────────────────────────────────────────────────────
+# Env: OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
+#
+# [providers.openai]
+# api_key = "YOUR_OPENAI_KEY"
+# base_url = "https://api.openai.com/v1"
+# model = "gpt-4.1"
+# # model = "gpt-4o"
+# # model = "o3-mini"
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Ollama (local — OpenAI-compatible shim on :11434)
+# ─────────────────────────────────────────────────────────────────────────────────
+# Install: https://ollama.com — then `ollama pull <model>`
+# Env: OLLAMA_BASE_URL, OLLAMA_MODEL (api_key usually omitted)
+#
+# [providers.ollama]
+# base_url = "http://localhost:11434/v1"
+# model = "qwen2.5-coder:7b"
+# # model = "deepseek-r1:8b"
+# # model = "llama3.3:70b"
+# # model = "codellama:13b"
+#
+# Tip: small local models often struggle with long tool loops / LHT; use for smoke tests.
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# vLLM (local OpenAI-compatible server)
+# ─────────────────────────────────────────────────────────────────────────────────
+# Env: VLLM_BASE_URL, VLLM_MODEL, optional VLLM_API_KEY
+#
+# [providers.vllm]
+# base_url = "http://localhost:8000/v1"
+# model = "meta-llama/Llama-3.3-70B-Instruct"
+# # model = "deepseek-ai/DeepSeek-V4-Pro"
+# # api_key = "optional-local-token"
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# SGLang (local OpenAI-compatible server)
+# ─────────────────────────────────────────────────────────────────────────────────
+# Env: SGLANG_BASE_URL, SGLANG_MODEL, optional SGLANG_API_KEY
+#
+# [providers.sglang]
+# base_url = "http://localhost:30000/v1"
+# model = "deepseek-ai/DeepSeek-V4-Pro"
+# # model = "deepseek-ai/DeepSeek-V4-Flash"
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Novita / Fireworks (hosted OpenAI-compat — optional)
+# ─────────────────────────────────────────────────────────────────────────────────
+# [providers.novita]
+# api_key = "YOUR_NOVITA_KEY"
+# base_url = "https://api.novita.ai/v1"
+# model = "deepseek/deepseek-v4-pro"
+#
+# [providers.fireworks]
+# api_key = "YOUR_FIREWORKS_KEY"
+# base_url = "https://api.fireworks.ai/inference/v1"
+# model = "accounts/fireworks/models/deepseek-v4-pro"
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Named profiles (optional) — select with DEEPSEEK_PROFILE=<name>
+# ─────────────────────────────────────────────────────────────────────────────────
+# Profiles merge over the base config. Provider blocks above still supply api_key.
+
+# [profiles.openrouter-claude]
+# provider = "openrouter"
+# default_text_model = "anthropic/claude-sonnet-4"
+# reasoning_effort = "off"
+
+# [profiles.openrouter-gpt]
+# provider = "openrouter"
+# default_text_model = "openai/gpt-4.1"
+# reasoning_effort = "off"
+
+# [profiles.local-ollama]
+# provider = "ollama"
+# default_text_model = "qwen2.5-coder:7b"
+# reasoning_effort = "off"
+# allow_shell = false
+
+# [profiles.local-vllm]
+# provider = "vllm"
+# default_text_model = "meta-llama/Llama-3.3-70B-Instruct"
+# reasoning_effort = "off"
+
+# ─────────────────────────────────────────────────────────────────────────────────
+# Full option reference
+# ─────────────────────────────────────────────────────────────────────────────────
+# Repository: config.example.toml (all tables — LHT, scratchpad, network, hooks, …)
+# Active config: ~/.zagens/config.toml (edited by Zagens Settings for V4 defaults)

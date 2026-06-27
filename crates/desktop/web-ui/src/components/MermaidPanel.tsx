@@ -40,7 +40,7 @@ function clampZoom(v: number): number {
 
 /** Strip Mermaid max-width caps; keep vector crisp (no CSS bitmap scale). */
 function prepareMermaidSvg(svgText: string): string {
-  let s = svgText.replace(/max-width\s*:\s*[^;]+;?/gi, '');
+  const s = svgText.replace(/max-width\s*:\s*[^;]+;?/gi, '');
   const crisp =
     'display:block;max-width:none;shape-rendering:geometricPrecision;text-rendering:geometricPrecision';
   if (!/\bstyle\s*=/i.test(s)) {

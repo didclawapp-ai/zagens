@@ -697,7 +697,7 @@ mod tests {
 
     fn record(event: &str, payload: serde_json::Value) -> RuntimeEventRecord {
         RuntimeEventRecord {
-            schema_version: 2,
+            schema_version: crate::runtime_threads::CURRENT_EVENT_SCHEMA_VERSION,
             seq: 1,
             timestamp: Utc::now(),
             thread_id: "thr_test".to_string(),

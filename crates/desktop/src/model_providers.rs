@@ -367,10 +367,10 @@ pub fn save_model_provider_credentials(
             cfg.api_key = None;
         }
 
-        if let Some(m) = model_to_save {
-            if is_active {
-                store.config.default_text_model = Some(m);
-            }
+        if let Some(m) = model_to_save
+            && is_active
+        {
+            store.config.default_text_model = Some(m);
         }
         if preset.kind == ProviderKind::Deepseek {
             store.config.api_key = None;

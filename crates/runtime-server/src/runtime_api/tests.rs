@@ -119,6 +119,7 @@ async fn spawn_test_server_with_root_and_token(
     )
     .await?;
     let mut config = Config::default();
+    config.trust_mode = Some(true);
     config.capacity = Some(crate::config::CapacityConfig {
         enabled: Some(false),
         low_risk_max: None,
@@ -147,7 +148,7 @@ async fn spawn_test_server_with_root_and_token(
         http_approval_timeout_secs: 120,
     };
     let runtime_threads: SharedRuntimeThreadManager = Arc::new(RuntimeThreadManager::open(
-        config,
+        config.clone(),
         PathBuf::from("."),
         manager_cfg,
     )?);
@@ -173,7 +174,7 @@ async fn spawn_test_server_with_root_and_token(
     crate::mcp_shared::install_shared_mcp_pool(Arc::clone(&shared_mcp_pool));
 
     let state = RuntimeApiState::new(
-        Config::default(),
+        config.clone(),
         PathBuf::from("."),
         manager,
         runtime_threads.clone(),

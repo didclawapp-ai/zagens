@@ -774,7 +774,7 @@ export default function Composer({
 
       // Guess if it looks like code (contains braces, indentation, semicolons, etc.)
       const looksLikeCode =
-        /[{}\[\]()]/.test(pasted) &&
+        /[{}[\]()]/.test(pasted) &&
         (pasted.includes('\n') || pasted.includes(';') || /^\s{2,}/m.test(pasted));
 
       if (looksLikeCode) {

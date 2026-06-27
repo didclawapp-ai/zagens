@@ -1,7 +1,4 @@
-/**
- * Multi-session parallel streaming self-checks (run: npm run test:multi-session).
- * Covers pure helpers used by the P0/P1 desktop parallel-stream path.
- */
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 
 import {
@@ -35,8 +32,35 @@ import {
   makeEmptyContext,
   makeEmptyPanelSlice,
   type StreamContext,
+  type StreamContextRegistry,
 } from '../../hooks/useStreamContextRegistry';
+import {
+  dispatchPanelChecklist,
+  dispatchPanelContext,
+  dispatchPanelScratchpad,
+  dispatchPanelTaskGraph,
+  getPanelActiveThreadId,
+  PANEL_CHECKLIST_EVENT,
+  PANEL_CONTEXT_EVENT,
+  PANEL_SCRATCHPAD_EVENT,
+  PANEL_TASK_GRAPH_EVENT,
+  setPanelActiveThreadId,
+  shouldDispatchPanelForThread,
+} from '../panelChannel';
+import {
+  applyOptimisticThreadStop,
+  applyThreadStatusEvent,
+  detectThreadStatusDrift,
+  getActiveThreadIdsFromStore,
+  normalizeThreadStreamStatus,
+  resetThreadStatusStoreForTests,
+} from './threadStatusStore';
+import {
+  evictIdleContextMessages,
+  IDLE_CONTEXT_EVICT_MS,
+} from './streamContextAccess';
 
+test('multiSession parallel streaming helpers', () => {
 // ── sessionStripGrouping ────────────────────────────────────────────────
 
 assert.equal(SESSIONS_VISIBLE_PER_DAY, 5);
@@ -122,14 +146,6 @@ const streaming = new Set(['thr_a', 'thr_b']);
 assert.equal(removeThreadFromStreamingSet(streaming, 'thr_missing'), null);
 const pruned = removeThreadFromStreamingSet(streaming, 'thr_a');
 assert.deepEqual([...pruned!], ['thr_b']);
-
-import {
-  applyOptimisticThreadStop,
-  applyThreadStatusEvent,
-  detectThreadStatusDrift,
-  getActiveThreadIdsFromStore,
-  resetThreadStatusStoreForTests,
-} from './threadStatusStore';
 
 assert.deepEqual(collectReconcileThreadIds(null), []);
 resetThreadStatusStoreForTests();
@@ -278,21 +294,7 @@ assert.equal(marked.messages.find((m) => m.id === 'a-live')?.isStreaming, true);
 // prevents future call sites that forget the check from leaking background
 // panel state into the active UI.
 
-import {
-  dispatchPanelChecklist,
-  dispatchPanelContext,
-  dispatchPanelScratchpad,
-  dispatchPanelTaskGraph,
-  getPanelActiveThreadId,
-  PANEL_CHECKLIST_EVENT,
-  PANEL_CONTEXT_EVENT,
-  PANEL_SCRATCHPAD_EVENT,
-  PANEL_TASK_GRAPH_EVENT,
-  setPanelActiveThreadId,
-  shouldDispatchPanelForThread,
-} from '../panelChannel';
-
-// Minimal window/CustomEvent polyfill for the Node.js tsx runner.
+// Minimal window/CustomEvent polyfill for the Node.js test runner.
 const dispatched: Array<{ type: string; detail: unknown }> = [];
 (globalThis as unknown as { window: unknown }).window = {
   dispatchEvent(ev: { type: string; detail: unknown }) {
@@ -384,8 +386,6 @@ setPanelActiveThreadId(null);
 
 // ── thread.status normalization (S2.1) ──────────────────────────────────
 
-import { normalizeThreadStreamStatus } from './threadStatusStore';
-
 assert.equal(normalizeThreadStreamStatus('streaming'), 'streaming');
 assert.equal(normalizeThreadStreamStatus('awaiting_approval'), 'awaiting_approval');
 assert.equal(normalizeThreadStreamStatus('idle'), 'idle');
@@ -440,12 +440,6 @@ assert.equal(getActiveThreadIdsFromStore().has('thr_stop'), false, 'stale stream
 resetThreadStatusStoreForTests();
 
 // ── idle context message eviction (S0.2) ───────────────────────────────
-
-import {
-  evictIdleContextMessages,
-  IDLE_CONTEXT_EVICT_MS,
-} from './streamContextAccess';
-import type { StreamContextRegistry } from '../../hooks/useStreamContextRegistry';
 
 const evictMap = new Map<string, StreamContext>();
 ensureContextInMap(evictMap, 'thr_evict', 'sess_evict');
@@ -562,5 +556,4 @@ assert.equal(
   undefined,
   'A draft bucket removed after migration',
 );
-
-console.log('multiSession.selfcheck: ok');
+});

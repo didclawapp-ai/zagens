@@ -277,7 +277,6 @@ export function ChatMarkdown({
         className={className}
         onClickCapture={onClickCapture}
         onContextMenuCapture={onContextMenuCapture}
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html }}
       />
       {wsMenu ? (

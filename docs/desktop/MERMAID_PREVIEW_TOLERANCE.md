@@ -79,7 +79,7 @@ This covers **unclassed** entry nodes (`U1`, `U2`) without doc changes.
 | `crates/desktop/web-ui/src/lib/mermaidSvgPostProcess.ts` | WebView2 SVG/HTML patches + iframe fit |
 | `crates/desktop/web-ui/src/lib/markdownMermaidFence.ts` | Fence → placeholder HTML |
 | `crates/desktop/web-ui/src/components/preview/renderers/MarkdownRenderer.tsx` | Preview mount + theme |
-| `crates/desktop/web-ui/src/lib/mermaid.selfcheck.ts` | `npm run test:mermaid` |
+| `crates/desktop/web-ui/src/lib/mermaid.test.ts` | `npm test` (Vitest) |
 
 Bump **`MERMAID_INIT_REV`** in `mermaidRuntime.ts` when init or post-process semantics change so cached diagrams re-render after app update.
 
@@ -87,7 +87,7 @@ Bump **`MERMAID_INIT_REV`** in `mermaidRuntime.ts` when init or post-process sem
 
 ```bash
 cd crates/desktop/web-ui
-npm run test:mermaid
+npm test
 npm run build
 # Desktop bundle (maintainer)
 cd ../.. && npx @tauri-apps/cli@2 build
@@ -118,7 +118,7 @@ Manual checklist (§1.1):
 - Dark app theme + Mermaid `dark` theme interaction on docs with light `classDef` colors
 - Additional diagram types in `RUNTIME_ARCHITECTURE.md` (§1.2 detail graph, sequence charts)
 - Mermaid panel inline mount parity if zoom-only path differs from iframe
-- Optional: golden SVG fixtures in CI (beyond `mermaid.selfcheck.ts`)
+- Optional: golden SVG fixtures in CI (beyond `mermaid.test.ts`)
 
 ## Related
 

@@ -1,6 +1,8 @@
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-
 import { summarizeToolCalls } from './summarizeToolCalls';
+
+test('summarizeToolCalls', () => {
 
 const t = (key: string, params?: Record<string, string>) => {
   const map: Record<string, string> = {
@@ -52,5 +54,4 @@ assert.equal(
   ),
   'grep_files · write_file',
 );
-
-console.log('summarizeToolCalls self-check passed');
+});

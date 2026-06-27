@@ -139,12 +139,18 @@ function Invoke-ThreadTurn {
 
 function Get-BaselineRssFromAdr {
     param([string]$AdrPath)
-    if (-not (Test-Path $AdrPath)) { return 26.6 }
+    if (-not (Test-Path $AdrPath)) { return 29.0 }
     $content = Get-Content -Path $AdrPath -Raw -ErrorAction SilentlyContinue
-    if ($content -match '\|\s*进程 RSS 峰值\s*\|\s*\*\*([\d.]+)\*\*') {
-        return [double]$Matches[1]
+    $patterns = @(
+        '\|\s*Process RSS peak\s*\|\s*\*\*([\d.]+)\*\*',
+        '\|\s*进程 RSS 峰值\s*\|\s*\*\*([\d.]+)\*\*'
+    )
+    foreach ($pat in $patterns) {
+        if ($content -match $pat) {
+            return [double]$Matches[1]
+        }
     }
-    return 26.6
+    return 29.0
 }
 
 function Initialize-LargeOutputFixture {
@@ -212,8 +218,8 @@ function Import-WorkspaceDotEnv {
 }
 
 function Resolve-DeepSeekApiKeyFromConfig {
-    $configPath = Join-Path $env:USERPROFILE ".deepseek\config.toml"
-    if (-not (Test-Path $configPath)) { return $null }
+    $configPath = Resolve-RuntimeConfigPath
+    if (-not $configPath) { return $null }
     $content = Get-Content -Path $configPath -Raw -ErrorAction SilentlyContinue
     if (-not $content) { return $null }
     $patterns = @(
@@ -228,6 +234,16 @@ function Resolve-DeepSeekApiKeyFromConfig {
             }
         }
     }
+    return $null
+}
+
+function Resolve-RuntimeConfigPath {
+    $candidates = @(
+        $env:DEEPSEEK_CONFIG_PATH,
+        (Join-Path $env:USERPROFILE ".zagens\config.toml"),
+        (Join-Path $env:USERPROFILE ".deepseek\config.toml")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+    if ($candidates.Count -gt 0) { return $candidates[0] }
     return $null
 }
 
@@ -308,8 +324,13 @@ for ($run = 1; $run -le $Runs; $run++) {
     Write-Host "=== Run $run / $Runs : port=$port model=$resolvedModel ===" -ForegroundColor Cyan
 
     $env:DEEPSEEK_RUNTIME_DIR = $dataDir
+    $runtimeArgs = @("--port", $port)
+    $configPath = Resolve-RuntimeConfigPath
+    if ($configPath) {
+        $runtimeArgs += @("--config", $configPath)
+    }
     $proc = Start-Process -FilePath $binary `
-        -ArgumentList @("--port", $port, "--config", $configPath) `
+        -ArgumentList $runtimeArgs `
         -PassThru -NoNewWindow `
         -RedirectStandardOutput (Join-Path $scriptTempRoot "deepseek-baseline-stdout.log") `
         -RedirectStandardError (Join-Path $scriptTempRoot "deepseek-baseline-stderr.log")

@@ -252,12 +252,17 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** and **[LOCAL_DEV_VERIFY.md](LOCAL_DEV
 
 | Command | Description |
 |---------|-------------|
-| `bash scripts/ci/verify-lint.sh` | CI lint mirror |
-| `bash scripts/ci/verify-workspace.sh` | Lint + full workspace tests |
-| `cargo test --workspace --all-features` | Run all tests |
+| `just check` | **PR gate:** verify + workspace tests + web-check ([`justfile`](justfile) L2) |
+| `just verify-all` | **Push gate:** verify + tests + multi-session + lockfile (L3) |
+| `just verify` | CI lint mirror — toolchain + prebuild + fmt + clippy (L1) |
+| `just web-check` | Web UI: tsc + ESLint + Vitest |
+| `just --list` | All recipes with tier guide in justfile header |
+| `bash scripts/ci/verify-lint.sh` | Same as `just verify` (direct script) |
+| `bash scripts/ci/verify-workspace.sh` | Same as `just verify-all` |
+| `cargo test --workspace --all-features` | Rust tests only (`just test-all` adds prebuild) |
 | `cd crates/desktop && cargo tauri dev` | Launch desktop in dev mode |
 
-Windows: `pwsh -File scripts/ci/verify-lint.ps1`
+Windows: `just verify` or `pwsh -File scripts/ci/verify-lint.ps1`. Cursor: **Run Task → Zagens:***
 
 ```
 zagens/

@@ -7,7 +7,7 @@ alwaysApply: false
 # Rust workspace
 
 - **Toolchain:** MSRV **1.88+**; dev/CI pin [rust-toolchain.toml](rust-toolchain.toml) (currently **1.96**). No nightly `feature`; `let_chains` in `if`/`while` is OK on 1.88+.
-- **Before push:** `bash scripts/ci/verify-lint.sh` (CI Lint mirror). Optional git hooks: `scripts/ci/install-git-hooks.sh`.
+- **Before push:** `just verify` (L1) or `just verify-all` (L3). PR gate: `just check`. Optional hooks: `just hooks` / `scripts/ci/install-git-hooks.sh`. See [`justfile`](justfile) tier guide.
 - **Verify:** `cargo build`, `cargo test --workspace --all-features`, `cargo clippy --workspace --all-targets --all-features -- -D warnings` before claiming the change compiles.
 - **Modules:** Prefer **smaller sources** (~**1000** lines soft cap); split rather than growing one file. See **code-organization** rule for extraction policy on legacy large files.
 - **CLI entry:** prefer documenting **`deepseek`** (dispatcher); not `deepseek-tui` alone for general flows.

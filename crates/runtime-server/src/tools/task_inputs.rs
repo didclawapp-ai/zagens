@@ -27,6 +27,7 @@ struct TaskCreateInput {
     pub workspace: Option<String>,
     pub mode: Option<TaskCreateModeInput>,
     pub allow_shell: Option<bool>,
+    pub trust_mode: Option<bool>,
     pub auto_approve: Option<bool>,
 }
 

@@ -22,14 +22,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Test orchestration:** Root [`justfile`](justfile) unifies verify/test/lint/web/harness commands (`just --list`); [`.vscode/tasks.json`](.vscode/tasks.json) adds clickable Cursor/VS Code task entries. Web UI: **Vitest** (`npm test`) replaces scattered `tsx` `.selfcheck.ts` scripts; **ESLint** flat config (`npm run lint`). Install `just` via `cargo install just`, `scoop install just`, or `winget install Casey.Just`.
+- **Test tiers (L0–L4):** `justfile` documents layered gates — `prebuild` + `prebuild-contracts` (sidecar + `zagens` bin) + `web-check`; `check` (PR) runs `verify` + `test-all` + `web-check`. **L4** adds granular contract/harness/release recipes plus aggregates `l4-contracts`, `l4-ci-smoke`, `l4-full`. `just docs` excludes `zagens-desktop` to avoid rustdoc `zagens` bin path collision with `zagens-cli`. See [LOCAL_DEV_VERIFY.md §4](LOCAL_DEV_VERIFY.md#4-统一测试架构just).
 - **GitHub Action (P4):** Composite action `.github/actions/coverage-gate` runs `zagens coverage-gate` in CI; dogfood workflow `coverage-gate-dogfood.yml`; public doc `docs/desktop/GITHUB_ACTION.md`.
 - **Checkpoint / Rewind UI (P3):** User messages expose **Restore files** (workspace revert via `pre-turn:*` snapshots) distinct from **Branch** (fork conversation); `POST /v1/threads/{id}/workspace/revert-turn`; snapshot list includes `pre_turn` + `turn_offset`.
 - **Channels (P2):** `POST /v1/threads/{id}/events` injects inbound channel events (steer / queue / start-turn) with optional `source`; reuses runtime bearer auth; emits `channel.injected` audit events.
 - **Git worktree parallel sessions (P1):** `[worktrees]` config; `CreateThreadRequest` / `POST /v1/stream` `use_worktree`; thread metadata `git_root` + `worktree_name`; archive-time prune; CRAFT `agent_spawn` auto worktree when `task_id` set; desktop Composer **Worktree** toggle for new sessions.
-- **Git worktree (P1 depth):** Deep link `use_worktree=1`; TUI `--worktree` + settings preference; desktop worktree failure toasts and session WT badges; CRAFT executor auto-spawn worktree; `zagens doctor` Worktrees section; create/archive prune integration test.
 
+### Fixed
+
+- **CI scripts:** `check-architecture-freeze.ps1` uses `zagens-desktop` (was stale `deepseek-desktop`); `verify-workspace.ps1` now runs multi-session verification like the `.sh` twin; coverage-gate composite action ships missing `build-zagens.sh` / `run-gate.sh`.
+- **Runtime tests:** Fix 26 `zagens-cli --lib` regressions — `KernelEventWriter` drain on a blocking thread (no Tokio runtime in sync tests), `trust_mode` in task/automation tool schemas, `effective_trust_mode` test configs, stream schema version helper, doctor CN endpoint hint, capacity tool-replay return semantics, file path error message, provider drift skip for `custom`.
+- **R-015 longrun:** `runtime-longrun-baseline.ps1` no longer passes empty `--config` (sidecar failed to start); ADR RSS gate reads English `Process RSS peak` row; harness longrun pins `-Model deepseek-v4-pro` to match ADR scenario.
 ### Changed
 
+- **Runtime (R-015):** ADR baseline RSS median **35.4 MB** @ `3d7ab0d` (was 29 MB @ `8b1538a`; full 3×50 + 1.1 MB fixture on Windows 10).
 - **Runtime (Kernel V3 · 清债):** 移除 `[kernel] machine` 的 `legacy` / `shadow` 专用解析分支与 `config_used_deprecated_{legacy,shadow}` 辅助函数;`KernelMachineMode::parse` 现统一映射到 `v3`,任何非 `v3` 值在启动时只记录单条「machine is ignored」warn(此前 legacy/shadow 各一条)。配置仍前向兼容(未知值不报错)。
 
 ### Fixed

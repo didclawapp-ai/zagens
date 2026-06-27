@@ -460,10 +460,12 @@ mod resume_flag_tests {
     use uuid::Uuid;
 
     fn test_manager(dir: &TempDir) -> RuntimeThreadManager {
+        let mut config = Config::default();
+        config.trust_mode = Some(true);
         let data_dir = dir.path().join(format!("runtime-{}", Uuid::new_v4()));
         let store = RuntimeThreadStore::open_json_only(data_dir.clone()).expect("open store");
         RuntimeThreadManager::open_with_store(
-            Config::default(),
+            config,
             dir.path().to_path_buf(),
             crate::runtime_threads::RuntimeThreadManagerConfig {
                 task_data_dir: data_dir.clone(),

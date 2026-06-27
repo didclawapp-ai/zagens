@@ -277,7 +277,7 @@ impl Engine {
         self.0
             .capacity_controller
             .mark_intervention_applied(self.0.turn_counter, GuardrailAction::VerifyWithToolReplay);
-        true
+        false
     }
 
     pub(in crate::core::engine) async fn apply_verify_and_replan(

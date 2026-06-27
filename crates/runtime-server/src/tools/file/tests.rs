@@ -53,7 +53,7 @@ async fn test_read_file_missing_path() {
     let err = result.unwrap_err();
     assert!(
         err.to_string()
-            .contains("Failed to validate input: missing required field 'path'")
+            .contains("read_file requires 'path' (aliases accepted:")
     );
 }
 

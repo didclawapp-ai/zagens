@@ -10,14 +10,33 @@ Thanks for your interest in Zagens. This repository is [MIT licensed](LICENSE).
 
 ## Quick verify
 
+**Recommended:** install [just](https://github.com/casey/just) (`cargo install just` / `scoop install just` / `winget install Casey.Just`), then from the repo root:
+
+```bash
+just verify          # L1: CI Lint mirror (toolchain + prebuild + fmt + clippy)
+just check           # L2: PR gate — verify + workspace tests + web-check
+just verify-all      # L3: push gate — verify + tests + multi-session + lockfile
+just web-check       # Frontend: tsc + ESLint + Vitest
+just l4-contracts    # L4: versions + architecture + OpenAPI + runtime contracts
+just l4-ci-smoke     # L4: mirror CI ubuntu smoke extras
+just l4-full         # L4: contracts + harness + trace-report + docs
+just --list          # all recipes (tier guide in justfile header)
+```
+
+Cursor/VS Code: **Terminal → Run Task…** → pick a **Zagens:** task (see [`.vscode/tasks.json`](.vscode/tasks.json)).
+
+Direct scripts (still supported):
+
 ```bash
 bash scripts/ci/verify-lint.sh          # mirrors CI Lint (fmt + clippy)
 bash scripts/ci/verify-workspace.sh     # lint + full workspace tests
 ```
 
-Windows: `pwsh -File scripts/ci/verify-lint.ps1`
+Windows: `pwsh -File scripts/ci/verify-lint.ps1` or `just verify`
 
-Optional hooks (once per clone): `bash scripts/ci/install-git-hooks.sh`
+Web UI only: `just web-check` or `cd crates/desktop/web-ui && npm run lint && npm test`
+
+Optional hooks (once per clone): `just hooks` or `bash scripts/ci/install-git-hooks.sh`
 
 ## CI when you push (PR-first)
 

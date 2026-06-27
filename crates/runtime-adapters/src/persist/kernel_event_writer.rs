@@ -1,7 +1,7 @@
 //! Background drain for [`KernelEvent`] double-write (Phase 3b batch 2).
 //!
 //! Opens (or creates) `sessions.db`, ensures the `kernel_events` table exists,
-//! and spawns a tokio task that batches events from an unbounded channel into
+//! and spawns a background thread that batches events from an unbounded channel into
 //! SQLite via [`KernelEventLog`].  Turn-loop code emits through the returned
 //! [`KernelEventSink`] without blocking on disk I/O.
 
@@ -11,7 +11,6 @@ use std::sync::{Arc, Mutex as StdMutex};
 use anyhow::Context as _;
 use rusqlite::{Connection, params};
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 use zagens_core::engine::kernel_event::{KernelEvent, KernelEventEnvelope};
 use zagens_core::engine::turn_machine::KernelEventSink;
@@ -25,7 +24,7 @@ use super::session_manager::default_sessions_dir;
 pub struct KernelEventWriter {
     tx: KernelEventSink,
     db: Arc<StdMutex<Connection>>,
-    _drain: JoinHandle<()>,
+    _drain: std::thread::JoinHandle<()>,
 }
 
 impl KernelEventWriter {
@@ -60,19 +59,17 @@ impl KernelEventWriter {
 
         let db_path_log = db_path.to_path_buf();
         let db_drain = Arc::clone(&db);
-        let drain = tokio::spawn(async move {
-            while let Some(first) = rx.recv().await {
+        // Dedicated thread + blocking recv: works in sync unit tests (no Tokio runtime)
+        // and avoids an extra mini-runtime per sidecar (RSS baseline).
+        let drain = std::thread::spawn(move || {
+            while let Some(first) = rx.blocking_recv() {
                 let mut batch = vec![first];
                 while let Ok(more) = rx.try_recv() {
                     batch.push(more);
                 }
-                let db = Arc::clone(&db_drain);
                 let count = batch.len();
-                let write_result = tokio::task::spawn_blocking(move || append_batch(&db, batch))
-                    .await
-                    .context("kernel event drain join");
-                match write_result {
-                    Ok(Ok(())) => {
+                match append_batch(&db_drain, batch) {
+                    Ok(()) => {
                         debug!(
                             target: "kernel_event",
                             count,
@@ -80,7 +77,7 @@ impl KernelEventWriter {
                             "appended kernel events"
                         );
                     }
-                    Ok(Err(err)) | Err(err) => {
+                    Err(err) => {
                         warn!(
                             target: "kernel_event",
                             %err,

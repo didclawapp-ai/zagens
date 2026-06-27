@@ -1,12 +1,12 @@
-# `crates/tui/tests/`
+# `crates/runtime-server/tests/`
 
-Integration tests for the TUI binary. Per `CONTRIBUTING.md`, each crate's
-integration tests live in its own `tests/` directory; the repository-root
-`tests/` directory is unused.
+Integration tests for the `zagens-cli` runtime crate (package name `zagens-cli`, binary `zagens`).
+Per `CONTRIBUTING.md`, each crate's integration tests live in its own `tests/` directory;
+the repository-root `tests/` directory is unused.
 
 ## Mock LLM client (`integration_mock_llm.rs`)
 
-`crates/tui/src/llm_client/mock.rs` provides a `MockLlmClient` that implements
+`crates/runtime-server/src/llm_client/mock.rs` provides a `MockLlmClient` that implements
 the `LlmClient` trait by replaying queue-driven canned responses and capturing
 every outgoing `MessageRequest`. Tests mock at the **trait boundary** — never
 at the `reqwest` HTTP layer — because the trait is the durable abstraction the
@@ -23,13 +23,13 @@ Coverage today exercises the trait surface end-to-end:
 - sub-agent style independent parent/child mocks
 - capacity-gate observation of a captured request before stream drain
 
-Full-engine mock LLM tests live in `crates/tui/src/core/engine/tests.rs`
+Full-engine mock LLM tests live in `crates/runtime-server/src/core/engine/tests.rs`
 (`engine_llm_client_override_runs_mock_turn`, compaction, parallel read-only
 tools) via `EngineConfig::llm_client_override` (A5.2 / A5.3).
 
-## `--record` mode for `deepseek eval`
+## `--record` mode for `zagens eval`
 
-The offline `deepseek eval` harness now accepts `--record <DIR>`. When set,
+The offline `zagens eval` harness now accepts `--record <DIR>`. When set,
 each tool step appends one JSON Lines record to `<DIR>/<scenario>.jsonl`
 (default scenario: `offline-tool-loop.jsonl`). Each line is a self-contained
 JSON object with the schema:
@@ -41,14 +41,14 @@ JSON object with the schema:
 
 The mock LLM client (`crate::llm_client::mock`) replays these fixtures by
 mapping each `response_events` array onto a canned `Vec<StreamEvent>`. Drop
-generated fixtures into `crates/tui/tests/fixtures/` so they ride the repo and
+generated fixtures into `crates/runtime-server/tests/fixtures/` so they ride the repo and
 feed the mock in CI.
 
 Quick example:
 
 ```bash
-cargo run --bin deepseek -- eval --record crates/tui/tests/fixtures
-cat crates/tui/tests/fixtures/offline-tool-loop.jsonl | jq .
+cargo run -p zagens-cli --bin zagens -- eval --record crates/runtime-server/tests/fixtures
+cat crates/runtime-server/tests/fixtures/offline-tool-loop.jsonl | jq .
 ```
 
 The scenario name is sanitized to `[A-Za-z0-9_-]` before forming the filename,

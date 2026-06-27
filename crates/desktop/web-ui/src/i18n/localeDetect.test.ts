@@ -1,9 +1,8 @@
-/**
- * Self-check for system locale matching (run: npm run test:i18n-locale).
- */
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-
 import { detectLocaleFromSystem, matchLocaleFromTag } from './utils';
+
+test('localeDetect', () => {
 
 assert.equal(matchLocaleFromTag('zh-CN'), 'zh-Hans');
 assert.equal(matchLocaleFromTag('zh-Hans'), 'zh-Hans');
@@ -22,5 +21,4 @@ assert.equal(detectLocaleFromSystem(['zh-CN']), 'zh-Hans');
 assert.equal(detectLocaleFromSystem(['ja', 'en']), 'ja');
 assert.equal(detectLocaleFromSystem(['ko-KR']), 'en');
 assert.equal(detectLocaleFromSystem([]), 'en');
-
-console.log('localeDetect self-check passed');
+});

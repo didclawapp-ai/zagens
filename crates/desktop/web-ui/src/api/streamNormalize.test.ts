@@ -1,10 +1,8 @@
-/**
- * A+.3 self-check for streamNormalize (run: npm run test:a+.3).
- * Unknown SSE event names must return null per API_DESIGN v1 forward-compat.
- */
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-
 import { KNOWN_DESKTOP_SSE_EVENTS, normalizeDesktopStreamEvent } from './streamNormalize';
+
+test('streamNormalize', () => {
 
 assert.equal(
   normalizeDesktopStreamEvent({
@@ -75,5 +73,4 @@ if (rawThreadStatus?.kind === 'thread_status') {
   assert.equal(rawThreadStatus.threadId, 'thr_raw');
   assert.equal(rawThreadStatus.status, 'streaming');
 }
-
-console.log('streamNormalize A+.3 self-check passed');
+});
