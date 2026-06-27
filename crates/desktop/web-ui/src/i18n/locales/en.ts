@@ -436,6 +436,18 @@ const en: TranslationMap = {
     modelFromConfig: 'config',
     modelParams: 'Model params',
     attach: 'Attach files or images (images are vision-bridged before sending; plain-text files can be inlined)',
+    useWorktree: 'Worktree',
+    useWorktreeTitle:
+      'New session: run in an isolated git worktree under .worktrees/ (requires a git repository)',
+    useWorktreeOnLabel: 'Isolate · On',
+    useWorktreeOffLabel: 'Isolate · Off',
+    useWorktreeOnHint: 'On: new chats run in a separate git worktree. Click to turn off.',
+    useWorktreeOffHint:
+      'Off: new chats use the current workspace. Click to enable git isolation (requires a git repo).',
+    useWorktreeToggledOn: 'Session isolation on — new chats use a .worktrees/ directory',
+    useWorktreeToggledOff: 'Session isolation off — new chats use the current workspace',
+    worktreeFailed: 'Worktree session failed: {{message}}',
+    worktreeActive: 'Isolated · {{name}}',
     removeAttachment: 'Remove',
     onlyReference: 'Ref only',
     invalid: 'Invalid',

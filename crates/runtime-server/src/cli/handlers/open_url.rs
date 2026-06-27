@@ -16,10 +16,12 @@ pub fn run(args: OpenUrlArgs) -> Result<()> {
                 "workspace": link.workspace_display(),
                 "prompt": link.prompt,
                 "taskType": link.task_type,
+                "useWorktree": link.use_worktree,
                 "canonical_url": build_open_url(
                     &link.workspace,
                     link.prompt.as_deref(),
                     link.task_type.as_deref(),
+                    link.use_worktree.unwrap_or(false),
                 ),
             }))?
         );
@@ -34,6 +36,9 @@ pub fn run(args: OpenUrlArgs) -> Result<()> {
         }
         if let Some(task_type) = &link.task_type {
             println!("  task_type: {task_type}");
+        }
+        if link.use_worktree == Some(true) {
+            println!("  use_worktree: true");
         }
         return Ok(());
     }

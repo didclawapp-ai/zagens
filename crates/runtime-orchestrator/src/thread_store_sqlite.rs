@@ -90,6 +90,30 @@ fn ensure_threads_task_type_column(db: &Connection) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn ensure_threads_git_root_column(db: &Connection) -> anyhow::Result<()> {
+    let mut stmt = db.prepare("PRAGMA table_info(threads)")?;
+    let has_col = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "git_root");
+    if !has_col {
+        db.execute("ALTER TABLE threads ADD COLUMN git_root TEXT", [])?;
+    }
+    Ok(())
+}
+
+fn ensure_threads_worktree_name_column(db: &Connection) -> anyhow::Result<()> {
+    let mut stmt = db.prepare("PRAGMA table_info(threads)")?;
+    let has_col = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "worktree_name");
+    if !has_col {
+        db.execute("ALTER TABLE threads ADD COLUMN worktree_name TEXT", [])?;
+    }
+    Ok(())
+}
+
 fn ensure_session_input_table(db: &Connection) -> anyhow::Result<()> {
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS session_input (
@@ -204,6 +228,8 @@ pub fn open_sqlite_thread_db(
     ensure_threads_scratchpad_run_history_column(&db)?;
     ensure_threads_checklist_json_column(&db)?;
     ensure_threads_plan_json_column(&db)?;
+    ensure_threads_git_root_column(&db)?;
+    ensure_threads_worktree_name_column(&db)?;
     ensure_turns_last_request_input_tokens_column(&db)?;
     ensure_session_input_table(&db)?;
 
@@ -471,6 +497,8 @@ fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRec
     let plan_snapshot = plan_json
         .as_deref()
         .and_then(|raw| serde_json::from_str(raw).ok());
+    let git_root: Option<String> = row.get(21).ok();
+    let worktree_name: Option<String> = row.get(22).ok();
     Ok(ThreadRecord {
         schema_version: 2,
         id: row.get(0)?,
@@ -495,10 +523,14 @@ fn thread_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRec
         checklist_snapshot,
         plan_snapshot,
         config_overlay: None,
+        git_root: git_root.map(PathBuf::from),
+        worktree_name,
     })
 }
 
 // === Thread operations ===
+
+const THREAD_SELECT: &str = "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json, plan_json, git_root, worktree_name FROM threads";
 
 pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Result<()> {
     let coherence_json = serde_json::to_string(&thread.coherence_state).unwrap_or_default();
@@ -516,8 +548,8 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
         .and_then(|v| serde_json::to_string(v).ok());
     db.execute(
         "INSERT OR REPLACE INTO threads
-         (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json, plan_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)",
+         (id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json, plan_json, git_root, worktree_name)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
         params![
             thread.id,
             thread.created_at.to_rfc3339(),
@@ -540,6 +572,8 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
             checklist_json,
             history_json,
             plan_json,
+            thread.git_root.as_ref().map(|p| p.display().to_string()),
+            thread.worktree_name,
         ],
     )?;
     Ok(())
@@ -547,7 +581,7 @@ pub fn save_thread_sqlite(db: &Connection, thread: &ThreadRecord) -> anyhow::Res
 
 pub fn load_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<ThreadRecord> {
     db.query_row(
-        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json, plan_json FROM threads WHERE id = ?1",
+        &format!("{THREAD_SELECT} WHERE id = ?1"),
         params![thread_id],
         thread_record_from_row,
     )
@@ -555,9 +589,7 @@ pub fn load_thread_sqlite(db: &Connection, thread_id: &str) -> anyhow::Result<Th
 }
 
 pub fn list_threads_sqlite(db: &Connection) -> anyhow::Result<Vec<ThreadRecord>> {
-    let mut stmt = db.prepare(
-        "SELECT id, created_at, updated_at, model, workspace, mode, allow_shell, trust_mode, auto_approve, latest_turn_id, latest_response_bookmark, archived, system_prompt, task_id, title, coherence_state_json, task_type, scratchpad_run_id, checklist_json, scratchpad_run_history_json, plan_json FROM threads ORDER BY updated_at DESC",
-    )?;
+    let mut stmt = db.prepare(&format!("{THREAD_SELECT} ORDER BY updated_at DESC"))?;
     let threads = stmt
         .query_map([], thread_record_from_row)?
         .filter_map(|r| r.ok())

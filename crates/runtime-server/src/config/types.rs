@@ -167,6 +167,76 @@ impl Default for SnapshotsConfig {
     }
 }
 
+/// Git worktree isolation for parallel sessions (P1).
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorktreesConfig {
+    #[serde(default = "default_worktrees_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_worktrees_root_dir")]
+    pub root_dir: String,
+    #[serde(default)]
+    pub auto_on_new_session: bool,
+    #[serde(default = "default_worktrees_auto_on_craft_parallel")]
+    pub auto_on_craft_parallel: bool,
+    #[serde(default = "default_worktrees_prune_on_archive")]
+    pub prune_on_thread_archive: bool,
+    #[serde(default = "default_worktrees_max_per_repo")]
+    pub max_worktrees_per_repo: usize,
+    #[serde(default)]
+    pub default_branch: Option<String>,
+}
+
+fn default_worktrees_enabled() -> bool {
+    true
+}
+
+fn default_worktrees_root_dir() -> String {
+    ".worktrees".to_string()
+}
+
+fn default_worktrees_auto_on_craft_parallel() -> bool {
+    true
+}
+
+fn default_worktrees_prune_on_archive() -> bool {
+    true
+}
+
+fn default_worktrees_max_per_repo() -> usize {
+    8
+}
+
+impl Default for WorktreesConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_worktrees_enabled(),
+            root_dir: default_worktrees_root_dir(),
+            auto_on_new_session: false,
+            auto_on_craft_parallel: default_worktrees_auto_on_craft_parallel(),
+            prune_on_thread_archive: default_worktrees_prune_on_archive(),
+            max_worktrees_per_repo: default_worktrees_max_per_repo(),
+            default_branch: None,
+        }
+    }
+}
+
+impl WorktreesConfig {
+    #[must_use]
+    pub fn runtime_config(&self) -> zagens_runtime_adapters::worktree::WorktreesRuntimeConfig {
+        zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::from_toml(
+            &zagens_config::WorktreesToml {
+                enabled: self.enabled,
+                root_dir: self.root_dir.clone(),
+                auto_on_new_session: self.auto_on_new_session,
+                auto_on_craft_parallel: self.auto_on_craft_parallel,
+                prune_on_thread_archive: self.prune_on_thread_archive,
+                max_worktrees_per_repo: self.max_worktrees_per_repo,
+                default_branch: self.default_branch.clone(),
+            },
+        )
+    }
+}
+
 /// User-level memory configuration (#489).
 ///
 /// Default is opt-in: when this table is absent or `enabled = false`, the
@@ -614,6 +684,10 @@ pub struct Config {
     /// retention when the table is absent.
     #[serde(default)]
     pub snapshots: Option<SnapshotsConfig>,
+
+    /// Git worktree isolation for parallel sessions (P1).
+    #[serde(default)]
+    pub worktrees: Option<WorktreesConfig>,
 
     /// `[search]` table — web search provider and credentials.
     #[serde(default)]

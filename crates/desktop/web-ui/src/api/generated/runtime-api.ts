@@ -1199,6 +1199,10 @@ export type components = {
             readonly scratchpad_run_history?: readonly string[] | null;
             readonly checklist_snapshot?: unknown;
             readonly plan_snapshot?: unknown;
+            /** @description Git repository root when this thread runs in an isolated worktree. */
+            readonly git_root?: string | null;
+            /** @description Managed worktree directory name under `<git_root>/.worktrees/`. */
+            readonly worktree_name?: string | null;
         };
         readonly TurnItemRecord: {
             /**
@@ -1289,6 +1293,11 @@ export type components = {
              * @default null
              */
             readonly task_type: string | null;
+            /**
+             * @description When true, allocate a git worktree for this thread (requires git workspace).
+             * @default null
+             */
+            readonly use_worktree: boolean | null;
         };
         /**
          * UpdateThreadRequest
@@ -1392,6 +1401,8 @@ export type components = {
             readonly top_p?: number | null;
             /** Format: uint32 */
             readonly max_tokens?: number | null;
+            /** @description Allocate an isolated git worktree for the new thread (requires git workspace). */
+            readonly use_worktree?: boolean | null;
         };
         readonly RoutingRule: {
             readonly intent: string;

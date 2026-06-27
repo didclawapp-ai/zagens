@@ -98,6 +98,13 @@ pub struct ThreadRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(skip)]
     pub config_overlay: Option<super::config_overlay::ThreadConfigOverlay>,
+    /// Git repository root when this thread runs in an isolated worktree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "zagens_runtime_adapters::json_schema_util::path_as_string_option")]
+    pub git_root: Option<PathBuf>,
+    /// Managed worktree directory name under `<git_root>/.worktrees/`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_name: Option<String>,
 }
 
 impl ThreadRecord {

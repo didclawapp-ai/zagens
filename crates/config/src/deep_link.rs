@@ -1,7 +1,7 @@
 //! `zagens://` deep link parsing and workspace validation.
 //!
 //! Supported form:
-//! `zagens://open?workspace=<path>&prompt=<urlencoded>&task_type=code|office|auto`
+//! `zagens://open?workspace=<path>&prompt=<urlencoded>&task_type=code|office|auto&use_worktree=1`
 
 use std::path::{Component, Path, PathBuf};
 
@@ -20,6 +20,9 @@ pub struct DeepLinkOpen {
     pub prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_type: Option<String>,
+    /// When true, the desktop should enable the new-session worktree toggle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_worktree: Option<bool>,
 }
 
 impl DeepLinkOpen {
@@ -88,16 +91,26 @@ pub fn parse_open_url(raw: &str) -> Result<DeepLinkOpen, DeepLinkError> {
         Some(other) => return Err(DeepLinkError::InvalidTaskType(other.to_string())),
     };
 
+    let use_worktree = params
+        .get("use_worktree")
+        .map(|s| matches!(s.as_str(), "1" | "true" | "yes" | "on"));
+
     Ok(DeepLinkOpen {
         workspace,
         prompt,
         task_type,
+        use_worktree,
     })
 }
 
 /// Build a canonical open URL for the given workspace (prompt/task_type optional).
 #[must_use]
-pub fn build_open_url(workspace: &Path, prompt: Option<&str>, task_type: Option<&str>) -> String {
+pub fn build_open_url(
+    workspace: &Path,
+    prompt: Option<&str>,
+    task_type: Option<&str>,
+    use_worktree: bool,
+) -> String {
     let mut url = format!(
         "{DEEP_LINK_SCHEME}://{DEEP_LINK_OPEN_HOST}?workspace={}",
         encode_query_component(&workspace.display().to_string())
@@ -109,6 +122,9 @@ pub fn build_open_url(workspace: &Path, prompt: Option<&str>, task_type: Option<
     if let Some(t) = task_type.filter(|s| matches!(*s, "code" | "office" | "auto")) {
         url.push_str("&task_type=");
         url.push_str(t);
+    }
+    if use_worktree {
+        url.push_str("&use_worktree=1");
     }
     url
 }
@@ -203,7 +219,7 @@ mod tests {
     fn parse_minimal_open_url() {
         let dir = std::env::temp_dir().join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let url = build_open_url(&dir, None, None);
+        let url = build_open_url(&dir, None, None, false);
         let parsed = parse_open_url(&url).unwrap();
         assert_eq!(
             parsed.workspace.canonicalize().unwrap(),
@@ -216,7 +232,7 @@ mod tests {
     fn parse_prompt_and_task_type() {
         let dir = std::env::temp_dir().join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let url = build_open_url(&dir, Some("fix CI"), Some("code"));
+        let url = build_open_url(&dir, Some("fix CI"), Some("code"), false);
         let parsed = parse_open_url(&url).unwrap();
         assert_eq!(parsed.prompt.as_deref(), Some("fix CI"));
         assert_eq!(parsed.task_type.as_deref(), Some("code"));
@@ -230,6 +246,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_use_worktree_flag() {
+        let dir = std::env::temp_dir().join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let url = build_open_url(&dir, None, None, true);
+        let parsed = parse_open_url(&url).unwrap();
+        assert_eq!(parsed.use_worktree, Some(true));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn rejects_bad_host() {
         let err = parse_open_url("zagens://run?workspace=/tmp").unwrap_err();
         assert!(matches!(err, DeepLinkError::BadHost));
@@ -239,7 +265,7 @@ mod tests {
     fn find_in_args() {
         let dir = std::env::temp_dir().join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let url = build_open_url(&dir, Some("hi"), None);
+        let url = build_open_url(&dir, Some("hi"), None, false);
         let found = find_open_url_in_args(["zagens.exe", url.as_str()]);
         assert!(found.is_some());
         let _ = std::fs::remove_dir_all(dir);

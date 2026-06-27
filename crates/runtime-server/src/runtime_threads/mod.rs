@@ -82,6 +82,8 @@ mod manager;
 mod monitor_host;
 mod task_port;
 mod thread_crud;
+mod worktree_bind;
+pub(crate) use worktree_bind::maybe_allocate_craft_worktree;
 mod turn_control;
 mod turn_lifecycle;
 mod turn_wait;

@@ -441,6 +441,17 @@ body {
   .composer-chip.active {
     background: var(--color-accent-soft);
     color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+
+  .composer-worktree-chip-off {
+    border-color: var(--color-border);
+    border-style: dashed;
+    opacity: 0.85;
+  }
+
+  .composer-worktree-chip-off:hover {
+    opacity: 1;
   }
 
   .composer-chip svg {

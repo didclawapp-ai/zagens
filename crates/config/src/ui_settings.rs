@@ -346,6 +346,27 @@ pub fn write_task_type_preference_setting(value: &str) -> Result<()> {
     write_settings_doc(&path, &doc)
 }
 
+/// Read desktop preference for new-session git worktree isolation.
+pub fn read_new_session_use_worktree_setting() -> Result<Option<bool>> {
+    let (_path, doc) = load_settings_doc()?;
+    Ok(doc
+        .get("new_session_use_worktree")
+        .and_then(toml::Value::as_bool))
+}
+
+/// Persist desktop new-session worktree preference.
+pub fn write_new_session_use_worktree_setting(enabled: bool) -> Result<()> {
+    let (path, mut doc) = load_settings_doc()?;
+    let table = doc
+        .as_table_mut()
+        .context("settings.toml root must be a table")?;
+    table.insert(
+        "new_session_use_worktree".to_string(),
+        toml::Value::Boolean(enabled),
+    );
+    write_settings_doc(&path, &doc)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,6 +404,31 @@ mod tests {
         assert!(
             read_onboarding_complete_setting().expect("legacy task type"),
             "task_type_preference alone should imply onboarding complete"
+        );
+        // SAFETY: restores prior process env for other tests.
+        unsafe {
+            match prev {
+                Some(v) => std::env::set_var("ZAGENS_CONFIG_PATH", v),
+                None => std::env::remove_var("ZAGENS_CONFIG_PATH"),
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn new_session_use_worktree_round_trip() {
+        let dir =
+            std::env::temp_dir().join(format!("zagens-ui-settings-wt-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let prev = std::env::var("ZAGENS_CONFIG_PATH").ok();
+        // SAFETY: test-only env override; restored before return.
+        unsafe {
+            std::env::set_var("ZAGENS_CONFIG_PATH", dir.join("config.toml"));
+        }
+        write_new_session_use_worktree_setting(true).expect("write");
+        assert_eq!(
+            read_new_session_use_worktree_setting().expect("read"),
+            Some(true)
         );
         // SAFETY: restores prior process env for other tests.
         unsafe {

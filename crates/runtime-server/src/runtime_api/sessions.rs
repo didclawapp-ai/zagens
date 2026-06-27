@@ -259,6 +259,7 @@ pub(crate) async fn resume_session_thread(
             system_prompt: session.system_prompt.clone(),
             task_id: None,
             task_type: Some(task_type.as_str().to_string()),
+            use_worktree: None,
         })
         .await
         .map_err(|e| ApiError::internal(format!("Failed to create thread: {e}")))?;
@@ -491,6 +492,7 @@ mod resume_flag_tests {
                 system_prompt: None,
                 task_id: None,
                 task_type: None,
+                use_worktree: None,
             })
             .await
             .expect("create thread");

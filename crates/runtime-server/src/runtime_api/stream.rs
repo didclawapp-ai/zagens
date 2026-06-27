@@ -569,6 +569,7 @@ pub(super) async fn stream_turn(
             system_prompt: None,
             task_id: None,
             task_type: Some(task_type.as_str().to_string()),
+            use_worktree: req.use_worktree,
         })
         .await
         .map_err(|e| ApiError::internal(format!("Failed to create stream thread: {e}")))?;

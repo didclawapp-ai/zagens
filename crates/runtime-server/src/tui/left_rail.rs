@@ -332,6 +332,8 @@ mod tests {
             checklist_snapshot: None,
             plan_snapshot: None,
             config_overlay: None,
+            git_root: None,
+            worktree_name: None,
         };
         assert_eq!(
             resolve_session_label(&thread, Some("turn summary"), Locale::En),

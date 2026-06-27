@@ -81,6 +81,10 @@ pub struct Cli {
     #[arg(long = "fresh")]
     pub fresh: bool,
 
+    /// New session uses an isolated git worktree (requires git repository).
+    #[arg(long = "worktree")]
+    pub worktree: bool,
+
     /// Skip loading project-level config from $WORKSPACE/.zagens/config.toml
     #[arg(long = "no-project-config", global = true)]
     pub no_project_config: bool,

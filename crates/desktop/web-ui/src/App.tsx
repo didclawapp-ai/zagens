@@ -67,11 +67,13 @@ import { fetchSystemSettings, type SystemSettings } from './api/client';
 import {
   applyOfficeDefaultWorkspace,
 } from './lib/defaultWorkspace';
+import { worktreeSessionLabel } from './lib/worktreePath';
 import {
   ACTIVE_INSPECTOR_STORAGE_KEY,
   applyTheme,
   ensureDefaultComposerWorkspace,
   loadComposerPrefs,
+  persistUseWorktreePreference,
   loadRouteIntentPreference,
   loadRunModePreference,
   loadStoredInspector,
@@ -99,6 +101,7 @@ export default function App() {
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
   const composerModelOptions = mergeComposerModelOptions(configuredModels, selectedModel);
   const [selectedWorkspace, setSelectedWorkspace] = useState(() => loadComposerPrefs(getWindowLabel()).workspace);
+  const [useWorktree, setUseWorktree] = useState(() => loadComposerPrefs(getWindowLabel()).useWorktree);
   const [activeInspector, setActiveInspector] = useState<RightPanelView>(() => loadStoredInspector());
   const [threadTrustMode, setThreadTrustMode] = useState(false);
   const [runMode, setRunMode] = useState<DesktopRunModeId>(() => loadRunModePreference());
@@ -331,6 +334,13 @@ export default function App() {
     streaming,
   });
 
+  const activeWorktreeName = useMemo(() => {
+    const thread = threadDetailForContext?.thread;
+    const named = thread?.worktree_name?.trim();
+    if (named) return named;
+    return worktreeSessionLabel(thread?.workspace ?? null);
+  }, [threadDetailForContext]);
+
   const {
     desktopHost,
     shellInitFailed,
@@ -505,6 +515,7 @@ export default function App() {
     shellPrefsReady,
     setSelectedWorkspace,
     setTaskTypePreference,
+    setUseWorktree,
     setComposerPrefill,
   });
 
@@ -520,6 +531,7 @@ export default function App() {
     routeIntent,
     selectedModel,
     selectedWorkspace,
+    useWorktree,
     taskTypePreference,
     modelParams,
     desktopHost,
@@ -1122,6 +1134,12 @@ export default function App() {
       onModelChange={setSelectedModel}
       composerModelOptions={composerModelOptions}
       onComposerWorkspaceChange={handleComposerWorkspaceChange}
+      useWorktree={useWorktree}
+      onUseWorktreeChange={(next) => {
+        setUseWorktree(next);
+        persistUseWorktreePreference(next);
+      }}
+      activeWorktreeName={activeWorktreeName}
       resumedThreadId={resumedThreadId}
       contextUsagePct={contextUsagePct}
       contextUsedTokens={contextUsedTokens}

@@ -114,6 +114,7 @@ impl RuntimeThreadManager {
                 search.provider.unwrap_or_default()
             },
             search_api_key: self.config.search_config().api_key,
+            worktrees: self.config.worktrees_config().runtime_config(),
             session_manager: self.session_manager.clone(),
         };
 

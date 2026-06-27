@@ -9,6 +9,7 @@ export type DeepLinkOpenPayload = {
   workspace?: string;
   prompt?: string | null;
   taskType?: string | null;
+  useWorktree?: boolean | null;
 };
 
 type UseDeepLinkOpenParams = {
@@ -16,6 +17,7 @@ type UseDeepLinkOpenParams = {
   shellPrefsReady: boolean;
   setSelectedWorkspace: Dispatch<SetStateAction<string>>;
   setTaskTypePreference?: Dispatch<SetStateAction<DesktopTaskTypePreference>>;
+  setUseWorktree?: Dispatch<SetStateAction<boolean>>;
   setComposerPrefill: Dispatch<
     SetStateAction<{ text: string; nonce: number } | undefined>
   >;
@@ -26,10 +28,14 @@ function applyDeepLinkOpenPayload(
   {
     setSelectedWorkspace,
     setTaskTypePreference,
+    setUseWorktree,
     setComposerPrefill,
   }: Pick<
     UseDeepLinkOpenParams,
-    'setSelectedWorkspace' | 'setTaskTypePreference' | 'setComposerPrefill'
+    | 'setSelectedWorkspace'
+    | 'setTaskTypePreference'
+    | 'setUseWorktree'
+    | 'setComposerPrefill'
   >,
 ) {
   const workspace = payload.workspace?.trim();
@@ -39,6 +45,9 @@ function applyDeepLinkOpenPayload(
   const taskType = parseDesktopTaskTypePreference(payload.taskType);
   if (taskType && setTaskTypePreference) {
     setTaskTypePreference(taskType);
+  }
+  if (payload.useWorktree === true && setUseWorktree) {
+    setUseWorktree(true);
   }
   const prompt = payload.prompt?.trim();
   if (prompt) {
@@ -51,6 +60,7 @@ export function useDeepLinkOpen({
   shellPrefsReady,
   setSelectedWorkspace,
   setTaskTypePreference,
+  setUseWorktree,
   setComposerPrefill,
 }: UseDeepLinkOpenParams) {
   const applyPayload = useCallback(
@@ -58,10 +68,11 @@ export function useDeepLinkOpen({
       applyDeepLinkOpenPayload(payload, {
         setSelectedWorkspace,
         setTaskTypePreference,
+        setUseWorktree,
         setComposerPrefill,
       });
     },
-    [setComposerPrefill, setSelectedWorkspace, setTaskTypePreference],
+    [setComposerPrefill, setSelectedWorkspace, setTaskTypePreference, setUseWorktree],
   );
 
   useEffect(() => {

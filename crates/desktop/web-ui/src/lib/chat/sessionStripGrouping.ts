@@ -4,6 +4,8 @@ export interface SessionStripSession {
   name: string;
   created_at?: number;
   updated_at?: number;
+  /** Session / thread workspace — used for worktree badge heuristics. */
+  workspace?: string;
 }
 
 /** Default visible rows per date group before "More". */

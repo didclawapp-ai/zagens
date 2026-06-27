@@ -5,6 +5,7 @@ import {
   SESSIONS_VISIBLE_PER_DAY,
   type SessionStripSession,
 } from '../../lib/chat/sessionStripGrouping';
+import { worktreeSessionLabel } from '../../lib/worktreePath';
 
 export type { SessionStripSession } from '../../lib/chat/sessionStripGrouping';
 
@@ -84,6 +85,7 @@ export default function SessionStrip({
   const renderSessionRow = (session: SessionStripSession) => {
     const isActive = activeSessionId != null && session.id === activeSessionId;
     const isStreaming = streamingSessionIds?.has(session.id) ?? false;
+    const wtLabel = worktreeSessionLabel(session.workspace);
     return (
       <div
         key={session.id}
@@ -93,10 +95,16 @@ export default function SessionStrip({
           type="button"
           onClick={() => onSelectSession?.(session.id)}
           className="session-row-btn flex-1 min-w-0 truncate"
+          title={session.workspace ?? session.name}
         >
           <SessionStatusIcon streaming={isStreaming} />
           <span className="session-row-title truncate">
             {session.name || session.id.slice(0, 8)}
+            {wtLabel ? (
+              <span className="session-row-worktree ml-1 opacity-70" title={wtLabel}>
+                · WT
+              </span>
+            ) : null}
           </span>
         </button>
         {onDeleteSession ? (

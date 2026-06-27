@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -34,7 +35,17 @@ use super::registry::{SubAgentToolRegistry, summarize_subagent_result};
 use super::resident::release_resident_leases_for;
 use super::runtime::SubAgentCompletion;
 use super::runtime::SubAgentRuntime;
+
 use super::types::{SubAgentInput, WaitMode};
+use zagens_runtime_adapters::worktree::WorktreesRuntimeConfig;
+
+fn craft_auto_spawn_cwd(
+    parent_workspace: &Path,
+    worktrees: &WorktreesRuntimeConfig,
+    task_id: &str,
+) -> Option<std::path::PathBuf> {
+    crate::runtime_threads::maybe_allocate_craft_worktree(parent_workspace, worktrees, task_id)
+}
 
 pub(crate) struct SubAgentTask {
     pub(crate) manager_handle: SharedSubAgentManager,
@@ -235,6 +246,11 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
             let options = super::types::SubAgentSpawnOptions {
                 task_id: Some(task_id.to_string()),
                 nickname: Some(format!("auto-fix round {fix_round}")),
+                cwd: craft_auto_spawn_cwd(
+                    task.runtime.context.workspace.as_path(),
+                    &task.runtime.context.worktrees,
+                    task_id,
+                ),
                 // C10: honour [subagents] implementer_model / default_model for
                 // programmatic auto-spawns (same as agent_spawn tool lookup).
                 model: task.runtime.role_model_override(&SubAgentType::Implementer),
@@ -282,6 +298,11 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
             let options = super::types::SubAgentSpawnOptions {
                 task_id: Some(task_id.to_string()),
                 nickname: Some(format!("gate-fix round {fix_round}")),
+                cwd: craft_auto_spawn_cwd(
+                    task.runtime.context.workspace.as_path(),
+                    &task.runtime.context.worktrees,
+                    task_id,
+                ),
                 // C10: honour role-specific model for gate-triggered re-implements.
                 model: task.runtime.role_model_override(&SubAgentType::Implementer),
                 ..Default::default()

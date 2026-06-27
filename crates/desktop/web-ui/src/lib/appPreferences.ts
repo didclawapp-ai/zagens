@@ -157,6 +157,7 @@ export function loadRunModePreference(): DesktopRunModeId {
 export function loadComposerPrefs(windowLabel: string): {
   model: ComposerModelId;
   workspace: string;
+  useWorktree: boolean;
 } {
   try {
     const wm = normalizeComposerModel(localStorage.getItem('zagens-desktop-model'));
@@ -164,12 +165,22 @@ export function loadComposerPrefs(windowLabel: string): {
       localStorage.getItem(workspaceStorageKey(windowLabel))?.trim() ?? '',
     );
     const workspace = ws.length > 0 && !isUnsafeComposerWorkspace(ws) ? ws : '';
+    const useWorktree = localStorage.getItem('zagens-desktop-use-worktree') === '1';
     return {
       model: wm ?? DEFAULT_COMPOSER_MODEL,
       workspace,
+      useWorktree,
     };
   } catch {
-    return { model: DEFAULT_COMPOSER_MODEL, workspace: '' };
+    return { model: DEFAULT_COMPOSER_MODEL, workspace: '', useWorktree: false };
+  }
+}
+
+export function persistUseWorktreePreference(enabled: boolean): void {
+  try {
+    localStorage.setItem('zagens-desktop-use-worktree', enabled ? '1' : '0');
+  } catch {
+    /* ignore quota / private mode */
   }
 }
 

@@ -9,6 +9,9 @@ use crate::config::Config;
 use crate::project_doc;
 use crate::prompts::merge_instruction_paths_with_pick_rules;
 use crate::skills;
+use zagens_runtime_adapters::worktree::{
+    is_git_repository, list_managed_worktrees, resolve_git_root,
+};
 
 /// Build the "context" section of a doctor report (instructions, skills, hooks, merge layers).
 #[must_use]
@@ -19,6 +22,7 @@ pub fn build_context_report(config: &Config, workspace: &Path) -> Value {
         "skills": skills_report(workspace),
         "hooks": hooks_report(config),
         "memory": memory_report(config),
+        "worktrees": worktrees_report(config, workspace),
         "merge_notes": merge_notes(),
     })
 }
@@ -190,6 +194,30 @@ fn memory_report(config: &Config) -> Value {
     })
 }
 
+fn worktrees_report(config: &Config, workspace: &Path) -> Value {
+    let wt_cfg = config.worktrees_config();
+    let runtime = wt_cfg.runtime_config();
+    let in_git = is_git_repository(workspace);
+    let managed_count = if in_git {
+        resolve_git_root(workspace)
+            .ok()
+            .and_then(|root| list_managed_worktrees(&root, &runtime.root_dir).ok())
+            .map_or(0, |paths| paths.len())
+    } else {
+        0
+    };
+    json!({
+        "enabled": runtime.enabled,
+        "root_dir": runtime.root_dir.display().to_string(),
+        "auto_on_new_session": runtime.auto_on_new_session,
+        "auto_on_craft_parallel": runtime.auto_on_craft_parallel,
+        "prune_on_thread_archive": runtime.prune_on_thread_archive,
+        "max_worktrees_per_repo": runtime.max_worktrees_per_repo,
+        "workspace_in_git_repo": in_git,
+        "managed_count": managed_count,
+    })
+}
+
 fn merge_notes() -> Value {
     json!([
         "User config loads from ~/.zagens/config.toml (or DEEPSEEK_CONFIG_PATH), then env overrides apply.",
@@ -320,12 +348,56 @@ pub fn print_context_human(config: &Config, workspace: &Path) {
         "  enabled: {enabled}, file: {path} ({})",
         if present { "present" } else { "absent" }
     );
+
+    println!();
+    println!("{}", "Worktrees".bold());
+    let worktrees = worktrees_report(config, workspace);
+    let enabled = worktrees["enabled"].as_bool().unwrap_or(false);
+    let in_git = worktrees["workspace_in_git_repo"]
+        .as_bool()
+        .unwrap_or(false);
+    let managed = worktrees["managed_count"].as_u64().unwrap_or(0);
+    let root_dir = worktrees["root_dir"].as_str().unwrap_or(".worktrees");
+    if !enabled {
+        println!("  disabled in config");
+    } else {
+        println!("  enabled: root_dir={root_dir}, managed={managed}");
+        println!(
+            "  auto_on_new_session: {}",
+            worktrees["auto_on_new_session"].as_bool().unwrap_or(false)
+        );
+        println!(
+            "  auto_on_craft_parallel: {}",
+            worktrees["auto_on_craft_parallel"]
+                .as_bool()
+                .unwrap_or(false)
+        );
+        println!(
+            "  prune_on_thread_archive: {}",
+            worktrees["prune_on_thread_archive"]
+                .as_bool()
+                .unwrap_or(false)
+        );
+        if in_git {
+            println!("  workspace: inside git repo");
+        } else {
+            println!("  workspace: not a git repo (worktrees unavailable here)");
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::Config;
+
+    #[test]
+    fn context_report_includes_worktrees() {
+        let config = Config::default();
+        let tmp = tempfile::tempdir().unwrap();
+        let report = build_context_report(&config, tmp.path());
+        assert!(report.get("worktrees").is_some());
+    }
 
     #[test]
     fn context_report_includes_merge_notes() {

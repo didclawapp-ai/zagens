@@ -109,6 +109,9 @@ export type AppShellProps = {
   onModelChange: (model: ComposerModelId) => void;
   composerModelOptions: string[];
   onComposerWorkspaceChange: (next: string) => Promise<void>;
+  useWorktree: boolean;
+  onUseWorktreeChange: (next: boolean) => void;
+  activeWorktreeName?: string | null;
   resumedThreadId: string | null;
   contextUsagePct: number;
   contextUsedTokens: number;
@@ -235,6 +238,9 @@ export default function AppShell({
   onModelChange,
   composerModelOptions,
   onComposerWorkspaceChange,
+  useWorktree,
+  onUseWorktreeChange,
+  activeWorktreeName = null,
   resumedThreadId,
   contextUsagePct,
   contextUsedTokens,
@@ -468,6 +474,9 @@ export default function AppShell({
               onOpenModelParams={() => onModelParamsOpenChange(true)}
               workspace={selectedWorkspace}
               onWorkspaceChange={onComposerWorkspaceChange}
+              useWorktree={useWorktree}
+              onUseWorktreeChange={onUseWorktreeChange}
+              activeWorktreeName={activeWorktreeName}
               resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
               threadId={resumedThreadId}
               contextUsagePct={contextUsagePct}

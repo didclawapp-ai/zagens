@@ -729,7 +729,21 @@
             }
           },
           "checklist_snapshot": true,
-          "plan_snapshot": true
+          "plan_snapshot": true,
+          "git_root": {
+            "description": "Git repository root when this thread runs in an isolated worktree.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "worktree_name": {
+            "description": "Managed worktree directory name under `<git_root>/.worktrees/`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         },
         "required": [
           "id",
@@ -1039,6 +1053,14 @@
             "description": "`auto` | `office` | `code` — resolved to `office`/`code` on create.",
             "type": [
               "string",
+              "null"
+            ],
+            "default": null
+          },
+          "use_worktree": {
+            "description": "When true, allocate a git worktree for this thread (requires git workspace).",
+            "type": [
+              "boolean",
               "null"
             ],
             "default": null
@@ -1379,6 +1401,13 @@
             ],
             "format": "uint32",
             "minimum": 0
+          },
+          "use_worktree": {
+            "description": "Allocate an isolated git worktree for the new thread (requires git workspace).",
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [

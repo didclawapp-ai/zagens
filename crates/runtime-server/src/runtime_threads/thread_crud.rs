@@ -5,8 +5,10 @@ use std::ops::Deref;
 
 use anyhow::{Result, anyhow};
 use serde_json::json;
+use uuid::Uuid;
 
 use super::persist::reconstruct_messages_for_store;
+use super::worktree_bind::{maybe_prune_thread_worktree, resolve_thread_workspace_binding};
 use super::*;
 
 impl RuntimeThreadManager {
@@ -17,7 +19,7 @@ impl RuntimeThreadManager {
             .filter(|m| !m.trim().is_empty())
             .or_else(|| self.config.default_text_model.clone())
             .unwrap_or_else(|| DEFAULT_TEXT_MODEL.to_string());
-        let workspace = req.workspace.unwrap_or_else(|| self.workspace.clone());
+        let requested_workspace = req.workspace.unwrap_or_else(|| self.workspace.clone());
         let mode = req
             .mode
             .filter(|m| !m.trim().is_empty())
@@ -25,16 +27,24 @@ impl RuntimeThreadManager {
         let allow_shell = req.allow_shell.unwrap_or_else(|| self.config.allow_shell());
         let trust_mode = self.config.effective_trust_mode(req.trust_mode);
         let auto_approve = req.auto_approve.unwrap_or(false);
+        let thread_id = format!("thr_{}", &Uuid::new_v4().to_string()[..8]);
+        let worktree_cfg = self.config.worktrees_config().runtime_config();
+        let binding = resolve_thread_workspace_binding(
+            requested_workspace,
+            &thread_id,
+            req.use_worktree,
+            &worktree_cfg,
+        )?;
         let task_type =
-            crate::task_type::resolve_task_type(req.task_type.as_deref(), &workspace, None);
+            crate::task_type::resolve_task_type(req.task_type.as_deref(), &binding.workspace, None);
 
         let thread = ThreadRecord {
             schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
-            id: format!("thr_{}", &Uuid::new_v4().to_string()[..8]),
+            id: thread_id,
             created_at: now,
             updated_at: now,
             model,
-            workspace,
+            workspace: binding.workspace,
             mode,
             allow_shell,
             trust_mode,
@@ -52,6 +62,8 @@ impl RuntimeThreadManager {
             checklist_snapshot: None,
             plan_snapshot: None,
             config_overlay: None,
+            git_root: binding.git_root,
+            worktree_name: binding.worktree_name,
         };
         {
             let store = self.store.clone();
@@ -85,6 +97,11 @@ impl RuntimeThreadManager {
         } else {
             None
         };
+        let prior_thread = if req.archived == Some(true) {
+            Some(self.load_thread_sync(id)?)
+        } else {
+            None
+        };
         let thread = self.deref().update_thread(id, req).await?;
         if let (Some(raw), Some(old_ws)) = (workspace_change.as_ref(), prior_workspace) {
             let new_ws = RuntimeThreadManager::resolve_thread_workspace_path(&self.workspace, raw)?;
@@ -95,6 +112,13 @@ impl RuntimeThreadManager {
                     crate::symbol_index::ensure_symbol_index(&rebuild_ws);
                 });
             }
+        }
+        if thread.archived
+            && let Some(prior) = prior_thread
+            && !prior.archived
+        {
+            let cfg = self.config.worktrees_config().runtime_config();
+            maybe_prune_thread_worktree(&thread, &cfg);
         }
         Ok(thread)
     }

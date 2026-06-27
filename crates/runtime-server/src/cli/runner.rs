@@ -238,6 +238,7 @@ async fn run_exec_agent(
         llm_client_override,
         search_provider: search.provider.unwrap_or_default(),
         search_api_key: search.api_key,
+        worktrees: config.worktrees_config().runtime_config(),
         session_manager: None,
     };
 

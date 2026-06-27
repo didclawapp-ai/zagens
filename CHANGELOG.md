@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Git worktree parallel sessions (P1):** `[worktrees]` config; `CreateThreadRequest` / `POST /v1/stream` `use_worktree`; thread metadata `git_root` + `worktree_name`; archive-time prune; CRAFT `agent_spawn` auto worktree when `task_id` set; desktop Composer **Worktree** toggle for new sessions.
+- **Git worktree (P1 depth):** Deep link `use_worktree=1`; TUI `--worktree` + settings preference; desktop worktree failure toasts and session WT badges; CRAFT executor auto-spawn worktree; `zagens doctor` Worktrees section; create/archive prune integration test.
+
 ### Changed
 
 - **Runtime (Kernel V3 · 清债):** 移除 `[kernel] machine` 的 `legacy` / `shadow` 专用解析分支与 `config_used_deprecated_{legacy,shadow}` 辅助函数;`KernelMachineMode::parse` 现统一映射到 `v3`,任何非 `v3` 值在启动时只记录单条「machine is ignored」warn(此前 legacy/shadow 各一条)。配置仍前向兼容(未知值不报错)。

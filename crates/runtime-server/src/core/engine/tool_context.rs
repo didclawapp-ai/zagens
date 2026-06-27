@@ -48,6 +48,7 @@ impl Engine {
             self.config_ext().search_provider.clone(),
             self.config_ext().search_api_key.clone(),
         );
+        ctx = ctx.with_worktrees(self.config_ext().worktrees.clone());
 
         // Wire the large-output router (#548). Only attaches when the
         // [workshop] config table is present; sub-agents don't inherit the

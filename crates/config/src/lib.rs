@@ -385,6 +385,9 @@ pub struct ConfigToml {
     /// enabled with 7-day retention when absent.
     #[serde(default)]
     pub snapshots: Option<SnapshotsToml>,
+    /// Git worktree isolation for parallel sessions (P1).
+    #[serde(default)]
+    pub worktrees: Option<WorktreesToml>,
     /// Post-edit LSP diagnostics injection (#136). When absent, the engine
     /// applies the defaults documented in [`LspConfigToml`].
     #[serde(default)]
@@ -472,6 +475,7 @@ impl fmt::Debug for ConfigToml {
             .field("network", &self.network)
             .field("skills", &self.skills)
             .field("snapshots", &self.snapshots)
+            .field("worktrees", &self.worktrees)
             .field("lsp", &self.lsp)
             .field("vision", &self.vision.as_ref().map(DebugVision))
             .field("reasoning_effort", &self.reasoning_effort)
@@ -629,6 +633,66 @@ impl Default for SnapshotsToml {
             enabled: default_snapshots_enabled(),
             max_age_days: default_snapshot_max_age_days(),
             max_workspace_gb: default_snapshot_max_workspace_gb(),
+        }
+    }
+}
+
+/// On-disk schema for the `[worktrees]` table (P1 parallel sessions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorktreesToml {
+    /// Master switch for session / CRAFT worktree allocation.
+    #[serde(default = "default_worktrees_enabled")]
+    pub enabled: bool,
+    /// Directory under the git root for managed worktrees (default `.worktrees`).
+    #[serde(default = "default_worktrees_root_dir")]
+    pub root_dir: String,
+    /// New sessions allocate an isolated worktree when the client omits `use_worktree`.
+    #[serde(default)]
+    pub auto_on_new_session: bool,
+    /// `agent_spawn` without `cwd` allocates a CRAFT worktree when `task_id` is set.
+    #[serde(default = "default_worktrees_auto_on_craft_parallel")]
+    pub auto_on_craft_parallel: bool,
+    /// Remove session worktree when the thread is archived.
+    #[serde(default = "default_worktrees_prune_on_archive")]
+    pub prune_on_thread_archive: bool,
+    /// Cap managed worktrees per git repository.
+    #[serde(default = "default_worktrees_max_per_repo")]
+    pub max_worktrees_per_repo: usize,
+    /// Base ref for `git worktree add -b` (defaults to current branch / HEAD).
+    #[serde(default)]
+    pub default_branch: Option<String>,
+}
+
+fn default_worktrees_enabled() -> bool {
+    true
+}
+
+fn default_worktrees_root_dir() -> String {
+    ".worktrees".to_string()
+}
+
+fn default_worktrees_auto_on_craft_parallel() -> bool {
+    true
+}
+
+fn default_worktrees_prune_on_archive() -> bool {
+    true
+}
+
+fn default_worktrees_max_per_repo() -> usize {
+    8
+}
+
+impl Default for WorktreesToml {
+    fn default() -> Self {
+        Self {
+            enabled: default_worktrees_enabled(),
+            root_dir: default_worktrees_root_dir(),
+            auto_on_new_session: false,
+            auto_on_craft_parallel: default_worktrees_auto_on_craft_parallel(),
+            prune_on_thread_archive: default_worktrees_prune_on_archive(),
+            max_worktrees_per_repo: default_worktrees_max_per_repo(),
+            default_branch: None,
         }
     }
 }

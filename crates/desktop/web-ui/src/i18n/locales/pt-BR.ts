@@ -437,6 +437,19 @@ const ptBr: TranslationMap = {
     modelFromConfig: 'config',
     modelParams: 'Parâmetros do modelo',
     attach: 'Anexar arquivos ou imagens (imagens passam por vision bridge antes do envio; arquivos de texto podem ser embutidos)',
+    useWorktree: 'Worktree',
+    useWorktreeTitle:
+      'Nova sessão: executar em um git worktree isolado em .worktrees/ (requer repositório git)',
+    useWorktreeOnLabel: 'Isolar · Ligado',
+    useWorktreeOffLabel: 'Isolar · Desligado',
+    useWorktreeOnHint:
+      'Ligado: novos chats rodam em worktree git separado. Clique para desligar.',
+    useWorktreeOffHint:
+      'Desligado: novos chats usam o workspace atual. Clique para isolar via git (requer repo git).',
+    useWorktreeToggledOn: 'Isolamento ligado — novos chats usam diretório em .worktrees/',
+    useWorktreeToggledOff: 'Isolamento desligado — novos chats usam o workspace atual',
+    worktreeFailed: 'Falha ao criar sessão Worktree: {{message}}',
+    worktreeActive: 'Isolado · {{name}}',
     removeAttachment: 'Remover',
     onlyReference: 'Só ref.',
     invalid: 'Inválido',

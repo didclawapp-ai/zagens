@@ -143,6 +143,9 @@ pub struct StreamTurnRequest {
     pub top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    /// Allocate an isolated git worktree for the new thread (requires git workspace).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_worktree: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

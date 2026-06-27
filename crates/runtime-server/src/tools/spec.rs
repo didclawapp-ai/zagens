@@ -145,6 +145,8 @@ pub struct ToolContext {
     pub search_provider: crate::config::SearchProvider,
     /// API key for the active search provider (from `[search] api_key` or env).
     pub search_api_key: Option<String>,
+    /// Git worktree isolation settings (P1).
+    pub worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig,
 }
 
 impl ToolContext {
@@ -180,6 +182,7 @@ impl ToolContext {
             subagent_default_step_timeout_ms: 600_000,
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
+            worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
         }
     }
 
@@ -218,6 +221,7 @@ impl ToolContext {
             subagent_default_step_timeout_ms: 600_000,
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
+            worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
         }
     }
 
@@ -263,6 +267,7 @@ impl ToolContext {
             subagent_default_step_timeout_ms: 600_000,
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
+            worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
         }
     }
 
@@ -289,6 +294,16 @@ impl ToolContext {
     ) -> Self {
         self.search_provider = provider;
         self.search_api_key = api_key;
+        self
+    }
+
+    /// Git worktree isolation settings for session / CRAFT spawns (P1).
+    #[must_use]
+    pub fn with_worktrees(
+        mut self,
+        worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig,
+    ) -> Self {
+        self.worktrees = worktrees;
         self
     }
 

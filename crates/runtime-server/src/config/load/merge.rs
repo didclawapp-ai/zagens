@@ -83,6 +83,7 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         network: override_cfg.network.or(base.network),
         skills: override_cfg.skills.or(base.skills),
         snapshots: override_cfg.snapshots.or(base.snapshots),
+        worktrees: override_cfg.worktrees.or(base.worktrees),
         search: override_cfg.search.or(base.search),
         memory: override_cfg.memory.or(base.memory),
         topic_memory: override_cfg.topic_memory.or(base.topic_memory),

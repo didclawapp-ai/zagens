@@ -5,8 +5,10 @@ use crate::tools::subagent_inputs::agent_spawn_input_schema;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use zagens_runtime_adapters::worktree::resolve_git_root;
 
 use crate::config::{MAX_SUBAGENT_STEP_TIMEOUT_SECS, MIN_SUBAGENT_STEP_TIMEOUT_SECS};
+use crate::runtime_threads::maybe_allocate_craft_worktree;
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
@@ -87,7 +89,7 @@ impl ToolSpec for AgentSpawnTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let spawn_request = parse_spawn_request(&input)?;
+        let mut spawn_request = parse_spawn_request(&input)?;
 
         // Depth cap: reject before locking the manager so we don't introduce
         // unnecessary contention. Mirrors codex's pattern (allow-equal at the
@@ -100,8 +102,20 @@ impl ToolSpec for AgentSpawnTool {
             )));
         }
 
+        if spawn_request.cwd.is_none()
+            && spawn_request.task_id.is_some()
+            && let Some(task_id) = spawn_request.task_id.as_deref()
+            && let Some(wt_path) = maybe_allocate_craft_worktree(
+                &self.runtime.context.workspace,
+                &self.runtime.context.worktrees,
+                task_id,
+            )
+        {
+            spawn_request.cwd = Some(wt_path);
+        }
+
         // Validate cwd if supplied: must canonicalize inside the parent
-        // workspace. Catches accidents like `cwd: "/etc"`.
+        // workspace git root (supports sibling `.worktrees/` paths).
         let validated_cwd = if let Some(requested_cwd) = spawn_request.cwd.as_ref() {
             let parent_workspace = &self.runtime.context.workspace;
             let resolved = if requested_cwd.is_absolute() {
@@ -118,11 +132,13 @@ impl ToolSpec for AgentSpawnTool {
             let workspace_canonical = parent_workspace
                 .canonicalize()
                 .unwrap_or_else(|_| parent_workspace.clone());
-            if !canonical.starts_with(&workspace_canonical) {
+            let git_boundary =
+                resolve_git_root(&workspace_canonical).unwrap_or(workspace_canonical);
+            if !canonical.starts_with(&git_boundary) {
                 return Err(ToolError::invalid_input(format!(
-                    "cwd must be inside the parent workspace: {} is not under {}",
+                    "cwd must be inside the repository root: {} is not under {}",
                     canonical.display(),
-                    workspace_canonical.display()
+                    git_boundary.display()
                 )));
             }
             Some(canonical)
@@ -140,8 +156,8 @@ impl ToolSpec for AgentSpawnTool {
                 .filter(|s| !s.trim().is_empty())
         });
         let mut child_runtime = self.runtime.background_runtime();
-        if let Some(cwd) = validated_cwd {
-            child_runtime.context.workspace = cwd;
+        if let Some(ref cwd) = validated_cwd {
+            child_runtime.context.workspace = cwd.clone();
         }
         let min_step_ms = MIN_SUBAGENT_STEP_TIMEOUT_SECS * 1000;
         let max_step_ms = MAX_SUBAGENT_STEP_TIMEOUT_SECS * 1000;
@@ -255,6 +271,7 @@ impl ToolSpec for AgentSpawnTool {
                 task_id: spawn_request.task_id.clone(),
                 scratchpad_run_id,
                 cwd_label,
+                cwd: validated_cwd.clone(),
             },
         );
         if spawn_result.is_err()

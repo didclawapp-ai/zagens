@@ -219,7 +219,7 @@ async fn zagens_cli_doctor_json_smoke() -> Result<()> {
 async fn zagens_cli_open_url_validate_only() -> Result<()> {
     let root = std::env::temp_dir().join(format!("zagens-open-url-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&root).context("create temp workspace")?;
-    let url = zagens_config::build_open_url(&root, Some("hello"), Some("code"));
+    let url = zagens_config::build_open_url(&root, Some("hello"), Some("code"), false);
 
     let output = Command::new(env!("CARGO_BIN_EXE_zagens"))
         .args(["open-url", url.as_str(), "--validate-only"])

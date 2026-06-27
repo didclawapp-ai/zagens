@@ -18,6 +18,7 @@ pub mod scratchpad_gates;
 pub mod snapshot;
 pub mod tools;
 pub mod util;
+pub mod worktree;
 
 #[cfg(test)]
 mod test_support;

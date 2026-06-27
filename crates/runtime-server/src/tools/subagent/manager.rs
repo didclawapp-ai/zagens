@@ -307,6 +307,9 @@ impl SubAgentManager {
         if let Some(model) = options.model.as_deref() {
             runtime.model = model.to_string();
         }
+        if let Some(cwd) = options.cwd.as_ref() {
+            runtime.context.workspace = cwd.clone();
+        }
         let effective_model = runtime.model.clone();
         let type_index = self
             .agents

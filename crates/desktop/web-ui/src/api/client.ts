@@ -747,6 +747,8 @@ export interface RuntimeThreadRecord {
   scratchpad_run_id?: string | null;
   /** Most recent turn id — used to reconcile composer lock with backend state. */
   latest_turn_id?: string | null;
+  git_root?: string | null;
+  worktree_name?: string | null;
 }
 
 /** One inventory row from `GET /v1/threads/{id}/scratchpad/status` (Phase D1). */

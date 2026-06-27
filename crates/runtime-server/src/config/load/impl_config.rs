@@ -874,6 +874,12 @@ impl Config {
         self.snapshots.clone().unwrap_or_default()
     }
 
+    /// Resolve git worktree session isolation settings with defaults applied.
+    #[must_use]
+    pub fn worktrees_config(&self) -> WorktreesConfig {
+        self.worktrees.clone().unwrap_or_default()
+    }
+
     /// Resolved `[search]` settings with defaults applied.
     #[must_use]
     pub fn search_config(&self) -> SearchConfig {

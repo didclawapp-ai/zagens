@@ -436,6 +436,18 @@ const ja: TranslationMap = {
     modelFromConfig: 'config',
     modelParams: 'Model params',
     attach: 'ファイルまたは画像を添付（画像は送信前に vision bridge 経由、プレーンテキストファイルはインライン化可能）',
+    useWorktree: 'Worktree',
+    useWorktreeTitle:
+      '新規セッション: .worktrees/ 配下の独立 git worktree で実行（git リポジトリが必要）',
+    useWorktreeOnLabel: '隔離 · オン',
+    useWorktreeOffLabel: '隔離 · オフ',
+    useWorktreeOnHint: 'オン: 新規チャットは独立 git worktree で実行。クリックでオフ。',
+    useWorktreeOffHint:
+      'オフ: 新規チャットは現在のワークスペースを使用。クリックで git 隔離をオン（git リポジトリ必須）。',
+    useWorktreeToggledOn: 'セッション隔離オン — 新規チャットは .worktrees/ 配下で実行',
+    useWorktreeToggledOff: 'セッション隔離オフ — 新規チャットは現在のワークスペースを使用',
+    worktreeFailed: 'Worktree セッションの作成に失敗しました: {{message}}',
+    worktreeActive: '隔離中 · {{name}}',
     removeAttachment: '削除',
     onlyReference: '参照のみ',
     invalid: '無効',

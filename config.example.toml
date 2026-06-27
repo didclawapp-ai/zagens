@@ -491,6 +491,18 @@ default_text_model = "deepseek-ai/deepseek-v4-pro"
 # max_workspace_gb = 2  # Skip side-git init when workspace tree exceeds this size
 
 # ─────────────────────────────────────────────────────────────────────────────────
+# Git worktree isolation (P1 parallel sessions)
+# ─────────────────────────────────────────────────────────────────────────────────
+# [worktrees]
+# enabled = true                 # Master switch for session / CRAFT worktrees
+# root_dir = ".worktrees"        # Under git root; matches .gitignore
+# auto_on_new_session = false    # Desktop default when client omits use_worktree
+# auto_on_craft_parallel = true  # agent_spawn + task_id without cwd → auto worktree
+# prune_on_thread_archive = true # Remove session worktree when thread archived
+# max_worktrees_per_repo = 8
+# default_branch = "main"        # Base ref for `git worktree add -b` (optional)
+
+# ─────────────────────────────────────────────────────────────────────────────────
 # LSP Diagnostics (post-edit) (#136)
 # ─────────────────────────────────────────────────────────────────────────────────
 # After every successful file edit (`edit_file`, `apply_patch`, `write_file`),

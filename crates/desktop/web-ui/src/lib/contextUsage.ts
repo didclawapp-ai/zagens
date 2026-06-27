@@ -9,7 +9,7 @@ export interface ThreadTurnRecordLite {
 }
 
 export interface ThreadDetailWithTurns {
-  thread?: { model?: string };
+  thread?: { model?: string; worktree_name?: string | null; workspace?: string };
   turns?: ThreadTurnRecordLite[];
 }
 

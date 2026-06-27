@@ -18,6 +18,8 @@ pub(crate) struct SubAgentSpawnOptions {
     pub scratchpad_run_id: Option<String>,
     /// Basename of spawn `cwd` for display labels when prompt lacks scope metadata.
     pub cwd_label: Option<String>,
+    /// Optional isolated workspace directory (CRAFT parallel worktree).
+    pub cwd: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

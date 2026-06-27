@@ -30,6 +30,8 @@ pub struct DeepLinkOpenPayload {
     pub prompt: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_worktree: Option<bool>,
 }
 
 pub fn deep_link_payload(link: &DeepLinkOpen) -> DeepLinkOpenPayload {
@@ -37,6 +39,7 @@ pub fn deep_link_payload(link: &DeepLinkOpen) -> DeepLinkOpenPayload {
         workspace: link.workspace_display(),
         prompt: link.prompt.clone(),
         task_type: link.task_type.clone(),
+        use_worktree: link.use_worktree,
     }
 }
 

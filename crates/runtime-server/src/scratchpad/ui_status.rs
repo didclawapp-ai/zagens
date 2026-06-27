@@ -158,6 +158,8 @@ mod tests {
             checklist_snapshot: None,
             plan_snapshot: None,
             config_overlay: None,
+            git_root: None,
+            worktree_name: None,
         };
         assert_eq!(thread.scratchpad_history(), vec!["run-1".to_string()]);
     }
@@ -188,6 +190,8 @@ mod tests {
             checklist_snapshot: None,
             plan_snapshot: None,
             config_overlay: None,
+            git_root: None,
+            worktree_name: None,
         };
         thread.record_scratchpad_run("audit-1");
         thread.record_scratchpad_run("audit-2");

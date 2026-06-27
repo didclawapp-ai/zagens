@@ -47,6 +47,8 @@ pub struct EngineConfigExt {
     pub search_provider: crate::config::SearchProvider,
     /// API key for the active search provider.
     pub search_api_key: Option<String>,
+    /// Git worktree isolation (P1).
+    pub worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig,
     /// Test/dev override: skip `DeepSeekClient::new` and use this client.
     #[doc(hidden)]
     pub llm_client_override: Option<std::sync::Arc<dyn crate::llm_client::LlmClient>>,
@@ -64,6 +66,7 @@ impl Default for EngineConfigExt {
             workshop: None,
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
+            worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
             llm_client_override: None,
         }
     }
@@ -170,6 +173,8 @@ pub struct EngineConfig {
     pub search_provider: crate::config::SearchProvider,
     /// API key for the active search provider.
     pub search_api_key: Option<String>,
+    /// Git worktree isolation (P1).
+    pub worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig,
     /// Optional session store for v3 log transcript repair persist (HTTP sidecar).
     pub session_manager: Option<std::sync::Arc<crate::SessionManager>>,
 }
@@ -218,6 +223,7 @@ impl Default for EngineConfig {
             llm_client_override: None,
             search_provider: crate::config::SearchProvider::default(),
             search_api_key: None,
+            worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
             session_manager: None,
         }
     }
@@ -281,6 +287,7 @@ impl EngineConfig {
             workshop: self.workshop.clone(),
             search_provider: self.search_provider.clone(),
             search_api_key: self.search_api_key.clone(),
+            worktrees: self.worktrees.clone(),
             llm_client_override: self.llm_client_override.clone(),
         }
     }
@@ -329,6 +336,7 @@ impl EngineConfig {
             workshop: self.workshop,
             search_provider: self.search_provider,
             search_api_key: self.search_api_key,
+            worktrees: self.worktrees,
             llm_client_override: self.llm_client_override,
         };
         (lean, ext)
@@ -382,6 +390,7 @@ impl EngineConfig {
             llm_client_override: ext.llm_client_override,
             search_provider: ext.search_provider,
             search_api_key: ext.search_api_key,
+            worktrees: ext.worktrees,
             session_manager: None,
         }
     }

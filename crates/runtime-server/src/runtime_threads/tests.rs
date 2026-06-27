@@ -85,6 +85,8 @@ fn sample_thread(thread_id: &str) -> ThreadRecord {
         checklist_snapshot: None,
         plan_snapshot: None,
         config_overlay: None,
+        git_root: None,
+        worktree_name: None,
     }
 }
 
@@ -171,6 +173,7 @@ async fn runtime_api_key_sync_unloads_cached_engine() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
     let _harness = install_mock_engine(&manager, &thread.id).await;
@@ -483,6 +486,7 @@ async fn thread_lifecycle_persists_across_restart() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -595,6 +599,7 @@ async fn create_thread_defaults_auto_approve_to_false() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -618,6 +623,7 @@ async fn start_turn_passes_effective_auto_approve_to_engine() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -679,6 +685,7 @@ async fn start_turn_reads_never_approval_mode_from_config() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -740,6 +747,7 @@ async fn start_turn_applies_route_intent_routing_rule_to_model() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -788,6 +796,7 @@ async fn start_turn_can_override_thread_auto_approve_to_false() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -834,6 +843,7 @@ async fn compact_thread_preserves_thread_auto_approve_policy() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -868,6 +878,7 @@ async fn compact_thread_with_real_engine_reaches_terminal_status() -> Result<()>
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -919,6 +930,7 @@ async fn multi_turn_continuity_same_thread() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -1069,6 +1081,7 @@ async fn turn_completed_event_includes_turn_summary() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -1170,6 +1183,7 @@ async fn interrupt_turn_marks_interrupted_after_cleanup() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -1266,6 +1280,7 @@ async fn approval_required_with_stale_active_turn_is_denied() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -1355,6 +1370,7 @@ async fn resolve_approval_sends_decision_to_engine_when_auto_approve_off() -> Re
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -1450,6 +1466,7 @@ async fn resolve_approval_deny_sends_denial_to_engine() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -1546,6 +1563,7 @@ async fn parallel_turns_on_two_threads_overlap_then_complete() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
     let thread_b = manager
@@ -1560,6 +1578,7 @@ async fn parallel_turns_on_two_threads_overlap_then_complete() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -1690,6 +1709,7 @@ async fn parallel_pending_approvals_resolve_scoped_to_thread_turn() -> Result<()
         system_prompt: None,
         task_id: None,
         task_type: None,
+        use_worktree: None,
     };
     let thread_a = manager.create_thread(no_auto("a")).await?;
     let thread_b = manager.create_thread(no_auto("b")).await?;
@@ -1912,6 +1932,7 @@ async fn resolve_approval_rejects_wrong_turn_id() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -2007,6 +2028,7 @@ async fn elevation_required_with_stale_active_turn_is_denied() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -2098,6 +2120,7 @@ async fn steer_turn_on_active_turn_records_item_and_event() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -2223,6 +2246,7 @@ async fn queue_delivery_while_active_drains_after_turn_completes() -> Result<()>
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -2393,6 +2417,7 @@ async fn compaction_lifecycle_emits_item_events_with_compaction_counts() -> Resu
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
 
@@ -2612,6 +2637,8 @@ fn opening_manager_recovers_stale_queued_and_in_progress_work() -> Result<()> {
         checklist_snapshot: None,
         plan_snapshot: None,
         config_overlay: None,
+        git_root: None,
+        worktree_name: None,
     };
     manager.store.save_thread(&thread)?;
 
@@ -2924,6 +2951,7 @@ async fn fork_at_user_message_drops_tail_and_returns_user_text() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
     seed_turns_with_user_messages(&manager, &thread.id, &["first", "second", "third"])?;
@@ -2961,6 +2989,7 @@ async fn fork_at_user_message_depth_one_drops_two_turns() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
     seed_turns_with_user_messages(&manager, &thread.id, &["a", "b", "c", "d"])?;
@@ -2991,6 +3020,7 @@ async fn fork_at_user_message_out_of_range_errors() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
     seed_turns_with_user_messages(&manager, &thread.id, &["only"])?;
@@ -3018,6 +3048,7 @@ async fn fork_at_user_message_does_not_mutate_source() -> Result<()> {
             system_prompt: None,
             task_id: None,
             task_type: None,
+            use_worktree: None,
         })
         .await?;
     let turn_ids = seed_turns_with_user_messages(&manager, &thread.id, &["x", "y", "z"])?;
@@ -3055,6 +3086,7 @@ fn blank_create_request() -> CreateThreadRequest {
         system_prompt: None,
         task_id: None,
         task_type: None,
+        use_worktree: None,
     }
 }
 

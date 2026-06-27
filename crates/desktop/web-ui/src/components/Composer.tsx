@@ -38,6 +38,15 @@ import { toast } from '../lib/toast';
 
 const COMPOSER_ERROR_TAG = 'composer-error';
 const COMPOSER_TRANSCRIBING_TAG = 'composer-transcribing';
+const COMPOSER_WORKTREE_TOGGLE_TAG = 'composer-worktree-toggle';
+
+function WorktreeBranchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className="shrink-0">
+      <path d="M6 3v12 M18 6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M8.59 13.51l6.83 3.98" />
+    </svg>
+  );
+}
 
 const MAX_FILE_BYTES = 128 * 1024; // 128 KB per file
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // align with describe_image / vision_transcribe_image
@@ -431,6 +440,11 @@ interface Props {
   onOpenModelParams?: () => void;
   workspace: string;
   onWorkspaceChange: (ws: string) => void | Promise<void>;
+  /** New sessions: allocate an isolated git worktree under the repo root. */
+  useWorktree?: boolean;
+  onUseWorktreeChange?: (next: boolean) => void;
+  /** Active thread worktree name (when bound to a restored thread). */
+  activeWorktreeName?: string | null;
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
   /** Runtime thread id for session-scoped composer controls (LHT toggle). */
@@ -485,6 +499,9 @@ export default function Composer({
   onOpenModelParams,
   workspace,
   onWorkspaceChange,
+  useWorktree = false,
+  onUseWorktreeChange,
+  activeWorktreeName = null,
   resumedThreadActive = false,
   threadId = null,
   contextUsagePct,
@@ -1125,6 +1142,43 @@ export default function Composer({
                 </svg>
               </button>
             </div>
+            {!resumedThreadActive && onUseWorktreeChange ? (
+              <button
+                type="button"
+                className={
+                  useWorktree
+                    ? 'composer-chip active shrink-0'
+                    : 'composer-chip composer-worktree-chip-off shrink-0'
+                }
+                disabled={disabled}
+                aria-pressed={useWorktree}
+                aria-label={
+                  useWorktree ? t('composer.useWorktreeOnHint') : t('composer.useWorktreeOffHint')
+                }
+                title={useWorktree ? t('composer.useWorktreeOnHint') : t('composer.useWorktreeOffHint')}
+                onClick={() => {
+                  const next = !useWorktree;
+                  onUseWorktreeChange(next);
+                  toast.dismissByTag(COMPOSER_WORKTREE_TOGGLE_TAG);
+                  toast.info(
+                    t(next ? 'composer.useWorktreeToggledOn' : 'composer.useWorktreeToggledOff'),
+                    { tag: COMPOSER_WORKTREE_TOGGLE_TAG, duration: 4500 },
+                  );
+                }}
+              >
+                <WorktreeBranchIcon />
+                {useWorktree ? t('composer.useWorktreeOnLabel') : t('composer.useWorktreeOffLabel')}
+              </button>
+            ) : null}
+            {resumedThreadActive && activeWorktreeName ? (
+              <span
+                className="composer-chip active shrink-0"
+                title={t('composer.worktreeActive', { name: activeWorktreeName })}
+              >
+                <WorktreeBranchIcon />
+                {t('composer.worktreeActive', { name: activeWorktreeName })}
+              </span>
+            ) : null}
             <ComposerOverflowMenu
               open={overflowOpen}
               onOpenChange={setOverflowOpen}

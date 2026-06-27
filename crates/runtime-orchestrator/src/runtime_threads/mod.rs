@@ -117,6 +117,9 @@ pub struct CreateThreadRequest {
     /// `auto` | `office` | `code` — resolved to `office`/`code` on create.
     #[serde(default)]
     pub task_type: Option<String>,
+    /// When true, allocate a git worktree for this thread (requires git workspace).
+    #[serde(default)]
+    pub use_worktree: Option<bool>,
 }
 
 /// Mutable fields accepted by `PATCH /v1/threads/{id}`.

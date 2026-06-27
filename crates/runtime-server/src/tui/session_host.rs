@@ -486,6 +486,7 @@ impl TuiSessionHost {
                         mode,
                         self.yolo,
                         self.yolo || self.manager.config.allow_shell(),
+                        false,
                     ))
                     .await?
             }
@@ -506,6 +507,7 @@ impl TuiSessionHost {
                 mode,
                 self.yolo,
                 self.yolo || ctx.config.allow_shell(),
+                false,
             ))
             .await?;
         self.manager.resume_thread(&thread.id).await?;
@@ -670,6 +672,7 @@ async fn create_new_thread(
             mode,
             cli.yolo,
             cli.yolo || ctx.config.allow_shell(),
+            cli.worktree,
         ))
         .await
 }
@@ -680,6 +683,7 @@ fn tui_create_thread_request(
     mode: &str,
     yolo: bool,
     allow_shell: bool,
+    use_worktree_cli: bool,
 ) -> CreateThreadRequest {
     let pref = zagens_config::read_task_type_preference_setting()
         .ok()
@@ -687,6 +691,13 @@ fn tui_create_thread_request(
     let task_type = resolve_task_type(pref.as_deref().or(Some("code")), &workspace, None)
         .as_str()
         .to_string();
+    let use_worktree = if use_worktree_cli {
+        Some(true)
+    } else {
+        zagens_config::read_new_session_use_worktree_setting()
+            .ok()
+            .flatten()
+    };
     CreateThreadRequest {
         workspace: Some(workspace),
         mode: Some(mode.to_string()),
@@ -694,6 +705,7 @@ fn tui_create_thread_request(
         allow_shell: Some(allow_shell),
         trust_mode: Some(yolo),
         task_type: Some(task_type),
+        use_worktree,
         ..Default::default()
     }
 }

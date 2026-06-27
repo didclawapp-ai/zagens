@@ -136,6 +136,7 @@ export type UseTurnSendParams = {
   routeIntent: DesktopRouteIntentOption;
   selectedModel: ComposerModelId;
   selectedWorkspace: string;
+  useWorktree: boolean;
   taskTypePreference: DesktopTaskTypePreference;
   modelParams: ModelParams;
   desktopHost: boolean;
@@ -198,6 +199,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     routeIntent,
     selectedModel,
     selectedWorkspace,
+    useWorktree,
     taskTypePreference,
     modelParams,
     desktopHost,
@@ -1169,6 +1171,11 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             notifyRuntimeTransient(t('banner.unauthorizedBearer'));
           } else if (/api\s*key|DEEPSEEK_API_KEY|401|unauthorized/i.test(msg)) {
             notifyRuntimeTransient(t('banner.missingApiKey'));
+          } else if (
+            useWorktree &&
+            /worktree|git repository|use_worktree|not a git/i.test(msg)
+          ) {
+            toast.error(t('composer.worktreeFailed', { message: msg }));
           }
           setMessages((prev) => {
             const next = clearStreamingAssistants(prev);
@@ -1292,6 +1299,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 auto_approve: streamOpts.auto_approve,
                 ...(routeIntentApi != null ? { route_intent: routeIntentApi } : {}),
                 task_type: taskTypePreference,
+                ...(useWorktree ? { use_worktree: true } : {}),
                 ...modelSamplingForApi(modelParams, selectedModel),
               },
               (ev) => onSseEvent(ev),
@@ -1390,6 +1398,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       routeIntent,
       selectedModel,
       selectedWorkspace,
+      useWorktree,
       taskTypePreference,
       modelParams,
       desktopHost,
