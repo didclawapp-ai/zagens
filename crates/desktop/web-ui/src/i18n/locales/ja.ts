@@ -1446,6 +1446,17 @@ const ja: TranslationMap = {
     backtrackNeedsThread: '分岐する前にスレッドを再開してください。',
     backtrackSuccess: '新しい分岐を作成しました — Composer から続けてください。',
     backtrackFailed: '分岐に失敗しました: {{message}}',
+    rewindTitle: 'ここまでワークスペースを復元',
+    rewindAction: 'ファイルを復元',
+    rewindBody:
+      'このターン開始前のチェックポイントにワークスペースファイルを戻します。チャット履歴は変わりません。会話を分岐する場合は「分岐」を使ってください。',
+    rewindConfirm: 'ファイルを復元',
+    rewindWorking: '復元中…',
+    rewindNeedsThread: '復元する前にスレッドを再開してください。',
+    rewindNeedsTrust: 'ワークスペーススナップショットの復元には信頼モードが必要です。',
+    rewindTrustRequired: 'ファイルを復元する前に、このスレッドで信頼モードを有効にしてください。',
+    rewindSuccess: 'ワークスペースを復元しました: {{label}}（{{id}}…）',
+    rewindFailed: '復元に失敗しました: {{message}}',
   },
   chatMarkdown: {
     copyCode: 'コードをコピー',

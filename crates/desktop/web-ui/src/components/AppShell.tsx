@@ -64,6 +64,22 @@ export type AppShellProps = {
     draft: { messageId: string; content: string; depthFromTail: number } | null,
   ) => void;
   onConfirmBacktrack: () => void;
+  rewindDraft: {
+    messageId: string;
+    content: string;
+    depthFromTail: number;
+    turnOffset: number;
+  } | null;
+  rewindBusy: boolean;
+  onRewindDraftChange: (
+    draft: {
+      messageId: string;
+      content: string;
+      depthFromTail: number;
+      turnOffset: number;
+    } | null,
+  ) => void;
+  onConfirmRewindWorkspace: () => void;
   visibleSessions: SessionStripSession[];
   showAllSessions: boolean;
   onToggleShowAllSessions: () => void;
@@ -137,6 +153,7 @@ export type AppShellProps = {
   onOpenDiffInPanel: () => void;
   onEditMessage?: (messageId: string, content: string) => void;
   onBacktrackFromMessage?: (messageId: string, content: string) => void;
+  onRewindWorkspaceFromMessage?: (messageId: string, content: string) => void;
   rightPanelCollapsed: boolean;
   onExpandRightPanel: () => void;
   onCollapseRightPanel: () => void;
@@ -193,6 +210,10 @@ export default function AppShell({
   backtrackBusy,
   onBacktrackDraftChange,
   onConfirmBacktrack,
+  rewindDraft,
+  rewindBusy,
+  onRewindDraftChange,
+  onConfirmRewindWorkspace,
   visibleSessions,
   showAllSessions,
   onToggleShowAllSessions,
@@ -262,6 +283,7 @@ export default function AppShell({
   onOpenDiffInPanel,
   onEditMessage,
   onBacktrackFromMessage,
+  onRewindWorkspaceFromMessage,
   rightPanelCollapsed,
   onExpandRightPanel,
   onCollapseRightPanel,
@@ -386,6 +408,10 @@ export default function AppShell({
           backtrackBusy={backtrackBusy}
           onBacktrackDraftChange={onBacktrackDraftChange}
           onConfirmBacktrack={onConfirmBacktrack}
+          rewindDraft={rewindDraft}
+          rewindBusy={rewindBusy}
+          onRewindDraftChange={onRewindDraftChange}
+          onConfirmRewindWorkspace={onConfirmRewindWorkspace}
         />
         <div className="chrome-sidebar group flex shrink-0">
           <IconRail
@@ -441,6 +467,7 @@ export default function AppShell({
                 }
                 onEditMessage={onEditMessage}
                 onBacktrackFromMessage={onBacktrackFromMessage}
+                onRewindWorkspaceFromMessage={onRewindWorkspaceFromMessage}
                 officeSession={officeSession}
                 onOfficeQuickStart={officeSession ? onOfficeQuickStart : undefined}
                 sessionRestoreLoading={sessionRestoreLoading}

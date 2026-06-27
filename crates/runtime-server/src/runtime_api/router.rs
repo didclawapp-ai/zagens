@@ -21,11 +21,12 @@ use super::{
     install_skill_remote, interrupt_thread_turn, list_automation_runs, list_automations,
     list_blackboards, list_mcp_calls, list_mcp_servers, list_mcp_tools, list_sessions, list_skills,
     list_tasks, list_thread_snapshots, list_threads, list_threads_summary, merge_mcp_config_json,
-    pause_automation, persist_thread_session, put_thread_config, read_thread_workspace_file,
-    read_workspace_file_by_root, rebuild_symbol_index, reload_mcp_config, resolve_approval,
-    restore_thread_snapshot, resume_automation, resume_session_thread, resume_thread,
-    run_automation, set_routing_rules, start_thread_turn, steer_thread_turn, update_automation,
-    update_mcp_server, update_thread, workspace_status,
+    pause_automation, persist_thread_session, post_thread_channel_event, put_thread_config,
+    read_thread_workspace_file, read_workspace_file_by_root, rebuild_symbol_index,
+    reload_mcp_config, resolve_approval, restore_thread_snapshot, resume_automation,
+    resume_session_thread, resume_thread, revert_thread_workspace_turn, run_automation,
+    set_routing_rules, start_thread_turn, steer_thread_turn, update_automation, update_mcp_server,
+    update_thread, workspace_status,
 };
 
 pub fn build_router(state: RuntimeApiState) -> Router {
@@ -115,6 +116,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             post(restore_thread_snapshot),
         )
         .route(
+            "/v1/threads/{id}/workspace/revert-turn",
+            post(revert_thread_workspace_turn),
+        )
+        .route(
             "/v1/threads/{id}/workspace/browse",
             get(browse_thread_workspace),
         )
@@ -122,7 +127,10 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             "/v1/threads/{id}/workspace/file",
             get(read_thread_workspace_file),
         )
-        .route("/v1/threads/{id}/events", get(stream::stream_thread_events))
+        .route(
+            "/v1/threads/{id}/events",
+            get(stream::stream_thread_events).post(post_thread_channel_event),
+        )
         .route(
             "/v1/events/status",
             get(stream::stream_global_status_events),

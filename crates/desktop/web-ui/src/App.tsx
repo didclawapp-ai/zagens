@@ -496,6 +496,7 @@ export default function App() {
     handleRequestDiffPanel,
     handleComposerWorkspaceChange,
     filesRefreshNonce,
+    bumpFilesRefresh,
     handleOfficeDeliverableReady,
   } = useWorkspacePanel({
     t,
@@ -630,23 +631,41 @@ export default function App() {
 
   handleNewSessionRef.current = handleNewSessionPreserveMode;
 
+  const handleEnableTrust = useCallback(async () => {
+    if (!resumedThreadId) return;
+    try {
+      await patchThread(resumedThreadId, { trust_mode: true });
+      setThreadTrustMode(true);
+      toast.dismissAll();
+    } catch (e) {
+      const err = e as Error & { status?: number };
+      toast.error(t('banner.trustModeFailed', { message: err.message }));
+    }
+  }, [resumedThreadId, t]);
+
   const {
     editDraft,
     setEditDraft,
     backtrackDraft,
     setBacktrackDraft,
     backtrackBusy,
+    rewindDraft,
+    setRewindDraft,
+    rewindBusy,
     handleExportSessionJson,
     handleExportThreadJson,
     handleEditMessage,
     handleConfirmEdit,
     handleBacktrackFromMessage,
     handleConfirmBacktrack,
+    handleRewindWorkspaceFromMessage,
+    handleConfirmRewindWorkspace,
   } = useChatMessageActions({
     t,
     streaming,
     resumedThreadId,
     activeSessionId,
+    threadTrustMode,
     messages,
     activeSessionIdRef,
     resumedThreadIdRef,
@@ -664,6 +683,8 @@ export default function App() {
     resetAgentPanel,
     resetTurnPersistState,
     refreshThreadContext,
+    onWorkspaceReverted: bumpFilesRefresh,
+    onRequestEnableTrust: handleEnableTrust,
   });
 
   const { handleExportTraceReport, handleExportTraceCompare } = useTraceExport(resumedThreadId, t);
@@ -984,18 +1005,6 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [highlightTaskId]);
 
-  const handleEnableTrust = useCallback(async () => {
-    if (!resumedThreadId) return;
-    try {
-      await patchThread(resumedThreadId, { trust_mode: true });
-      setThreadTrustMode(true);
-      toast.dismissAll();
-    } catch (e) {
-      const err = e as Error & { status?: number };
-      toast.error(t('banner.trustModeFailed', { message: err.message }));
-    }
-  }, [resumedThreadId, t]);
-
   const auditActivity = useAuditNavActivity({
     threadId: resumedThreadId,
     activeInspector,
@@ -1089,6 +1098,10 @@ export default function App() {
       backtrackBusy={backtrackBusy}
       onBacktrackDraftChange={setBacktrackDraft}
       onConfirmBacktrack={() => void handleConfirmBacktrack()}
+      rewindDraft={rewindDraft}
+      rewindBusy={rewindBusy}
+      onRewindDraftChange={setRewindDraft}
+      onConfirmRewindWorkspace={() => void handleConfirmRewindWorkspace()}
       visibleSessions={visibleSessions}
       showAllSessions={showAllSessions}
       onToggleShowAllSessions={() => setShowAllSessions((v) => !v)}
@@ -1171,6 +1184,9 @@ export default function App() {
       onOpenDiffInPanel={openDiffInPanel}
       onEditMessage={resumedThreadId ? handleEditMessage : undefined}
       onBacktrackFromMessage={resumedThreadId ? handleBacktrackFromMessage : undefined}
+      onRewindWorkspaceFromMessage={
+        resumedThreadId ? handleRewindWorkspaceFromMessage : undefined
+      }
       rightPanelCollapsed={rightPanelCollapsed}
       onExpandRightPanel={() => setRightPanelCollapsed(false)}
       onCollapseRightPanel={() => setRightPanelCollapsed(true)}

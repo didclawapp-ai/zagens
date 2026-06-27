@@ -1,0 +1,132 @@
+name: Zagens coverage-gate
+description: >
+  Run the Zagens Layer-2 completion gate (cargo fmt/clippy/compile, optional tests,
+  checklist, CRAFT terminal verdict) in your repository workspace.
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  workspace:
+    description: Project workspace directory (Cargo project root)
+    required: false
+    default: '.'
+  run-tests:
+    description: Run `cargo test` after compile (slow)
+    required: false
+    default: 'false'
+  require-checklist-complete:
+    description: Pass `--require-checklist-complete` (LHT projects with `.zagens/todo.json`)
+    required: false
+    default: 'false'
+  task-id:
+    description: Optional CRAFT task_id for terminal_verdict check
+    required: false
+    default: ''
+  zagens-ref:
+    description: Git ref of didclawapp-ai/zagens to build when not running inside the monorepo
+    required: false
+    default: 'v0.8.4'
+  zagens-path:
+    description: Path to a pre-built `zagens` binary (skip build when set)
+    required: false
+    default: ''
+  upload-report:
+    description: Upload gate-report.json as a workflow artifact
+    required: false
+    default: 'true'
+
+outputs:
+  passed:
+    description: Whether all gate checks passed
+    value: ${{ steps.gate.outputs.passed }}
+  report-file:
+    description: Path to the JSON gate report
+    value: ${{ steps.gate.outputs.report-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@1.96.0
+      with:
+        components: rustfmt, clippy
+
+    - name: Install Linux system dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        if [ -f "${{ github.workspace }}/scripts/ci/install-linux-deps.sh" ]; then
+          bash "${{ github.workspace }}/scripts/ci/install-linux-deps.sh"
+        elif [ -f "${{ github.action_path }}/../../scripts/ci/install-linux-deps.sh" ]; then
+          bash "${{ github.action_path }}/../../scripts/ci/install-linux-deps.sh"
+        fi
+
+    - name: Resolve Zagens source root
+      id: src
+      shell: bash
+      env:
+        ZAGENS_PATH: ${{ inputs.zagens-path }}
+      run: |
+        set -euo pipefail
+        if [ -n "$ZAGENS_PATH" ]; then
+          echo "build=false" >> "$GITHUB_OUTPUT"
+          echo "bin=$ZAGENS_PATH" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [ -f "${{ github.workspace }}/Cargo.toml" ] && grep -q 'zagens-cli' "${{ github.workspace }}/Cargo.toml"; then
+          echo "root=${{ github.workspace }}" >> "$GITHUB_OUTPUT"
+          echo "build=true" >> "$GITHUB_OUTPUT"
+          echo "bin=${{ github.workspace }}/target/release/zagens" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "root=${{ github.workspace }}/.zagens-src" >> "$GITHUB_OUTPUT"
+        echo "build=true" >> "$GITHUB_OUTPUT"
+        echo "bin=${{ github.workspace }}/.zagens-src/target/release/zagens" >> "$GITHUB_OUTPUT"
+
+    - name: Checkout Zagens sources
+      if: contains(steps.src.outputs.root, '.zagens-src')
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      with:
+        repository: didclawapp-ai/zagens
+        ref: ${{ inputs.zagens-ref }}
+        path: .zagens-src
+
+    - name: Build zagens CLI
+      if: steps.src.outputs.build == 'true'
+      shell: bash
+      run: bash "${{ github.action_path }}/build-zagens.sh" "${{ steps.src.outputs.root }}"
+
+    - name: Run coverage-gate
+      id: gate
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        set -euo pipefail
+        REPORT="${RUNNER_TEMP}/gate-report.json"
+        set +e
+        bash "${{ github.action_path }}/run-gate.sh" \
+          "${{ steps.src.outputs.bin }}" \
+          "${{ inputs.workspace }}" \
+          "${{ inputs.run-tests }}" \
+          "${{ inputs.require-checklist-complete }}" \
+          "${{ inputs.task-id }}" \
+          "$REPORT"
+        code=$?
+        set -e
+        echo "report-file=$REPORT" >> "$GITHUB_OUTPUT"
+        if [ "$code" -eq 0 ]; then
+          echo "passed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+
+    - name: Upload gate report
+      if: inputs.upload-report == 'true' && always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: zagens-coverage-gate-report
+        path: ${{ steps.gate.outputs.report-file }}
+        if-no-files-found: ignore
+        retention-days: 14

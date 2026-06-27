@@ -8,6 +8,13 @@ type BacktrackDraft = {
   depthFromTail: number;
 };
 
+type RewindDraft = {
+  messageId: string;
+  content: string;
+  depthFromTail: number;
+  turnOffset: number;
+};
+
 type Props = {
   editDraft: EditDraft | null;
   onEditDraftChange: (draft: EditDraft | null) => void;
@@ -16,6 +23,10 @@ type Props = {
   backtrackBusy: boolean;
   onBacktrackDraftChange: (draft: BacktrackDraft | null) => void;
   onConfirmBacktrack: () => void;
+  rewindDraft: RewindDraft | null;
+  rewindBusy: boolean;
+  onRewindDraftChange: (draft: RewindDraft | null) => void;
+  onConfirmRewindWorkspace: () => void;
 };
 
 export default function ChatActionDialogs({
@@ -26,6 +37,10 @@ export default function ChatActionDialogs({
   backtrackBusy,
   onBacktrackDraftChange,
   onConfirmBacktrack,
+  rewindDraft,
+  rewindBusy,
+  onRewindDraftChange,
+  onConfirmRewindWorkspace,
 }: Props) {
   const { t } = useT();
 
@@ -112,6 +127,47 @@ export default function ChatActionDialogs({
                 onClick={() => void onConfirmBacktrack()}
               >
                 {backtrackBusy ? t('chat.backtrackWorking') : t('chat.backtrackConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {rewindDraft ? (
+        <div
+          className="fixed inset-0 z-[10050] flex items-center justify-center bg-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !rewindBusy) onRewindDraftChange(null);
+          }}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-card-border bg-card p-5 shadow-lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="rewind-workspace-title"
+          >
+            <h3 id="rewind-workspace-title" className="mb-2 text-base font-semibold text-t-text">
+              {t('chat.rewindTitle')}
+            </h3>
+            <p className="mb-3 text-sm text-t-text-secondary">{t('chat.rewindBody')}</p>
+            <div className="mb-4 rounded-lg border border-card-border bg-canvas-alt px-3 py-2 text-sm text-t-text-secondary line-clamp-4 whitespace-pre-wrap">
+              {rewindDraft.content}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm text-t-text-secondary hover:bg-hover disabled:opacity-50"
+                disabled={rewindBusy}
+                onClick={() => onRewindDraftChange(null)}
+              >
+                {t('modelParams.cancel')}
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-text hover:opacity-90 disabled:opacity-50"
+                disabled={rewindBusy}
+                onClick={() => void onConfirmRewindWorkspace()}
+              >
+                {rewindBusy ? t('chat.rewindWorking') : t('chat.rewindConfirm')}
               </button>
             </div>
           </div>

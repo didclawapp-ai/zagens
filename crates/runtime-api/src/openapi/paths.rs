@@ -462,6 +462,17 @@ pub fn build_paths() -> Map<String, Value> {
         )],
     );
     add(
+        "/v1/threads/{id}/workspace/revert-turn",
+        vec![json_op(
+            "post",
+            "revertThreadWorkspaceTurn",
+            "Revert workspace files to a pre-turn checkpoint (conversation unchanged)",
+            Some("RevertTurnWorkspaceRequest"),
+            "RestoreSnapshotResponse",
+            u,
+        )],
+    );
+    add(
         "/v1/threads/{id}/workspace/browse",
         vec![json_op(
             "get",
@@ -485,14 +496,24 @@ pub fn build_paths() -> Map<String, Value> {
     );
     add(
         "/v1/threads/{id}/events",
-        vec![operation(
-            "get",
-            "streamThreadEvents",
-            "Thread events SSE",
-            None,
-            sse_response(),
-            u,
-        )],
+        vec![
+            operation(
+                "get",
+                "streamThreadEvents",
+                "Subscribe to thread events (SSE)",
+                None,
+                sse_response(),
+                u,
+            ),
+            json_op(
+                "post",
+                "postThreadChannelEvent",
+                "Inject inbound channel event (steer / queue / start-turn)",
+                Some("ChannelEventRequest"),
+                "ChannelEventResponse",
+                u,
+            ),
+        ],
     );
     add(
         "/v1/tasks",

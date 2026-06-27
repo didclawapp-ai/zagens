@@ -49,6 +49,10 @@ export function useWorkspacePanel({
   >();
   const [filesRefreshNonce, setFilesRefreshNonce] = useState(0);
 
+  const bumpFilesRefresh = useCallback(() => {
+    setFilesRefreshNonce((n) => n + 1);
+  }, []);
+
   const closePanelPreview = useCallback(() => {
     setPanelPreview(null);
   }, []);
@@ -191,6 +195,7 @@ export function useWorkspacePanel({
     handleRequestDiffPanel,
     handleComposerWorkspaceChange,
     filesRefreshNonce,
+    bumpFilesRefresh,
     handleOfficeDeliverableReady,
   };
 }

@@ -30,6 +30,7 @@ interface Props {
   onRetryMessage?: (content: string) => void;
   onOpenDiffInPanel?: () => void;
   onBacktrackFromMessage?: (messageId: string, content: string) => void;
+  onRewindWorkspaceFromMessage?: (messageId: string, content: string) => void;
   officeSession?: boolean;
   onOfficeQuickStart?: (prefill: string) => void;
   sessionRestoreLoading?: boolean;
@@ -58,6 +59,7 @@ export default function ChatView({
   onRetryMessage,
   onOpenDiffInPanel,
   onBacktrackFromMessage,
+  onRewindWorkspaceFromMessage,
   officeSession = false,
   onOfficeQuickStart,
   sessionRestoreLoading = false,
@@ -127,6 +129,8 @@ export default function ChatView({
                 Boolean(onBacktrackFromMessage) &&
                 !isLastUserMessage(messages, msg.id)
               }
+              onRewindWorkspaceFromMessage={onRewindWorkspaceFromMessage}
+              rewindWorkspaceEnabled={msg.role === 'user' && Boolean(onRewindWorkspaceFromMessage)}
             />
           </ChatErrorBoundary>
         ))}

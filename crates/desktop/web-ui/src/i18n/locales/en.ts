@@ -1446,6 +1446,17 @@ const en: TranslationMap = {
     backtrackNeedsThread: 'Resume a thread before branching.',
     backtrackSuccess: 'New branch created — continue from the composer.',
     backtrackFailed: 'Branch failed: {{message}}',
+    rewindTitle: 'Restore workspace here',
+    rewindAction: 'Restore files',
+    rewindBody:
+      'Roll back workspace files to the checkpoint before this turn. Chat history stays unchanged — use Branch to fork the conversation.',
+    rewindConfirm: 'Restore files',
+    rewindWorking: 'Restoring…',
+    rewindNeedsThread: 'Resume a thread before restoring workspace files.',
+    rewindNeedsTrust: 'Trust mode is required to restore workspace snapshots.',
+    rewindTrustRequired: 'Enable trust mode on this thread before restoring files.',
+    rewindSuccess: 'Workspace restored: {{label}} ({{id}}…)',
+    rewindFailed: 'Restore failed: {{message}}',
   },
   chatMarkdown: {
     copyCode: 'Copy code',

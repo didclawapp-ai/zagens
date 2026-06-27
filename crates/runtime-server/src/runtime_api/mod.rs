@@ -13,6 +13,7 @@ pub mod openapi;
 
 mod automations;
 mod blackboards;
+pub(crate) mod channel_events;
 pub(crate) mod kernel_replay;
 mod mcp;
 mod office;
@@ -36,6 +37,7 @@ pub(crate) use automations::{
     pause_automation, resume_automation, run_automation, update_automation,
 };
 pub(crate) use blackboards::{get_blackboard, list_blackboards};
+pub(crate) use channel_events::post_thread_channel_event;
 pub(crate) use kernel_replay::{get_kernel_thread_replay, get_kernel_turn_replay};
 pub(crate) use mcp::{
     add_mcp_server, delete_mcp_server, discover_mcp, get_mcp_server, list_mcp_calls,
@@ -55,8 +57,8 @@ pub(crate) use threads::{
     get_thread_harness_task_graph, get_thread_scratchpad_status, init_thread_scratchpad,
     interrupt_thread_turn, list_thread_snapshots, list_threads, list_threads_summary,
     persist_thread_session, read_thread_workspace_file, read_workspace_file_by_root,
-    resolve_approval, restore_thread_snapshot, resume_thread, start_thread_turn, steer_thread_turn,
-    update_thread,
+    resolve_approval, restore_thread_snapshot, resume_thread, revert_thread_workspace_turn,
+    start_thread_turn, steer_thread_turn, update_thread,
 };
 pub(crate) use topic_memory::get_topic_memory;
 pub(crate) use trace_compare::get_trace_compare;
@@ -142,6 +144,7 @@ pub(crate) fn map_thread_err(err: anyhow::Error) -> ApiError {
         ApiError::not_found(message)
     } else if message.contains("already has an active turn")
         || message.contains("No active turn")
+        || message.contains("no active turn")
         || message.contains("is not active")
         || message.contains("no pending approval for")
         || message.contains("pending approval scope mismatch")

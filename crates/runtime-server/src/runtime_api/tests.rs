@@ -1124,6 +1124,249 @@ async fn steer_and_interrupt_endpoints_work_on_active_turn() -> Result<()> {
 }
 
 #[tokio::test]
+async fn channel_event_steer_without_turn_id_on_active_turn() -> Result<()> {
+    let Some((addr, runtime_threads, handle)) = spawn_test_server().await? else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_id = created["id"]
+        .as_str()
+        .context("missing thread id")?
+        .to_string();
+
+    let harness = crate::core::engine::mock_engine_handle();
+    runtime_threads
+        .install_test_engine(&thread_id, harness.handle.clone())
+        .await?;
+    let mut rx_op = harness.rx_op;
+    let mut rx_steer = harness.rx_steer;
+    let tx_event = harness.tx_event;
+    let cancel_token = harness.cancel_token;
+    tokio::spawn(async move {
+        if !matches!(rx_op.recv().await, Some(Op::SendMessage { .. })) {
+            return;
+        }
+        let _ = tx_event
+            .send(EngineEvent::TurnStarted {
+                turn_id: "engine_turn_channel".to_string(),
+            })
+            .await;
+        if let Some(steer_text) = rx_steer.recv().await {
+            let _ = tx_event
+                .send(EngineEvent::MessageDelta {
+                    index: 0,
+                    content: format!("steer:{steer_text}"),
+                })
+                .await;
+        }
+        cancel_token.cancelled().await;
+        sleep(Duration::from_millis(60)).await;
+        let _ = tx_event
+            .send(EngineEvent::TurnComplete {
+                usage: Usage::default(),
+                last_request_input_tokens: None,
+                status: TurnOutcomeStatus::Completed,
+                error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
+            })
+            .await;
+    });
+
+    let turn_start: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads/{thread_id}/turns"))
+        .json(&json!({ "prompt": "active controls" }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let turn_id = turn_start["turn"]["id"]
+        .as_str()
+        .context("missing turn id")?
+        .to_string();
+
+    let channel_resp: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads/{thread_id}/events"))
+        .json(&json!({
+            "type": "steer",
+            "text": "channel steer",
+            "source": "test"
+        }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(channel_resp["action"], "steered");
+    assert_eq!(channel_resp["thread_id"], thread_id);
+    assert_eq!(channel_resp["turn_id"], turn_id);
+
+    let events = runtime_threads.events_since(&thread_id, None)?;
+    assert!(events.iter().any(|ev| ev.event == "channel.injected"));
+    assert!(events.iter().any(|ev| ev.event == "turn.steered"));
+
+    handle.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn channel_event_idle_message_starts_turn() -> Result<()> {
+    let Some((addr, runtime_threads, handle)) = spawn_test_server().await? else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_id = created["id"]
+        .as_str()
+        .context("missing thread id")?
+        .to_string();
+
+    let harness = crate::core::engine::mock_engine_handle();
+    runtime_threads
+        .install_test_engine(&thread_id, harness.handle.clone())
+        .await?;
+    let mut rx_op = harness.rx_op;
+    let tx_event = harness.tx_event;
+    let cancel_token = harness.cancel_token;
+    tokio::spawn(async move {
+        if !matches!(rx_op.recv().await, Some(Op::SendMessage { .. })) {
+            return;
+        }
+        let _ = tx_event
+            .send(EngineEvent::TurnStarted {
+                turn_id: "engine_turn_channel_idle".to_string(),
+            })
+            .await;
+        cancel_token.cancelled().await;
+        sleep(Duration::from_millis(60)).await;
+        let _ = tx_event
+            .send(EngineEvent::TurnComplete {
+                usage: Usage::default(),
+                last_request_input_tokens: None,
+                status: TurnOutcomeStatus::Completed,
+                error: None,
+                step_count: 0,
+                tool_names: vec![],
+                end_reason: None,
+            })
+            .await;
+    });
+
+    let channel_resp: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads/{thread_id}/events"))
+        .json(&json!({
+            "type": "message",
+            "text": "CI failed on main",
+            "source": "github-actions"
+        }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(channel_resp["action"], "started");
+    assert_eq!(channel_resp["thread_id"], thread_id);
+    assert!(channel_resp["turn_id"].is_string());
+
+    let events = runtime_threads.events_since(&thread_id, None)?;
+    assert!(events.iter().any(|ev| ev.event == "channel.injected"));
+
+    handle.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn channel_event_idle_steer_rejects_when_configured() -> Result<()> {
+    let Some((addr, _runtime_threads, handle)) = spawn_test_server().await? else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads"))
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_id = created["id"]
+        .as_str()
+        .context("missing thread id")?
+        .to_string();
+
+    let resp = client
+        .post(format!("http://{addr}/v1/threads/{thread_id}/events"))
+        .json(&json!({
+            "type": "steer",
+            "text": "urgent",
+            "if_idle": "reject"
+        }))
+        .send()
+        .await?;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+
+    handle.abort();
+    Ok(())
+}
+
+#[tokio::test]
+async fn channel_event_requires_runtime_token() -> Result<()> {
+    let root = std::env::temp_dir().join(format!("zagens-runtime-api-{}", Uuid::new_v4()));
+    let sessions_dir = root.join("sessions");
+    let token = "channel-test-token".to_string();
+    let Some((addr, _runtime_threads, handle)) =
+        spawn_test_server_with_root_and_token(root, sessions_dir, Some(token.clone())).await?
+    else {
+        return Ok(());
+    };
+    let client = reqwest::Client::new();
+
+    let created: serde_json::Value = client
+        .post(format!("http://{addr}/v1/threads"))
+        .bearer_auth(&token)
+        .json(&json!({}))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thread_id = created["id"]
+        .as_str()
+        .context("missing thread id")?
+        .to_string();
+
+    let unauthorized = client
+        .post(format!("http://{addr}/v1/threads/{thread_id}/events"))
+        .json(&json!({ "type": "message", "text": "hi" }))
+        .send()
+        .await?;
+    assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+
+    handle.abort();
+    Ok(())
+}
+
+#[tokio::test]
 async fn stream_compat_mapping_handles_expected_runtime_events() -> Result<()> {
     let agent_delta = RuntimeEventRecord {
         schema_version: 1,

@@ -34,6 +34,7 @@
 pub mod paths;
 pub mod prune;
 pub mod repo;
+pub mod revert;
 pub mod size;
 
 #[allow(unused_imports)]
@@ -41,6 +42,10 @@ pub use paths::{snapshot_dir_for, snapshot_git_dir};
 pub use prune::{DEFAULT_MAX_AGE, prune_older_than};
 #[allow(unused_imports)]
 pub use repo::{Snapshot, SnapshotId, SnapshotRepo};
+pub use revert::{
+    DEFAULT_REVERT_TURN_OFFSET, MAX_REVERT_TURN_OFFSET, RevertPreTurnError,
+    list_pre_turn_snapshots, revert_pre_turn_offset,
+};
 pub use size::{
     DEFAULT_SNAPSHOT_MAX_WORKSPACE_GB, estimate_workspace_bytes, workspace_exceeds_size_limit,
 };

@@ -4,10 +4,12 @@ import {
   forkThreadAtUserMessage,
   getSessionDetail,
   getThreadDetail,
+  revertThreadWorkspaceTurn,
 } from '../api/client';
 import type { ComposerOutboundMessage } from '../components/Composer';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
 import { depthFromTailForUserMessage } from '../lib/chat/backtrackDepth';
+import { turnOffsetFromDepthFromTail } from '../lib/chat/turnRevertOffset';
 import { cacheSessionUiMessages, type CachedUiMessage } from '../lib/chat/sessionUiCache';
 import type { ThreadDetailWithTurns } from '../lib/contextUsage';
 import { toast } from '../lib/toast';
@@ -24,11 +26,19 @@ type BacktrackDraft = {
   depthFromTail: number;
 };
 
+type RewindWorkspaceDraft = {
+  messageId: string;
+  content: string;
+  depthFromTail: number;
+  turnOffset: number;
+};
+
 export type UseChatMessageActionsParams = {
   t: (key: string, params?: Record<string, string>) => string;
   streaming: boolean;
   resumedThreadId: string | null;
   activeSessionId: string | null;
+  threadTrustMode: boolean;
   messages: TurnChatMessage[];
   activeSessionIdRef: MutableRefObject<string | null>;
   resumedThreadIdRef: MutableRefObject<string | null>;
@@ -51,6 +61,8 @@ export type UseChatMessageActionsParams = {
   resetAgentPanel: () => void;
   resetTurnPersistState: () => void;
   refreshThreadContext: (threadId: string) => Promise<void>;
+  onWorkspaceReverted?: () => void;
+  onRequestEnableTrust?: () => void | Promise<void>;
 };
 
 export function useChatMessageActions({
@@ -58,6 +70,7 @@ export function useChatMessageActions({
   streaming,
   resumedThreadId,
   activeSessionId,
+  threadTrustMode,
   messages,
   activeSessionIdRef,
   resumedThreadIdRef,
@@ -75,10 +88,14 @@ export function useChatMessageActions({
   resetAgentPanel,
   resetTurnPersistState,
   refreshThreadContext,
+  onWorkspaceReverted,
+  onRequestEnableTrust,
 }: UseChatMessageActionsParams) {
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [backtrackDraft, setBacktrackDraft] = useState<BacktrackDraft | null>(null);
   const [backtrackBusy, setBacktrackBusy] = useState(false);
+  const [rewindDraft, setRewindDraft] = useState<RewindWorkspaceDraft | null>(null);
+  const [rewindBusy, setRewindBusy] = useState(false);
 
   const handleExportSessionJson = useCallback(async () => {
     if (!activeSessionId) {
@@ -189,6 +206,31 @@ export function useChatMessageActions({
     [streaming, resumedThreadId, messages, t],
   );
 
+  const handleRewindWorkspaceFromMessage = useCallback(
+    (messageId: string, content: string) => {
+      if (streaming || !resumedThreadId) {
+        toast.warning(t('chat.rewindNeedsThread'));
+        return;
+      }
+      if (!threadTrustMode) {
+        toast.warning(t('chat.rewindNeedsTrust'));
+        void onRequestEnableTrust?.();
+        return;
+      }
+      const depth = depthFromTailForUserMessage(messages, messageId);
+      if (depth == null) {
+        return;
+      }
+      setRewindDraft({
+        messageId,
+        content,
+        depthFromTail: depth,
+        turnOffset: turnOffsetFromDepthFromTail(depth),
+      });
+    },
+    [streaming, resumedThreadId, threadTrustMode, messages, t, onRequestEnableTrust],
+  );
+
   const handleConfirmBacktrack = useCallback(async () => {
     if (!backtrackDraft || !resumedThreadId || backtrackBusy) {
       return;
@@ -261,17 +303,51 @@ export function useChatMessageActions({
     setComposerPrefill,
   ]);
 
+  const handleConfirmRewindWorkspace = useCallback(async () => {
+    if (!rewindDraft || !resumedThreadId || rewindBusy) {
+      return;
+    }
+    const draft = rewindDraft;
+    setRewindDraft(null);
+    setRewindBusy(true);
+    try {
+      const result = await revertThreadWorkspaceTurn(resumedThreadId, draft.turnOffset);
+      onWorkspaceReverted?.();
+      toast.success(
+        t('chat.rewindSuccess', {
+          label: result.label,
+          id: result.id.slice(0, 8),
+        }),
+      );
+    } catch (e) {
+      const err = e as Error & { status?: number };
+      if (err.status === 403) {
+        toast.error(t('chat.rewindTrustRequired'));
+        void onRequestEnableTrust?.();
+      } else {
+        toast.error(t('chat.rewindFailed', { message: err.message ?? String(e) }));
+      }
+    } finally {
+      setRewindBusy(false);
+    }
+  }, [rewindDraft, resumedThreadId, rewindBusy, onWorkspaceReverted, onRequestEnableTrust, t]);
+
   return {
     editDraft,
     setEditDraft,
     backtrackDraft,
     setBacktrackDraft,
     backtrackBusy,
+    rewindDraft,
+    setRewindDraft,
+    rewindBusy,
     handleExportSessionJson,
     handleExportThreadJson,
     handleEditMessage,
     handleConfirmEdit,
     handleBacktrackFromMessage,
     handleConfirmBacktrack,
+    handleRewindWorkspaceFromMessage,
+    handleConfirmRewindWorkspace,
   };
 }

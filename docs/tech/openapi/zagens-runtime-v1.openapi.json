@@ -1255,6 +1255,59 @@
           "prompt"
         ]
       },
+      "ChannelEventType": {
+        "type": "string",
+        "enum": [
+          "message",
+          "steer"
+        ]
+      },
+      "ChannelIfIdle": {
+        "type": "string",
+        "enum": [
+          "start_turn",
+          "reject"
+        ]
+      },
+      "ChannelEventRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ChannelEventRequest",
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ChannelEventType"
+          },
+          "text": {
+            "type": "string"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "if_idle": {
+            "$ref": "#/components/schemas/ChannelIfIdle",
+            "default": "start_turn"
+          },
+          "force_steer": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "type",
+          "text"
+        ]
+      },
+      "ChannelEventAction": {
+        "type": "string",
+        "enum": [
+          "started",
+          "steered",
+          "queued"
+        ]
+      },
       "PromptAdmission": {
         "type": "object",
         "properties": {
@@ -1295,6 +1348,76 @@
           "prompt",
           "delivery",
           "time_created"
+        ]
+      },
+      "ChannelEventResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ChannelEventResponse",
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ChannelEventAction"
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "admitted": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromptAdmission"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "thread_id"
+        ]
+      },
+      "RevertTurnWorkspaceRequest": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "RevertTurnWorkspaceRequest",
+        "type": "object",
+        "properties": {
+          "turn_offset": {
+            "description": "1-based pre-turn offset (`1` = before the most recent turn).",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "turn_offset"
+        ]
+      },
+      "RestoreSnapshotResponse": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "RestoreSnapshotResponse",
+        "type": "object",
+        "properties": {
+          "restored": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "restored",
+          "label",
+          "id"
         ]
       },
       "StartTurnResponse": {
@@ -2841,6 +2964,39 @@
         ]
       }
     },
+    "/v1/threads/{id}/workspace/revert-turn": {
+      "post": {
+        "operationId": "revertThreadWorkspaceTurn",
+        "summary": "Revert workspace files to a pre-turn checkpoint (conversation unchanged)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevertTurnWorkspaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreSnapshotResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/threads/{id}/workspace/browse": {
       "get": {
         "operationId": "browseThreadWorkspace",
@@ -2890,7 +3046,7 @@
     "/v1/threads/{id}/events": {
       "get": {
         "operationId": "streamThreadEvents",
-        "summary": "Thread events SSE",
+        "summary": "Subscribe to thread events (SSE)",
         "responses": {
           "200": {
             "description": "Server-Sent Events stream",
@@ -2898,6 +3054,37 @@
               "text/event-stream": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "postThreadChannelEvent",
+        "summary": "Inject inbound channel event (steer / queue / start-turn)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelEventResponse"
                 }
               }
             }

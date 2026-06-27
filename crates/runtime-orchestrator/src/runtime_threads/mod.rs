@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub mod active;
+pub mod channel_inject;
 pub mod config_overlay;
 pub mod engine_host;
 pub mod engine_load;
@@ -40,6 +41,10 @@ pub use monitor::monitor_turn;
 pub use monitor_host::RuntimeThreadMonitorHost;
 pub use task_port::RuntimeThreadTaskPort;
 
+pub use channel_inject::{
+    ChannelEventAction, ChannelEventRequest, ChannelEventResponse, ChannelEventType, ChannelIfIdle,
+    inject_channel_event,
+};
 pub use config_overlay::{
     CompactionOverlay, LspOverlay, MemoryOverlay, SnapshotsOverlay, ThreadConfigOverlay,
     ThreadConfigResponse, TopicMemoryOverlay,

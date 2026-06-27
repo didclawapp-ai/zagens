@@ -1,0 +1,31 @@
+name: Coverage gate (dogfood)
+
+# Validates the composite action on the Zagens monorepo itself.
+# PR CI stays fast — this workflow is manual / optional.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: Also run cargo test
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-gate-dogfood-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Composite action smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: ./.github/actions/coverage-gate
+        with:
+          workspace: .
+          run-tests: ${{ inputs.run_tests }}
+          require-checklist-complete: 'false'

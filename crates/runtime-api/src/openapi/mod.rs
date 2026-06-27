@@ -8,8 +8,9 @@ use serde_json::{Map, Value, json};
 
 pub use paths::{build_paths, path_template_count};
 pub use schemas::{
-    ResumeSessionKernelReplay, ResumeSessionResponse, SessionDetailResponse, SessionsListResponse,
-    StartTurnResponse, StreamTurnRequest, ThreadSummary,
+    RestoreSnapshotResponse, ResumeSessionKernelReplay, ResumeSessionResponse,
+    RevertTurnWorkspaceRequest, SessionDetailResponse, SessionsListResponse, StartTurnResponse,
+    StreamTurnRequest, ThreadSummary,
 };
 pub use schemas::{SCHEMA_EXPORTS, SchemaExportFn};
 

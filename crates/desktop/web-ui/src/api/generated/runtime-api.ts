@@ -535,6 +535,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/v1/threads/{id}/workspace/revert-turn": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Revert workspace files to a pre-turn checkpoint (conversation unchanged) */
+        readonly post: operations["revertThreadWorkspaceTurn"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/v1/threads/{id}/workspace/browse": {
         readonly parameters: {
             readonly query?: never;
@@ -576,10 +593,11 @@ export type paths = {
             readonly path?: never;
             readonly cookie?: never;
         };
-        /** Thread events SSE */
+        /** Subscribe to thread events (SSE) */
         readonly get: operations["streamThreadEvents"];
         readonly put?: never;
-        readonly post?: never;
+        /** Inject inbound channel event (steer / queue / start-turn) */
+        readonly post: operations["postThreadChannelEvent"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1366,6 +1384,22 @@ export type components = {
         readonly SteerTurnRequest: {
             readonly prompt: string;
         };
+        /** @enum {string} */
+        readonly ChannelEventType: "message" | "steer";
+        /** @enum {string} */
+        readonly ChannelIfIdle: "start_turn" | "reject";
+        /** ChannelEventRequest */
+        readonly ChannelEventRequest: {
+            readonly type: components["schemas"]["ChannelEventType"];
+            readonly text: string;
+            readonly source?: string | null;
+            /** @default start_turn */
+            readonly if_idle: components["schemas"]["ChannelIfIdle"];
+            /** @default false */
+            readonly force_steer: boolean;
+        };
+        /** @enum {string} */
+        readonly ChannelEventAction: "started" | "steered" | "queued";
         readonly PromptAdmission: {
             readonly id: string;
             readonly thread_id: string;
@@ -1377,6 +1411,27 @@ export type components = {
             readonly time_created: string;
             /** Format: uint64 */
             readonly promoted_seq?: number | null;
+        };
+        /** ChannelEventResponse */
+        readonly ChannelEventResponse: {
+            readonly action: components["schemas"]["ChannelEventAction"];
+            readonly thread_id: string;
+            readonly turn_id?: string | null;
+            readonly admitted?: components["schemas"]["PromptAdmission"] | null;
+        };
+        /** RevertTurnWorkspaceRequest */
+        readonly RevertTurnWorkspaceRequest: {
+            /**
+             * Format: uint64
+             * @description 1-based pre-turn offset (`1` = before the most recent turn).
+             */
+            readonly turn_offset: number;
+        };
+        /** RestoreSnapshotResponse */
+        readonly RestoreSnapshotResponse: {
+            readonly restored: boolean;
+            readonly label: string;
+            readonly id: string;
         };
         /** StartTurnResponse */
         readonly StartTurnResponse: {
@@ -2342,6 +2397,30 @@ export interface operations {
             };
         };
     };
+    readonly revertThreadWorkspaceTurn: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RevertTurnWorkspaceRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RestoreSnapshotResponse"];
+                };
+            };
+        };
+    };
     readonly browseThreadWorkspace: {
         readonly parameters: {
             readonly query?: never;
@@ -2398,6 +2477,30 @@ export interface operations {
                 };
                 content: {
                     readonly "text/event-stream": string;
+                };
+            };
+        };
+    };
+    readonly postThreadChannelEvent: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ChannelEventRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ChannelEventResponse"];
                 };
             };
         };

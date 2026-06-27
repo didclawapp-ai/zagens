@@ -17,10 +17,10 @@ pub(crate) use zagens_runtime_orchestrator::runtime_threads::persist;
 pub use zagens_runtime_orchestrator::runtime_threads::types;
 pub use zagens_runtime_orchestrator::runtime_threads::types::*;
 pub use zagens_runtime_orchestrator::runtime_threads::{
-    CompactThreadRequest, CreateThreadRequest, EditLastTurnRequest, ForkAtUserMessageRequest,
-    ForkAtUserMessageResponse, RoutingRule, RuntimeThreadManagerConfig, RuntimeThreadStore,
-    StartTurnOutcome, StartTurnRequest, SteerTurnRequest, ThreadDetail, ThreadListFilter,
-    UpdateThreadRequest, UsageGroupBy,
+    ChannelEventRequest, ChannelEventResponse, CompactThreadRequest, CreateThreadRequest,
+    EditLastTurnRequest, ForkAtUserMessageRequest, ForkAtUserMessageResponse, RoutingRule,
+    RuntimeThreadManagerConfig, RuntimeThreadStore, StartTurnOutcome, StartTurnRequest,
+    SteerTurnRequest, ThreadDetail, ThreadListFilter, UpdateThreadRequest, UsageGroupBy,
 };
 
 pub(crate) use zagens_runtime_orchestrator::runtime_threads::CURRENT_RUNTIME_SCHEMA_VERSION;

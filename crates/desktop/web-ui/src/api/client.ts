@@ -885,6 +885,8 @@ export interface ThreadSnapshotEntry {
   id: string;
   label: string;
   timestamp: number;
+  pre_turn?: boolean;
+  turn_offset?: number;
 }
 
 export interface SnapshotsListResponse {
@@ -906,6 +908,15 @@ export async function restoreThreadSnapshot(
   n: number,
 ): Promise<{ restored: boolean; label: string; id: string }> {
   return postJson(`/v1/threads/${encodeURIComponent(threadId)}/snapshots/restore`, { n });
+}
+
+export async function revertThreadWorkspaceTurn(
+  threadId: string,
+  turnOffset: number,
+): Promise<{ restored: boolean; label: string; id: string }> {
+  return postJson(`/v1/threads/${encodeURIComponent(threadId)}/workspace/revert-turn`, {
+    turn_offset: turnOffset,
+  });
 }
 
 export interface BrowseWorkspaceEntry {

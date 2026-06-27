@@ -22,7 +22,7 @@ use crate::session_manager::{
 };
 use crate::snapshot::SnapshotRepo;
 
-use zagens_runtime_api::{StartTurnResponse, ThreadSummary};
+use zagens_runtime_api::{RevertTurnWorkspaceRequest, StartTurnResponse, ThreadSummary};
 
 use super::{ApiError, RuntimeApiState, map_thread_err, truncate_text};
 
@@ -383,6 +383,11 @@ pub(crate) struct SnapshotListEntryJson {
     id: String,
     label: String,
     timestamp: i64,
+    /// True when label is `pre-turn:*` (turn-start checkpoint).
+    pre_turn: bool,
+    /// 1-based offset among pre-turn snapshots only (newest = 1); for revert-turn API.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    turn_offset: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -683,12 +688,22 @@ pub(crate) async fn list_thread_snapshots(
     .map_err(|e| ApiError::internal(format!("snapshot task: {e}")))?
     .map_err(|e| map_snapshot_io_err(&workspace_display, e))?;
     let mut entries = Vec::with_capacity(snapshots.len());
+    let mut pre_turn_counter = 0usize;
     for (i, s) in snapshots.iter().enumerate() {
+        let pre_turn = s.label.starts_with("pre-turn:");
+        let turn_offset = if pre_turn {
+            pre_turn_counter += 1;
+            Some(pre_turn_counter)
+        } else {
+            None
+        };
         entries.push(SnapshotListEntryJson {
             n: i + 1,
             id: s.id.as_str().to_string(),
             label: s.label.clone(),
             timestamp: s.timestamp,
+            pre_turn,
+            turn_offset,
         });
     }
     Ok(Json(SnapshotsListResponse {
@@ -740,6 +755,41 @@ pub(crate) async fn restore_thread_snapshot(
         restored: true,
         label: restored.0,
         id: restored.1.as_str().to_string(),
+    }))
+}
+
+pub(crate) async fn revert_thread_workspace_turn(
+    State(state): State<RuntimeApiState>,
+    AxumPath(id): AxumPath<String>,
+    Json(body): Json<RevertTurnWorkspaceRequest>,
+) -> Result<Json<RestoreSnapshotResponse>, ApiError> {
+    let detail = state
+        .runtime_threads
+        .get_thread_detail(&id)
+        .await
+        .map_err(map_thread_err)?;
+    if !detail.thread.trust_mode {
+        return Err(ApiError::forbidden(
+            "revert-turn requires trust_mode on this thread (PATCH /v1/threads/{id} with {\"trust_mode\": true} or use TUI `/trust on`).",
+        ));
+    }
+    let ws = detail.thread.workspace.clone();
+    let offset = body.turn_offset;
+    let max_gb = state.config.snapshots_config().max_workspace_gb;
+    let restored = tokio::task::spawn_blocking(move || {
+        use zagens_runtime_adapters::snapshot::revert_pre_turn_offset;
+        let repo = SnapshotRepo::open_or_init_with_max_gb(&ws, max_gb)
+            .map_err(|e| map_snapshot_io_err(&ws.display().to_string(), e))?;
+        let target =
+            revert_pre_turn_offset(&repo, offset).map_err(|e| ApiError::bad_request(e.message))?;
+        Ok::<_, ApiError>((target.label.clone(), target.id.as_str().to_string()))
+    })
+    .await
+    .map_err(|e| ApiError::internal(format!("revert-turn task: {e}")))??;
+    Ok(Json(RestoreSnapshotResponse {
+        restored: true,
+        label: restored.0,
+        id: restored.1,
     }))
 }
 

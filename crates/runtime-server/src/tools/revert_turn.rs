@@ -10,18 +10,15 @@
 
 use async_trait::async_trait;
 use serde_json::Value;
+use zagens_runtime_adapters::snapshot::{
+    DEFAULT_REVERT_TURN_OFFSET, MAX_REVERT_TURN_OFFSET, revert_pre_turn_offset,
+};
 
 use super::misc_inputs::revert_turn_input_schema;
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec, optional_u64,
 };
 use crate::snapshot::SnapshotRepo;
-
-/// Default offset: revert the most-recent turn (i.e. the last `pre-turn:*`
-/// snapshot in history).
-const DEFAULT_OFFSET: u64 = 1;
-/// Hard cap so the model can't ask to roll back to the dawn of time.
-const MAX_OFFSET: u64 = 50;
 
 pub struct RevertTurnTool;
 
@@ -55,10 +52,10 @@ impl ToolSpec for RevertTurnTool {
     }
 
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
-        let offset = optional_u64(&input, "turn_offset", DEFAULT_OFFSET);
-        if offset == 0 || offset > MAX_OFFSET {
+        let offset = optional_u64(&input, "turn_offset", DEFAULT_REVERT_TURN_OFFSET);
+        if offset == 0 || offset > MAX_REVERT_TURN_OFFSET {
             return Err(ToolError::invalid_input(format!(
-                "turn_offset must be between 1 and {MAX_OFFSET}; got {offset}",
+                "turn_offset must be between 1 and {MAX_REVERT_TURN_OFFSET}; got {offset}",
             )));
         }
 
@@ -67,28 +64,7 @@ impl ToolSpec for RevertTurnTool {
         let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
             let repo = SnapshotRepo::open_or_init(&workspace)
                 .map_err(|e| format!("Snapshot repo init failed: {e}"))?;
-            // Find pre-turn:* snapshots only — those mark the start of
-            // each turn, which is the right rollback target. We pull a
-            // generous list and filter so the model's `turn_offset` is
-            // counted in turns, not raw snapshots.
-            let snapshots = repo
-                .list((MAX_OFFSET as usize).saturating_mul(2) + 16)
-                .map_err(|e| format!("Snapshot list failed: {e}"))?;
-            let pre_turns: Vec<_> = snapshots
-                .into_iter()
-                .filter(|s| s.label.starts_with("pre-turn:"))
-                .collect();
-            let target = pre_turns
-                .get((offset - 1) as usize)
-                .ok_or_else(|| {
-                    format!(
-                        "Only {} pre-turn snapshot(s) exist; turn_offset={offset} is out of range.",
-                        pre_turns.len(),
-                    )
-                })?
-                .clone();
-            repo.restore(&target.id)
-                .map_err(|e| format!("Restore failed: {e}"))?;
+            let target = revert_pre_turn_offset(&repo, offset).map_err(|e| e.to_string())?;
             Ok(format!(
                 "{label}: restored '{}' ({}). Workspace files reverted; conversation unchanged.",
                 target.label,
@@ -117,15 +93,12 @@ mod tests {
     use std::sync::MutexGuard;
     use tempfile::tempdir;
 
-    /// Pins HOME to a tempdir for the duration of the test under the
-    /// process-wide env mutex (`crate::test_support::lock_test_env`).
     struct HomeGuard {
         prev: Option<std::ffi::OsString>,
         _lock: MutexGuard<'static, ()>,
     }
     impl Drop for HomeGuard {
         fn drop(&mut self) {
-            // SAFETY: process-wide lock still held.
             unsafe {
                 match self.prev.take() {
                     Some(v) => std::env::set_var("HOME", v),
@@ -137,7 +110,6 @@ mod tests {
     fn scoped_home(home: &std::path::Path) -> HomeGuard {
         let lock = lock_test_env();
         let prev = std::env::var_os("HOME");
-        // SAFETY: serialised by the global env lock.
         unsafe {
             std::env::set_var("HOME", home);
         }
@@ -151,7 +123,6 @@ mod tests {
         std::fs::create_dir_all(&workspace).unwrap();
         let _guard = scoped_home(tmp.path());
 
-        // Setup: create pre-turn:1, post-turn:1 with file modifications.
         let repo = SnapshotRepo::open_or_init(&workspace).unwrap();
         std::fs::write(workspace.join("a.txt"), b"original").unwrap();
         repo.snapshot("pre-turn:1").unwrap();

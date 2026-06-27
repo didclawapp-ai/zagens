@@ -20,8 +20,9 @@ pub use auth::require_runtime_token;
 pub use cors::cors_layer;
 pub use error::ApiError;
 pub use openapi::{
-    ResumeSessionKernelReplay, ResumeSessionResponse, SessionDetailResponse, SessionsListResponse,
-    StartTurnResponse, StreamTurnRequest, ThreadSummary,
+    RestoreSnapshotResponse, ResumeSessionKernelReplay, ResumeSessionResponse,
+    RevertTurnWorkspaceRequest, SessionDetailResponse, SessionsListResponse, StartTurnResponse,
+    StreamTurnRequest, ThreadSummary,
 };
 pub use router::compose_router;
 pub use state::{RuntimeApiAuthState, RuntimeApiHostState, RuntimeApiProbeState};

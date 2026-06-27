@@ -1448,6 +1448,17 @@ const ptBr: TranslationMap = {
     backtrackNeedsThread: 'Retome um thread antes de ramificar.',
     backtrackSuccess: 'Novo ramo criado — continue pelo composer.',
     backtrackFailed: 'Falha ao ramificar: {{message}}',
+    rewindTitle: 'Restaurar workspace daqui',
+    rewindAction: 'Restaurar arquivos',
+    rewindBody:
+      'Reverte os arquivos do workspace para o checkpoint antes deste turno. O histórico do chat não muda — use Ramificar para bifurcar a conversa.',
+    rewindConfirm: 'Restaurar arquivos',
+    rewindWorking: 'Restaurando…',
+    rewindNeedsThread: 'Retome um thread antes de restaurar o workspace.',
+    rewindNeedsTrust: 'Modo confiança é necessário para restaurar snapshots do workspace.',
+    rewindTrustRequired: 'Ative o modo confiança neste thread antes de restaurar arquivos.',
+    rewindSuccess: 'Workspace restaurado: {{label}} ({{id}}…)',
+    rewindFailed: 'Falha ao restaurar: {{message}}',
   },
   chatMarkdown: {
     copyCode: 'Copiar código',

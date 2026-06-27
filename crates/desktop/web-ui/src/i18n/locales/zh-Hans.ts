@@ -1423,6 +1423,17 @@ const zhHans = {
     backtrackNeedsThread: '请先恢复线程后再创建分支。',
     backtrackSuccess: '已创建新分支，可在输入框继续对话。',
     backtrackFailed: '分支失败：{{message}}',
+    rewindTitle: '恢复工作区到此消息前',
+    rewindAction: '恢复文件',
+    rewindBody:
+      '将工作区文件回滚到此 turn 开始前的快照。对话记录不变；若要分叉对话请使用「分支」。',
+    rewindConfirm: '恢复文件',
+    rewindWorking: '正在恢复…',
+    rewindNeedsThread: '请先恢复线程后再回滚工作区。',
+    rewindNeedsTrust: '恢复工作区快照需要信任模式。',
+    rewindTrustRequired: '请在此线程上启用信任模式后再恢复文件。',
+    rewindSuccess: '已恢复工作区：{{label}}（{{id}}…）',
+    rewindFailed: '恢复失败：{{message}}',
   },
   chatMarkdown: {
     copyCode: '复制代码',

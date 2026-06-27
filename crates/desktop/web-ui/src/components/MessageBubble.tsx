@@ -35,6 +35,8 @@ export function MessageBubble({
   agentStates,
   onBacktrackFromMessage,
   backtrackEnabled = false,
+  onRewindWorkspaceFromMessage,
+  rewindWorkspaceEnabled = false,
 }: {
   message: Message;
   workspaceRoot?: string;
@@ -47,6 +49,8 @@ export function MessageBubble({
   agentStates?: AgentState[];
   onBacktrackFromMessage?: (messageId: string, content: string) => void;
   backtrackEnabled?: boolean;
+  onRewindWorkspaceFromMessage?: (messageId: string, content: string) => void;
+  rewindWorkspaceEnabled?: boolean;
 }) {
   const { t } = useT();
   const isUser = message.role === 'user';
@@ -366,6 +370,17 @@ export function MessageBubble({
               >
                 <IconUndo className="size-3.5" />
                 <span>{t('chat.backtrackAction')}</span>
+              </button>
+            )}
+            {rewindWorkspaceEnabled && onRewindWorkspaceFromMessage && (
+              <button
+                type="button"
+                onClick={() => onRewindWorkspaceFromMessage(message.id, message.content)}
+                className="message-user-action"
+                title={t('chat.rewindTitle')}
+              >
+                <IconRefresh className="size-3.5" />
+                <span>{t('chat.rewindAction')}</span>
               </button>
             )}
           </div>

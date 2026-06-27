@@ -11,9 +11,10 @@ use zagens_core::engine::ReplayEffectCounts;
 use zagens_core::models::{ServerToolUsage, Usage};
 use zagens_runtime_adapters::persist::SessionMetadata;
 use zagens_runtime_orchestrator::runtime_threads::{
-    CreateThreadRequest, RoutingRule, RoutingRulesDoc, RuntimeTurnStatus, StartTurnRequest,
-    SteerTurnRequest, ThreadDetail, ThreadRecord, TurnItemKind, TurnItemLifecycleStatus,
-    TurnItemRecord, TurnRecord, UpdateThreadRequest, UsageAggregation, UsageBucket, UsageTotals,
+    ChannelEventRequest, ChannelEventResponse, CreateThreadRequest, RoutingRule, RoutingRulesDoc,
+    RuntimeTurnStatus, StartTurnRequest, SteerTurnRequest, ThreadDetail, ThreadRecord,
+    TurnItemKind, TurnItemLifecycleStatus, TurnItemRecord, TurnRecord, UpdateThreadRequest,
+    UsageAggregation, UsageBucket, UsageTotals,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -146,6 +147,19 @@ pub struct StreamTurnRequest {
     /// Allocate an isolated git worktree for the new thread (requires git workspace).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_worktree: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RevertTurnWorkspaceRequest {
+    /// 1-based pre-turn offset (`1` = before the most recent turn).
+    pub turn_offset: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct RestoreSnapshotResponse {
+    pub restored: bool,
+    pub label: String,
+    pub id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -288,6 +302,18 @@ pub const SCHEMA_EXPORTS: &[(&str, SchemaExportFn)] = &[
     }),
     ("SteerTurnRequest", || {
         schemars::schema_for!(SteerTurnRequest)
+    }),
+    ("ChannelEventRequest", || {
+        schemars::schema_for!(ChannelEventRequest)
+    }),
+    ("ChannelEventResponse", || {
+        schemars::schema_for!(ChannelEventResponse)
+    }),
+    ("RevertTurnWorkspaceRequest", || {
+        schemars::schema_for!(RevertTurnWorkspaceRequest)
+    }),
+    ("RestoreSnapshotResponse", || {
+        schemars::schema_for!(RestoreSnapshotResponse)
     }),
     ("StartTurnResponse", || {
         schemars::schema_for!(StartTurnResponse)

@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GitHub Action (P4):** Composite action `.github/actions/coverage-gate` runs `zagens coverage-gate` in CI; dogfood workflow `coverage-gate-dogfood.yml`; public doc `docs/desktop/GITHUB_ACTION.md`.
+- **Checkpoint / Rewind UI (P3):** User messages expose **Restore files** (workspace revert via `pre-turn:*` snapshots) distinct from **Branch** (fork conversation); `POST /v1/threads/{id}/workspace/revert-turn`; snapshot list includes `pre_turn` + `turn_offset`.
+- **Channels (P2):** `POST /v1/threads/{id}/events` injects inbound channel events (steer / queue / start-turn) with optional `source`; reuses runtime bearer auth; emits `channel.injected` audit events.
 - **Git worktree parallel sessions (P1):** `[worktrees]` config; `CreateThreadRequest` / `POST /v1/stream` `use_worktree`; thread metadata `git_root` + `worktree_name`; archive-time prune; CRAFT `agent_spawn` auto worktree when `task_id` set; desktop Composer **Worktree** toggle for new sessions.
 - **Git worktree (P1 depth):** Deep link `use_worktree=1`; TUI `--worktree` + settings preference; desktop worktree failure toasts and session WT badges; CRAFT executor auto-spawn worktree; `zagens doctor` Worktrees section; create/archive prune integration test.
 
