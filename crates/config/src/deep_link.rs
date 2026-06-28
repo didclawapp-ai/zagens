@@ -217,8 +217,7 @@ mod tests {
 
     #[test]
     fn parse_minimal_open_url() {
-        let dir = std::env::temp_dir().join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = test_workspace_under_home();
         let url = build_open_url(&dir, None, None, false);
         let parsed = parse_open_url(&url).unwrap();
         assert_eq!(
@@ -230,8 +229,7 @@ mod tests {
 
     #[test]
     fn parse_prompt_and_task_type() {
-        let dir = std::env::temp_dir().join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = test_workspace_under_home();
         let url = build_open_url(&dir, Some("fix CI"), Some("code"), false);
         let parsed = parse_open_url(&url).unwrap();
         assert_eq!(parsed.prompt.as_deref(), Some("fix CI"));
@@ -247,8 +245,7 @@ mod tests {
 
     #[test]
     fn parse_use_worktree_flag() {
-        let dir = std::env::temp_dir().join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = test_workspace_under_home();
         let url = build_open_url(&dir, None, None, true);
         let parsed = parse_open_url(&url).unwrap();
         assert_eq!(parsed.use_worktree, Some(true));
@@ -263,11 +260,18 @@ mod tests {
 
     #[test]
     fn find_in_args() {
-        let dir = std::env::temp_dir().join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = test_workspace_under_home();
         let url = build_open_url(&dir, Some("hi"), None, false);
         let found = find_open_url_in_args(["zagens.exe", url.as_str()]);
         assert!(found.is_some());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Linux CI temp dir is `/tmp`, outside [`user_scoped_workspace`] allowed roots.
+    fn test_workspace_under_home() -> PathBuf {
+        let home = dirs::home_dir().expect("home directory");
+        let dir = home.join(format!("zagens-dl-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
     }
 }

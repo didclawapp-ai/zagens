@@ -217,7 +217,9 @@ async fn zagens_cli_doctor_json_smoke() -> Result<()> {
 
 #[tokio::test]
 async fn zagens_cli_open_url_validate_only() -> Result<()> {
-    let root = std::env::temp_dir().join(format!("zagens-open-url-{}", Uuid::new_v4()));
+    let root = dirs::home_dir()
+        .context("resolve home directory")?
+        .join(format!("zagens-open-url-{}", Uuid::new_v4()));
     std::fs::create_dir_all(&root).context("create temp workspace")?;
     let url = zagens_config::build_open_url(&root, Some("hello"), Some("code"), false);
 
