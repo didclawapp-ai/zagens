@@ -12,12 +12,12 @@
 
 > **作者语：** 不要相信 AI Agent 能做任何事情，它是有边界的；我们能做的，就是拓展这种边界。
 
-> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.8.4** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
+> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.8.5** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.4`**）· [zagens.com/download](https://zagens.com/download) |
+| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.5`**）· [zagens.com/download](https://zagens.com/download) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
@@ -60,17 +60,19 @@
 
 ---
 
-## 当前已具备（v0.8.4）
+## 当前已具备（v0.8.5）
+
+**上下文过渡（P0–P4）：** **Context Explorer**（TUI **Context** 面板 + 桌面 token 分解）；messages 层 `[COMPACTED_HISTORY]` 压缩摘要；模型切换时 seam 热重载；容量 **`VerifyAndReplan`** 回退链。**`zagens doctor`** 上下文诊断；**`zagens://open`** 深链接。
 
 **Kernel V3 引擎：** 事件溯源 turn 循环 — `sessions.db` 中的 `KernelEvent` 日志、`LiveTurnMachine` 规划、`EffectInterpreter` IO、golden 重放夹具。规格：[AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md)。
 
-**桌面（Tauri）：** **多会话并行流式**（后台 turn 继续运行，切换会话可回看进度）；**模型接入面板**（DeepSeek / OpenRouter / Ollama / Agnes / SenseNova / NVIDIA NIM / 自定义 OpenAI 兼容端点，catalog 自适应 `max_tokens`）；**会话级配置覆盖**（LHT、审批、功能开关，无需 sidecar 重启）；多会话聊天（流式/停止/思考流）、文件树与预览与 diff、PTY 终端（Code）、子代理面板、任务/技能 UI、MCP 与路由规则、用量图表、keyring 存 Key、中/英/日/葡 UI。Composer 溢出菜单可导出 **Kernel Trace Report**（离线 HTML 诊断包）。
+**桌面（Tauri）：** **Dusk** 第三主题；**git worktree** 并行会话；**检查点/回滚 UI** 与 **channels**；多会话并行流式；**模型接入面板**；会话级配置覆盖；集成 PTY 终端（光标/ANSI/URL 链接）；**Kernel Trace Report** 导出。中/英/日/葡 UI。
 
-**终端 TUI（`zagens-tui`）：** 全屏三栏 — 会话侧栏、流式 transcript（思考/工具）、composer（`/model`、`/lht`）、审批弹窗、inspector（文件 / diff / checklist / agents / MCP）、可折叠 LHT 下 pane、主题预设、会话恢复（`--fresh` 新建）。与桌面共用 runtime 线程与 Kernel V3 路径。
+**终端 TUI（`zagens-tui`）：** 全屏三栏 — 会话侧栏、流式 transcript、composer（`/model`、`/lht`）、审批弹窗、inspector（文件 / diff / checklist / **context** / agents / MCP）、可折叠 LHT 下 pane、主题预设、会话恢复（`--fresh` 新建）。与桌面共用 runtime 线程与 Kernel V3 路径。
 
-**Runtime：** 线程、MCP、技能（`~/.zagens/skills`）、生命周期 Hooks、多提供商路由、视觉（`describe_image`）、ContextCompiler V2 请求组装；**`GET/PUT/DELETE /v1/threads/{id}/config`** 会话 overlay；全局 **`thread.status`** SSE。
+**Runtime：** 线程、MCP、技能、Hooks、多提供商路由、视觉；**`GET/PUT/DELETE /v1/threads/{id}/config`**；全局 **`thread.status`** SSE；**`POST /v1/threads/{id}/events`** 通道注入。
 
-**工具（代表）：** 文件（`read_file`、`write_file`、`edit_file`、`batch_edit`、`refactor_imports` …）、git、`exec_shell`、`write_office`、可选 `web_search` / `fetch_url`、记忆工具。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+**工具（代表）：** 文件、git、`exec_shell`、`write_office`、可选 `web_search` / `fetch_url`、记忆工具。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -115,7 +117,7 @@
 | **`zagens`**（无 GUI CLI） | ✅ | ✅ | ✅ |
 | **桌面应用** | —（用 TUI） | —（用 TUI） | ✅ 安装包 |
 
-可通过 **预编译包**（[Releases `zagens-v0.8.4`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.4)）、**`cargo install`**（crates.io）或 **源码构建**（见下）安装。
+可通过 **预编译包**（[Releases `zagens-v0.8.5`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.5)）、**`cargo install`**（crates.io）或 **源码构建**（见下）安装。
 
 **Rust 前置**（仅 `cargo install` / 源码需要）：安装 [rustup](https://rustup.rs/)（Rust **1.88+**；CI 使用 1.96）。Linux/macOS 执行 `source "$HOME/.cargo/env"`，Windows 重开终端。
 
@@ -128,13 +130,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
 # TUI（首次编译约 10–30 分钟）
-cargo install zagens-cli --version 0.8.4 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens-tui --features tui --locked
 
 # 无 GUI CLI（可选）
-cargo install zagens-cli --version 0.8.4 --bin zagens --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens --locked
 ```
 
-**预编译**（无需 Rust）：从 [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.4) 下载 `zagens-tui-x86_64-unknown-linux-gnu` 和/或 `zagens-x86_64-unknown-linux-gnu`，校验对应 `.sha256`，`chmod +x` 后放入 `PATH` 目录。
+**预编译**（无需 Rust）：从 [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.5) 下载 `zagens-tui-x86_64-unknown-linux-gnu` 和/或 `zagens-x86_64-unknown-linux-gnu`，校验对应 `.sha256`，`chmod +x` 后放入 `PATH` 目录。
 
 ```bash
 zagens-tui              # 恢复上次会话
@@ -148,29 +150,29 @@ xcode-select --install    # 若缺少 C 工具链
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
-cargo install zagens-cli --version 0.8.4 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.4 --bin zagens --locked   # 可选
+cargo install zagens-cli --version 0.8.5 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens --locked   # 可选
 ```
 
-**预编译：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.4) 上的 `zagens-tui-x86_64-apple-darwin`（Intel）或 `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
+**预编译：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.5) 上的 `zagens-tui-x86_64-apple-darwin`（Intel）或 `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
 
 #### Windows
 
-**预编译（最快）：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.4) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（及 `.sha256`）。将目录加入 `PATH`，或把 `.exe` 复制到已在 `PATH` 中的文件夹。
+**预编译（最快）：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.5) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（及 `.sha256`）。将目录加入 `PATH`，或把 `.exe` 复制到已在 `PATH` 中的文件夹。
 
 **crates.io**（先安装 [Rust for Windows](https://rustup.rs/)）：
 
 ```powershell
-cargo install zagens-cli --version 0.8.4 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.4 --bin zagens --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens --locked
 ```
 
 ### crates.io（全平台）
 
 ```bash
-cargo install zagens-cli --version 0.8.4 --bin zagens-tui --features tui --locked   # TUI
-cargo install zagens-cli --version 0.8.4 --bin zagens --locked                   # CLI
-cargo install zagens-cli --version 0.8.4 --bin zagens-runtime --locked           # HTTP sidecar（可选）
+cargo install zagens-cli --version 0.8.5 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.5 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.5 --bin zagens-runtime --locked           # HTTP sidecar（可选）
 ```
 
 ### 从源码 — 桌面

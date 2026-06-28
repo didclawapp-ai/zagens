@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.4`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.4**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.5`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.5**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,12 +20,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-06-28
+
+**Release highlights**
+
+- **Context transition (P0–P4):** Context Explorer (TUI **Context** tab + desktop breakdown); compaction summary in messages layer `[COMPACTED_HISTORY]` (no double-sent system summary); seam hot-reload on model switch; capacity `VerifyAndReplan` fallback chain before canonical replan.
+- **Dusk theme** (third desktop theme); **git worktree** parallel sessions; **deep links** (`zagens://open`) and **`zagens doctor`** context diagnostics.
+- **Channels**, **checkpoint/rewind UI**, **coverage-gate** GitHub Action; unified **`justfile`** test tiers (Vitest/ESLint); integrated terminal polish (cursor, ANSI colors, URL links).
+
 ### Fixed
 
 - **Compaction (P3) — no more double-sent summary:** With `summary_in_messages` (default), `assemble_system_text_for_v2` no longer re-appends the full `[COMPACTED_HISTORY]` summary to the wire `system` field when it already lives in the message transcript. Previously the V2/V3 request path sent the summary twice (once in `messages`, once in `system`), inflating tokens and re-introducing the system-layer "Frankenstein" the messages-layer redesign removed. New `compaction_in_messages` snapshot flag + tests `assemble_system_text_omits_compaction_when_in_messages` / `assemble_system_text_keeps_compaction_in_legacy_mode`.
 - **Context profile (P1) — seam hot-reload on model switch:** `refresh_context_profile_bindings` now reconfigures the `SeamManager` (enablement + L1/L2/L3/cycle thresholds + verbatim window) via the new `SeamHost::reconfigure_for_model`. Previously seam config was frozen at engine-build time, so switching to a Large-profile model mid-session never engaged seams (and Large→Medium never disengaged them).
 - **`/compact` command help:** Descriptions (en/zh/ja/pt) now describe the reversible `[COMPACTED_HISTORY]` messages-layer archive instead of calling it a "legacy" command; CI `-D warnings` fix (unused `display_width` import scoped to the TUI `context_pane` test module).
 - **Desktop integrated terminal:** Restore a visible input cursor (contrasting bar + inactive block style); click-to-focus; enable ANSI colors in PTY shells (PowerShell `PSStyle`, `FORCE_COLOR` / npm); URL link highlighting via xterm web-links addon.
+- **Custom model providers:** OpenAI-compatible base URLs that already end with a version segment (e.g. Zhipu GLM `…/v4`) no longer get an extra `/v1` inserted before `chat/completions` or `/models` probes.
+- **CI scripts:** `check-architecture-freeze.ps1` uses `zagens-desktop` (was stale `deepseek-desktop`); `verify-workspace.ps1` now runs multi-session verification like the `.sh` twin; coverage-gate composite action ships missing `build-zagens.sh` / `run-gate.sh`.
+- **Runtime tests:** Fix 26 `zagens-cli --lib` regressions — `KernelEventWriter` drain on a blocking thread (no Tokio runtime in sync tests), `trust_mode` in task/automation tool schemas, `effective_trust_mode` test configs, stream schema version helper, doctor CN endpoint hint, capacity tool-replay return semantics, file path error message, provider drift skip for `custom`.
+- **R-015 longrun:** `runtime-longrun-baseline.ps1` no longer passes empty `--config` (sidecar failed to start); ADR RSS gate reads English `Process RSS peak` row; harness longrun pins `-Model deepseek-v4-pro` to match ADR scenario.
+- **Runtime (Kernel V3 · resume anchor-only 加固):** thread 恢复时 anchor 效果对账不再对「因 turn 事件无法加载/为空被跳过而导致的 anchor 数偏少」误报 warn——新增纯函数 `resume_anchor_alignment_is_anomalous`(含单测),仅当「全部 turn 已加载却仍不一致」或「解释出的 anchor 反而多于投影记录」时才 warn,可解释的缺口降级为 info.
+- **Tests (Linux CI):** `open-url --validate-only` contract tests use home-scoped workspaces (Linux `/tmp` is outside `user_scoped_workspace` allowed roots).
+- **Desktop (model providers):** 修复打开「模型接入」面板时 `get_model_providers_status` / `get_system_settings` 等 IPC 无限循环（挂载时不再误触发 `onSaved` 全量同步）；打包手测验收通过。
+- **Desktop + Runtime (SenseNova · DeepSeek V4):** 修复经 SenseNova 等第三方使用 `deepseek-v4-flash` 时 `max_tokens` 仍按 384K 发送导致 API 400（`MaxTokens invalid, should be in [1, 65536]`）；catalog 发布 ≤64K 上限时 V4 与 runtime 双侧均 respect catalog；手测验收通过。
+- **Desktop (model providers):** 修复 DeepSeek 主力模型点「检测服务」返回 **HTTP 404**（`normalize_models_url` 对 `api.deepseek.com` 命中根路径 `/models`）；手测验收通过。
+- **Desktop (model providers):** 修复 DeepSeek 等 preset 商「检测服务」成功后只显示「服务可用（N 个模型）」文字、**不展示模型列表**且无法点选设为当前。`ModelProviderCard` 现渲染 `ProviderProbeResult.models` 为可选列表，点选后经现有 `save_model_provider_credentials` IPC 写入 `cfg.model` 并刷新；复用 `catalogCurrent` 标记当前。新增 i18n key `probeModels`/`probeModelApply`（zh-Hans/en/ja/pt-BR）。
+- **Desktop (model providers):** 修复在模型接入面板点选 probe 列表模型后，**Composer 输入区模型选择器不跟随切换**。根因：`save_model_provider_credentials` 只写 `providers.*.model`，未同步 `default_text_model`（Composer 经 `get_system_settings` 读取）；现当保存目标为**当前活跃 provider** 时同步更新 `default_text_model`（custom provider 同理）。
 
 ### Added
 
@@ -38,37 +57,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Checkpoint / Rewind UI (P3):** User messages expose **Restore files** (workspace revert via `pre-turn:*` snapshots) distinct from **Branch** (fork conversation); `POST /v1/threads/{id}/workspace/revert-turn`; snapshot list includes `pre_turn` + `turn_offset`.
 - **Channels (P2):** `POST /v1/threads/{id}/events` injects inbound channel events (steer / queue / start-turn) with optional `source`; reuses runtime bearer auth; emits `channel.injected` audit events.
 - **Git worktree parallel sessions (P1):** `[worktrees]` config; `CreateThreadRequest` / `POST /v1/stream` `use_worktree`; thread metadata `git_root` + `worktree_name`; archive-time prune; CRAFT `agent_spawn` auto worktree when `task_id` set; desktop Composer **Worktree** toggle for new sessions.
-
-### Fixed
-
-- **Custom model providers:** OpenAI-compatible base URLs that already end with a version segment (e.g. Zhipu GLM `…/v4`) no longer get an extra `/v1` inserted before `chat/completions` or `/models` probes.
-- **CI scripts:** `check-architecture-freeze.ps1` uses `zagens-desktop` (was stale `deepseek-desktop`); `verify-workspace.ps1` now runs multi-session verification like the `.sh` twin; coverage-gate composite action ships missing `build-zagens.sh` / `run-gate.sh`.
-- **Runtime tests:** Fix 26 `zagens-cli --lib` regressions — `KernelEventWriter` drain on a blocking thread (no Tokio runtime in sync tests), `trust_mode` in task/automation tool schemas, `effective_trust_mode` test configs, stream schema version helper, doctor CN endpoint hint, capacity tool-replay return semantics, file path error message, provider drift skip for `custom`.
-- **R-015 longrun:** `runtime-longrun-baseline.ps1` no longer passes empty `--config` (sidecar failed to start); ADR RSS gate reads English `Process RSS peak` row; harness longrun pins `-Model deepseek-v4-pro` to match ADR scenario.
-### Changed
-
-- **Desktop Composer:** Session isolation (git worktree) toggle moved from the input toolbar into the **⋯** overflow menu; default remains **off** for new sessions.
-- **Runtime (R-015):** ADR baseline RSS median **35.4 MB** @ `3d7ab0d` (was 29 MB @ `8b1538a`; full 3×50 + 1.1 MB fixture on Windows 10).
-- **Runtime (Kernel V3 · 清债):** 移除 `[kernel] machine` 的 `legacy` / `shadow` 专用解析分支与 `config_used_deprecated_{legacy,shadow}` 辅助函数;`KernelMachineMode::parse` 现统一映射到 `v3`,任何非 `v3` 值在启动时只记录单条「machine is ignored」warn(此前 legacy/shadow 各一条)。配置仍前向兼容(未知值不报错)。
-
-### Fixed
-
-- **Runtime (Kernel V3 · resume anchor-only 加固):** thread 恢复时 anchor 效果对账不再对「因 turn 事件无法加载/为空被跳过而导致的 anchor 数偏少」误报 warn——新增纯函数 `resume_anchor_alignment_is_anomalous`(含单测),仅当「全部 turn 已加载却仍不一致」或「解释出的 anchor 反而多于投影记录」时才 warn,可解释的缺口降级为 info。
-
-### Added
-
 - **Deep Links (`zagens://open`):** Shared URL parser in `zagens-config`; `zagens open-url` validates and launches desktop; desktop handles argv + OS protocol, prefills Composer via `zagens://open-request`.
 - **CLI (`zagens doctor`):** Context diagnostics — resolved instruction paths (incl. pick-rules / project docs), skill discovery with warnings, hooks summary, config merge layers, and memory status; `--json` emits a `context` object with merge notes.
 - **Desktop (model providers · MP-4 P4b):** OpenRouter、SenseNova、Agnes AI、NVIDIA NIM 四家 catalog 商迁入 `CATALOG_PROVIDERS` 注册表；旧 IPC（list/set/activate）经 `adapters`/`catalog` 转发，删除 `nvidia_nim_provider.rs` 单体模块；新增 `every_catalog_preset_in_registry` 一致性单测。
 - **Desktop (model providers · MP-8 P5):** 统一 IPC `list_catalog_models` / `set_catalog_model`；`ModelProviderStatus.has_catalog_picker`；前端 `CatalogModelPicker` 替代四个 per-provider Picker；`output_limits` 由 catalog 响应驱动。
 
-### Fixed
+### Changed
 
-- **Desktop (model providers):** 修复打开「模型接入」面板时 `get_model_providers_status` / `get_system_settings` 等 IPC 无限循环（挂载时不再误触发 `onSaved` 全量同步）；打包手测验收通过。
-- **Desktop + Runtime (SenseNova · DeepSeek V4):** 修复经 SenseNova 等第三方使用 `deepseek-v4-flash` 时 `max_tokens` 仍按 384K 发送导致 API 400（`MaxTokens invalid, should be in [1, 65536]`）；catalog 发布 ≤64K 上限时 V4 与 runtime 双侧均 respect catalog；手测验收通过。
-- **Desktop (model providers):** 修复 DeepSeek 主力模型点「检测服务」返回 **HTTP 404**（`normalize_models_url` 对 `api.deepseek.com` 命中根路径 `/models`）；手测验收通过。
-- **Desktop (model providers):** 修复 DeepSeek 等 preset 商「检测服务」成功后只显示「服务可用（N 个模型）」文字、**不展示模型列表**且无法点选设为当前。`ModelProviderCard` 现渲染 `ProviderProbeResult.models` 为可选列表，点选后经现有 `save_model_provider_credentials` IPC 写入 `cfg.model` 并刷新；复用 `catalogCurrent` 标记当前。新增 i18n key `probeModels`/`probeModelApply`（zh-Hans/en/ja/pt-BR）。
-- **Desktop (model providers):** 修复在模型接入面板点选 probe 列表模型后，**Composer 输入区模型选择器不跟随切换**。根因：`save_model_provider_credentials` 只写 `providers.*.model`，未同步 `default_text_model`（Composer 经 `get_system_settings` 读取）；现当保存目标为**当前活跃 provider** 时同步更新 `default_text_model`（custom provider 同理）。
+- **Desktop Composer:** Session isolation (git worktree) toggle moved from the input toolbar into the **⋯** overflow menu; default remains **off** for new sessions.
+- **Runtime (R-015):** ADR baseline RSS median **35.4 MB** @ `3d7ab0d` (was 29 MB @ `8b1538a`; full 3×50 + 1.1 MB fixture on Windows 10).
+- **Runtime (Kernel V3 · 清债):** 移除 `[kernel] machine` 的 `legacy` / `shadow` 专用解析分支与 `config_used_deprecated_{legacy,shadow}` 辅助函数;`KernelMachineMode::parse` 现统一映射到 `v3`,任何非 `v3` 值在启动时只记录单条「machine is ignored」warn(此前 legacy/shadow 各一条)。配置仍前向兼容(未知值不报错)。
 
 ## [0.8.4] - 2026-06-26
 

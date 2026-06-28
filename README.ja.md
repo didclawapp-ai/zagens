@@ -12,12 +12,12 @@
 
 > **作者より：** AI Agent が何でもできるわけではない — 境界がある。私たちにできるのは、その境界を広げることだ。
 
-> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.8.4** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
+> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.8.5** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
 
 | リソース | リンク |
 |----------|--------|
 | ユーザーガイド | [zagens.com/docs](https://zagens.com/docs) |
-| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.4`**）· [zagens.com/download](https://zagens.com/download) |
+| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.5`**）· [zagens.com/download](https://zagens.com/download) |
 | 設計仕様 | [`docs/README.md`](docs/README.md) |
 | コントリビューション | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | セキュリティ | [`SECURITY.md`](SECURITY.md) |
@@ -60,17 +60,19 @@
 
 ---
 
-## 現時点で提供（v0.8.4）
+## 現時点で提供（v0.8.5）
+
+**コンテキスト移行（P0–P4）:** **Context Explorer**（TUI **Context** タブ + デスクトップ token 内訳）；messages 層 `[COMPACTED_HISTORY]` 圧縮；モデル切替時の seam ホットリロード；容量 **`VerifyAndReplan`** フォールバック。**`zagens doctor`** コンテキスト診断；**`zagens://open`** ディープリンク。
 
 **Kernel V3 エンジン:** イベントソーシング turn — `sessions.db` の `KernelEvent` ログ、`LiveTurnMachine` 計画、`EffectInterpreter` IO、golden リプレイフィクスチャ。仕様: [AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md)。
 
-**デスクトップ（Tauri）:** **マルチセッション並列ストリーミング**（バックグラウンド turn 継続、セッション切替で進捗を保持）；**モデルプロバイダパネル**（DeepSeek / OpenRouter / Ollama / Agnes / SenseNova / NVIDIA NIM / カスタム OpenAI 互換、catalog 連動 `max_tokens`）；**セッション単位 config overlay**（LHT・承認・機能、sidecar 再起動不要）；チャット、ファイルツリー・プレビュー・diff、PTY、サブエージェント、MCP、使用量、keyring、4 言語 UI。Composer から **Kernel Trace Report**（オフライン HTML）をエクスポート。
+**デスクトップ（Tauri）:** **Dusk** 第 3 テーマ；**git worktree** 並列セッション；**チェックポイント/巻き戻し UI** と **channels**；マルチセッション並列ストリーミング；**モデルプロバイダパネル**；セッション overlay；統合 PTY（カーソル/ANSI/URL）；**Kernel Trace Report** エクスポート。4 言語 UI。
 
-**ターミナル TUI（`zagens-tui`）:** 全画面 3 カラム — セッション rail、ストリーミング transcript（思考/ツール）、composer（`/model`、`/lht`）、承認モーダル、inspector（files / diff / checklist / agents / MCP）、折りたたみ LHT 下ペイン、テーマ、セッション復元（`--fresh` で新規）。デスクトップと同一 runtime スレッドと Kernel V3 パス。
+**ターミナル TUI（`zagens-tui`）:** 全画面 3 カラム — セッション rail、ストリーミング transcript、composer（`/model`、`/lht`）、承認モーダル、inspector（files / diff / checklist / **context** / agents / MCP）、折りたたみ LHT 下ペイン、テーマ、セッション復元（`--fresh` で新規）。デスクトップと同一 runtime スレッドと Kernel V3 パス。
 
-**Runtime:** スレッド、MCP、スキル（`~/.zagens/skills`）、Hooks、マルチプロバイダ、ビジョン（`describe_image`）、ContextCompiler V2；**`GET/PUT/DELETE /v1/threads/{id}/config`** overlay；グローバル **`thread.status`** SSE。
+**Runtime:** スレッド、MCP、スキル、Hooks、マルチプロバイダ、ビジョン；**`GET/PUT/DELETE /v1/threads/{id}/config`**；グローバル **`thread.status`** SSE；**`POST /v1/threads/{id}/events`** チャネル注入。
 
-**ツール（代表）:** ファイル（`read_file`、`write_file`、`edit_file`、`batch_edit`、`refactor_imports` …）、git、`exec_shell`、`write_office`、任意で `web_search` / `fetch_url`、メモリツール。一覧: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+**ツール（代表）:** ファイル、git、`exec_shell`、`write_office`、任意で `web_search` / `fetch_url`、メモリツール。一覧: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -115,7 +117,7 @@
 | **`zagens`**（ヘッドレス CLI） | ✅ | ✅ | ✅ |
 | **デスクトップアプリ** | —（TUI を使用） | —（TUI を使用） | ✅ インストーラ |
 
-**プリビルド**（[Releases `zagens-v0.8.4`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.4)）、**`cargo install`**（crates.io）、**ソースビルド**（下記）のいずれかで導入。
+**プリビルド**（[Releases `zagens-v0.8.5`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.5)）、**`cargo install`**（crates.io）、**ソースビルド**（下記）のいずれかで導入。
 
 **Rust 前提**（`cargo install` / ソースのみ）: [rustup](https://rustup.rs/)（Rust **1.88+**；CI は 1.96）。Linux/macOS は `source "$HOME/.cargo/env"`、Windows はターミナル再起動。
 
@@ -128,13 +130,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
 # TUI（初回コンパイルは 10–30 分程度）
-cargo install zagens-cli --version 0.8.4 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens-tui --features tui --locked
 
 # ヘッドレス CLI（任意）
-cargo install zagens-cli --version 0.8.4 --bin zagens --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens --locked
 ```
 
-**プリビルド**（Rust 不要）: [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.4) から `zagens-tui-x86_64-unknown-linux-gnu` および/または `zagens-x86_64-unknown-linux-gnu` を取得し、`.sha256` を検証、`chmod +x` して `PATH` に配置。
+**プリビルド**（Rust 不要）: [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.5) から `zagens-tui-x86_64-unknown-linux-gnu` および/または `zagens-x86_64-unknown-linux-gnu` を取得し、`.sha256` を検証、`chmod +x` して `PATH` に配置。
 
 ```bash
 zagens-tui              # 前回セッション復元
@@ -148,29 +150,29 @@ xcode-select --install    # C ツールチェーンがない場合
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
-cargo install zagens-cli --version 0.8.4 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.4 --bin zagens --locked   # 任意
+cargo install zagens-cli --version 0.8.5 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens --locked   # 任意
 ```
 
-**プリビルド:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.4) の `zagens-tui-x86_64-apple-darwin`（Intel）または `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
+**プリビルド:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.5) の `zagens-tui-x86_64-apple-darwin`（Intel）または `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
 
 #### Windows
 
-**プリビルド（最速）:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.4) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（+ `.sha256`）。フォルダを `PATH` に追加するか、`.exe` を `PATH` 上のディレクトリへコピー。
+**プリビルド（最速）:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.5) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（+ `.sha256`）。フォルダを `PATH` に追加するか、`.exe` を `PATH` 上のディレクトリへコピー。
 
 **crates.io**（先に [Rust for Windows](https://rustup.rs/) をインストール）:
 
 ```powershell
-cargo install zagens-cli --version 0.8.4 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.4 --bin zagens --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.5 --bin zagens --locked
 ```
 
 ### crates.io（全プラットフォーム）
 
 ```bash
-cargo install zagens-cli --version 0.8.4 --bin zagens-tui --features tui --locked   # TUI
-cargo install zagens-cli --version 0.8.4 --bin zagens --locked                   # CLI
-cargo install zagens-cli --version 0.8.4 --bin zagens-runtime --locked           # HTTP sidecar（任意）
+cargo install zagens-cli --version 0.8.5 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.5 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.5 --bin zagens-runtime --locked           # HTTP sidecar（任意）
 ```
 
 ### ソースから — デスクトップ
