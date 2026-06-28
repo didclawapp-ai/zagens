@@ -127,11 +127,12 @@ fn build_shell_program() -> CommandBuilder {
     #[cfg(windows)]
     {
         let exe = windows_shell_exe();
-        let mut c = CommandBuilder::new(&exe);
+        let is_pwsh = exe.eq_ignore_ascii_case("pwsh.exe");
+        let mut c = CommandBuilder::new(exe);
         c.arg("-NoLogo");
         c.arg("-NoProfile");
         // `-NoProfile` skips PSReadLine theme init; enable ANSI rendering explicitly.
-        if exe.eq_ignore_ascii_case("pwsh.exe") {
+        if is_pwsh {
             c.arg("-NoExit");
             c.arg("-Command");
             c.arg("$PSStyle.OutputRendering = 'Ansi'");
