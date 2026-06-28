@@ -18,7 +18,7 @@ use super::focus::{FocusRegion, RightSubfocus};
 use super::harness::{ChecklistSnapshot, blocked_suffix};
 use super::inspector::{
     AgentEntry, InspectorCache, InspectorInteraction, LhtPaneUi, activity_line_count,
-    agents_line_count, git_diff_patch, lht_line_count, read_text_preview,
+    agents_line_count, context_line_count, git_diff_patch, lht_line_count, read_text_preview,
 };
 use super::layout::{InspectorTab, LayoutEngine, TuiLayoutPrefs};
 use super::left_rail::SessionList;
@@ -30,6 +30,7 @@ use super::task_graph::{TaskGraphSnapshot, title_bar_harness_line_from_graph};
 use super::transcript::{TranscriptItem, TranscriptState, apply_event};
 use crate::core::events::Event;
 use crate::localization::Locale;
+use zagens_core::engine::ContextUsageBreakdown;
 
 use super::i18n::{load_locale, resumed_thread_banner};
 
@@ -61,6 +62,7 @@ pub struct AppState {
     pub harness_line: String,
     pub blocked_line: Option<String>,
     pub context_pct: Option<u8>,
+    pub context_breakdown: Option<ContextUsageBreakdown>,
     pub sessions: SessionList,
     pub inspector: InspectorCache,
     pub inspector_ui: InspectorInteraction,
@@ -141,6 +143,7 @@ impl AppState {
             harness_line: title_bar_harness_line_from_graph(None),
             blocked_line: None,
             context_pct: None,
+            context_breakdown: None,
             sessions,
             inspector,
             inspector_ui: InspectorInteraction::default(),
@@ -318,6 +321,10 @@ impl AppState {
             self.inspector_ui.scroll_up(1);
             return;
         }
+        if tab == InspectorTab::Context {
+            self.inspector_ui.scroll_up(1);
+            return;
+        }
         let visible = self.inspector_panel_height().max(4);
         match tab {
             InspectorTab::Files => self.inspector_ui.file_move_up(),
@@ -325,6 +332,7 @@ impl AppState {
             InspectorTab::Agents => self.inspector_ui.agents_move_up(),
             InspectorTab::Mcp => self.inspector_ui.mcp_move_up(),
             InspectorTab::Activity => {}
+            InspectorTab::Context => {}
         }
         let _ = visible;
     }
@@ -361,6 +369,11 @@ impl AppState {
                 if self.inspector_ui.scroll + visible >= count {
                     self.activity_follow_tail = true;
                 }
+            }
+            InspectorTab::Context => {
+                let count = context_line_count(self.context_breakdown.as_ref());
+                self.inspector_ui
+                    .scroll_down(count.saturating_sub(1), visible);
             }
         }
     }
@@ -446,6 +459,7 @@ impl AppState {
                 }
             }
             InspectorTab::Activity => {}
+            InspectorTab::Context => {}
         }
     }
 
@@ -660,6 +674,13 @@ impl AppState {
             && let Some(entry) = self.agents.iter_mut().find(|a| a.id == *id)
         {
             entry.status = "done".to_string();
+        }
+        if let Event::Status { message } = &event
+            && let Some(json) = message.strip_prefix("long_horizon.context_usage:")
+            && let Ok(breakdown) = serde_json::from_str::<ContextUsageBreakdown>(json.trim())
+        {
+            self.context_pct = Some(breakdown.usage_percent.round().clamp(0.0, 100.0) as u8);
+            self.context_breakdown = Some(breakdown);
         }
 
         apply_event(&mut self.transcript, event);
@@ -1007,7 +1028,12 @@ impl AppState {
             self.lht_pane_expanded = false;
             self.harness_line = title_bar_harness_line_from_graph(None);
         }
-        self.context_pct = host.fetch_context_pct().await;
+        self.context_breakdown = host.fetch_context_breakdown().await;
+        self.context_pct = self
+            .context_breakdown
+            .as_ref()
+            .map(|b| b.usage_percent.round().clamp(0.0, 100.0) as u8)
+            .or(host.fetch_context_pct().await);
         self.inspector.agents = self.agents.clone();
         self.refresh_workspace_inspector(host);
         self.schedule_next_poll();
@@ -1074,6 +1100,7 @@ fn test_app_state_for_draw(composer_text: &str) -> AppState {
         harness_line: String::new(),
         blocked_line: None,
         context_pct: None,
+        context_breakdown: None,
         sessions: SessionList::default(),
         inspector: InspectorCache::default(),
         inspector_ui: InspectorInteraction::default(),

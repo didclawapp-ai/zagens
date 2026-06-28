@@ -209,13 +209,26 @@ impl RuntimeThreadManager {
         .await
         .map_err(|e| anyhow!("get_thread_context_breakdown panicked: {e}"))??;
 
+        let mut session = zagens_core::session::Session::new(
+            thread.model.clone(),
+            thread.workspace.clone(),
+            false,
+            false,
+            self.config.notes_path(),
+            self.config.mcp_config_path(),
+        );
+        session.system_prompt = system;
+        session.messages = messages;
+        let assembly_report =
+            crate::context_compiler_shadow::assembly_report_from_session(&session, 0);
+
         Ok(crate::context_snapshot::build_thread_context_breakdown(
             &thread.model,
-            &messages,
-            system.as_ref(),
+            &session.messages,
+            session.system_prompt.as_ref(),
             &compaction,
             Some(&thread.workspace),
-            None,
+            Some(&assembly_report),
             thresholds,
             seam_enabled,
         ))

@@ -207,7 +207,8 @@ impl Engine {
         let before_count = self.session.messages.len();
 
         let mut retries_used = 0u32;
-        let mut summary_prompt = None;
+        let mut compaction_summary: (Option<SystemPrompt>, Option<crate::models::Message>) =
+            (None, None);
         let mut compacted_messages = self.session.messages.clone();
 
         let mut forced_config = self.config.compaction.clone();
@@ -228,13 +229,14 @@ impl Engine {
             Some(&self.session.workspace),
             None,
             None,
+            false,
         )
         .await
         {
             Ok(result) => {
                 retries_used = result.retries_used;
                 compacted_messages = result.messages;
-                summary_prompt = result.summary_prompt;
+                compaction_summary = (result.summary_prompt, result.summary_message);
             }
             Err(err) => {
                 let _ = self
@@ -249,7 +251,9 @@ impl Engine {
         if !compacted_messages.is_empty() || self.session.messages.is_empty() {
             self.session.messages = compacted_messages;
         }
-        self.merge_compaction_summary(summary_prompt);
+        if compaction_summary.0.is_some() || compaction_summary.1.is_some() {
+            self.apply_compaction_result(compaction_summary.0, compaction_summary.1);
+        }
 
         let trimmed = self.trim_oldest_messages_to_budget(target_budget);
         self.emit_session_updated().await;

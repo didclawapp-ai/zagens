@@ -334,6 +334,7 @@ fn draw_right_rail(
         &app.inspector_ui,
         &app.workspace,
         &activity_events,
+        app.context_breakdown.as_ref(),
     );
     paint_pane(
         frame,

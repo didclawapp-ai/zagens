@@ -53,9 +53,9 @@ pub use approval::{
     recv_user_input_for_tool,
 };
 pub use context::{
-    COMPACTION_SUMMARY_MARKER, MAX_CONTEXT_RECOVERY_ATTEMPTS, MIN_RECENT_MESSAGES_TO_KEEP,
-    TURN_MAX_OUTPUT_TOKENS, compact_tool_result_for_context, context_input_budget,
-    count_oldest_messages_to_drain, effective_max_output_tokens,
+    COMPACTED_HISTORY_MARKER, COMPACTION_SUMMARY_MARKER, MAX_CONTEXT_RECOVERY_ATTEMPTS,
+    MIN_RECENT_MESSAGES_TO_KEEP, TURN_MAX_OUTPUT_TOKENS, compact_tool_result_for_context,
+    context_input_budget, count_oldest_messages_to_drain, effective_max_output_tokens,
     estimate_input_tokens_conservative, extract_compaction_summary_prompt,
     is_context_length_error_message, summarize_text, turn_response_headroom_tokens,
 };
@@ -70,7 +70,7 @@ pub use context_compiler::{
 pub use context_snapshot::ThreadContextSnapshot;
 pub use context_usage_breakdown::{
     ContextCategory, ContextNextAction, ContextUsageBreakdown, build_context_usage_breakdown,
-    categories_from_assembly_report, resolve_next_action,
+    categories_from_assembly_report, conversation_turn_children, resolve_next_action,
 };
 pub use dispatch::{
     ToolParallelPlanFlags, caller_allowed_for_tool, caller_type_for_tool_use, final_tool_input,

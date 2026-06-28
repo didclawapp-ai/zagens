@@ -122,6 +122,7 @@ fn merge_compaction(
     CompactionConfigToml {
         auto_compact: patch.auto_compact.or(base.auto_compact),
         token_threshold: patch.token_threshold.or(base.token_threshold),
+        summary_in_messages: base.summary_in_messages,
     }
 }
 

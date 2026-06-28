@@ -124,6 +124,8 @@ pub enum Event {
         compaction_size_reduction: usize,
         replay_outcome: Option<String>,
         replan_performed: bool,
+        /// P4: ordered intervention steps attempted (e.g. cycle_handoff → replan).
+        fallback_chain: Option<Vec<String>>,
     },
     #[allow(dead_code)]
     CapacityMemoryPersistFailed {

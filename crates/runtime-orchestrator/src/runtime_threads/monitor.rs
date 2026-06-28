@@ -576,12 +576,24 @@ where
                 after_prompt_tokens,
                 replay_outcome,
                 replan_performed,
+                fallback_chain,
                 ..
             } => {
-                let message = format!(
-                    "Capacity intervention: {action} (~{before_prompt_tokens} -> ~{after_prompt_tokens}) replay={:?} replan={replan_performed}",
-                    replay_outcome
-                );
+                let chain_note = fallback_chain
+                    .as_ref()
+                    .map(|c| c.join("→"))
+                    .unwrap_or_default();
+                let message = if chain_note.is_empty() {
+                    format!(
+                        "Capacity intervention: {action} (~{before_prompt_tokens} -> ~{after_prompt_tokens}) replay={:?} replan={replan_performed}",
+                        replay_outcome
+                    )
+                } else {
+                    format!(
+                        "Capacity intervention: {action} (~{before_prompt_tokens} -> ~{after_prompt_tokens}) chain={chain_note} replay={:?} replan={replan_performed}",
+                        replay_outcome
+                    )
+                };
                 let item = TurnItemRecord {
                     schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
                     id: format!("item_{}", &Uuid::new_v4().to_string()[..8]),

@@ -820,4 +820,22 @@ impl zagens_core::engine::hosts::SeamHost for SeamManager {
     async fn reset(&self) {
         SeamManager::reset(self).await
     }
+
+    fn reconfigure_for_model(
+        &mut self,
+        enabled: bool,
+        verbatim_window_turns: usize,
+        l1_threshold: usize,
+        l2_threshold: usize,
+        l3_threshold: usize,
+        cycle_threshold: usize,
+    ) {
+        self.config.enabled = enabled;
+        self.config.verbatim_window_turns = verbatim_window_turns;
+        self.config.l1_threshold = l1_threshold;
+        self.config.l2_threshold = l2_threshold;
+        self.config.l3_threshold = l3_threshold;
+        self.config.cycle_threshold = cycle_threshold;
+        // `seam_model` (the Flash worker) is intentionally left unchanged.
+    }
 }

@@ -123,6 +123,51 @@ impl Engine {
         }
     }
 
+    /// P4: enrich canonical state with live plan/checklist snapshots (replan path).
+    pub(in crate::core::engine) fn build_canonical_state_enriched(
+        &self,
+        turn: &TurnContext,
+        note: Option<&str>,
+        plan: &crate::tools::plan::PlanSnapshot,
+        checklist: &crate::tools::todo::TodoListSnapshot,
+    ) -> CanonicalState {
+        let mut canonical = self.build_canonical_state(turn, note);
+
+        if !plan.items.is_empty() || plan.explanation.is_some() {
+            canonical
+                .constraints
+                .push("Active plan (preserve on replan):".to_string());
+            if let Some(explanation) = plan.explanation.as_ref().filter(|s| !s.trim().is_empty()) {
+                canonical.constraints.push(summarize_text(explanation, 180));
+            }
+            for item in plan.items.iter().take(8) {
+                canonical.constraints.push(format!(
+                    "{} {}",
+                    item.status.symbol(),
+                    summarize_text(&item.step, 160)
+                ));
+            }
+        }
+
+        if !checklist.items.is_empty() {
+            canonical.pending_actions = checklist
+                .items
+                .iter()
+                .take(10)
+                .map(|item| {
+                    format!(
+                        "[todo {}] {:?}: {}",
+                        item.id,
+                        item.status,
+                        summarize_text(&item.content, 140)
+                    )
+                })
+                .collect();
+        }
+
+        canonical
+    }
+
     pub(in crate::core::engine) fn canonical_prompt(
         &self,
         canonical: &CanonicalState,

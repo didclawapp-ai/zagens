@@ -77,6 +77,7 @@ impl Engine {
             Some(&self.session.workspace),
             Some(&compaction_pins),
             Some(&compaction_paths),
+            false,
         )
         .await
         {
@@ -84,7 +85,7 @@ impl Engine {
                 if !result.messages.is_empty() || self.session.messages.is_empty() {
                     let auto_messages_after = result.messages.len();
                     self.session.messages = result.messages;
-                    Engine::merge_compaction_summary(self, result.summary_prompt);
+                    self.apply_compaction_result(result.summary_prompt, result.summary_message);
                     Engine::emit_session_updated(self).await;
                     let removed = auto_messages_before.saturating_sub(auto_messages_after);
                     let status = if result.retries_used > 0 {
@@ -202,6 +203,7 @@ impl Engine {
             Some(&self.session.workspace),
             Some(&compaction_pins),
             Some(&compaction_paths),
+            true,
         )
         .await
         {
@@ -209,7 +211,7 @@ impl Engine {
                 if !result.messages.is_empty() || self.session.messages.is_empty() {
                     let messages_after = result.messages.len();
                     self.session.messages = result.messages;
-                    self.merge_compaction_summary(result.summary_prompt);
+                    self.apply_compaction_result(result.summary_prompt, result.summary_message);
                     self.emit_session_updated().await;
                     let removed = messages_before.saturating_sub(messages_after);
                     let message = if result.retries_used > 0 {
@@ -219,7 +221,7 @@ impl Engine {
                         )
                     } else {
                         format!(
-                            "Compaction complete: {messages_before} → {messages_after} messages ({removed} removed)"
+                            "Compaction complete: {messages_before} → {messages_after} messages ({removed} removed). Early turns archived in [COMPACTED_HISTORY] (reversible via artifact)."
                         )
                     };
                     let compaction_id = id.clone();

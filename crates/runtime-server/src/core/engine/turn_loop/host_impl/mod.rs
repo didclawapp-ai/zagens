@@ -640,7 +640,6 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
         active_tools: Option<&[zagens_core::chat::Tool]>,
     ) -> Option<zagens_core::engine::turn_loop::CompilerRequestContext> {
         use zagens_core::engine::ContextProjection;
-        use zagens_core::engine::token_estimate::estimate_text_tokens;
         use zagens_core::engine::turn_loop::CompilerRequestContext;
 
         let mut snapshot =
@@ -651,8 +650,10 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
 
         // Replace placeholder estimate with the actual serialized tool catalog size.
         if let Some(tools) = active_tools {
-            let json = serde_json::to_string(tools).unwrap_or_default();
-            snapshot.tool_catalog_est_tokens = estimate_text_tokens(&json) as u32;
+            let (builtin, mcp) = crate::context_prompt_segments::split_tool_catalog_tokens(tools);
+            snapshot.tools_builtin_tokens = builtin;
+            snapshot.tools_mcp_tokens = mcp;
+            snapshot.tool_catalog_est_tokens = builtin.saturating_add(mcp);
         }
 
         // Scratchpad reminder budget estimate (pure-logic, no I/O).
@@ -694,8 +695,9 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
         };
 
         let message_tokens =
-            zagens_core::engine::estimate_input_tokens_conservative(&self.session.messages, None)
-                as u32;
+            zagens_core::engine::context_usage_breakdown::conversation_message_tokens(
+                &self.session.messages,
+            );
         let assembly_report = compiled
             .assembly_report
             .clone()

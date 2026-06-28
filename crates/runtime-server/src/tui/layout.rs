@@ -43,15 +43,17 @@ pub enum InspectorTab {
     Agents,
     Mcp,
     Activity,
+    Context,
 }
 
 impl InspectorTab {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Files,
         Self::Diff,
         Self::Agents,
         Self::Mcp,
         Self::Activity,
+        Self::Context,
     ];
 
     pub fn label(self) -> &'static str {
@@ -61,6 +63,7 @@ impl InspectorTab {
             Self::Agents => "Agents",
             Self::Mcp => "MCP",
             Self::Activity => "Activity",
+            Self::Context => "Context",
         }
     }
 
@@ -71,6 +74,7 @@ impl InspectorTab {
             3 => Some(Self::Agents),
             4 => Some(Self::Mcp),
             5 => Some(Self::Activity),
+            6 => Some(Self::Context),
             _ => None,
         }
     }
@@ -144,6 +148,7 @@ impl TuiLayoutPrefs {
             "agents" => InspectorTab::Agents,
             "mcp" => InspectorTab::Mcp,
             "activity" => InspectorTab::Activity,
+            "context" => InspectorTab::Context,
             "checklist" => InspectorTab::Files,
             _ => InspectorTab::Files,
         }
@@ -156,6 +161,7 @@ impl TuiLayoutPrefs {
             InspectorTab::Agents => "agents",
             InspectorTab::Mcp => "mcp",
             InspectorTab::Activity => "activity",
+            InspectorTab::Context => "context",
         }
         .to_string();
     }

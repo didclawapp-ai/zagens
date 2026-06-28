@@ -5,8 +5,7 @@ use std::time::Duration;
 
 use crate::logging;
 use crate::models::{
-    CacheControl, ContentBlock, Message, MessageRequest, SystemBlock, SystemPrompt,
-    context_window_for_model,
+    ContentBlock, Message, MessageRequest, SystemPrompt, context_window_for_model,
 };
 use zagens_core::compaction::CompactionConfig;
 
@@ -70,8 +69,10 @@ pub(crate) fn summary_input_limits_for_model(model: &str) -> SummaryInputLimits 
 pub struct CompactionResult {
     /// Compacted messages (pinned subset — same semantics as before P2-C).
     pub messages: Vec<Message>,
-    /// Summary system prompt.
+    /// Summary system prompt (legacy system-layer or P3 pointer-only).
     pub summary_prompt: Option<SystemPrompt>,
+    /// P3: full summary injected as a user message when `summary_in_messages`.
+    pub summary_message: Option<Message>,
     /// Messages that were removed from the active window.
     #[allow(dead_code)]
     pub removed_messages: Vec<Message>,
@@ -114,6 +115,7 @@ pub async fn compact_messages_safe(
     workspace: Option<&Path>,
     external_pins: Option<&[usize]>,
     external_working_set_paths: Option<&[String]>,
+    manual_compaction: bool,
 ) -> Result<CompactionResult> {
     // Session-ID placeholder for artifact: empty string when not available
     // at this call site.  Callers that have a session ID should use
@@ -147,6 +149,7 @@ pub async fn compact_messages_safe(
             return Ok(CompactionResult {
                 messages: pruned_messages,
                 summary_prompt: None,
+                summary_message: None,
                 removed_messages: Vec::new(),
                 retries_used: 0,
                 artifact: None,
@@ -173,13 +176,15 @@ pub async fn compact_messages_safe(
             workspace,
             external_pins,
             external_working_set_paths,
+            manual_compaction,
         )
         .await
         {
-            Ok((msgs, prompt, removed, artifact)) => {
+            Ok((msgs, prompt, summary_message, removed, artifact)) => {
                 return Ok(CompactionResult {
                     messages: msgs,
                     summary_prompt: prompt,
+                    summary_message,
                     removed_messages: removed,
                     retries_used: attempt,
                     artifact,
@@ -244,14 +249,16 @@ pub async fn compact_messages(
     workspace: Option<&Path>,
     external_pins: Option<&[usize]>,
     external_working_set_paths: Option<&[String]>,
+    manual_compaction: bool,
 ) -> Result<(
     Vec<Message>,
     Option<SystemPrompt>,
+    Option<Message>,
     Vec<Message>,
     Option<zagens_core::compaction::CompactionArtifact>,
 )> {
     if messages.is_empty() {
-        return Ok((Vec::new(), None, Vec::new(), None));
+        return Ok((Vec::new(), None, None, Vec::new(), None));
     }
 
     let plan = plan_compaction(
@@ -262,7 +269,7 @@ pub async fn compact_messages(
         external_working_set_paths,
     );
     if plan.summarize_indices.is_empty() {
-        return Ok((messages.to_vec(), None, Vec::new(), None));
+        return Ok((messages.to_vec(), None, None, Vec::new(), None));
     }
 
     let to_summarize: Vec<Message> = plan
@@ -279,36 +286,33 @@ pub async fn compact_messages(
 
     let anchors_section = anchor_summary_section(workspace);
 
-    // Sanitize LLM-generated text before embedding in system prompt to prevent
+    // Sanitize LLM-generated text before embedding in prompts to prevent
     // prompt injection via the model's own summary output.
     let summary_safe = xml_escape_inline(&summary);
     let workflow_safe = xml_escape_inline(&workflow_context);
 
-    // Build new message list with enhanced summary as system block
-    let summary_block = SystemBlock {
-        block_type: "text".to_string(),
-        text: format!(
-            "{anchors_section}\
-             ## 📋 Conversation Summary (Auto-Generated)\n\n\
-             <compaction_summary>\n{summary_safe}\n</compaction_summary>\n\n\
-             ---\n\n\
-             ## 🔍 Workflow Context\n\n\
-             <workflow_context>\n{workflow_safe}\n</workflow_context>\n\n\
-             ---\n\n\
-             ## 💡 What to Do Next\n\n\
-             You have just resumed from a context compaction. The conversation above was summarized to save space. \
-             Review the summary and workflow context, then continue helping the user with their task. \
-             If you need more details about the summarized portion, ask the user to clarify.\n\n\
-             ---\n\n\
-             Pinned messages follow:"
-        ),
-        cache_control: if config.cache_summary {
-            Some(CacheControl {
-                cache_type: "ephemeral".to_string(),
-            })
-        } else {
-            None
-        },
+    let (summary_prompt, summary_message) = if config.summary_in_messages {
+        (
+            Some(super::messages_layer::build_compaction_system_pointer()),
+            Some(super::messages_layer::build_compacted_history_message(
+                &summary_safe,
+                &workflow_safe,
+                &anchors_section,
+                manual_compaction,
+            )),
+        )
+    } else {
+        (
+            Some(
+                super::messages_layer::build_legacy_compaction_summary_prompt(
+                    &summary_safe,
+                    &workflow_safe,
+                    &anchors_section,
+                    config.cache_summary,
+                ),
+            ),
+            None,
+        )
     };
 
     let pinned_messages: Vec<Message> = messages
@@ -356,7 +360,8 @@ pub async fn compact_messages(
 
     Ok((
         pinned_messages,
-        Some(SystemPrompt::Blocks(vec![summary_block])),
+        summary_prompt,
+        summary_message,
         to_summarize,
         artifact,
     ))

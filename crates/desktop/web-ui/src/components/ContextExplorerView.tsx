@@ -39,6 +39,16 @@ function normalizeBreakdown(raw: unknown): ContextUsageBreakdown | null {
           item_count: typeof row.item_count === 'number' ? row.item_count : undefined,
           user_action_hint:
             typeof row.user_action_hint === 'string' ? row.user_action_hint : undefined,
+          children: Array.isArray(row.children)
+            ? row.children
+                .filter((child): child is Record<string, unknown> => !!child && typeof child === 'object')
+                .map((child) => ({
+                  id: String(child.id ?? ''),
+                  label: String(child.label ?? child.id ?? ''),
+                  tokens: Number(child.tokens ?? 0),
+                  item_count: typeof child.item_count === 'number' ? child.item_count : undefined,
+                }))
+            : undefined,
         }))
     : [];
   return {
@@ -94,6 +104,21 @@ function CategoryRow({
         </button>
       ) : category.user_action_hint ? (
         <p className="text-[10px] leading-snug text-t-text-muted">{category.user_action_hint}</p>
+      ) : null}
+      {category.children && category.children.length > 0 ? (
+        <ul className="ml-2 space-y-1 border-l border-t-border/30 pl-2">
+          {category.children.map((child) => (
+            <li key={child.id} className="flex items-center justify-between gap-2 text-[10px]">
+              <span className="text-t-text-muted">{child.label}</span>
+              <span className="font-mono tabular-nums text-t-text-muted">
+                {formatTokenCount(child.tokens)}
+                {child.item_count != null
+                  ? ` · ${t('contextExplorer.itemCount', { n: String(child.item_count) })}`
+                  : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
       ) : null}
     </li>
   );

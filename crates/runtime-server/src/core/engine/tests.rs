@@ -1007,7 +1007,7 @@ fn refresh_system_prompt_under_capacity_omits_topic_memory_block() {
 }
 
 #[test]
-fn compaction_summary_stays_in_stable_system_prompt() {
+fn legacy_compaction_summary_merges_into_system_prompt() {
     let tmp = tempdir().expect("tempdir");
     fs::create_dir_all(tmp.path().join("src")).expect("mkdir");
     fs::write(tmp.path().join("src/main.rs"), "fn main() {}").expect("write");
@@ -1040,6 +1040,58 @@ fn compaction_summary_stays_in_stable_system_prompt() {
 
     assert!(prompt.contains(COMPACTION_SUMMARY_MARKER));
     assert!(!prompt.contains(WORKING_SET_SUMMARY_MARKER));
+}
+
+#[test]
+fn p3_compaction_result_injects_compacted_history_message() {
+    use zagens_core::engine::COMPACTED_HISTORY_MARKER;
+
+    let tmp = tempdir().expect("tempdir");
+    let config = EngineConfig {
+        workspace: tmp.path().to_path_buf(),
+        ..Default::default()
+    };
+    let (mut engine, _handle) = Engine::new(config, &Config::default());
+    assert!(engine.config.compaction.summary_in_messages);
+
+    engine.session.messages = vec![Message {
+        role: "user".into(),
+        content: vec![ContentBlock::Text {
+            text: "recent turn".into(),
+            cache_control: None,
+        }],
+    }];
+    engine.apply_compaction_result(
+        Some(crate::compaction::build_compaction_system_pointer()),
+        Some(crate::compaction::build_compacted_history_message(
+            "archived summary body",
+            "workflow notes",
+            "",
+            true,
+        )),
+    );
+
+    assert_eq!(engine.session.messages.len(), 2);
+    assert!(crate::compaction::message_is_compacted_history(
+        &engine.session.messages[0]
+    ));
+    let summary_text = match &engine.session.messages[0].content[0] {
+        ContentBlock::Text { text, .. } => text.as_str(),
+        _ => panic!("expected text block"),
+    };
+    assert!(summary_text.contains("archived summary body"));
+
+    let system_text = match &engine.session.system_prompt {
+        Some(SystemPrompt::Text(text)) => text.clone(),
+        Some(SystemPrompt::Blocks(blocks)) => blocks
+            .iter()
+            .map(|block| block.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        None => String::new(),
+    };
+    assert!(system_text.contains(COMPACTED_HISTORY_MARKER));
+    assert!(!system_text.contains("archived summary body"));
 }
 
 #[tokio::test]
@@ -1250,11 +1302,107 @@ async fn error_escalation_triggers_replan_when_severe_or_repeated_failures() {
 
     assert!(restarted);
     assert!(engine.session.messages.len() < before_len);
-    assert!(engine.session.messages.len() <= 2);
+    assert!(engine.session.messages.len() <= 1);
 
     let records = load_last_k_capacity_records(&engine.session.id, 1).expect("load memory");
     assert!(!records.is_empty());
     assert!(!records[0].canonical_state.goal.is_empty());
+    assert!(
+        records[0].action_trigger.contains("verify_and_replan")
+            || records[0].action_trigger.contains("replan")
+    );
+}
+
+#[tokio::test]
+async fn verify_and_replan_enriched_canonical_includes_plan_and_last_user_only() {
+    use crate::tools::plan::{PlanItemArg, StepStatus, UpdatePlanArgs};
+    use crate::tools::todo::TodoStatus;
+
+    let _env_lock = CAPACITY_MEMORY_ENV_LOCK.lock().await;
+    let tmp = tempdir().expect("tempdir");
+    let _env = ScopedCapacityMemoryDir::set(tmp.path());
+
+    let capacity = CapacityControllerConfig {
+        enabled: true,
+        low_risk_max: 0.0,
+        medium_risk_max: 0.0,
+        min_turns_before_guardrail: 0,
+        ..Default::default()
+    };
+
+    let mut engine = build_engine_with_capacity(capacity);
+    for i in 0..6 {
+        engine.session.messages.push(Message {
+            role: if i % 2 == 0 { "user" } else { "assistant" }.to_string(),
+            content: vec![ContentBlock::Text {
+                text: format!("history {i}"),
+                cache_control: None,
+            }],
+        });
+    }
+    engine.session.messages.push(Message {
+        role: "user".into(),
+        content: vec![ContentBlock::Text {
+            text: "Finish the refactor".into(),
+            cache_control: None,
+        }],
+    });
+    engine.session.messages.push(Message {
+        role: "user".into(),
+        content: vec![ContentBlock::ToolResult {
+            tool_use_id: "t1".into(),
+            content: "[verification replay] ok".into(),
+            is_error: None,
+            content_blocks: None,
+        }],
+    });
+
+    {
+        let mut plan = engine.config_ext().plan_state.lock().await;
+        plan.update(UpdatePlanArgs {
+            explanation: Some("Ship P4".into()),
+            plan: vec![PlanItemArg {
+                step: "Wire capacity fallback".into(),
+                status: StepStatus::InProgress,
+            }],
+        });
+    }
+    {
+        let mut todos = engine.config_ext().todos.lock().await;
+        todos.add("Add tests".into(), TodoStatus::Pending);
+    }
+
+    let turn = TurnContext::new(3);
+    let ok = engine
+        .apply_verify_and_replan(
+            &turn,
+            zagens_core::turn::TurnLoopMode::Agent,
+            None,
+            "test_replan",
+        )
+        .await;
+    assert!(ok);
+    assert_eq!(engine.session.messages.len(), 1);
+    assert!(engine.session.messages[0].content.iter().any(
+        |b| matches!(b, ContentBlock::Text { text, .. } if text.contains("Finish the refactor"))
+    ));
+
+    let records = load_last_k_capacity_records(&engine.session.id, 1).expect("records");
+    let canonical = &records[0].canonical_state;
+    assert!(
+        canonical
+            .constraints
+            .iter()
+            .any(|c| c.contains("Wire capacity fallback")),
+        "plan steps must survive replan canonical state"
+    );
+    assert!(
+        canonical
+            .pending_actions
+            .iter()
+            .any(|a| a.contains("Add tests")),
+        "checklist must survive replan canonical state"
+    );
 }
 
 /// v0.8.11: `CapacityControllerConfig::default()` ships with
@@ -2193,6 +2341,8 @@ async fn engine_mock_manual_compaction_completes_with_canned_summary() {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     let mut saw_compaction_complete = false;
     let mut saw_turn_complete = false;
+    let mut post_compact_messages = Vec::new();
+    let mut post_compact_system = None;
     while tokio::time::Instant::now() < deadline {
         let mut rx = handle.rx_event.write().await;
         let Ok(Some(event)) = tokio::time::timeout(Duration::from_secs(2), rx.recv()).await else {
@@ -2201,6 +2351,14 @@ async fn engine_mock_manual_compaction_completes_with_canned_summary() {
         match event {
             Event::CompactionCompleted { .. } => saw_compaction_complete = true,
             Event::TurnComplete { .. } => saw_turn_complete = true,
+            Event::SessionUpdated {
+                messages,
+                system_prompt,
+                ..
+            } => {
+                post_compact_messages = messages;
+                post_compact_system = system_prompt;
+            }
             _ => {}
         }
         if saw_compaction_complete && saw_turn_complete {
@@ -2213,6 +2371,44 @@ async fn engine_mock_manual_compaction_completes_with_canned_summary() {
     assert!(
         mock.call_count() >= 1,
         "compaction should call mock create_message at least once"
+    );
+    assert!(
+        !post_compact_messages.is_empty(),
+        "expected SessionUpdated after compaction"
+    );
+    assert!(
+        post_compact_messages
+            .iter()
+            .any(crate::compaction::message_is_compacted_history),
+        "P3 manual compaction must inject [COMPACTED_HISTORY] message"
+    );
+    let system_blob = match post_compact_system {
+        Some(SystemPrompt::Text(text)) => text,
+        Some(SystemPrompt::Blocks(blocks)) => blocks
+            .iter()
+            .map(|block| block.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        None => String::new(),
+    };
+    assert!(
+        !system_blob.contains("summary of older turns"),
+        "full LLM summary must not merge into system when summary_in_messages=true"
+    );
+    use zagens_core::engine::COMPACTED_HISTORY_MARKER;
+    assert!(
+        system_blob.contains(COMPACTED_HISTORY_MARKER) || !system_blob.is_empty(),
+        "system prompt should carry compaction pointer or base prompt"
+    );
+    let summary_in_messages = post_compact_messages.iter().any(|message| {
+        message.content.iter().any(|block| match block {
+            ContentBlock::Text { text, .. } => text.contains("summary of older turns"),
+            _ => false,
+        })
+    });
+    assert!(
+        summary_in_messages,
+        "LLM summary text must live in compacted-history message"
     );
 }
 

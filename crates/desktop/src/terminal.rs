@@ -95,6 +95,10 @@ fn shell_command(cwd: &Path) -> CommandBuilder {
     cmd.cwd(cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    // Common CLIs (npm, cargo, etc.) gate ANSI on these when attached to a PTY.
+    cmd.env("FORCE_COLOR", "1");
+    cmd.env("CLICOLOR_FORCE", "1");
+    cmd.env("npm_config_color", "always");
     cmd
 }
 
@@ -122,9 +126,16 @@ fn windows_shell_exe() -> &'static str {
 fn build_shell_program() -> CommandBuilder {
     #[cfg(windows)]
     {
-        let mut c = CommandBuilder::new(windows_shell_exe());
+        let exe = windows_shell_exe();
+        let mut c = CommandBuilder::new(&exe);
         c.arg("-NoLogo");
         c.arg("-NoProfile");
+        // `-NoProfile` skips PSReadLine theme init; enable ANSI rendering explicitly.
+        if exe.eq_ignore_ascii_case("pwsh.exe") {
+            c.arg("-NoExit");
+            c.arg("-Command");
+            c.arg("$PSStyle.OutputRendering = 'Ansi'");
+        }
         c
     }
     #[cfg(not(windows))]

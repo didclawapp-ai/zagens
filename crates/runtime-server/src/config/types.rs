@@ -497,6 +497,10 @@ pub struct CompactionConfigToml {
     /// active model context window when unset.
     #[serde(default)]
     pub token_threshold: Option<usize>,
+    /// When true (default), compaction summary is a `[COMPACTED_HISTORY]` user
+    /// message; when false, legacy full summary merges into the system prompt.
+    #[serde(default)]
+    pub summary_in_messages: Option<bool>,
 }
 
 /// Context management configuration (append-only layered context with Flash seams).

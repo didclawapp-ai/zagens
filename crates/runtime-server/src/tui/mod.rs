@@ -491,7 +491,7 @@ async fn handle_input_event(
                         app.transcript.toggle_last_turn_tools();
                     }
                 }
-                KeyCode::Char(n @ '1'..='5')
+                KeyCode::Char(n @ '1'..='6')
                     if app.layout.focus == FocusRegion::Left
                         || app.layout.focus == FocusRegion::Right =>
                 {

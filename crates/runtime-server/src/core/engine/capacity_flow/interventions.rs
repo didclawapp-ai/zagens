@@ -63,6 +63,7 @@ impl Engine {
             after_tokens,
             fallback_note.map(str::to_string),
             false,
+            fallback_note.map(|note| vec![note.to_string()]),
         )
         .await;
         self.0.capacity_controller.mark_intervention_applied(
@@ -100,6 +101,7 @@ impl Engine {
                 after_tokens,
                 Some("force_cycle_handoff".to_string()),
                 false,
+                Some(vec!["force_cycle_handoff".to_string()]),
             )
             .await;
             self.0.capacity_controller.mark_intervention_applied(
@@ -150,13 +152,17 @@ impl Engine {
                     Some(&self.session.workspace),
                     None,
                     None,
+                    false,
                 )
                 .await
                 {
                     Ok(result) => {
                         if !result.messages.is_empty() || self.session.messages.is_empty() {
                             self.session.messages = result.messages;
-                            self.merge_compaction_summary(result.summary_prompt);
+                            self.apply_compaction_result(
+                                result.summary_prompt,
+                                result.summary_message,
+                            );
                             refreshed = true;
                         }
                     }
@@ -244,13 +250,14 @@ impl Engine {
                 Some(&self.session.workspace),
                 Some(&compaction_pins),
                 Some(&compaction_paths),
+                false,
             )
             .await
             {
                 Ok(result) => {
                     if !result.messages.is_empty() || self.session.messages.is_empty() {
                         self.session.messages = result.messages;
-                        self.merge_compaction_summary(result.summary_prompt);
+                        self.apply_compaction_result(result.summary_prompt, result.summary_message);
                         refreshed = true;
                     }
                 }
@@ -431,6 +438,7 @@ impl Engine {
             after_tokens,
             Some(replay_outcome),
             false,
+            None,
         )
         .await;
         self.0
@@ -447,7 +455,41 @@ impl Engine {
         reason: &str,
     ) -> bool {
         let before_tokens = self.estimated_input_tokens();
-        let canonical = self.build_canonical_state(turn, Some(reason));
+        let mut fallback_chain = vec!["verify_and_replan".to_string()];
+
+        // P4-1: prefer cycle handoff over destructive canonical replan.
+        // Use `perform_cycle_advance` directly (not `force_cycle_handoff_for_overflow`)
+        // to avoid v3 effect-planner recursion when invoked from RunCompaction handoff.
+        fallback_chain.push("cycle_handoff".to_string());
+        if self
+            .perform_cycle_advance(
+                super::super::turn_loop::host_impl::turn_loop_to_app_mode(mode),
+                reason,
+            )
+            .await
+        {
+            fallback_chain.push("cycle_handoff_ok".to_string());
+            let after_tokens = self.estimated_input_tokens();
+            self.emit_capacity_intervention(
+                turn,
+                GuardrailAction::VerifyAndReplan,
+                before_tokens,
+                after_tokens,
+                None,
+                false,
+                Some(fallback_chain),
+            )
+            .await;
+            self.0
+                .capacity_controller
+                .mark_intervention_applied(self.0.turn_counter, GuardrailAction::VerifyAndReplan);
+            return true;
+        }
+        fallback_chain.push("canonical_replan".to_string());
+
+        let plan = self.config_ext().plan_state.lock().await.snapshot();
+        let checklist = self.config_ext().todos.lock().await.snapshot();
+        let canonical = self.build_canonical_state_enriched(turn, Some(reason), &plan, &checklist);
         let source_message_ids = self.capacity_source_message_ids(turn);
         let record = self.build_capacity_record(
             turn,
@@ -474,30 +516,12 @@ impl Engine {
                         .any(|block| matches!(block, ContentBlock::Text { .. }))
             })
             .cloned();
-        let latest_verified = self
-            .session
-            .messages
-            .iter()
-            .rev()
-            .find(|msg| {
-                msg.role == "user"
-                    && msg.content.iter().any(|block| match block {
-                        ContentBlock::ToolResult { content, .. } => {
-                            content.contains("[verification replay]")
-                        }
-                        _ => false,
-                    })
-            })
-            .cloned();
 
         // Take ownership of the old messages before clearing so a crash
         // during rebuild won't lose the session history (#D3 / H11).
         let _old_messages = std::mem::take(&mut self.session.messages);
-        // old_messages is dropped only after the rebuild block completes.
+        // P4-2: keep the last user turn only; plan/todos/working_set live in canonical state.
         if let Some(msg) = latest_user {
-            self.session.messages.push(msg);
-        }
-        if let Some(msg) = latest_verified {
             self.session.messages.push(msg);
         }
 
@@ -526,6 +550,7 @@ impl Engine {
             after_tokens,
             None,
             true,
+            Some(fallback_chain),
         )
         .await;
         self.0

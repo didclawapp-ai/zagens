@@ -159,16 +159,16 @@ pub fn cycle_config_from_thresholds(
     model: &str,
     thresholds: &ScaledContextThresholds,
 ) -> CycleConfig {
-    use crate::cycle::ModelCycleConfig;
-
-    let mut cfg = CycleConfig::default();
-    cfg.threshold_tokens = thresholds.cycle;
+    let mut cfg = CycleConfig {
+        threshold_tokens: thresholds.cycle,
+        ..CycleConfig::default()
+    };
     for m in cfg.per_model.values_mut() {
         m.threshold_tokens = thresholds.cycle;
     }
     cfg.per_model
         .entry(model.to_string())
-        .or_insert_with(ModelCycleConfig::default)
+        .or_default()
         .threshold_tokens = thresholds.cycle;
     cfg
 }
@@ -207,8 +207,10 @@ mod tests {
 
     #[test]
     fn auto_compaction_allowed_when_cycle_disabled() {
-        let mut cycle = CycleConfig::default();
-        cycle.enabled = false;
+        let cycle = CycleConfig {
+            enabled: false,
+            ..CycleConfig::default()
+        };
         assert!(auto_compaction_allowed("deepseek-v4-pro", &cycle));
     }
 

@@ -25,6 +25,9 @@ pub struct CompactionConfig {
     /// tokens fall below this number, regardless of `enabled` or
     /// `token_threshold`.
     pub auto_floor_tokens: usize,
+    /// When true (P3), compaction summary is injected as a `[COMPACTED_HISTORY]`
+    /// user message; system prompt keeps only a short pointer.
+    pub summary_in_messages: bool,
 }
 
 impl Default for CompactionConfig {
@@ -35,6 +38,7 @@ impl Default for CompactionConfig {
             model: DEFAULT_COMPACTION_MODEL.to_string(),
             cache_summary: true,
             auto_floor_tokens: MINIMUM_AUTO_COMPACTION_TOKENS,
+            summary_in_messages: true,
         }
     }
 }

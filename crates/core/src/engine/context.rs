@@ -42,6 +42,9 @@ const TOOL_RESULT_METADATA_SUMMARY_CHARS: usize = 320;
 
 pub const COMPACTION_SUMMARY_MARKER: &str = "Conversation Summary (Auto-Generated)";
 
+/// Messages-layer compaction block (P3). Distinct from seam `[ARCHIVED_CONTEXT]`.
+pub const COMPACTED_HISTORY_MARKER: &str = "[COMPACTED_HISTORY]";
+
 #[derive(Debug, Clone, Copy)]
 struct ToolResultContextLimits {
     hard_limit_chars: usize,

@@ -7,6 +7,9 @@ export interface UseXtermOptions {
   fontSize?: number;
   rows?: number;
   cursorBlink?: boolean;
+  cursorStyle?: 'block' | 'underline' | 'bar';
+  cursorInactiveStyle?: 'outline' | 'block' | 'bar' | 'underline' | 'none';
+  cursorWidth?: number;
   disableStdin?: boolean;
 }
 
@@ -59,10 +62,22 @@ export function useXterm(
 
     disposedRef.current = false;
 
-    const { theme, fontSize = 12, rows, cursorBlink = false, disableStdin = false } = optionsRef.current;
+    const {
+      theme,
+      fontSize = 12,
+      rows,
+      cursorBlink = false,
+      cursorStyle = 'bar',
+      cursorInactiveStyle = 'block',
+      cursorWidth = 2,
+      disableStdin = false,
+    } = optionsRef.current;
 
     const term = new Terminal({
       cursorBlink,
+      cursorStyle,
+      cursorInactiveStyle,
+      cursorWidth,
       disableStdin,
       convertEol: true,
       fontSize,

@@ -311,7 +311,6 @@ export default function TerminalPanel({ workspaceRoot, desktopHost, active }: Pr
         className="relative min-h-0 flex-1"
         role="tabpanel"
         aria-labelledby={activeSession ? terminalTabId(activeSession.id) : undefined}
-        tabIndex={0}
       >
         {sessions.length === 0 && spawning && (
           <p className="absolute inset-0 flex items-center justify-center text-xs text-zinc-500">

@@ -1987,6 +1987,16 @@ body {
     padding: 0;
   }
 
+  .terminal-panel-xterm .xterm-cursor-layer {
+    z-index: 2;
+  }
+
+  .terminal-panel-xterm .xterm-link {
+    color: #60a5fa;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
   .terminal-panel-xterm .xterm-viewport {
     overflow-y: auto;
   }

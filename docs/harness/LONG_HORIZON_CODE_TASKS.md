@@ -175,7 +175,7 @@ sequenceDiagram
 
 | Situation | Behavior |
 |-----------|----------|
-| Briefing LLM fails | **Do not advance**; status "cycle handoff failed"; stay in current cycle |
+| Briefing LLM fails | **Still advance** with a deterministic StructuredState-only seed (P0-4); status `↻ cycle handoff degraded to structured state only` |
 | Archive write fails | Still swap (briefing + StructuredState sufficient to continue) |
 | Threshold reached but boundary not clean | Wait for next clean turn |
 | Repeated cycle failures + context full | Fallback `compact_messages_safe` (§10.2) |

@@ -172,6 +172,7 @@ impl Engine {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::core::engine) async fn emit_capacity_intervention(
         &mut self,
         turn: &TurnContext,
@@ -180,6 +181,7 @@ impl Engine {
         after_prompt_tokens: usize,
         replay_outcome: Option<String>,
         replan_performed: bool,
+        fallback_chain: Option<Vec<String>>,
     ) {
         let _ = self
             .tx_event
@@ -192,12 +194,22 @@ impl Engine {
                 compaction_size_reduction: before_prompt_tokens.saturating_sub(after_prompt_tokens),
                 replay_outcome,
                 replan_performed,
+                fallback_chain: fallback_chain.clone(),
             })
             .await;
-        self.emit_coherence_signal(
-            CoherenceSignal::CapacityIntervention { action },
-            format!("capacity_intervention: action={}", action.as_str()),
-        )
-        .await;
+        let chain_note = fallback_chain
+            .as_ref()
+            .map(|c| c.join("→"))
+            .unwrap_or_default();
+        let detail = if chain_note.is_empty() {
+            format!("capacity_intervention: action={}", action.as_str())
+        } else {
+            format!(
+                "capacity_intervention: action={} chain={chain_note}",
+                action.as_str()
+            )
+        };
+        self.emit_coherence_signal(CoherenceSignal::CapacityIntervention { action }, detail)
+            .await;
     }
 }

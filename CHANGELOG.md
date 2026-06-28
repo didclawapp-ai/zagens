@@ -20,8 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Compaction (P3) — no more double-sent summary:** With `summary_in_messages` (default), `assemble_system_text_for_v2` no longer re-appends the full `[COMPACTED_HISTORY]` summary to the wire `system` field when it already lives in the message transcript. Previously the V2/V3 request path sent the summary twice (once in `messages`, once in `system`), inflating tokens and re-introducing the system-layer "Frankenstein" the messages-layer redesign removed. New `compaction_in_messages` snapshot flag + tests `assemble_system_text_omits_compaction_when_in_messages` / `assemble_system_text_keeps_compaction_in_legacy_mode`.
+- **Context profile (P1) — seam hot-reload on model switch:** `refresh_context_profile_bindings` now reconfigures the `SeamManager` (enablement + L1/L2/L3/cycle thresholds + verbatim window) via the new `SeamHost::reconfigure_for_model`. Previously seam config was frozen at engine-build time, so switching to a Large-profile model mid-session never engaged seams (and Large→Medium never disengaged them).
+- **`/compact` command help:** Descriptions (en/zh/ja/pt) now describe the reversible `[COMPACTED_HISTORY]` messages-layer archive instead of calling it a "legacy" command; CI `-D warnings` fix (unused `display_width` import scoped to the TUI `context_pane` test module).
+- **Desktop integrated terminal:** Restore a visible input cursor (contrasting bar + inactive block style); click-to-focus; enable ANSI colors in PTY shells (PowerShell `PSStyle`, `FORCE_COLOR` / npm); URL link highlighting via xterm web-links addon.
+
 ### Added
 
+- **Context Explorer (P2–P3):** TUI inspector **Context** tab (`6`); Desktop/TUI breakdown with per-turn drill-down, rules/skills/MCP compiler spans; compaction summary defaults to messages-layer `[COMPACTED_HISTORY]` (system keeps a short pointer); `config.toml` `[compaction] summary_in_messages` override.
+- **Capacity (P4):** High/severe `VerifyAndReplan` tries cycle handoff before canonical replan; replan retains plan/checklist in canonical state + last user message; `CapacityIntervention` events carry optional `fallback_chain`.
 - **Desktop theme — Dusk (third theme):** new cool nordic-slate theme with a calm cyan-teal accent, alongside Light/Dark; selectable from the theme rail menu and Settings, persisted in `deepseek-theme`. Renders on the dark base (keeps `dark` class) and layers `theme-dusk` palette tokens; the single-button toggle now cycles Light → Dark → Dusk.
 - **Test orchestration:** Root [`justfile`](justfile) unifies verify/test/lint/web/harness commands (`just --list`); [`.vscode/tasks.json`](.vscode/tasks.json) adds clickable Cursor/VS Code task entries. Web UI: **Vitest** (`npm test`) replaces scattered `tsx` `.selfcheck.ts` scripts; **ESLint** flat config (`npm run lint`). Install `just` via `cargo install just`, `scoop install just`, or `winget install Casey.Just`.
 - **Test tiers (L0–L4):** `justfile` documents layered gates — `prebuild` + `prebuild-contracts` (sidecar + `zagens` bin) + `web-check`; `check` (PR) runs `verify` + `test-all` + `web-check`. **L4** adds granular contract/harness/release recipes plus aggregates `l4-contracts`, `l4-ci-smoke`, `l4-full`. `just docs` excludes `zagens-desktop` to avoid rustdoc `zagens` bin path collision with `zagens-cli`. See [LOCAL_DEV_VERIFY.md §4](LOCAL_DEV_VERIFY.md#4-统一测试架构just).

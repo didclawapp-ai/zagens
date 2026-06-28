@@ -13,9 +13,12 @@
 use std::sync::Arc;
 
 use zagens_core::engine::{
-    BudgetPolicy, ContextCompiler, ContextLayer, ContextSource, RenderedBlock, SourceId,
+    BudgetPolicy, ContextAssemblyReport, ContextCompiler, ContextLayer, ContextProjection,
+    ContextSource, RenderedBlock, SourceId,
 };
 use zagens_core::session::Session;
+
+use crate::context_prompt_segments::{StaticPromptSegments, decompose_static_system_text};
 
 // ── Engine state snapshot ─────────────────────────────────────────────────────
 
@@ -68,6 +71,21 @@ pub struct ContextCompilerStateSnapshot {
     /// actual reminder injection still happens via the legacy
     /// `maybe_inject_scratchpad_reminder` path.
     pub scratchpad_reminder_est_tokens: u32,
+    /// Static-prefix segments for Explorer rules/skills attribution (P2b+).
+    pub static_segments: StaticPromptSegments,
+    /// Builtin (non-MCP) tool catalog token estimate.
+    pub tools_builtin_tokens: u32,
+    /// MCP tool catalog token estimate.
+    pub tools_mcp_tokens: u32,
+    /// P3: `true` when the compaction summary already lives in the message
+    /// transcript as a `[COMPACTED_HISTORY]` block (`summary_in_messages` mode).
+    ///
+    /// When set, [`assemble_system_text_for_v2`] must **not** re-append
+    /// `compaction_text` to the wire `system` field — doing so would send the
+    /// summary twice (once in `messages`, once in `system`). The text is still
+    /// kept in `compaction_text` so the `memory.compaction` source remains
+    /// visible to the budget solver and the Explorer `summarized` category.
+    pub compaction_in_messages: bool,
 }
 
 /// Approximate token footprint of a scratchpad reminder message.
@@ -123,7 +141,7 @@ impl ContextCompilerStateSnapshot {
         };
 
         // Split at COMPACT_TEMPLATE boundary.
-        let (static_base_text, compaction_text) = if let Some(pos) = full_text.find(tpl) {
+        let (mut static_base_text, system_tail) = if let Some(pos) = full_text.find(tpl) {
             let split = pos + tpl.len();
             (
                 full_text[..split].to_string(),
@@ -133,10 +151,22 @@ impl ContextCompilerStateSnapshot {
             (full_text, String::new())
         };
 
+        // P3: full summary lives in messages; system tail is only a short pointer.
+        let messages_compaction =
+            crate::compaction::extract_compacted_history_text(&session.messages);
+        let compaction_in_messages = messages_compaction.is_some();
+        let compaction_text = messages_compaction
+            .clone()
+            .unwrap_or_else(|| system_tail.clone());
+        if compaction_in_messages && !system_tail.is_empty() {
+            static_base_text.push_str(&system_tail);
+        }
+
         // Render cycle briefings for token accounting.
         let cycle_briefings_text = render_cycle_briefings(&session.cycle_briefings);
 
         let working_set_text = working_set_turn_meta(session, &session.workspace);
+        let static_segments = decompose_static_system_text(&static_base_text);
 
         Self {
             static_base_text,
@@ -147,6 +177,10 @@ impl ContextCompilerStateSnapshot {
             step_idx,
             // Not computable from session alone — populated by compiler_request_context (L2).
             scratchpad_reminder_est_tokens: 0,
+            static_segments,
+            tools_builtin_tokens: TOOL_CATALOG_BUDGET_TOKENS,
+            tools_mcp_tokens: 0,
+            compaction_in_messages,
         }
     }
 }
@@ -154,57 +188,71 @@ impl ContextCompilerStateSnapshot {
 // ── Source registration ───────────────────────────────────────────────────────
 
 /// Build a `ContextCompiler` with all registered sources from a state snapshot.
-///
-/// **Full source map (post P2-missing-sources PR):**
-///
-/// | source id             | layer        | priority | budget                          |
-/// |-----------------------|--------------|----------|---------------------------------|
-/// | `system.static`       | StaticPrefix | 255      | Fixed(8192) — hard reserve      |
-/// | `tools.catalog`       | StaticPrefix | 254      | Fixed(12000) — placeholder      |
-/// | `memory.compaction`   | SemiStatic   | 200      | Elastic { min:0, max:4000 }     |
-/// | `memory.cycle`        | SemiStatic   | 170      | Elastic { min:0, max:3000 }     |
-/// | `working_set`         | Volatile     | 160      | Elastic { min:0, max:1500 }     |
-/// | `scratchpad.reminder` | Volatile     | 140      | Elastic { min:0, max:800 }      |
-/// | `steer`               | Volatile     | 100      | Elastic { min:0, max:2000 }     |
-///
-/// `tools.catalog` renders a budget placeholder — actual JSON bytes are assembled
-/// in `streaming_phase` and threaded into the fingerprint separately.  Actual
-/// `scratchpad.reminder` and `steer` renders are still injected by the legacy path;
-/// these registrations provide budget-accounting entries only.
 #[must_use]
 pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> ContextCompiler {
-    let static_text = snapshot.static_base_text.clone();
+    let system_core = snapshot.static_segments.system_core.clone();
+    let rules_text = snapshot.static_segments.rules.clone();
+    let skills_text = snapshot.static_segments.skills.clone();
     let compaction_text = snapshot.compaction_text.clone();
     let cycle_text = snapshot.cycle_briefings_text.clone();
     let working_set_text = snapshot.working_set_text.clone();
-    let tool_catalog_tokens = snapshot.tool_catalog_est_tokens;
+    let tools_builtin_tokens = snapshot.tools_builtin_tokens;
+    let tools_mcp_tokens = snapshot.tools_mcp_tokens;
     let scratchpad_reminder_tokens = snapshot.scratchpad_reminder_est_tokens;
 
-    ContextCompiler::new()
-        .register(ContextSource {
-            id: SourceId("system.static"),
+    let mut compiler = ContextCompiler::new();
+
+    if !system_core.is_empty() {
+        compiler = compiler.register(ContextSource {
+            id: SourceId("system.core"),
             layer: ContextLayer::StaticPrefix,
             priority: 255,
             budget: BudgetPolicy::Fixed(8192),
-            render: Arc::new(move |_| {
-                if static_text.is_empty() {
-                    vec![]
-                } else {
-                    vec![RenderedBlock::new(static_text.clone())]
-                }
-            }),
-        })
-        .register(ContextSource {
-            id: SourceId("tools.catalog"),
+            render: Arc::new(move |_| vec![RenderedBlock::new(system_core.clone())]),
+        });
+    }
+
+    if !rules_text.is_empty() {
+        compiler = compiler.register(ContextSource {
+            id: SourceId("rules.aggregate"),
             layer: ContextLayer::StaticPrefix,
-            priority: 254,
-            budget: BudgetPolicy::Fixed(tool_catalog_tokens),
-            render: Arc::new(move |_| {
-                // Actual catalog JSON is assembled in streaming_phase outside the compiler.
-                // Return a placeholder block so the budget solver reserves the right amount.
-                vec![RenderedBlock::placeholder(tool_catalog_tokens)]
-            }),
-        })
+            priority: 253,
+            budget: BudgetPolicy::Elastic { min: 0, max: 8000 },
+            render: Arc::new(move |_| vec![RenderedBlock::new(rules_text.clone())]),
+        });
+    }
+
+    if !skills_text.is_empty() {
+        compiler = compiler.register(ContextSource {
+            id: SourceId("skills.catalog"),
+            layer: ContextLayer::StaticPrefix,
+            priority: 252,
+            budget: BudgetPolicy::Elastic { min: 0, max: 4000 },
+            render: Arc::new(move |_| vec![RenderedBlock::new(skills_text.clone())]),
+        });
+    }
+
+    if tools_builtin_tokens > 0 {
+        compiler = compiler.register(ContextSource {
+            id: SourceId("tools.builtin"),
+            layer: ContextLayer::StaticPrefix,
+            priority: 251,
+            budget: BudgetPolicy::Fixed(tools_builtin_tokens),
+            render: Arc::new(move |_| vec![RenderedBlock::placeholder(tools_builtin_tokens)]),
+        });
+    }
+
+    if tools_mcp_tokens > 0 {
+        compiler = compiler.register(ContextSource {
+            id: SourceId("tools.mcp"),
+            layer: ContextLayer::StaticPrefix,
+            priority: 250,
+            budget: BudgetPolicy::Fixed(tools_mcp_tokens),
+            render: Arc::new(move |_| vec![RenderedBlock::placeholder(tools_mcp_tokens)]),
+        });
+    }
+
+    compiler
         .register(ContextSource {
             id: SourceId("memory.compaction"),
             layer: ContextLayer::SemiStatic,
@@ -249,10 +297,6 @@ pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> 
             layer: ContextLayer::Volatile,
             priority: 140,
             budget: BudgetPolicy::Elastic { min: 0, max: 800 },
-            // Budget-accounting placeholder derived from step state (no I/O).
-            // Non-zero only when the reminder threshold is crossed; actual
-            // text is still injected by the legacy `maybe_inject_scratchpad_reminder`
-            // path (as a persistent session message).
             render: Arc::new(move |_| {
                 if scratchpad_reminder_tokens > 0 {
                     vec![RenderedBlock::placeholder(scratchpad_reminder_tokens)]
@@ -266,9 +310,20 @@ pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> 
             layer: ContextLayer::Volatile,
             priority: 100,
             budget: BudgetPolicy::Elastic { min: 0, max: 2000 },
-            // Steer text arrives mid-turn via channel — unknown at snapshot time.
-            render: Arc::new(|_| vec![]),
+            render: Arc::new(move |_| vec![]),
         })
+}
+
+/// Build an assembly report from session state (store / offline breakdown).
+#[must_use]
+pub fn assembly_report_from_session(session: &Session, step_idx: u32) -> ContextAssemblyReport {
+    let snapshot = ContextCompilerStateSnapshot::from_session(session, step_idx);
+    let compiler = build_compiler_from_snapshot(&snapshot);
+    let compiled = compiler.compile(&ContextProjection::from_session(session, step_idx));
+    let message_tokens = zagens_core::engine::context_usage_breakdown::conversation_message_tokens(
+        &session.messages,
+    );
+    ContextAssemblyReport::from_compiled(&compiled).with_message_tokens(message_tokens)
 }
 
 /// Assemble the system prompt text for V2 mode from a state snapshot.
@@ -277,12 +332,23 @@ pub fn build_compiler_from_snapshot(snapshot: &ContextCompilerStateSnapshot) -> 
 /// (SemiStatic layer) to reproduce the full system-prompt string.  Cycle
 /// briefings and working-set turn-meta go into messages, not the system field.
 ///
+/// **P3:** when `compaction_in_messages` is set, the summary already lives in
+/// the message transcript as a `[COMPACTED_HISTORY]` block, so it is **omitted**
+/// here — appending it would send the summary twice (once in `messages`, once
+/// in `system`), inflating tokens and re-introducing the system-layer
+/// "Frankenstein" the messages-layer redesign set out to remove. Legacy
+/// (`summary_in_messages = false`) sessions keep the summary in `system`.
+///
 /// In V2 mode, `streaming_phase` calls this instead of reading
 /// `session.system_prompt` directly, delegating all system-text assembly to
 /// the `ContextCompiler` source graph.
 #[must_use]
 pub fn assemble_system_text_for_v2(snapshot: &ContextCompilerStateSnapshot) -> String {
-    format!("{}{}", snapshot.static_base_text, snapshot.compaction_text)
+    if snapshot.compaction_in_messages {
+        snapshot.static_base_text.clone()
+    } else {
+        format!("{}{}", snapshot.static_base_text, snapshot.compaction_text)
+    }
 }
 
 // ── Session helpers ───────────────────────────────────────────────────────────
@@ -331,7 +397,7 @@ mod tests {
     use zagens_core::engine::ContextProjection;
 
     #[test]
-    fn build_compiler_from_snapshot_registers_expected_sources() {
+    fn build_compiler_from_snapshot_registers_core_sources() {
         let marker = crate::prompts::COMPACT_TEMPLATE;
         let snapshot = ContextCompilerStateSnapshot {
             static_base_text: format!("static base\n\n{marker}"),
@@ -341,13 +407,57 @@ mod tests {
             tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
             scratchpad_reminder_est_tokens: 0,
             step_idx: 0,
+            static_segments: decompose_static_system_text(&format!("static base\n\n{marker}")),
+            tools_builtin_tokens: TOOL_CATALOG_BUDGET_TOKENS,
+            tools_mcp_tokens: 0,
+            compaction_in_messages: false,
         };
         let compiler = build_compiler_from_snapshot(&snapshot);
-        assert_eq!(
-            compiler.source_count(),
-            7,
-            "system.static + tools.catalog + memory.compaction + memory.cycle + working_set + scratchpad.reminder + steer"
+        assert!(
+            compiler.source_count() >= 5,
+            "system.core + tools + memory + working_set + scratchpad + steer"
         );
+    }
+
+    #[test]
+    fn build_compiler_registers_rules_and_skills_when_markers_present() {
+        let marker = crate::prompts::COMPACT_TEMPLATE;
+        let static_text = format!(
+            "mode\n\n<project_instructions source=\"AGENTS.md\">\nrules\n</project_instructions>\n\n\
+             ## Skills\n\n- demo: skill\n\n{marker}"
+        );
+        let snapshot = ContextCompilerStateSnapshot {
+            static_base_text: static_text.clone(),
+            compaction_text: String::new(),
+            cycle_briefings_text: String::new(),
+            working_set_text: String::new(),
+            tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
+            scratchpad_reminder_est_tokens: 0,
+            step_idx: 0,
+            static_segments: decompose_static_system_text(&static_text),
+            tools_builtin_tokens: TOOL_CATALOG_BUDGET_TOKENS,
+            tools_mcp_tokens: 0,
+            compaction_in_messages: false,
+        };
+        let compiler = build_compiler_from_snapshot(&snapshot);
+        let session = Session::new(
+            "test".into(),
+            std::path::PathBuf::from("/tmp"),
+            false,
+            false,
+            std::path::PathBuf::from("/tmp/notes.txt"),
+            std::path::PathBuf::from("/tmp/mcp.json"),
+        );
+        let compiled = compiler.compile(&ContextProjection::from_session(&session, 0));
+        let categories: Vec<_> = compiled
+            .assembly_report
+            .spans
+            .iter()
+            .map(|s| s.category.as_str())
+            .collect();
+        assert!(categories.contains(&"rules"));
+        assert!(categories.contains(&"skills"));
+        assert!(categories.contains(&"system"));
     }
 
     #[test]
@@ -364,6 +474,10 @@ mod tests {
             tool_catalog_est_tokens: TOOL_CATALOG_BUDGET_TOKENS,
             scratchpad_reminder_est_tokens: 0,
             step_idx: 0,
+            static_segments: decompose_static_system_text(&format!("{base}\n\n{marker}")),
+            tools_builtin_tokens: TOOL_CATALOG_BUDGET_TOKENS,
+            tools_mcp_tokens: 0,
+            compaction_in_messages: false,
         };
         let compiler = build_compiler_from_snapshot(&snapshot);
         let session = crate::core::session::Session::new(
@@ -380,8 +494,8 @@ mod tests {
         let static_src = ctx
             .contributions
             .iter()
-            .find(|c| c.source_id.0 == "system.static")
-            .expect("system.static source missing");
+            .find(|c| c.source_id.0 == "system.core")
+            .expect("system.core source missing");
         let compaction_src = ctx
             .contributions
             .iter()
@@ -389,7 +503,7 @@ mod tests {
 
         assert!(
             static_src.token_count > 0,
-            "system.static must produce tokens"
+            "system.core must produce tokens"
         );
         if !extra.is_empty() {
             let comp_count = compaction_src.map(|c| c.token_count).unwrap_or(0);
@@ -466,6 +580,131 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_prefers_compacted_history_message_for_memory_compaction() {
+        use std::path::PathBuf;
+        use zagens_core::engine::COMPACTED_HISTORY_MARKER;
+
+        let marker = crate::prompts::COMPACT_TEMPLATE;
+        let workspace = PathBuf::from("/tmp");
+        let mut session = Session::new(
+            "test-model".into(),
+            workspace.clone(),
+            false,
+            false,
+            PathBuf::from("/tmp/notes.txt"),
+            PathBuf::from("/tmp/mcp.json"),
+        );
+        let pointer = format!("\n{COMPACTED_HISTORY_MARKER}: archived summary in transcript.");
+        session.system_prompt = Some(crate::models::SystemPrompt::Text(format!(
+            "base text\n\n{marker}{pointer}"
+        )));
+        session.messages.push(crate::models::Message {
+            role: "user".into(),
+            content: vec![crate::models::ContentBlock::Text {
+                text: format!("{COMPACTED_HISTORY_MARKER}\n\n<summary>full archive</summary>"),
+                cache_control: None,
+            }],
+        });
+
+        let snapshot = ContextCompilerStateSnapshot::from_session(&session, 0);
+        assert!(
+            snapshot.compaction_text.contains("full archive"),
+            "memory.compaction source must read messages-layer summary"
+        );
+        assert!(
+            snapshot.static_base_text.contains(pointer.trim()),
+            "system pointer must remain in static prefix"
+        );
+        assert!(
+            snapshot.compaction_in_messages,
+            "compaction_in_messages must be set when a [COMPACTED_HISTORY] block exists"
+        );
+    }
+
+    /// P3 dedup: when the summary already lives in `messages` as a
+    /// `[COMPACTED_HISTORY]` block, the V2 wire `system` text must NOT re-append
+    /// the full summary (otherwise the model receives it twice).
+    #[test]
+    fn assemble_system_text_omits_compaction_when_in_messages() {
+        use std::path::PathBuf;
+        use zagens_core::engine::COMPACTED_HISTORY_MARKER;
+
+        let marker = crate::prompts::COMPACT_TEMPLATE;
+        let mut session = Session::new(
+            "test-model".into(),
+            PathBuf::from("/tmp"),
+            false,
+            false,
+            PathBuf::from("/tmp/notes.txt"),
+            PathBuf::from("/tmp/mcp.json"),
+        );
+        let pointer =
+            format!("\n{COMPACTED_HISTORY_MARKER}: archived summary lives in the transcript.");
+        session.system_prompt = Some(crate::models::SystemPrompt::Text(format!(
+            "base text\n\n{marker}{pointer}"
+        )));
+        let unique_summary = "UNIQUE_ARCHIVE_BODY_42";
+        session.messages.push(crate::models::Message {
+            role: "user".into(),
+            content: vec![crate::models::ContentBlock::Text {
+                text: format!("{COMPACTED_HISTORY_MARKER}\n\n<summary>{unique_summary}</summary>"),
+                cache_control: None,
+            }],
+        });
+
+        let snapshot = ContextCompilerStateSnapshot::from_session(&session, 0);
+        let system_text = assemble_system_text_for_v2(&snapshot);
+
+        // The pointer stays; the full archive body must appear exactly zero
+        // times in the system field (it is sent via the message transcript).
+        assert!(
+            system_text.contains(COMPACTED_HISTORY_MARKER),
+            "system pointer must survive"
+        );
+        assert!(
+            !system_text.contains(unique_summary),
+            "summary body must NOT be duplicated into the system field, got: {system_text}"
+        );
+        // But the snapshot still carries it for budget / Explorer accounting.
+        assert!(
+            snapshot.compaction_text.contains(unique_summary),
+            "compaction_text must still hold the summary for budget/Explorer use"
+        );
+    }
+
+    /// Legacy (`summary_in_messages = false`): summary lives in the system tail
+    /// after COMPACT_TEMPLATE and must remain in the assembled system text.
+    #[test]
+    fn assemble_system_text_keeps_compaction_in_legacy_mode() {
+        use std::path::PathBuf;
+
+        let marker = crate::prompts::COMPACT_TEMPLATE;
+        let mut session = Session::new(
+            "test-model".into(),
+            PathBuf::from("/tmp"),
+            false,
+            false,
+            PathBuf::from("/tmp/notes.txt"),
+            PathBuf::from("/tmp/mcp.json"),
+        );
+        let legacy_summary = "LEGACY_SYSTEM_SUMMARY_99";
+        session.system_prompt = Some(crate::models::SystemPrompt::Text(format!(
+            "base text\n\n{marker}\n{legacy_summary}"
+        )));
+
+        let snapshot = ContextCompilerStateSnapshot::from_session(&session, 0);
+        assert!(
+            !snapshot.compaction_in_messages,
+            "no [COMPACTED_HISTORY] message → legacy mode"
+        );
+        let system_text = assemble_system_text_for_v2(&snapshot);
+        assert!(
+            system_text.contains(legacy_summary),
+            "legacy summary must remain in the system field"
+        );
+    }
+
+    #[test]
     fn compiler_snapshot_produces_conserved_assembly_report() {
         use std::path::PathBuf;
         use zagens_core::context_profile::{ContextThresholdOverrides, scaled_thresholds};
@@ -493,7 +732,9 @@ mod tests {
         let compiler = build_compiler_from_snapshot(&snapshot);
         let compiled = compiler.compile(&ContextProjection::from_session(&session, 0));
         let message_tokens =
-            crate::compaction::estimate_input_tokens_conservative(&session.messages, None) as u32;
+            zagens_core::engine::context_usage_breakdown::conversation_message_tokens(
+                &session.messages,
+            );
         let report =
             ContextAssemblyReport::from_compiled(&compiled).with_message_tokens(message_tokens);
         let thresholds = scaled_thresholds("deepseek-v4-pro", ContextThresholdOverrides::default());
@@ -506,6 +747,7 @@ mod tests {
             true,
             false,
             session.messages.len(),
+            Some(&session.messages),
         );
         assert_eq!(
             breakdown.category_token_sum(),

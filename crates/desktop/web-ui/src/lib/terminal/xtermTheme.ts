@@ -83,7 +83,10 @@ export function xtermThemeForAppDarkMode(isDark: boolean): ITheme {
 export const integratedTerminalTheme: ITheme = {
   background: '#121212',
   foreground: '#e4e4e7',
-  cursor: '#e4e4e7',
+  /** Block/bar fill on empty cells — must contrast with background and foreground. */
+  cursor: '#4ade80',
+  /** Foreground on block cursor when over a character. */
+  cursorAccent: '#052e16',
   selectionBackground: '#3f3f4680',
   ...ANSI_DARK,
 };

@@ -68,8 +68,11 @@ impl ContextAssemblyReport {
 #[must_use]
 pub fn explorer_category_for_source_id(source_id: &SourceId) -> &'static str {
     match source_id.0 {
-        "system.static" => "system",
-        "tools.catalog" => "tools",
+        "system.static" | "system.core" => "system",
+        "tools.catalog" | "tools.builtin" => "tools",
+        "tools.mcp" => "mcp",
+        "rules.aggregate" | "rules.project" | "rules.instructions" => "rules",
+        "skills.catalog" => "skills",
         "memory.compaction" => "summarized",
         "memory.cycle" => "summarized",
         "working_set" => "structured",
@@ -105,28 +108,52 @@ mod tests {
     fn assembly_report_categories_match_source_ids() {
         let compiler = ContextCompiler::new()
             .register(ContextSource {
-                id: SourceId("system.static"),
+                id: SourceId("system.core"),
                 layer: ContextLayer::StaticPrefix,
                 priority: 255,
                 budget: BudgetPolicy::Fixed(1000),
                 render: Arc::new(|_| vec![RenderedBlock::new("system body")]),
             })
             .register(ContextSource {
-                id: SourceId("tools.catalog"),
+                id: SourceId("rules.aggregate"),
                 layer: ContextLayer::StaticPrefix,
-                priority: 254,
+                priority: 253,
+                budget: BudgetPolicy::Fixed(400),
+                render: Arc::new(|_| vec![RenderedBlock::new("rules body")]),
+            })
+            .register(ContextSource {
+                id: SourceId("skills.catalog"),
+                layer: ContextLayer::StaticPrefix,
+                priority: 252,
+                budget: BudgetPolicy::Fixed(300),
+                render: Arc::new(|_| vec![RenderedBlock::new("skills body")]),
+            })
+            .register(ContextSource {
+                id: SourceId("tools.builtin"),
+                layer: ContextLayer::StaticPrefix,
+                priority: 251,
                 budget: BudgetPolicy::Fixed(500),
                 render: Arc::new(|_| vec![RenderedBlock::placeholder(500)]),
+            })
+            .register(ContextSource {
+                id: SourceId("tools.mcp"),
+                layer: ContextLayer::StaticPrefix,
+                priority: 250,
+                budget: BudgetPolicy::Fixed(200),
+                render: Arc::new(|_| vec![RenderedBlock::placeholder(200)]),
             });
 
         let session = test_session();
         let compiled = compiler.compile(&ContextProjection::from_session(&session, 0));
         let report = ContextAssemblyReport::from_compiled(&compiled).with_message_tokens(1200);
 
-        assert_eq!(report.spans.len(), 3);
-        assert_eq!(report.spans[0].category, "system");
-        assert_eq!(report.spans[1].category, "tools");
-        assert_eq!(report.spans[2].category, "conversation");
+        let categories: Vec<_> = report.spans.iter().map(|s| s.category.as_str()).collect();
+        assert!(categories.contains(&"system"));
+        assert!(categories.contains(&"rules"));
+        assert!(categories.contains(&"skills"));
+        assert!(categories.contains(&"tools"));
+        assert!(categories.contains(&"mcp"));
+        assert!(categories.contains(&"conversation"));
         assert_eq!(report.span_token_sum(), report.estimated_input_tokens);
     }
 

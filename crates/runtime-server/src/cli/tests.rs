@@ -360,7 +360,7 @@ provider = "deepseek"
             ..Config::default()
         };
         merge_project_config(&mut config, tmp.path());
-        // No `instructions` key in the project file 鈫?user list intact.
+        // No `instructions` key in the project file -> user list intact.
         assert_eq!(
             config.instructions.as_deref(),
             Some(user.as_slice()),
@@ -866,7 +866,7 @@ mod pr_prompt_tests {
         assert!(is_command_available("sh"), "POSIX `sh` should be on PATH");
 
         // A deliberately-implausible name to confirm the negative
-        // branch 鈥?`--version` on this would exec(3) 鈫?ENOENT.
+        // branch -- `--version` on this would exec(3) -> ENOENT.
         assert!(
             !is_command_available("this-command-cannot-exist-deepseek-tui-test-ENOENT-marker"),
             "missing command should return false, not panic"

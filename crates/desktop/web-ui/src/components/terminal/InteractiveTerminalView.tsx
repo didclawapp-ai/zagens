@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import '@xterm/xterm/css/xterm.css';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import { useT } from '../../i18n';
 import { useXterm } from '../../lib/terminal/useXterm';
 import { subscribeCurrentWebviewEvent } from '../../lib/tauriListen';
@@ -38,9 +39,19 @@ export default function InteractiveTerminalView({
   sessionIdRef.current = sessionId;
 
   const { containerRef, termRef, fitRef } = useXterm(
-    { theme: integratedTerminalTheme, fontSize: 12, cursorBlink: true },
+    {
+      theme: integratedTerminalTheme,
+      fontSize: 12,
+      cursorBlink: true,
+      cursorStyle: 'bar',
+      cursorInactiveStyle: 'block',
+      cursorWidth: 2,
+    },
     {
       onReady: (term, fit, fitSafe) => {
+        const webLinks = new WebLinksAddon();
+        term.loadAddon(webLinks);
+
         if (bufferRef.current) {
           term.write(bufferRef.current);
         }
@@ -90,6 +101,7 @@ export default function InteractiveTerminalView({
           dataSub.dispose();
           unlistenData();
           unlistenExit();
+          webLinks.dispose();
         };
       },
     },
@@ -118,11 +130,18 @@ export default function InteractiveTerminalView({
     return () => window.clearTimeout(timer);
   }, [active, sessionId, fitRef, termRef, containerRef]);
 
+  const focusTerminal = () => {
+    termRef.current?.focus();
+  };
+
   return (
     <div
       ref={containerRef}
       className="terminal-panel-xterm h-full w-full min-h-0 min-w-0 px-1 py-1"
       aria-label={t('terminal.tab')}
+      onMouseDown={focusTerminal}
+      onFocus={focusTerminal}
+      tabIndex={-1}
     />
   );
 }

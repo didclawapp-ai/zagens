@@ -741,10 +741,16 @@ impl Config {
             .unwrap_or_else(|| {
                 compaction_threshold_for_model_and_effort(model, self.reasoning_effort())
             });
+        let summary_in_messages = self
+            .compaction
+            .as_ref()
+            .and_then(|c| c.summary_in_messages)
+            .unwrap_or(true);
         crate::compaction::CompactionConfig {
             enabled: auto_compact,
             token_threshold,
             model: model.to_string(),
+            summary_in_messages,
             ..Default::default()
         }
     }

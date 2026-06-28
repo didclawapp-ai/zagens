@@ -2,6 +2,7 @@
 
 mod activity;
 mod agents;
+mod context_pane;
 mod diff;
 mod files;
 mod lht_pane;
@@ -16,6 +17,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::config::Config;
+use zagens_core::engine::ContextUsageBreakdown;
 
 use super::display_format::{display_width, truncate_display_width};
 use super::layout::InspectorTab;
@@ -27,6 +29,9 @@ pub use activity::{
     line_count as activity_line_count, render_styled_panel as render_activity_styled,
 };
 pub use agents::{AgentEntry, line_count as agents_line_count};
+pub use context_pane::{
+    line_count as context_line_count, render_styled_panel as render_context_styled,
+};
 pub use diff::{DiffPanelState, git_diff_patch, load_diff_panel};
 pub use files::FileTreeState;
 pub use lht_pane::{line_count as lht_line_count, render_styled_panel as render_lht_styled};
@@ -58,6 +63,7 @@ impl InspectorCache {
         tab: InspectorTab,
         ui: &InspectorInteraction,
         activity_events: &[String],
+        context_breakdown: Option<&ContextUsageBreakdown>,
     ) -> usize {
         match tab {
             InspectorTab::Files => {
@@ -75,9 +81,11 @@ impl InspectorCache {
             InspectorTab::Agents => agents::line_count(&self.agents),
             InspectorTab::Mcp => self.mcp.line_count(ui.mcp_expanded.as_deref()),
             InspectorTab::Activity => activity_line_count(activity_events),
+            InspectorTab::Context => context_line_count(context_breakdown),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render_styled(
         &self,
         tab: InspectorTab,
@@ -86,6 +94,7 @@ impl InspectorCache {
         ui: &InspectorInteraction,
         workspace: &Path,
         activity_events: &[String],
+        context_breakdown: Option<&ContextUsageBreakdown>,
     ) -> Vec<Line<'static>> {
         let max_cols = max_cols.max(8);
         if tab == InspectorTab::Files {
@@ -173,6 +182,13 @@ impl InspectorCache {
         if tab == InspectorTab::Activity {
             return clip_sidebar_lines(
                 render_activity_styled(activity_events, height, ui.scroll, max_cols),
+                max_cols,
+            );
+        }
+
+        if tab == InspectorTab::Context {
+            return clip_sidebar_lines(
+                render_context_styled(context_breakdown, height, ui.scroll, max_cols),
                 max_cols,
             );
         }

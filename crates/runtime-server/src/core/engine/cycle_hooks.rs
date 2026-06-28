@@ -429,6 +429,20 @@ impl Engine {
             self.session.system_prompt = merged;
         }
     }
+
+    /// Apply compaction IO result — P3 messages layer + optional system pointer.
+    pub(super) fn apply_compaction_result(
+        &mut self,
+        summary_prompt: Option<SystemPrompt>,
+        summary_message: Option<crate::models::Message>,
+    ) {
+        if self.config.compaction.summary_in_messages
+            && let Some(msg) = summary_message
+        {
+            self.session.messages.insert(0, msg);
+        }
+        self.merge_compaction_summary(summary_prompt);
+    }
 }
 
 pub(super) fn system_prompt_hash(prompt: Option<&SystemPrompt>) -> u64 {

@@ -137,4 +137,24 @@ pub trait SeamHost: Send + Sync {
     /// `Engine::advance_cycle` after the new seed messages have been
     /// swapped in.
     async fn reset(&self);
+
+    /// Hot-reload seam enablement + thresholds when the active model changes
+    /// mid-session (P1).
+    ///
+    /// The seam host is constructed once at engine build time with the initial
+    /// model's profile. Without this, switching to a different `ContextProfile`
+    /// (e.g. Medium → Large) mid-session would leave the seam pipeline pinned to
+    /// the original model's enablement and thresholds. Thresholds are passed as
+    /// primitives so the core trait stays free of the runtime-side `SeamConfig`
+    /// type. Default is a no-op for hosts that don't support reconfiguration.
+    fn reconfigure_for_model(
+        &mut self,
+        _enabled: bool,
+        _verbatim_window_turns: usize,
+        _l1_threshold: usize,
+        _l2_threshold: usize,
+        _l3_threshold: usize,
+        _cycle_threshold: usize,
+    ) {
+    }
 }

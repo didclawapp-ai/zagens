@@ -599,6 +599,13 @@ impl TuiSessionHost {
     }
 
     pub async fn fetch_context_pct(&self) -> Option<u8> {
+        if let Ok(breakdown) = self
+            .manager
+            .get_thread_context_breakdown(&self.thread.id)
+            .await
+        {
+            return Some(breakdown.usage_percent.round().clamp(0.0, 100.0) as u8);
+        }
         let snapshot = self
             .manager
             .get_thread_context(&self.thread.id)
@@ -608,6 +615,15 @@ impl TuiSessionHost {
             .last_api_usage_percent
             .unwrap_or(snapshot.usage_percent);
         Some(pct.round().clamp(0.0, 100.0) as u8)
+    }
+
+    pub async fn fetch_context_breakdown(
+        &self,
+    ) -> Option<zagens_core::engine::ContextUsageBreakdown> {
+        self.manager
+            .get_thread_context_breakdown(&self.thread.id)
+            .await
+            .ok()
     }
 }
 

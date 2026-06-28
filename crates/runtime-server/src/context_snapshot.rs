@@ -62,6 +62,7 @@ pub fn build_thread_context_snapshot(
 
 /// Build Explorer breakdown aligned with TUI compaction gates + scaled thresholds (P2b).
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn build_thread_context_breakdown(
     model: &str,
     messages: &[Message],
@@ -84,6 +85,7 @@ pub fn build_thread_context_breakdown(
         seam_enabled,
         should_compact_now,
         messages.len(),
+        Some(messages),
     )
 }
 

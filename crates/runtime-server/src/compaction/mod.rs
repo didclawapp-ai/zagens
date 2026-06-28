@@ -6,12 +6,18 @@
 )]
 
 mod execute;
+mod messages_layer;
 mod plan;
 mod prompt;
 mod prune;
 mod tokens;
 
 pub use execute::{CompactionResult, compact_messages, compact_messages_safe};
+pub use messages_layer::{
+    build_compacted_history_message, build_compaction_system_pointer,
+    build_legacy_compaction_summary_prompt, extract_compacted_history_text,
+    message_is_compacted_history,
+};
 pub use plan::{CompactionPlan, plan_compaction};
 pub use prompt::merge_system_prompts;
 pub use prune::prune_tool_results;

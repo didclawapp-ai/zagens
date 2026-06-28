@@ -555,18 +555,21 @@ fn msg(role: &str, text: &str) -> Message {
             ..Default::default()
         };
 
-        let (pinned_messages, summary_prompt, removed, _artifact) = compact_messages(
-            &mock,
-            &messages,
-            &config,
-            Some(workspace),
-            Some(&pins),
-            Some(&paths),
-        )
+        let (pinned_messages, summary_prompt, summary_message, removed, _artifact) =
+            compact_messages(
+                &mock,
+                &messages,
+                &config,
+                Some(workspace),
+                Some(&pins),
+                Some(&paths),
+                false,
+            )
         .await
         .expect("compact_messages");
 
-        assert!(summary_prompt.is_some(), "expected LLM summary block");
+        assert!(summary_prompt.is_some(), "expected system pointer");
+        assert!(summary_message.is_some(), "expected P3 compacted-history message");
         assert!(!removed.is_empty(), "expected summarized messages");
         let preserved = pinned_messages.iter().any(|message| {
             message.content.iter().any(|block| {
@@ -577,6 +580,66 @@ fn msg(role: &str, text: &str) -> Message {
             preserved,
             "working-set pinned message must survive compaction"
         );
+    }
+
+    #[tokio::test]
+    async fn compact_messages_legacy_keeps_summary_in_system_only() {
+        use crate::llm_client::mock::MockLlmClient;
+        use crate::models::{MessageResponse, Usage};
+
+        let mut messages = vec![msg("user", "start")];
+        messages.extend((1..20).map(|i| msg("assistant", &format!("noise {i}"))));
+
+        let mock = MockLlmClient::new(vec![]);
+        mock.push_message_response(MessageResponse {
+            id: "msg_summary".into(),
+            r#type: "message".into(),
+            role: "assistant".into(),
+            content: vec![ContentBlock::Text {
+                text: "legacy summary block".into(),
+                cache_control: None,
+            }],
+            model: "mock".into(),
+            stop_reason: Some("end_turn".into()),
+            stop_sequence: None,
+            container: None,
+            usage: Usage::default(),
+        });
+
+        let config = CompactionConfig {
+            enabled: true,
+            token_threshold: 1,
+            summary_in_messages: false,
+            ..Default::default()
+        };
+
+        let (_pinned, summary_prompt, summary_message, removed, _artifact) = compact_messages(
+            &mock,
+            &messages,
+            &config,
+            None,
+            None,
+            None,
+            false,
+        )
+        .await
+        .expect("compact_messages");
+
+        assert!(summary_prompt.is_some(), "legacy path must produce system summary");
+        assert!(
+            summary_message.is_none(),
+            "legacy path must not inject compacted-history message"
+        );
+        assert!(!removed.is_empty(), "expected summarized messages");
+        match summary_prompt.expect("legacy system summary") {
+            SystemPrompt::Blocks(blocks) => assert!(
+                blocks
+                    .iter()
+                    .any(|block| block.text.contains("legacy summary block")),
+                "system summary must embed LLM output"
+            ),
+            _ => panic!("legacy compaction summary should be system blocks"),
+        }
     }
 
     /// A1.4 — after compaction, pinned user-visible text remains in the session message list.
@@ -624,6 +687,7 @@ fn msg(role: &str, text: &str) -> Message {
             None,
             Some(&pins),
             None,
+            false,
         )
         .await
         .expect("compact_messages_safe");
@@ -1395,6 +1459,7 @@ fn msg(role: &str, text: &str) -> Message {
         let result = CompactionResult {
             messages: vec![],
             summary_prompt: None,
+            summary_message: None,
             removed_messages: vec![],
             retries_used: 2,
             artifact: None,

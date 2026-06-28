@@ -23,6 +23,7 @@ pub fn inspector_tab_label(locale: Locale, tab: InspectorTab) -> &'static str {
             InspectorTab::Agents => MessageId::TuiInspectorTabAgents,
             InspectorTab::Mcp => MessageId::TuiInspectorTabMcp,
             InspectorTab::Activity => MessageId::TuiInspectorTabActivity,
+            InspectorTab::Context => MessageId::TuiInspectorTabContext,
         },
     )
 }
@@ -36,6 +37,7 @@ pub fn inspector_tab_hint(locale: Locale, tab: InspectorTab) -> &'static str {
             InspectorTab::Agents => MessageId::TuiInspectorHintAgents,
             InspectorTab::Mcp => MessageId::TuiInspectorHintMcp,
             InspectorTab::Activity => MessageId::TuiInspectorHintActivity,
+            InspectorTab::Context => MessageId::TuiInspectorHintContext,
         },
     )
 }

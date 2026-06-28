@@ -357,10 +357,16 @@ exponential_base = 2.0
 # Manual `/compact`, `Op::CompactContext`, and overflow forced compaction are
 # unaffected. Do **not** set `auto_floor_tokens = 0` to disable V4 auto; that
 # removes the floor and makes auto compaction *more* likely.
+#
+# P3 (default): compaction summary is injected as a `[COMPACTED_HISTORY]` user
+# message; the system prompt keeps only a short pointer (Explorer counts the
+# message under **Summarized**). Set `summary_in_messages = false` to restore
+# the legacy path that merges the full summary into the system prompt.
 [compaction]
 # auto_compact = false
 # token_threshold = 800000
 # auto_floor_tokens = 500000   # default MINIMUM_AUTO_COMPACTION_TOKENS; keep unless you know why
+# summary_in_messages = true   # default; false = legacy system-layer summary
 
 # Append-only Flash seams: Large-profile models (window ≥ 500K, e.g. deepseek-v4-pro)
 # default to **enabled** when this flag is unset. Set `enabled = false` globally
