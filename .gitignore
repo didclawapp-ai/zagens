@@ -81,6 +81,11 @@ project_overhaul_prompt.md
 .codex/
 .context/
 
+# Local harness queue smoke workspaces (API runs, ephemeral artifacts)
+fixtures/harness/queue-smoke/
+fixtures/harness/queue-wt-smoke/
+fixtures/harness/queue-rollback-smoke/
+
 # Local runtime state (Zagens + legacy DeepSeek paths)
 .deepseek/
 **/.zagens/

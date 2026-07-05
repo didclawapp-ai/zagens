@@ -8,7 +8,7 @@
 > **D6 Phase B:** [adr/D6_PHASE_B_CLI_SUNSET.md](./adr/D6_PHASE_B_CLI_SUNSET.md) — production binary is **`deepseek-runtime`**; CLI + ratatui TUI removed  
 > **D16 maintainability split:** [adr/D16_PHASE_E_MAINTAINABILITY.md](./adr/D16_PHASE_E_MAINTAINABILITY.md) — **Closed (Checkpoint)**  
 > **Maintainer-only narrative / assessment:** `doc_Private/docs/tech/` (`RUNTIME_EVOLUTION_ROADMAP.md`, `ARCHITECTURE_BOUNDARY_ANALYSIS.md`, `adr/ARCHITECTURE_ASSESSMENT_2026-05-25.md`, etc.)  
-> **Last updated:** 2026-06-16 (aligned with workspace **0.7.5** + Kernel V3 final switch: `runtime-api` / `runtime-orchestrator` / `runtime-adapters` + `runtime-server` HTTP host; desktop adds Windows sandbox IPC)
+> **Last updated:** 2026-07-02 (aligned with workspace **0.7.5** + Kernel V3 final switch; **2026 H2 harness boundary** §0.1)
 
 > **How to read this document:** §1 is the **top-level system overview** (§1.1 conceptual diagram + §1.2 code-path detail diagram); §2 is **Sidecar internal data flow** (HTTP → Manager → Engine → Kernel V3 turn loop, including orchestrator core); §2.1 covers the event-sourced engine; §5 is **L2 dual-channel** (Tauri IPC vs Runtime HTTP/SSE); §8 is a **typical send-message sequence diagram**. Remaining sections are side notes (crate deps, persistence, supervision, module index). All source file paths on diagram nodes can be verified directly against the code.
 
@@ -27,6 +27,34 @@
 | **L3 shell** | **Zagens** `crates/desktop` (sole user product) | Consumes L2 only; **does not** embed L1 |
 
 **Hard constraint:** Agent turns execute only inside the sidecar; **production binary is `deepseek-runtime`** (Zagens `externalBin`). ~~`app-server`~~ deleted in D7 C5; ~~`crates/cli`~~, ~~ratatui TUI~~ deleted in D6 Phase B. Desktop **must not** path-depend on `core` / `runtime-server` (see [`architecture_boundary.rs`](../../crates/desktop/tests/architecture_boundary.rs)).
+
+### 0.1 Harness engine boundary (2026 H2)
+
+> **SSOT for iteration:** maintainer [MASTER_PLAN_2026-H2.md](../../doc_Private/docs/MASTER_PLAN_2026-H2.md) · engine detail [HARNESS_LOOP_ITERATION.md](../../doc_Private/docs/HARNESS_LOOP_ITERATION.md)
+
+The runtime stack above (L1–L3) is **where code runs**. The **harness** is the cross-cutting **discipline layer** inside L1 that turns scattered verify/rollback/state pieces into reusable primitives — without replacing the turn loop or moving execution out of the sidecar.
+
+| Harness layer | Responsibility | Who decides | Primary repo anchors |
+|---------------|----------------|-------------|----------------------|
+| **Capability（能做）** | Single-shot deterministic tools | Rust `ToolSpec` / domain engines | `crates/runtime-server/src/tools/` · `crates/office-edit/` |
+| **Discipline（做对）** | verify-loop, predicates, stage gates, rollback | **Engine** (model cannot skip) | `long_horizon/{generic_gate,manifest_gate,verify_platform,completion_gate_flow}.rs` → **Phase 1:** `predicate::*` + `HarnessVerifyLoop` |
+| **Orchestration（编排）** | Skill/tool selection and ordering | **Model** (function calling) | `ToolRegistry` · `load_skill` · turn loop |
+
+**In scope today (shipped, pre-extraction):** git snapshots (`turn.rs`), LHT plan/checklist nudges, Layer-2 completion gate (`manifest_gate` / `generic_gate`), kernel replay parity (`turn_machine.rs` `verify_step_*`), office fidelity tests.
+
+**Phase 0–2 boundary:** state/plan/checklist/briefing/snapshot **consumers only** — no LHT/compaction refactor until H3 (`harness::state` adapter).
+
+#### Naming discipline (H0 — do not alias)
+
+| Concept | Correct name / event kind | **Forbidden** | Location |
+|---------|---------------------------|---------------|----------|
+| Kernel replay parity | `verify_step_*` functions | — | `crates/core/src/engine/turn_machine.rs` |
+| Harness act→verify→rollback | `HarnessVerifyLoop` · `predicate::*` | `verify_step` **module** name | Phase 1 extract → `long_horizon/predicate/` (see ADR) |
+| Verify telemetry | `harness_verify` (`kernel_events`) | `verify_step` event kind | Phase 1b.3 |
+| Queue gate result | `queue_gate_result` via **`predicate::*` only** | queue-embedded oracle · bypass predicates | Phase 1a.3 |
+| LHT gate probe (legacy string) | `long_horizon.manifest_gate_*` status messages | — | `gate_telemetry.rs` · not yet `kernel_events` |
+
+**Event sources:** structured transitions → `kernel_events` in `sessions.db` ([`kernel_event_log.rs`](../../crates/runtime-adapters/src/persist/kernel_event_log.rs)); LHT completion-gate probes still tee via orchestrator status strings until Phase 1+ taxonomy lands ([event taxonomy draft](../../doc_Private/docs/HARNESS_EVENT_TAXONOMY.md)).
 
 ---
 

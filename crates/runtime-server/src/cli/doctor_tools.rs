@@ -1,0 +1,360 @@
+//! Offline aggregation of tool telemetry from `kernel_events` (Phase 0.3 / T1 MVP).
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use anyhow::Context as _;
+use rusqlite::Connection;
+use serde::Serialize;
+use zagens_core::engine::kernel_event::{KernelEvent, ToolOutcome};
+use zagens_runtime_adapters::persist::kernel_event_log::{
+    KernelEventLog, ensure_kernel_events_table,
+};
+use zagens_runtime_adapters::persist::session_manager::default_sessions_dir;
+
+const TELEMETRY_KINDS: &[&str] = &["tool_call_finished", "loop_guard_triggered"];
+
+/// Per-tool counters derived from `tool_call_finished` events.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ToolStat {
+    pub name: String,
+    pub calls: u64,
+    pub failures: u64,
+    pub blocked: u64,
+    pub timeouts: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_rate: Option<f64>,
+}
+
+/// Aggregate report for `zagens doctor --tools`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolTelemetryReport {
+    pub sessions_db: String,
+    pub present: bool,
+    pub kernel_event_rows: u64,
+    pub tool_calls: u64,
+    pub tool_failures: u64,
+    pub tool_failure_rate: Option<f64>,
+    pub loop_guard_events: u64,
+    pub loop_guard_retry_rate: Option<f64>,
+    pub turns_with_tools: u64,
+    pub top_by_calls: Vec<ToolStat>,
+    pub top_by_failure_rate: Vec<ToolStat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+impl ToolTelemetryReport {
+    #[must_use]
+    pub fn empty(db_path: &Path, note: impl Into<String>) -> Self {
+        Self {
+            sessions_db: db_path.display().to_string(),
+            present: db_path.exists(),
+            kernel_event_rows: 0,
+            tool_calls: 0,
+            tool_failures: 0,
+            tool_failure_rate: None,
+            loop_guard_events: 0,
+            loop_guard_retry_rate: None,
+            turns_with_tools: 0,
+            top_by_calls: Vec::new(),
+            top_by_failure_rate: Vec::new(),
+            note: Some(note.into()),
+        }
+    }
+}
+
+/// Resolve default `~/.zagens/sessions/sessions.db`.
+#[must_use]
+pub fn default_sessions_db_path() -> PathBuf {
+    default_sessions_dir()
+        .map(|d| d.join("sessions.db"))
+        .unwrap_or_else(|_| PathBuf::from(".zagens/sessions/sessions.db"))
+}
+
+/// Build a telemetry report from on-disk `sessions.db` (read-only).
+pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemetryReport> {
+    if !db_path.exists() {
+        return Ok(ToolTelemetryReport::empty(
+            db_path,
+            "sessions.db not found — run agent sessions locally to populate kernel_events",
+        ));
+    }
+
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("open sessions db {}", db_path.display()))?;
+    ensure_kernel_events_table(&conn).context("ensure kernel_events table")?;
+
+    let kernel_event_rows: u64 = conn
+        .query_row("SELECT COUNT(*) FROM kernel_events", [], |row| row.get(0))
+        .unwrap_or(0);
+
+    let log = KernelEventLog::new(&conn);
+    let envelopes = log
+        .load_events_by_kinds(TELEMETRY_KINDS)
+        .context("load telemetry kinds")?;
+
+    let mut stats: HashMap<String, ToolStat> = HashMap::new();
+    let mut loop_guard_events = 0u64;
+    let mut turns_with_tools = HashMap::<String, ()>::new();
+
+    for envelope in envelopes {
+        match envelope.event {
+            KernelEvent::ToolCallFinished {
+                turn_id,
+                tool_name,
+                outcome,
+                ..
+            } => {
+                turns_with_tools.insert(turn_id, ());
+                let tool_name = if tool_name.trim().is_empty() {
+                    "<unknown>".to_string()
+                } else {
+                    tool_name
+                };
+                let entry = stats.entry(tool_name.clone()).or_insert_with(|| ToolStat {
+                    name: tool_name,
+                    ..ToolStat::default()
+                });
+                entry.calls = entry.calls.saturating_add(1);
+                match outcome {
+                    ToolOutcome::Success => {}
+                    ToolOutcome::Blocked { .. } => {
+                        entry.blocked = entry.blocked.saturating_add(1);
+                        entry.failures = entry.failures.saturating_add(1);
+                    }
+                    ToolOutcome::Timeout => {
+                        entry.timeouts = entry.timeouts.saturating_add(1);
+                        entry.failures = entry.failures.saturating_add(1);
+                    }
+                    ToolOutcome::ToolError { .. } | ToolOutcome::GuardHalt { .. } => {
+                        entry.failures = entry.failures.saturating_add(1);
+                    }
+                    _ => {
+                        entry.failures = entry.failures.saturating_add(1);
+                    }
+                }
+            }
+            KernelEvent::LoopGuardTriggered { .. } => {
+                loop_guard_events = loop_guard_events.saturating_add(1);
+            }
+            _ => {}
+        }
+    }
+
+    let tool_calls: u64 = stats.values().map(|s| s.calls).sum();
+    let tool_failures: u64 = stats.values().map(|s| s.failures).sum();
+
+    let mut all_tools: Vec<ToolStat> = stats.into_values().collect();
+    for tool in &mut all_tools {
+        if tool.calls > 0 {
+            tool.failure_rate =
+                Some((tool.failures as f64 / tool.calls as f64 * 100.0 * 100.0).round() / 100.0);
+        }
+    }
+
+    let mut top_by_calls = all_tools.clone();
+    top_by_calls.sort_by(|a, b| b.calls.cmp(&a.calls).then_with(|| a.name.cmp(&b.name)));
+    top_by_calls.truncate(15);
+
+    let mut top_by_failure_rate: Vec<ToolStat> = all_tools
+        .iter()
+        .filter(|t| t.calls >= 3 && t.failures > 0)
+        .cloned()
+        .collect();
+    top_by_failure_rate.sort_by(|a, b| {
+        b.failure_rate
+            .partial_cmp(&a.failure_rate)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| b.calls.cmp(&a.calls))
+    });
+    top_by_failure_rate.truncate(10);
+
+    let tool_failure_rate = if tool_calls > 0 {
+        Some((tool_failures as f64 / tool_calls as f64 * 100.0 * 100.0).round() / 100.0)
+    } else {
+        None
+    };
+
+    let loop_guard_retry_rate = if tool_calls > 0 {
+        Some((loop_guard_events as f64 / tool_calls as f64 * 100.0 * 100.0).round() / 100.0)
+    } else {
+        None
+    };
+
+    Ok(ToolTelemetryReport {
+        sessions_db: db_path.display().to_string(),
+        present: true,
+        kernel_event_rows,
+        tool_calls,
+        tool_failures,
+        tool_failure_rate,
+        loop_guard_events,
+        loop_guard_retry_rate,
+        turns_with_tools: turns_with_tools.len() as u64,
+        top_by_calls,
+        top_by_failure_rate,
+        note: if tool_calls == 0 {
+            Some("No tool_call_finished events yet".into())
+        } else {
+            None
+        },
+    })
+}
+
+pub fn print_tool_telemetry_human(report: &ToolTelemetryReport) {
+    use colored::Colorize;
+
+    println!("{}", "Tool telemetry (kernel_events)".bold());
+    println!("  db: {}", report.sessions_db);
+    if !report.present {
+        println!("  {}", "sessions.db missing".yellow());
+        if let Some(note) = &report.note {
+            println!("  {note}");
+        }
+        return;
+    }
+
+    println!("  kernel_event rows: {}", report.kernel_event_rows);
+    println!("  turns with tools: {}", report.turns_with_tools);
+    println!("  tool calls: {}", report.tool_calls);
+    if let Some(rate) = report.tool_failure_rate {
+        println!("  tool failure rate: {rate}%");
+    }
+    println!("  loop_guard events: {}", report.loop_guard_events);
+    if let Some(rate) = report.loop_guard_retry_rate {
+        println!("  loop_guard / tool call rate: {rate}%");
+    }
+    if let Some(note) = &report.note {
+        println!("  note: {note}");
+    }
+
+    if !report.top_by_calls.is_empty() {
+        println!();
+        println!("{}", "Top tools by calls".bold());
+        for tool in &report.top_by_calls {
+            let rate = tool
+                .failure_rate
+                .map(|r| format!(" fail {r}%"))
+                .unwrap_or_default();
+            println!(
+                "  - {}: {} calls ({} fail, {} blocked){}",
+                tool.name, tool.calls, tool.failures, tool.blocked, rate
+            );
+        }
+    }
+
+    if !report.top_by_failure_rate.is_empty() {
+        println!();
+        println!("{}", "Top misused tools (≥3 calls, by failure %)".bold());
+        for tool in &report.top_by_failure_rate {
+            let rate = tool.failure_rate.unwrap_or(0.0);
+            println!(
+                "  - {}: {rate}% ({} / {} calls)",
+                tool.name, tool.failures, tool.calls
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+    use zagens_core::engine::kernel_event::{KernelEvent, TurnOutcome};
+    use zagens_core::turn::TurnLoopMode;
+
+    fn write_fixture_db(dir: &Path) -> PathBuf {
+        let db_path = dir.join("sessions.db");
+        let conn = Connection::open(&db_path).expect("open");
+        ensure_kernel_events_table(&conn).expect("migrate");
+        let mut log = KernelEventLog::new(&conn);
+        let tid = "turn-fixture".to_string();
+
+        log.append(KernelEvent::TurnStarted {
+            turn_id: tid.clone(),
+            mode: TurnLoopMode::Agent,
+            input_text: "x".into(),
+            max_steps: 5,
+        })
+        .expect("turn_started");
+
+        for (name, outcome) in [
+            ("read_file", ToolOutcome::Success),
+            (
+                "read_file",
+                ToolOutcome::ToolError {
+                    message: "not found".into(),
+                },
+            ),
+            (
+                "grep",
+                ToolOutcome::Blocked {
+                    reason: "approval".into(),
+                },
+            ),
+            ("grep", ToolOutcome::Success),
+            ("grep", ToolOutcome::Success),
+        ] {
+            log.append(KernelEvent::ToolCallFinished {
+                turn_id: tid.clone(),
+                call_id: format!("call-{name}-{}", outcome.kind_label()),
+                tool_name: name.to_string(),
+                outcome,
+                duration_ms: 1,
+                wrote_state: false,
+                result_preview: String::new(),
+                session_content: String::new(),
+            })
+            .expect("tool finished");
+        }
+
+        log.append(KernelEvent::LoopGuardTriggered {
+            turn_id: tid.clone(),
+            call_id: "call-dup".into(),
+            reason: "identical_call".into(),
+        })
+        .expect("loop guard");
+
+        log.append(KernelEvent::TurnEnded {
+            turn_id: tid,
+            outcome: TurnOutcome::Completed,
+            total_steps: 3,
+        })
+        .expect("turn ended");
+
+        db_path
+    }
+
+    trait OutcomeLabel {
+        fn kind_label(&self) -> &'static str;
+    }
+
+    impl OutcomeLabel for ToolOutcome {
+        fn kind_label(&self) -> &'static str {
+            match self {
+                ToolOutcome::Success => "ok",
+                ToolOutcome::Blocked { .. } => "blocked",
+                ToolOutcome::GuardHalt { .. } => "halt",
+                ToolOutcome::Timeout => "timeout",
+                ToolOutcome::ToolError { .. } => "err",
+                _ => "other",
+            }
+        }
+    }
+
+    #[test]
+    fn aggregates_failure_and_loop_guard_rates() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = write_fixture_db(dir.path());
+        let report = build_tool_telemetry_report(&db_path).expect("report");
+
+        assert_eq!(report.tool_calls, 5);
+        assert_eq!(report.tool_failures, 2);
+        assert_eq!(report.loop_guard_events, 1);
+        assert!(report.tool_failure_rate.unwrap() > 39.0);
+        assert_eq!(report.top_by_failure_rate.len(), 1);
+        // read_file is 50% fail but only 2 calls — below the ≥3-call misuse threshold.
+        assert_eq!(report.top_by_failure_rate[0].name, "grep");
+    }
+}

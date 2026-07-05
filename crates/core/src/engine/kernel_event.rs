@@ -398,6 +398,23 @@ pub enum KernelEvent {
         step_idx: u32,
         tool_name: String,
     },
+
+    // ── Harness verify-loop (Phase 1b.3) ─────────────────────────────────────
+    /// One verify stage in the harness act→verify→rollback loop.
+    /// Event kind `harness_verify` — not kernel replay `verify_step` hooks.
+    HarnessVerify {
+        turn_id: TurnId,
+        stage: String,
+        predicate: String,
+        pass: bool,
+        retry_no: u32,
+        rollback_triggered: bool,
+        duration_ms: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
 }
 
 impl KernelEvent {
@@ -430,7 +447,8 @@ impl KernelEvent {
             | KernelEvent::CycleAdvanced { turn_id, .. }
             | KernelEvent::StepLimitContinuation { turn_id, .. }
             | KernelEvent::LoopGuardContinuation { turn_id, .. }
-            | KernelEvent::DeferredToolActivated { turn_id, .. } => Some(turn_id.as_str()),
+            | KernelEvent::DeferredToolActivated { turn_id, .. }
+            | KernelEvent::HarnessVerify { turn_id, .. } => Some(turn_id.as_str()),
         }
     }
 
@@ -463,6 +481,7 @@ impl KernelEvent {
             KernelEvent::StepLimitContinuation { .. } => "step_limit_continuation",
             KernelEvent::LoopGuardContinuation { .. } => "loop_guard_continuation",
             KernelEvent::DeferredToolActivated { .. } => "deferred_tool_activated",
+            KernelEvent::HarnessVerify { .. } => "harness_verify",
         }
     }
 }
@@ -979,7 +998,7 @@ mod tests {
         );
     }
 
-    /// Verify all 22 variant kind strings are accounted for (prevents silent
+    /// Verify all 23 variant kind strings are accounted for (prevents silent
     /// addition of variants without updating `kind_str()`).
     #[test]
     fn all_variants_have_kind_str() {
@@ -1008,10 +1027,11 @@ mod tests {
             "step_limit_continuation",
             "loop_guard_continuation",
             "deferred_tool_activated",
+            "harness_verify",
         ];
         assert_eq!(
             known_kinds.len(),
-            22,
+            23,
             "Update this count when adding variants"
         );
     }

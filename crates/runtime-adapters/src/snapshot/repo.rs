@@ -246,22 +246,51 @@ impl SnapshotRepo {
     /// Uses `git checkout <sha> -- :/` which checks out every path in the
     /// snapshot tree relative to the workspace root. We do NOT touch the
     /// user's own `.git` — snapshots only contain working-tree files.
+    ///
+    /// Paths are captured from the live working tree (including untracked files
+    /// that `git add -A` would stage) so files created after the target snapshot
+    /// but never committed to side-repo `HEAD` are still removed.
     pub fn restore(&self, id: &SnapshotId) -> io::Result<()> {
-        let current_paths = self.tree_paths("HEAD")?;
+        let current_paths = self.staged_worktree_paths()?;
         let target_paths = self.tree_paths(id.as_str())?;
-        let checkout = run_git(
-            &self.git_dir,
-            &self.work_tree,
-            &["checkout", id.as_str(), "--", ":/"],
-        )?;
-        if !checkout.status.success() {
-            return Err(io_other(format!(
-                "git checkout failed: {}",
-                String::from_utf8_lossy(&checkout.stderr).trim()
-            )));
+        if !target_paths.is_empty() {
+            let checkout = run_git(
+                &self.git_dir,
+                &self.work_tree,
+                &["checkout", id.as_str(), "--", ":/"],
+            )?;
+            if !checkout.status.success() {
+                return Err(io_other(format!(
+                    "git checkout failed: {}",
+                    String::from_utf8_lossy(&checkout.stderr).trim()
+                )));
+            }
         }
         self.remove_paths_missing_from_target(&current_paths, &target_paths)?;
         Ok(())
+    }
+
+    /// Paths in the live working tree (tracked + untracked), using side-repo index.
+    fn staged_worktree_paths(&self) -> io::Result<HashSet<PathBuf>> {
+        let add = run_git(&self.git_dir, &self.work_tree, &["add", "-A"])?;
+        if !add.status.success() {
+            return Err(io_other(format!(
+                "git add -A failed: {}",
+                String::from_utf8_lossy(&add.stderr).trim()
+            )));
+        }
+        let ls = run_git(
+            &self.git_dir,
+            &self.work_tree,
+            &["ls-files", "-z", "--cached"],
+        )?;
+        if !ls.status.success() {
+            return Err(io_other(format!(
+                "git ls-files failed: {}",
+                String::from_utf8_lossy(&ls.stderr).trim()
+            )));
+        }
+        Ok(parse_nul_paths(&ls.stdout))
     }
 
     fn tree_paths(&self, treeish: &str) -> io::Result<HashSet<PathBuf>> {
@@ -844,6 +873,22 @@ mod tests {
         repo.restore(&id).expect("restore");
         let after = std::fs::read_to_string(&f).unwrap();
         assert_eq!(after, "original");
+    }
+
+    #[test]
+    fn restore_removes_untracked_without_intermediate_snapshot() {
+        let tmp = tempdir().unwrap();
+        let (repo, _home) = make_repo(tmp.path());
+        let untracked = repo.work_tree().join("untracked.txt");
+
+        let id = repo.snapshot("pre-turn:1").expect("snapshot");
+        std::fs::write(&untracked, b"new").unwrap();
+
+        repo.restore(&id).expect("restore");
+        assert!(
+            !untracked.exists(),
+            "restore must remove untracked files absent from target snapshot"
+        );
     }
 
     #[test]

@@ -128,6 +128,8 @@ pub enum Commands {
     Models(ModelsArgs),
     /// Run a non-interactive prompt
     Exec(ExecArgs),
+    /// Night queue: enqueue tasks, run overnight, morning briefing
+    Queue(QueueArgs),
     /// Run a code review over a git diff
     Review(ReviewArgs),
     /// Open the TUI pre-seeded with a GitHub PR's title, body, and diff (#451)
@@ -204,6 +206,49 @@ pub struct ExecArgs {
     pub json: bool,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct QueueArgs {
+    #[command(subcommand)]
+    pub command: QueueCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum QueueCommand {
+    /// Enqueue a prompt with optional gate predicates
+    Add(QueueAddArgs),
+    /// List queued tasks
+    List,
+    /// Run pending queue tasks (agent + gate + rollback)
+    Run(QueueRunArgs),
+    /// Print briefing and merge into `.zagens/handoff.md`
+    Briefing,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct QueueAddArgs {
+    /// Task prompt for the agent
+    pub prompt: String,
+    /// Gate predicate (`file_exists:path=foo.txt` or JSON object). Repeat for AND gates.
+    #[arg(long = "gate")]
+    pub gate: Vec<String>,
+    /// Do not allocate a worktree when the task runs
+    #[arg(long, default_value_t = false)]
+    pub no_worktree: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct QueueRunArgs {
+    /// Maximum pending tasks to run in this invocation
+    #[arg(long, default_value_t = 1)]
+    pub max_parallel: usize,
+    /// Run in the main workspace (no git worktree)
+    #[arg(long, default_value_t = false)]
+    pub no_worktree: bool,
+    /// Skip writing `.zagens/handoff.md` briefing block
+    #[arg(long, default_value_t = false)]
+    pub no_briefing: bool,
+}
+
 #[derive(Args, Debug, Clone, Default)]
 pub struct SetupArgs {
     /// Initialize MCP configuration at the configured path
@@ -240,6 +285,9 @@ pub struct DoctorArgs {
     /// Emit machine-readable JSON output (skips live API connectivity check)
     #[arg(long, default_value_t = false)]
     pub json: bool,
+    /// Aggregate tool failure/retry rates from local kernel_events (T1 MVP)
+    #[arg(long, default_value_t = false)]
+    pub tools: bool,
 }
 
 #[derive(Args, Debug, Clone)]

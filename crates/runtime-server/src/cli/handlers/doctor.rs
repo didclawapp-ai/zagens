@@ -11,6 +11,9 @@ use crate::cli::doctor::{
     doctor_timeout_recovery_lines,
 };
 use crate::cli::doctor_context::{build_context_report, print_context_human};
+use crate::cli::doctor_tools::{
+    build_tool_telemetry_report, default_sessions_db_path, print_tool_telemetry_human,
+};
 use crate::cli::mcp_config::load_mcp_config;
 use crate::cli::setup::{
     ApiKeySource, count_dir_entries, default_plugins_dir, default_tools_dir,
@@ -19,10 +22,24 @@ use crate::cli::setup::{
 use crate::config::{Config, provider_capability};
 
 pub async fn run(ctx: &CliContext, cli_config: Option<&Path>, args: DoctorArgs) -> Result<()> {
+    if args.tools {
+        return run_tools(&args);
+    }
     if args.json {
         return run_json(&ctx.config, &ctx.workspace, cli_config);
     }
     run_human(&ctx.config, &ctx.workspace, cli_config).await;
+    Ok(())
+}
+
+fn run_tools(args: &DoctorArgs) -> Result<()> {
+    let db_path = default_sessions_db_path();
+    let report = build_tool_telemetry_report(&db_path)?;
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        print_tool_telemetry_human(&report);
+    }
     Ok(())
 }
 

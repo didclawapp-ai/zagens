@@ -6,6 +6,7 @@ pub mod context;
 pub mod dispatch;
 pub mod doctor;
 pub mod doctor_context;
+pub mod doctor_tools;
 pub mod entry;
 pub mod handlers;
 pub mod mcp_config;

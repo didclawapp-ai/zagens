@@ -155,6 +155,30 @@ struct ExecAgentRunOptions {
     llm_client_override: Option<std::sync::Arc<dyn LlmClient>>,
 }
 
+/// Agentic one-shot run for night queue (auto-approve, trust workspace).
+pub async fn run_queue_exec_agent(
+    config: &Config,
+    model: &str,
+    prompt: &str,
+    workspace: PathBuf,
+    max_subagents: usize,
+) -> Result<()> {
+    run_exec_agent(
+        config,
+        model,
+        prompt,
+        workspace,
+        max_subagents,
+        ExecAgentRunOptions {
+            auto_approve: true,
+            trust_mode: true,
+            json_output: false,
+            llm_client_override: None,
+        },
+    )
+    .await
+}
+
 async fn run_exec_agent(
     config: &Config,
     model: &str,

@@ -20,6 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Harness predicate library v0 (Phase 1b.1):** `long_horizon/predicate/` — stable `evaluate` / `evaluate_sync` API for `exit_code`, `file_exists`, `tests_pass`, `command_output_matches`; layer-2 manifest gate execution delegated to `predicate::run_manifest_verify_entry` (single oracle path).
+- **Night queue MVP (Phase 1a):** `zagens queue add|list|run|briefing` — persistent `.zagens/night_queue.json`, optional git worktree per task, post-run gate via `predicate::*` only, snapshot rollback on gate failure, morning briefing merged into `.zagens/handoff.md`; queue lifecycle events in `.zagens/queue_events.jsonl`.
+- **`HarnessVerifyLoop` skeleton (Phase 1b.2):** `long_horizon/harness_verify_loop.rs` — act→verify→retry loop over predicate library; `KernelEvent::HarnessVerify` (`harness_verify` kind) for T1 aggregation (Phase 1b.3).
+
+### Fixed
+
+- **Snapshot restore:** Removes untracked files created after the target snapshot (queue/worktree rollback no longer leaves agent artifacts behind).
+- **Night queue:** Gate-failure events appended after snapshot restore; briefing block replaces prior content instead of duplicating; enqueue guarded by file lock against concurrent `queue add` races.
+- **T1 tool telemetry (`zagens doctor --tools`):** Read-only aggregation of local `kernel_events` (`tool_call_finished`, `loop_guard_triggered`) — tool failure rate, loop-guard retry proxy, top tools by calls and by failure rate (≥3 calls). JSON via `--tools --json`. Phase 0.3 / 2026 H2 harness plan.
+- **Harness baseline collector:** `scripts/harness/collect-baseline-metrics.{sh,ps1}` writes maintainer-private `baseline-2026-H2.json` (golden replay fixture count + optional `doctor --tools` snapshot).
+
+### Changed
+
+- **`docs/tech/RUNTIME_ARCHITECTURE.md`:** §0.1 harness engine boundary (capability / discipline / orchestration layers + H0 naming table).
+
 ## [0.8.5] - 2026-06-28
 
 **Release highlights**

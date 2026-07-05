@@ -159,6 +159,47 @@ impl<'conn> KernelEventLog<'conn> {
         Ok(envelopes)
     }
 
+    /// Load all rows matching any of `kinds`, ordered by `seq ASC`.
+    pub fn load_events_by_kinds(&self, kinds: &[&str]) -> anyhow::Result<Vec<KernelEventEnvelope>> {
+        if kinds.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders: Vec<String> = kinds
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
+        let sql = format!(
+            "SELECT seq, ts_ms, kind, payload FROM kernel_events
+             WHERE kind IN ({}) ORDER BY seq ASC",
+            placeholders.join(", ")
+        );
+        let mut stmt = self.db.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> =
+            kinds.iter().map(|k| k as &dyn rusqlite::ToSql).collect();
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((
+                row.get::<_, u64>(0)?,
+                row.get::<_, u64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?;
+        let mut envelopes = Vec::new();
+        for row in rows {
+            let (seq, ts_ms, kind, payload) = row.context("row read")?;
+            let event: KernelEvent =
+                serde_json::from_str(&payload).context("KernelEvent deserialize")?;
+            envelopes.push(KernelEventEnvelope {
+                seq,
+                ts_ms,
+                kind,
+                event,
+            });
+        }
+        Ok(envelopes)
+    }
+
     /// Load all events whose `ts_ms` falls within `[from_ms, to_ms]` inclusive,
     /// ordered by `seq ASC`. Used by trace-export to recover historical turns
     /// whose engine-internal `turn_id` (UUID) is not persisted in runtime.db
