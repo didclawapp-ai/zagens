@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **LHT macro CRAFT hang:** `spawn_macro_craft_review` now wires `parent_completion_tx` so the parent turn loop receives the Review sub-agent completion and can inject remediation instead of waiting forever in "生成中".
 - **Snapshot restore:** Removes untracked files created after the target snapshot (queue/worktree rollback no longer leaves agent artifacts behind).
 - **Night queue:** Gate-failure events appended after snapshot restore; briefing block replaces prior content instead of duplicating; enqueue guarded by file lock against concurrent `queue add` races.
 - **T1 tool telemetry (`zagens doctor --tools`):** Read-only aggregation of local `kernel_events` (`tool_call_finished`, `loop_guard_triggered`) — tool failure rate, loop-guard retry proxy, top tools by calls and by failure rate (≥3 calls). JSON via `--tools --json`. Phase 0.3 / 2026 H2 harness plan.

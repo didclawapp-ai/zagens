@@ -153,6 +153,7 @@ impl Engine {
         )
         .with_max_spawn_depth(self.config.max_spawn_depth)
         .with_step_timeout(self.config.subagent_step_timeout)
+        .with_parent_completion_tx(self.runtime_ext().tx_subagent_completion.clone())
         .background_runtime();
 
         let assignment = SubAgentAssignment::new(prompt.to_string(), None);
