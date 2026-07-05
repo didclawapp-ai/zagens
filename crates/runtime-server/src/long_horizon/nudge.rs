@@ -157,6 +157,8 @@ pub struct LongHorizonSessionState {
     pub suppress_git_progress_baseline: Option<String>,
     /// Gate telemetry drained by `no_tool_uses` after `maybe_continue_incomplete_code_task`.
     pub pending_gate_events: Vec<super::gate_telemetry::CompletionGateEvent>,
+    /// Harness verify records drained by turn_loop host → status + `kernel_events`.
+    pub pending_harness_verify: Vec<super::harness_verify_loop::HarnessVerifyRecord>,
     /// Phase 4 macro loop: implement / craft / remediation.
     pub macro_phase: MacroPhase,
     pub macro_cycles_used: u32,

@@ -6,10 +6,14 @@ use zagens_core::chat::{ContentBlock, Message};
 use zagens_core::engine::context::summarize_text;
 use zagens_core::engine::turn_loop::TurnLoopOuterHost;
 use zagens_core::engine::turn_loop::control::TurnLoopControl;
+use zagens_core::engine::turn_machine::emit_kernel_event;
 use zagens_core::turn::{TurnContext, TurnOutcomeStatus};
 
 use super::super::Engine;
 use crate::core::events::Event;
+use crate::long_horizon::harness_verify_loop::{
+    harness_verify_status_message, record_to_kernel_event,
+};
 
 /// Drain any pending sub-agent completion notifications (non-blocking).
 pub(super) fn drain_subagent_completions(
@@ -205,6 +209,19 @@ impl Engine {
                 .tx_event
                 .send(Event::status(event.status_message()))
                 .await;
+        }
+
+        for record in std::mem::take(
+            &mut self
+                .runtime_ext_mut()
+                .long_horizon_state
+                .pending_harness_verify,
+        ) {
+            let _ = self
+                .tx_event
+                .send(Event::status(harness_verify_status_message(&record)))
+                .await;
+            emit_kernel_event(self, record_to_kernel_event(turn.id.clone(), &record));
         }
 
         // Telemetry (§4.9): emit a `nudge_outcome` whenever a prior nudge just

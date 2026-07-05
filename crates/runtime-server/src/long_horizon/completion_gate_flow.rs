@@ -23,6 +23,7 @@ use super::generic_gate::{
     collect_model_verify_entries, detect_toolchain_entries, merge_verify_entries,
     resolve_project_root,
 };
+use super::harness_verify_loop::records_from_manifest_gate;
 use super::integration_gate;
 use super::manifest_gate::{
     CompletionGateExec, ManifestGateResult, VerifyExitClass, VerifyRunResult, run_manifest_gate,
@@ -61,6 +62,7 @@ pub async fn evaluate_completion_gate(
     }
     session.completion_gate_evaluating = true;
     session.pending_gate_events.clear();
+    session.pending_harness_verify.clear();
 
     let runtime_deliverables =
         deliverable_manifest::merge_runtime_deliverables(workspace, &gate.deliverable);
@@ -201,6 +203,13 @@ async fn evaluate_completion_gate_inner(
             split.enforced_failing.len() as u32,
             split.observed_failing.len() as u32,
         );
+        session
+            .pending_harness_verify
+            .extend(records_from_manifest_gate(
+                &effective,
+                &result.results,
+                session.manifest_gate_rounds.saturating_sub(1),
+            ));
 
         // Infra-strike accounting on the **enforced** failing subset only — an
         // observe-only infra failure must never push toward an honest stop.

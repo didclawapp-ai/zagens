@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Harness predicate library v0 (Phase 1b.1):** `long_horizon/predicate/` — stable `evaluate` / `evaluate_sync` API for `exit_code`, `file_exists`, `tests_pass`, `command_output_matches`; layer-2 manifest gate execution delegated to `predicate::run_manifest_verify_entry` (single oracle path).
 - **Night queue MVP (Phase 1a):** `zagens queue add|list|run|briefing` — persistent `.zagens/night_queue.json`, optional git worktree per task, post-run gate via `predicate::*` only, snapshot rollback on gate failure, morning briefing merged into `.zagens/handoff.md`; queue lifecycle events in `.zagens/queue_events.jsonl`.
 - **`HarnessVerifyLoop` skeleton (Phase 1b.2):** `long_horizon/harness_verify_loop.rs` — act→verify→retry loop over predicate library; `KernelEvent::HarnessVerify` (`harness_verify` kind) for T1 aggregation (Phase 1b.3).
+- **Harness verify-loop turn_loop wiring (Phase 1b.2–1b.3):** completion gate queues `HarnessVerifyRecord` → sidecar `long_horizon.harness_verify` status + `kernel_events` double-write; `zagens doctor --tools` aggregates `harness_verify` pass/self-heal rates.
+- **Linux queue smoke:** `scripts/harness/queue-smoke.sh` — pass / fail+rollback / queue event assertions (POSIX, no bash-only gate oracle).
 
 ### Fixed
 
@@ -35,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Night queue gate:** `night_queue/gate.rs` routes all predicates through `HarnessVerifyLoop::verify_stages` (CLI subprocess fallback for headless `queue run`).
 - **`docs/tech/RUNTIME_ARCHITECTURE.md`:** §0.1 harness engine boundary (capability / discipline / orchestration layers + H0 naming table).
 
 ## [0.8.5] - 2026-06-28

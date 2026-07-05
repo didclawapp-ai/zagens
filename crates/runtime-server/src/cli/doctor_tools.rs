@@ -12,7 +12,11 @@ use zagens_runtime_adapters::persist::kernel_event_log::{
 };
 use zagens_runtime_adapters::persist::session_manager::default_sessions_dir;
 
-const TELEMETRY_KINDS: &[&str] = &["tool_call_finished", "loop_guard_triggered"];
+const TELEMETRY_KINDS: &[&str] = &[
+    "tool_call_finished",
+    "loop_guard_triggered",
+    "harness_verify",
+];
 
 /// Per-tool counters derived from `tool_call_finished` events.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -37,6 +41,9 @@ pub struct ToolTelemetryReport {
     pub tool_failure_rate: Option<f64>,
     pub loop_guard_events: u64,
     pub loop_guard_retry_rate: Option<f64>,
+    pub harness_verify_events: u64,
+    pub harness_verify_passes: u64,
+    pub harness_verify_self_heal_rate: Option<f64>,
     pub turns_with_tools: u64,
     pub top_by_calls: Vec<ToolStat>,
     pub top_by_failure_rate: Vec<ToolStat>,
@@ -56,6 +63,9 @@ impl ToolTelemetryReport {
             tool_failure_rate: None,
             loop_guard_events: 0,
             loop_guard_retry_rate: None,
+            harness_verify_events: 0,
+            harness_verify_passes: 0,
+            harness_verify_self_heal_rate: None,
             turns_with_tools: 0,
             top_by_calls: Vec::new(),
             top_by_failure_rate: Vec::new(),
@@ -96,6 +106,10 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
 
     let mut stats: HashMap<String, ToolStat> = HashMap::new();
     let mut loop_guard_events = 0u64;
+    let mut harness_verify_events = 0u64;
+    let mut harness_verify_passes = 0u64;
+    let mut harness_verify_retries = 0u64;
+    let mut harness_verify_retries_passed = 0u64;
     let mut turns_with_tools = HashMap::<String, ()>::new();
 
     for envelope in envelopes {
@@ -137,6 +151,19 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
             }
             KernelEvent::LoopGuardTriggered { .. } => {
                 loop_guard_events = loop_guard_events.saturating_add(1);
+            }
+            KernelEvent::HarnessVerify { pass, retry_no, .. } => {
+                harness_verify_events = harness_verify_events.saturating_add(1);
+                if pass {
+                    harness_verify_passes = harness_verify_passes.saturating_add(1);
+                }
+                if retry_no > 0 {
+                    harness_verify_retries = harness_verify_retries.saturating_add(1);
+                    if pass {
+                        harness_verify_retries_passed =
+                            harness_verify_retries_passed.saturating_add(1);
+                    }
+                }
             }
             _ => {}
         }
@@ -182,6 +209,16 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
         None
     };
 
+    let harness_verify_self_heal_rate = if harness_verify_retries > 0 {
+        Some(
+            (harness_verify_retries_passed as f64 / harness_verify_retries as f64 * 100.0 * 100.0)
+                .round()
+                / 100.0,
+        )
+    } else {
+        None
+    };
+
     Ok(ToolTelemetryReport {
         sessions_db: db_path.display().to_string(),
         present: true,
@@ -191,6 +228,9 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
         tool_failure_rate,
         loop_guard_events,
         loop_guard_retry_rate,
+        harness_verify_events,
+        harness_verify_passes,
+        harness_verify_self_heal_rate,
         turns_with_tools: turns_with_tools.len() as u64,
         top_by_calls,
         top_by_failure_rate,
@@ -224,6 +264,18 @@ pub fn print_tool_telemetry_human(report: &ToolTelemetryReport) {
     println!("  loop_guard events: {}", report.loop_guard_events);
     if let Some(rate) = report.loop_guard_retry_rate {
         println!("  loop_guard / tool call rate: {rate}%");
+    }
+    println!("  harness_verify events: {}", report.harness_verify_events);
+    if report.harness_verify_events > 0 {
+        let pass_rate = (report.harness_verify_passes as f64 / report.harness_verify_events as f64
+            * 100.0
+            * 100.0)
+            .round()
+            / 100.0;
+        println!("  harness_verify pass rate: {pass_rate}%");
+    }
+    if let Some(rate) = report.harness_verify_self_heal_rate {
+        println!("  harness_verify self-heal (retry>0 pass): {rate}%");
     }
     if let Some(note) = &report.note {
         println!("  note: {note}");
@@ -316,6 +368,19 @@ mod tests {
         })
         .expect("loop guard");
 
+        log.append(KernelEvent::HarnessVerify {
+            turn_id: tid.clone(),
+            stage: "build".into(),
+            predicate: "exit_code".into(),
+            pass: true,
+            retry_no: 1,
+            rollback_triggered: false,
+            duration_ms: 8,
+            code: None,
+            suggestion: None,
+        })
+        .expect("harness verify self-heal pass");
+
         log.append(KernelEvent::TurnEnded {
             turn_id: tid,
             outcome: TurnOutcome::Completed,
@@ -354,6 +419,9 @@ mod tests {
         assert_eq!(report.loop_guard_events, 1);
         assert!(report.tool_failure_rate.unwrap() > 39.0);
         assert_eq!(report.top_by_failure_rate.len(), 1);
+        assert_eq!(report.harness_verify_events, 1);
+        assert_eq!(report.harness_verify_passes, 1);
+        assert_eq!(report.harness_verify_self_heal_rate, Some(100.0));
         // read_file is 50% fail but only 2 calls — below the ≥3-call misuse threshold.
         assert_eq!(report.top_by_failure_rate[0].name, "grep");
     }
