@@ -130,6 +130,8 @@ pub enum Commands {
     Exec(ExecArgs),
     /// Night queue: enqueue tasks, run overnight, morning briefing
     Queue(QueueArgs),
+    /// Generate harness / telemetry Office reports (Phase 2b)
+    Report(ReportArgs),
     /// Run a code review over a git diff
     Review(ReviewArgs),
     /// Open the TUI pre-seeded with a GitHub PR's title, body, and diff (#451)
@@ -221,7 +223,48 @@ pub enum QueueCommand {
     /// Run pending queue tasks (agent + gate + rollback)
     Run(QueueRunArgs),
     /// Print briefing and merge into `.zagens/handoff.md`
-    Briefing,
+    Briefing(QueueBriefingArgs),
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct QueueBriefingArgs {
+    /// Also write Office briefing (docx + evidence xlsx) under deliverables
+    #[arg(long, default_value_t = false)]
+    pub office: bool,
+    /// Output directory for Office briefing (default: `.zagens/deliverables/`)
+    #[arg(long, value_name = "DIR")]
+    pub office_out: Option<PathBuf>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ReportArgs {
+    #[command(subcommand)]
+    pub command: ReportCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ReportCommand {
+    /// Build harness report from local kernel_events (T1 telemetry)
+    Harness(HarnessReportArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct HarnessReportArgs {
+    /// Sessions database path (default: `~/.zagens/sessions/sessions.db`)
+    #[arg(long, value_name = "PATH")]
+    pub sessions_db: Option<PathBuf>,
+    /// Output directory (default: `.zagens/deliverables/<slug>-<timestamp>/`)
+    #[arg(long, value_name = "DIR")]
+    pub out: Option<PathBuf>,
+    /// Comma-separated formats: md, docx, xlsx, pptx (default: md,docx,xlsx)
+    #[arg(long, value_name = "LIST", default_value = "md,docx,xlsx")]
+    pub format: String,
+    /// Include pptx progress deck (same as `--format md,docx,xlsx,pptx`)
+    #[arg(long, default_value_t = false)]
+    pub all_formats: bool,
+    /// Emit JSON (telemetry + report context) without writing files
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
 }
 
 #[derive(Args, Debug, Clone)]

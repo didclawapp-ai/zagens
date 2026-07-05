@@ -1393,3 +1393,21 @@ fn xml_escape(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
 }
+
+// ── Programmatic writers (harness report / briefing, Phase 2b) ───────────
+
+pub(crate) fn write_office_docx(path: &Path, input: &Value) -> Result<String, String> {
+    generate_docx(input, &path.to_path_buf())
+}
+
+pub(crate) fn write_office_xlsx(
+    path: &Path,
+    workspace: &Path,
+    input: &Value,
+) -> Result<String, String> {
+    generate_xlsx(input, &path.to_path_buf(), workspace)
+}
+
+pub(crate) fn write_office_pptx(path: &Path, input: &Value) -> Result<String, String> {
+    generate_pptx(input, &path.to_path_buf())
+}

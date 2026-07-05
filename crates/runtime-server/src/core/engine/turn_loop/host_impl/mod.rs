@@ -366,6 +366,20 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
         _result: &str,
         success: bool,
     ) {
+        if tool_name == "load_skill" && success {
+            if let Some(name) = tool_input.get("name").and_then(|v| v.as_str()) {
+                crate::core::engine::stage_gate_flow::activate_stage_gate_for_skill(
+                    self,
+                    name.trim(),
+                );
+            }
+        }
+        crate::core::engine::stage_gate_flow::after_tool_success(self, tool_name, success).await;
+        crate::core::engine::stage_gate_flow::after_harness_assert_tool(
+            self, tool_name, tool_input, success,
+        )
+        .await;
+
         if !self.config.long_horizon.enabled {
             return;
         }

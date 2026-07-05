@@ -14,6 +14,7 @@ pub mod names {
     pub const FILE_EXISTS: &str = "file_exists";
     pub const TESTS_PASS: &str = "tests_pass";
     pub const COMMAND_OUTPUT_MATCHES: &str = "command_output_matches";
+    pub const FILE_COUNT: &str = "file_count";
 }
 
 /// Execution context for async predicates (shell-backed).

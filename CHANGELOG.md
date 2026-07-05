@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Harness contract schema (Phase 2a.1):** `docs/harness/skill-manifest-schema.md` — skill manifest = gate manifest (`stages` / `verify` / `verify_budget` / `rollback`); fixtures `office-write-skill-manifest.toml` + `code-edit-skill-manifest.toml`; Rust type `HarnessContract` in `zagens_core::long_horizon`.
+- **Skill stage gate (Phase 2a.2):** `long_horizon/stage_gate.rs` — staged tool exposure + execution fallback; `KernelEvent::StageGateBlocked` (`stage_gate_blocked` kind); activate via `[long_horizon.stage_gate].manifest` or co-located skill `harness.toml` on `load_skill`.
+- **T4 `assert_*` tools (Phase 2a.4):** `assert_file_count` / `assert_output_matches` / `assert_tests_pass` — internal `predicate::*` only; new `file_count` predicate for glob bounds.
+- **Office weekly-report pilot (Phase 2a.3):** bundled `harness.toml` (`prepare` → `write` → `readback_verify`); `load_skill` activates stage gate; successful stage tools auto-run verify; bypass tests for `write_office` / `write_file`.
+- **`zagens doctor --tools`:** aggregates `stage_gate_blocked` event count (T1).
+- **Harness Office reports (Phase 2b):** `zagens report harness` — T1 telemetry → markdown + docx + evidence xlsx (+ optional pptx); shared template engine with `zagens queue briefing --office`.
+- **T3 failure-hint audit (Phase 2b.3):** `doctor --tools` lists hint coverage for top failure-rate tools; static registry + dynamic shell hints.
 - **Harness predicate library v0 (Phase 1b.1):** `long_horizon/predicate/` — stable `evaluate` / `evaluate_sync` API for `exit_code`, `file_exists`, `tests_pass`, `command_output_matches`; layer-2 manifest gate execution delegated to `predicate::run_manifest_verify_entry` (single oracle path).
 - **Night queue MVP (Phase 1a):** `zagens queue add|list|run|briefing` — persistent `.zagens/night_queue.json`, optional git worktree per task, post-run gate via `predicate::*` only, snapshot rollback on gate failure, morning briefing merged into `.zagens/handoff.md`; queue lifecycle events in `.zagens/queue_events.jsonl`.
 - **`HarnessVerifyLoop` skeleton (Phase 1b.2):** `long_horizon/harness_verify_loop.rs` — act→verify→retry loop over predicate library; `KernelEvent::HarnessVerify` (`harness_verify` kind) for T1 aggregation (Phase 1b.3).

@@ -8,6 +8,7 @@ pub mod doctor;
 pub mod doctor_context;
 pub mod doctor_tools;
 pub mod entry;
+pub mod failure_hint_registry;
 pub mod handlers;
 pub mod mcp_config;
 pub mod pr_prompt;

@@ -4,16 +4,19 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
 use crate::cli::context::CliContext;
+use crate::harness_report::{
+    ReportFormats, default_out_dir, from_night_queue, write_report_bundle,
+};
 use crate::night_queue::{self, GatePredicateSpec, QueueTaskStatus, RunOptions, render_briefing};
 
-use super::super::args::{QueueArgs, QueueCommand};
+use super::super::args::{QueueArgs, QueueBriefingArgs, QueueCommand};
 
 pub async fn run(ctx: &CliContext, args: QueueArgs) -> Result<()> {
     match args.command {
         QueueCommand::Add(add) => run_add(ctx, add),
         QueueCommand::List => run_list(ctx),
         QueueCommand::Run(run) => run_run(ctx, run).await,
-        QueueCommand::Briefing => run_briefing(ctx),
+        QueueCommand::Briefing(args) => run_briefing(ctx, args),
     }
 }
 
@@ -70,7 +73,7 @@ async fn run_run(ctx: &CliContext, run: super::super::args::QueueRunArgs) -> Res
     Ok(())
 }
 
-fn run_briefing(ctx: &CliContext) -> Result<()> {
+fn run_briefing(ctx: &CliContext, args: QueueBriefingArgs) -> Result<()> {
     let doc = night_queue::load(&ctx.workspace)?;
     let md = render_briefing(&doc);
     println!("{md}");
@@ -79,6 +82,34 @@ fn run_briefing(ctx: &CliContext) -> Result<()> {
         "\n(written to {})",
         zagens_config::workspace_meta_file_write(&ctx.workspace, "handoff.md").display()
     );
+
+    if args.office {
+        let report_ctx = from_night_queue(&doc);
+        let out_dir = args
+            .office_out
+            .unwrap_or_else(|| default_out_dir(&ctx.workspace, &report_ctx));
+        let written = write_report_bundle(
+            &ctx.workspace,
+            &out_dir,
+            &report_ctx,
+            &ReportFormats {
+                markdown: false,
+                docx: true,
+                xlsx: true,
+                pptx: false,
+            },
+        )?;
+        if let Some(path) = written.docx {
+            println!("  office docx: {}", path.display());
+        }
+        if let Some(path) = written.xlsx {
+            println!("  office xlsx: {}", path.display());
+        }
+        for warn in written.warnings {
+            eprintln!("  warning: {warn}");
+        }
+    }
+
     Ok(())
 }
 

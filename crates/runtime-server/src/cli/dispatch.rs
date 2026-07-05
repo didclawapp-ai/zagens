@@ -22,6 +22,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Models(args) => handlers::models::run(&ctx, args).await,
         Commands::Exec(args) => handlers::exec::run(&cli, &ctx, args).await,
         Commands::Queue(args) => handlers::queue::run(&ctx, args).await,
+        Commands::Report(args) => handlers::report::run(&ctx, args).await,
         Commands::Review(args) => handlers::review::run_review(&ctx, args).await,
         Commands::Apply(args) => handlers::review::run_apply(&ctx.workspace, args),
         Commands::CoverageGate(args) => {

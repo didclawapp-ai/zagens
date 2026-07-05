@@ -6,6 +6,7 @@
 mod command_output_matches;
 mod evaluate;
 mod exit_code;
+mod file_count;
 mod file_exists;
 mod layer2;
 mod manifest_exec;

@@ -216,6 +216,8 @@ impl Engine {
         let todo_list = self.config_ext().todos.clone();
         let plan_state = self.config_ext().plan_state.clone();
 
+        crate::core::engine::stage_gate_flow::activate_stage_gate_from_config(self);
+
         let tool_context = self.build_tool_context(mode, auto_approve);
         let builder = self.build_turn_tool_registry_builder(mode, todo_list, plan_state);
 
@@ -317,12 +319,17 @@ impl Engine {
             Vec::new()
         };
         let tools = tool_registry.as_ref().map(|registry| {
-            build_model_tool_catalog(
+            let mut catalog = build_model_tool_catalog(
                 registry.to_api_tools_with_cache(true),
                 mcp_tools,
                 mode,
                 self.scratchpad_run_id.as_deref(),
-            )
+            );
+            let stage_gate = &self.runtime_ext().long_horizon_state.stage_gate;
+            if stage_gate.is_active() {
+                catalog = stage_gate.filter_tool_catalog(catalog, |t| t.name.as_str());
+            }
+            catalog
         });
 
         // Main turn loop

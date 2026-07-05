@@ -1,0 +1,35 @@
+# Code edit skill — harness contract (Phase 2a.1 fixture)
+# Flat gate-style verify rows (no stages) — same schema as queue gate predicates
+
+schema_version = 1
+
+[harness]
+id = "code-edit-smoke"
+description = "Minimal code task gate: build + tests via predicate library only."
+
+[verify_budget]
+max_retries = 1
+timeout_ms = 600000
+
+[rollback]
+strategy = "snapshot"
+
+[[verify]]
+id = "compile"
+predicate = "tests_pass"
+args = { toolchain = "cargo", cmd = "cargo check" }
+
+[[verify]]
+id = "unit_tests"
+predicate = "tests_pass"
+args = { toolchain = "cargo" }
+
+[[stages]]
+id = "implement"
+tools = ["read_file", "edit_file", "write_file", "grep_files", "glob_files", "exec_shell", "run_tests"]
+requires = []
+
+[[verify]]
+stage = "implement"
+predicate = "file_count"
+args = { glob = "src/**/*.rs", min = 1 }

@@ -262,6 +262,19 @@ async fn execute_tool_plans_batch(
                 });
                 continue;
             }
+            if let Some(err) =
+                crate::core::engine::stage_gate_flow::maybe_block_tool(engine, &plan.name)
+            {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
+                    index: plan.index,
+                    id: plan.id.clone(),
+                    name: plan.name.clone(),
+                    input: plan.input.clone(),
+                    started_at: Instant::now(),
+                    result: Err(err),
+                });
+                continue;
+            }
             let mut effective_input = plan.input.clone();
             match engine.fire_tool_call_before(app_mode, &plan.name, &effective_input) {
                 Err(blocked) => {
@@ -383,6 +396,20 @@ async fn execute_tool_plans_batch(
             let tool_name = plan.name.clone();
             let mut tool_input = plan.input.clone();
             let tool_caller = plan.caller.clone();
+
+            if let Some(err) =
+                crate::core::engine::stage_gate_flow::maybe_block_tool(engine, &tool_name)
+            {
+                outcomes[local_slot(plan.index)] = Some(ToolExecOutcome {
+                    index: plan.index,
+                    id: tool_id.clone(),
+                    name: tool_name.clone(),
+                    input: tool_input.clone(),
+                    started_at: Instant::now(),
+                    result: Err(err),
+                });
+                continue;
+            }
 
             if let Some(result) = plan.guard_result.clone() {
                 let result = Ok(result);

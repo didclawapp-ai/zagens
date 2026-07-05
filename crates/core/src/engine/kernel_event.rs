@@ -415,6 +415,19 @@ pub enum KernelEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestion: Option<String>,
     },
+
+    // ── Skill stage gate (Phase 2a.2 · H2) ───────────────────────────────────
+    /// Model invoked a tool blocked by the active skill stage contract.
+    /// Event kind `stage_gate_blocked` — not kernel replay `verify_step`.
+    StageGateBlocked {
+        turn_id: TurnId,
+        step_idx: u32,
+        skill: String,
+        stage: String,
+        tool_name: String,
+        code: String,
+        suggestion: String,
+    },
 }
 
 impl KernelEvent {
@@ -448,7 +461,8 @@ impl KernelEvent {
             | KernelEvent::StepLimitContinuation { turn_id, .. }
             | KernelEvent::LoopGuardContinuation { turn_id, .. }
             | KernelEvent::DeferredToolActivated { turn_id, .. }
-            | KernelEvent::HarnessVerify { turn_id, .. } => Some(turn_id.as_str()),
+            | KernelEvent::HarnessVerify { turn_id, .. }
+            | KernelEvent::StageGateBlocked { turn_id, .. } => Some(turn_id.as_str()),
         }
     }
 
@@ -482,6 +496,7 @@ impl KernelEvent {
             KernelEvent::LoopGuardContinuation { .. } => "loop_guard_continuation",
             KernelEvent::DeferredToolActivated { .. } => "deferred_tool_activated",
             KernelEvent::HarnessVerify { .. } => "harness_verify",
+            KernelEvent::StageGateBlocked { .. } => "stage_gate_blocked",
         }
     }
 }
@@ -1028,10 +1043,11 @@ mod tests {
             "loop_guard_continuation",
             "deferred_tool_activated",
             "harness_verify",
+            "stage_gate_blocked",
         ];
         assert_eq!(
             known_kinds.len(),
-            23,
+            24,
             "Update this count when adding variants"
         );
     }

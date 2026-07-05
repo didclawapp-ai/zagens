@@ -1,6 +1,7 @@
 //! Long-horizon code task (LHT) harness configuration — shared between core and runtime.
 
 mod completion_gate;
+mod harness_contract;
 
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +9,10 @@ pub use completion_gate::{
     CompletionGateConfig, CompletionGateConfigToml, CompletionGateDeliverableEntry,
     CompletionGateMode, CompletionGateVerifyEntry, GenericGateMode, ManifestShell,
     MinLinesGateConfig, VerifySource,
+};
+pub use harness_contract::{
+    ContractVerifyStage, HARNESS_CONTRACT_SCHEMA_VERSION, HarnessContract, HarnessMeta,
+    RollbackPolicy, STAGE_GATE_ALWAYS_ALLOWED, StageSpec, VerifyBudget, VerifyEntry,
 };
 
 /// §6.7 Adversarial read-only auditor configuration (agent-independent grounding signal).
@@ -253,6 +258,36 @@ pub struct LongHorizonConfig {
     pub macro_loop: MacroLoopConfig,
     /// §6.7: Adversarial read-only auditor — agent-independent gap enumerator.
     pub adversarial_audit: AdversarialAuditConfig,
+    /// Phase 2a: optional staged skill / gate contract (`harness.toml` or config path).
+    pub stage_gate: StageGateConfig,
+}
+
+/// `[long_horizon.stage_gate]` — staged tool exposure (H2).
+#[derive(Debug, Clone, Default)]
+pub struct StageGateConfig {
+    /// Workspace-relative path to a harness contract TOML.
+    pub manifest: Option<String>,
+    /// When true, block out-of-stage tools and emit `stage_gate_blocked`.
+    pub enforce: bool,
+}
+
+/// Deserializable `[long_horizon.stage_gate]` table.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct StageGateConfigToml {
+    #[serde(default)]
+    pub manifest: Option<String>,
+    #[serde(default)]
+    pub enforce: Option<bool>,
+}
+
+impl StageGateConfigToml {
+    #[must_use]
+    pub fn into_runtime(self) -> StageGateConfig {
+        StageGateConfig {
+            manifest: self.manifest,
+            enforce: self.enforce.unwrap_or(true),
+        }
+    }
 }
 
 impl Default for LongHorizonConfig {
@@ -269,6 +304,7 @@ impl Default for LongHorizonConfig {
             completion_gate: CompletionGateConfig::default(),
             macro_loop: MacroLoopConfig::default(),
             adversarial_audit: AdversarialAuditConfig::default(),
+            stage_gate: StageGateConfig::default(),
         }
     }
 }
@@ -299,6 +335,8 @@ pub struct LongHorizonConfigToml {
     pub macro_loop: Option<MacroLoopConfigToml>,
     #[serde(default)]
     pub adversarial_audit: Option<AdversarialAuditConfigToml>,
+    #[serde(default)]
+    pub stage_gate: Option<StageGateConfigToml>,
 }
 
 impl LongHorizonConfigToml {
@@ -333,6 +371,10 @@ impl LongHorizonConfigToml {
             adversarial_audit: self
                 .adversarial_audit
                 .map(AdversarialAuditConfigToml::into_runtime)
+                .unwrap_or_default(),
+            stage_gate: self
+                .stage_gate
+                .map(StageGateConfigToml::into_runtime)
                 .unwrap_or_default(),
         }
     }

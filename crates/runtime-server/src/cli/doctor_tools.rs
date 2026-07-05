@@ -16,6 +16,7 @@ const TELEMETRY_KINDS: &[&str] = &[
     "tool_call_finished",
     "loop_guard_triggered",
     "harness_verify",
+    "stage_gate_blocked",
 ];
 
 /// Per-tool counters derived from `tool_call_finished` events.
@@ -28,6 +29,18 @@ pub struct ToolStat {
     pub timeouts: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_rate: Option<f64>,
+}
+
+/// T3 hint audit row for a high-failure tool.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolHintAuditEntry {
+    pub name: String,
+    pub failures: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_rate: Option<f64>,
+    pub hint_covered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint_summary: Option<String>,
 }
 
 /// Aggregate report for `zagens doctor --tools`.
@@ -44,9 +57,13 @@ pub struct ToolTelemetryReport {
     pub harness_verify_events: u64,
     pub harness_verify_passes: u64,
     pub harness_verify_self_heal_rate: Option<f64>,
+    pub stage_gate_blocked_events: u64,
     pub turns_with_tools: u64,
     pub top_by_calls: Vec<ToolStat>,
     pub top_by_failure_rate: Vec<ToolStat>,
+    pub hint_coverage_top_failures: Vec<ToolHintAuditEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint_coverage_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
@@ -66,9 +83,12 @@ impl ToolTelemetryReport {
             harness_verify_events: 0,
             harness_verify_passes: 0,
             harness_verify_self_heal_rate: None,
+            stage_gate_blocked_events: 0,
             turns_with_tools: 0,
             top_by_calls: Vec::new(),
             top_by_failure_rate: Vec::new(),
+            hint_coverage_top_failures: Vec::new(),
+            hint_coverage_rate: None,
             note: Some(note.into()),
         }
     }
@@ -110,6 +130,7 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
     let mut harness_verify_passes = 0u64;
     let mut harness_verify_retries = 0u64;
     let mut harness_verify_retries_passed = 0u64;
+    let mut stage_gate_blocked_events = 0u64;
     let mut turns_with_tools = HashMap::<String, ()>::new();
 
     for envelope in envelopes {
@@ -165,6 +186,9 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
                     }
                 }
             }
+            KernelEvent::StageGateBlocked { .. } => {
+                stage_gate_blocked_events = stage_gate_blocked_events.saturating_add(1);
+            }
             _ => {}
         }
     }
@@ -196,6 +220,9 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
             .then_with(|| b.calls.cmp(&a.calls))
     });
     top_by_failure_rate.truncate(10);
+
+    let (hint_coverage_top_failures, hint_coverage_rate) =
+        build_hint_coverage(&top_by_failure_rate);
 
     let tool_failure_rate = if tool_calls > 0 {
         Some((tool_failures as f64 / tool_calls as f64 * 100.0 * 100.0).round() / 100.0)
@@ -231,15 +258,44 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
         harness_verify_events,
         harness_verify_passes,
         harness_verify_self_heal_rate,
+        stage_gate_blocked_events,
         turns_with_tools: turns_with_tools.len() as u64,
         top_by_calls,
         top_by_failure_rate,
+        hint_coverage_top_failures,
+        hint_coverage_rate,
         note: if tool_calls == 0 {
             Some("No tool_call_finished events yet".into())
         } else {
             None
         },
     })
+}
+
+fn build_hint_coverage(top_by_failure_rate: &[ToolStat]) -> (Vec<ToolHintAuditEntry>, Option<f64>) {
+    use super::failure_hint_registry;
+
+    if top_by_failure_rate.is_empty() {
+        return (Vec::new(), None);
+    }
+
+    let mut entries = Vec::with_capacity(top_by_failure_rate.len());
+    let mut covered = 0u64;
+    for tool in top_by_failure_rate {
+        let audit = failure_hint_registry::audit_tool(&tool.name);
+        if audit.covered {
+            covered = covered.saturating_add(1);
+        }
+        entries.push(ToolHintAuditEntry {
+            name: tool.name.clone(),
+            failures: tool.failures,
+            failure_rate: tool.failure_rate,
+            hint_covered: audit.covered,
+            hint_summary: audit.summary,
+        });
+    }
+    let rate = Some((covered as f64 / entries.len() as f64 * 100.0 * 100.0).round() / 100.0);
+    (entries, rate)
 }
 
 pub fn print_tool_telemetry_human(report: &ToolTelemetryReport) {
@@ -277,6 +333,10 @@ pub fn print_tool_telemetry_human(report: &ToolTelemetryReport) {
     if let Some(rate) = report.harness_verify_self_heal_rate {
         println!("  harness_verify self-heal (retry>0 pass): {rate}%");
     }
+    println!(
+        "  stage_gate_blocked events: {}",
+        report.stage_gate_blocked_events
+    );
     if let Some(note) = &report.note {
         println!("  note: {note}");
     }
@@ -305,6 +365,22 @@ pub fn print_tool_telemetry_human(report: &ToolTelemetryReport) {
                 "  - {}: {rate}% ({} / {} calls)",
                 tool.name, tool.failures, tool.calls
             );
+        }
+    }
+
+    if !report.hint_coverage_top_failures.is_empty() {
+        println!();
+        println!("{}", "Failure hint coverage (T3)".bold());
+        if let Some(rate) = report.hint_coverage_rate {
+            println!("  top-failure tools covered: {rate}%");
+        }
+        for entry in &report.hint_coverage_top_failures {
+            let mark = if entry.hint_covered { "✓" } else { "✗" };
+            let summary = entry
+                .hint_summary
+                .as_deref()
+                .unwrap_or("(no static hint yet)");
+            println!("  {mark} {} — {}", entry.name, summary);
         }
     }
 }
@@ -381,6 +457,17 @@ mod tests {
         })
         .expect("harness verify self-heal pass");
 
+        log.append(KernelEvent::StageGateBlocked {
+            turn_id: tid.clone(),
+            step_idx: 2,
+            skill: "office-weekly-report".into(),
+            stage: "prepare".into(),
+            tool_name: "write_office".into(),
+            code: "stage_gate_blocked".into(),
+            suggestion: "Complete prepare first.".into(),
+        })
+        .expect("stage gate blocked");
+
         log.append(KernelEvent::TurnEnded {
             turn_id: tid,
             outcome: TurnOutcome::Completed,
@@ -422,7 +509,11 @@ mod tests {
         assert_eq!(report.harness_verify_events, 1);
         assert_eq!(report.harness_verify_passes, 1);
         assert_eq!(report.harness_verify_self_heal_rate, Some(100.0));
+        assert_eq!(report.stage_gate_blocked_events, 1);
         // read_file is 50% fail but only 2 calls — below the ≥3-call misuse threshold.
         assert_eq!(report.top_by_failure_rate[0].name, "grep");
+        assert_eq!(report.hint_coverage_top_failures.len(), 1);
+        assert!(report.hint_coverage_top_failures[0].hint_covered);
+        assert_eq!(report.hint_coverage_rate, Some(100.0));
     }
 }

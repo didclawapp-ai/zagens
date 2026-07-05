@@ -16,6 +16,7 @@ impl Engine {
             // Office always ships web_search / fetch_url / finance / web.run (install-time
             // networking only). Code mode still respects Feature::WebSearch.
             let mut builder = ToolRegistryBuilder::new().with_office_surface(true);
+            builder = builder.with_harness_assert_tools();
             if self.config.memory_enabled {
                 builder = builder.with_remember_tool();
             }
@@ -46,7 +47,8 @@ impl Engine {
             .with_rlm_tool(self.deepseek_client.clone(), self.session.model.clone())
             .with_fim_tool(self.deepseek_client.clone(), self.session.model.clone())
             .with_user_input_tool()
-            .with_parallel_tool();
+            .with_parallel_tool()
+            .with_harness_assert_tools();
 
         if self.config.features.enabled(Feature::ApplyPatch) && mode != AppMode::Plan {
             builder = builder.with_patch_tools();

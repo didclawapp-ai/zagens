@@ -63,6 +63,7 @@ mod scratchpad_sync;
 mod session_messages;
 mod session_ops;
 mod sleep_ops;
+mod stage_gate_flow;
 mod startup_warnings;
 mod streaming;
 mod subagent_spawn;

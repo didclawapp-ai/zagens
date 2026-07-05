@@ -561,6 +561,17 @@ impl ToolRegistryBuilder {
         }
     }
 
+    /// Include T4 harness assert tools (predicate library only).
+    #[must_use]
+    pub fn with_harness_assert_tools(self) -> Self {
+        use super::harness_assert::{
+            AssertFileCountTool, AssertOutputMatchesTool, AssertTestsPassTool,
+        };
+        self.with_tool(Arc::new(AssertFileCountTool))
+            .with_tool(Arc::new(AssertOutputMatchesTool))
+            .with_tool(Arc::new(AssertTestsPassTool))
+    }
+
     /// Include git inspection tools (`git_status`, `git_diff`).
     #[must_use]
     pub fn with_git_tools(self) -> Self {

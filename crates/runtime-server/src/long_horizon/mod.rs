@@ -23,6 +23,7 @@ mod nudge;
 mod objective;
 mod plan_drift;
 pub mod predicate;
+pub(crate) mod stage_gate;
 pub(crate) use plan_drift::find_plan_checklist_drift;
 pub(crate) mod progress;
 mod reinject;

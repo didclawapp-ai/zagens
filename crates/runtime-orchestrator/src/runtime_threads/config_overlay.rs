@@ -186,6 +186,7 @@ fn merge_long_horizon_toml(
         completion_gate: patch.completion_gate.or(base.completion_gate),
         macro_loop: patch.macro_loop.or(base.macro_loop),
         adversarial_audit: patch.adversarial_audit.or(base.adversarial_audit),
+        stage_gate: patch.stage_gate.or(base.stage_gate),
     }
 }
 

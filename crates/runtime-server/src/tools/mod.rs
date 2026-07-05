@@ -18,6 +18,7 @@ pub mod git;
 pub mod git_history;
 pub mod github;
 pub mod glob_files;
+pub mod harness_assert;
 pub mod host_impl;
 pub(crate) mod html_page_text;
 pub mod large_output_router;

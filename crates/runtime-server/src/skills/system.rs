@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::Path;
 
-const BUNDLED_SKILL_VERSION: &str = "8";
+const BUNDLED_SKILL_VERSION: &str = "9";
 
 struct BundledFile {
     path: &'static str,
@@ -74,10 +74,19 @@ macro_rules! bundled_md_skill {
     };
 }
 
-const OFFICE_WEEKLY_REPORT: BundledSkill = bundled_md_skill!(
-    "office-weekly-report",
-    "../../assets/skills/office-weekly-report/SKILL.md"
-);
+const OFFICE_WEEKLY_REPORT: BundledSkill = BundledSkill {
+    name: "office-weekly-report",
+    files: &[
+        BundledFile {
+            path: "SKILL.md",
+            body: include_str!("../../assets/skills/office-weekly-report/SKILL.md"),
+        },
+        BundledFile {
+            path: "harness.toml",
+            body: include_str!("../../assets/skills/office-weekly-report/harness.toml"),
+        },
+    ],
+};
 const OFFICE_MEETING_MINUTES: BundledSkill = bundled_md_skill!(
     "office-meeting-minutes",
     "../../assets/skills/office-meeting-minutes/SKILL.md"

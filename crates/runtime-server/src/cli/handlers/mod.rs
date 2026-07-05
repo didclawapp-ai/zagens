@@ -7,6 +7,7 @@ pub mod mcp;
 pub mod models;
 pub mod open_url;
 pub mod queue;
+pub mod report;
 pub mod review;
 pub mod sandbox;
 pub mod serve;

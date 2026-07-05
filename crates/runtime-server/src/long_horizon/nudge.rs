@@ -159,6 +159,8 @@ pub struct LongHorizonSessionState {
     pub pending_gate_events: Vec<super::gate_telemetry::CompletionGateEvent>,
     /// Harness verify records drained by turn_loop host → status + `kernel_events`.
     pub pending_harness_verify: Vec<super::harness_verify_loop::HarnessVerifyRecord>,
+    /// Phase 2a: staged skill contract + verified stage ids.
+    pub stage_gate: super::stage_gate::StageGateSession,
     /// Phase 4 macro loop: implement / craft / remediation.
     pub macro_phase: MacroPhase,
     pub macro_cycles_used: u32,
@@ -1048,6 +1050,7 @@ mod tests {
             completion_gate: cfg.completion_gate,
             macro_loop: cfg.macro_loop,
             adversarial_audit: cfg.adversarial_audit,
+            stage_gate: cfg.stage_gate,
         };
         for _ in 0..3 {
             assert!(matches!(
@@ -1098,6 +1101,7 @@ mod tests {
             completion_gate: cfg.completion_gate,
             macro_loop: cfg.macro_loop,
             adversarial_audit: cfg.adversarial_audit,
+            stage_gate: cfg.stage_gate,
         };
         let mut nudges = 0;
         for _ in 0..20 {
@@ -1133,6 +1137,7 @@ mod tests {
             completion_gate: defaults.completion_gate,
             macro_loop: defaults.macro_loop,
             adversarial_audit: defaults.adversarial_audit,
+            stage_gate: defaults.stage_gate,
         };
         // Two no-progress nudges (streak = 2), then a progress turn resets it.
         let _ = tracker.prepare_nudge(Some(1), &cfg, false);

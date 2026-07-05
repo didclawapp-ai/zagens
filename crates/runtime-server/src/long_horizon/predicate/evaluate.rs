@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use super::command_output_matches;
 use super::exit_code;
+use super::file_count;
 use super::file_exists;
 use super::tests_pass;
 use super::types::{PredicateContext, PredicateError, PredicateResult, names};
@@ -18,6 +19,7 @@ pub async fn evaluate(
 ) -> Result<PredicateResult, PredicateError> {
     match name {
         names::FILE_EXISTS => file_exists::evaluate_sync(ctx.workspace, args),
+        names::FILE_COUNT => file_count::evaluate_sync(ctx.workspace, args),
         names::COMMAND_OUTPUT_MATCHES => command_output_matches::evaluate_sync(ctx.workspace, args),
         names::EXIT_CODE => exit_code::evaluate(ctx, args).await,
         names::TESTS_PASS => tests_pass::evaluate(ctx, args).await,
@@ -34,6 +36,7 @@ pub fn evaluate_sync(
     let _started = Instant::now();
     match name {
         names::FILE_EXISTS => file_exists::evaluate_sync(workspace, args),
+        names::FILE_COUNT => file_count::evaluate_sync(workspace, args),
         names::COMMAND_OUTPUT_MATCHES => command_output_matches::evaluate_sync(workspace, args),
         other => Err(PredicateError::Unknown(other.to_string())),
     }
