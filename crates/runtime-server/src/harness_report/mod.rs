@@ -34,6 +34,7 @@ mod tests {
             top_by_failure_rate: vec![],
             hint_coverage_top_failures: vec![],
             hint_coverage_rate: Some(80.0),
+            tool_sequences: None,
             note: None,
         };
         let ctx = from_tool_telemetry(&report);

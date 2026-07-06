@@ -1,0 +1,30 @@
+# Gate-as-Code preset: Go build + vet (Phase 4.1)
+# Requires go.mod at workspace root (or generic_gate project-root resolution).
+
+schema_version = 1
+
+[harness]
+id = "go-build-vet"
+description = "go build, vet, and gofmt-clean oracle for Go services."
+
+[verify_budget]
+max_retries = 2
+timeout_ms = 600000
+
+[rollback]
+strategy = "snapshot"
+
+[[verify]]
+id = "build"
+predicate = "exit_code"
+args = { cmd = "go build ./..." }
+
+[[verify]]
+id = "vet"
+predicate = "exit_code"
+args = { cmd = "go vet ./..." }
+
+[[verify]]
+id = "tests"
+predicate = "tests_pass"
+args = { toolchain = "go" }

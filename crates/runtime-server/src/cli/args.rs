@@ -130,6 +130,10 @@ pub enum Commands {
     Exec(ExecArgs),
     /// Night queue: enqueue tasks, run overnight, morning briefing
     Queue(QueueArgs),
+    /// Gate-as-Code: validate harness contracts / list bundled presets (Phase 4.1)
+    Gate(GateArgs),
+    /// Skill drafts: list / promote after human review (Phase 4.2)
+    Skill(SkillArgs),
     /// Generate harness / telemetry Office reports (Phase 2b)
     Report(ReportArgs),
     /// Run a code review over a git diff
@@ -274,9 +278,81 @@ pub struct QueueAddArgs {
     /// Gate predicate (`file_exists:path=foo.txt` or JSON object). Repeat for AND gates.
     #[arg(long = "gate")]
     pub gate: Vec<String>,
+    /// Harness contract TOML (flat [[verify]] rows → queue gate). Mutually exclusive with staged-only manifests.
+    #[arg(long = "gate-file", value_name = "PATH")]
+    pub gate_file: Option<PathBuf>,
+    /// Bundled preset id (`zagens gate list`). Shorthand for `--gate-file` when developing from repo root.
+    #[arg(long = "gate-preset", value_name = "ID")]
+    pub gate_preset: Option<String>,
     /// Do not allocate a worktree when the task runs
     #[arg(long, default_value_t = false)]
     pub no_worktree: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GateArgs {
+    #[command(subcommand)]
+    pub command: GateCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum GateCommand {
+    /// Parse and validate a gate / skill contract TOML
+    Validate(GateValidateArgs),
+    /// List bundled Gate-as-Code presets
+    List(GateListArgs),
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct GateValidateArgs {
+    /// Contract file path
+    #[arg(long, value_name = "PATH")]
+    pub file: Option<PathBuf>,
+    /// Bundled preset id (see `zagens gate list`)
+    #[arg(long, value_name = "ID")]
+    pub preset: Option<String>,
+    /// Emit JSON validation report
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct GateListArgs {
+    /// Emit JSON array of preset ids
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct SkillArgs {
+    #[command(subcommand)]
+    pub command: SkillCommand,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum SkillCommand {
+    /// List skill drafts under `.zagens/skill-drafts/`
+    Drafts(SkillDraftsArgs),
+    /// Promote a reviewed draft into the skills catalogue (human-in-loop)
+    Promote(SkillPromoteArgs),
+}
+
+#[derive(Args, Debug, Clone, Default)]
+pub struct SkillDraftsArgs {
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct SkillPromoteArgs {
+    /// Draft skill id (directory name under `.zagens/skill-drafts/`)
+    pub name: String,
+    /// Install under `~/.agents/skills/` instead of `<workspace>/.agents/skills/`
+    #[arg(long, default_value_t = false)]
+    pub global: bool,
+    /// Replace an existing installed skill with the same id
+    #[arg(long, default_value_t = false)]
+    pub replace: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -649,6 +725,8 @@ pub enum TraceCommand {
     },
     /// Compare two threads or fixtures
     Compare(TraceCompareArgs),
+    /// Validate golden replay corpus + optional thread packs + baseline diff (Phase 4.4)
+    Benchmark(TraceBenchmarkArgs),
     /// Local preview HTTP server (`--watch` for live thread tail)
     Serve(TraceServeArgs),
 }
@@ -659,6 +737,29 @@ pub enum TracePackCommand {
     Export(TracePackExportArgs),
     /// Validate an imported replay pack
     Validate(TracePackValidateArgs),
+}
+
+/// Arguments for `zagens trace benchmark` (Phase 4.4)
+#[derive(Args, Debug, Clone)]
+pub struct TraceBenchmarkArgs {
+    /// Golden replay directory (`fixtures/harness/kernel-v3-replay/`)
+    #[arg(long)]
+    pub replay_dir: Option<PathBuf>,
+    /// Also export + validate replay packs for runtime thread ids
+    #[arg(long = "thread")]
+    pub thread: Vec<String>,
+    /// Baseline JSON for §4.3 metric diff (`baseline-2026-H2.json`)
+    #[arg(long)]
+    pub baseline: Option<PathBuf>,
+    /// Optional report output path
+    #[arg(short, long)]
+    pub out: Option<PathBuf>,
+    /// Disable secret redaction for thread exports
+    #[arg(long)]
+    pub no_redact: bool,
+    /// Emit JSON report on stdout
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
 }
 
 /// Arguments for `zagens trace pack export`

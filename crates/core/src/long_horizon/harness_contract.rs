@@ -9,6 +9,28 @@ use serde_json::Value;
 
 pub const HARNESS_CONTRACT_SCHEMA_VERSION: u32 = 1;
 
+/// Registered predicate names (`long_horizon/predicate::*` — keep in sync).
+pub mod predicates {
+    pub const EXIT_CODE: &str = "exit_code";
+    pub const FILE_EXISTS: &str = "file_exists";
+    pub const TESTS_PASS: &str = "tests_pass";
+    pub const COMMAND_OUTPUT_MATCHES: &str = "command_output_matches";
+    pub const FILE_COUNT: &str = "file_count";
+
+    pub const ALL: &[&str] = &[
+        EXIT_CODE,
+        FILE_EXISTS,
+        TESTS_PASS,
+        COMMAND_OUTPUT_MATCHES,
+        FILE_COUNT,
+    ];
+
+    #[must_use]
+    pub fn is_registered(name: &str) -> bool {
+        ALL.iter().any(|p| *p == name)
+    }
+}
+
 /// Tools always visible while a staged skill contract is active (meta / user input).
 pub const STAGE_GATE_ALWAYS_ALLOWED: &[&str] = &[
     "load_skill",
@@ -115,10 +137,143 @@ pub struct ContractVerifyStage {
     pub args: Value,
 }
 
+/// Static validation report for Gate-as-Code manifests.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContractValidationReport {
+    pub ok: bool,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub verify_count: usize,
+    #[serde(default)]
+    pub stage_count: usize,
+}
+
 impl HarnessContract {
     /// Parse TOML bytes (standalone manifest file or embedded in config).
     pub fn parse_toml(raw: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(raw)
+    }
+
+    /// Parse and validate a gate / skill contract file.
+    pub fn parse_and_validate(
+        raw: &str,
+    ) -> Result<(Self, ContractValidationReport), toml::de::Error> {
+        let contract = Self::parse_toml(raw)?;
+        let report = contract.validate();
+        Ok((contract, report))
+    }
+
+    /// Structural + predicate registry checks (no workspace exec).
+    #[must_use]
+    pub fn validate(&self) -> ContractValidationReport {
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+
+        if self.schema_version != HARNESS_CONTRACT_SCHEMA_VERSION {
+            warnings.push(format!(
+                "schema_version {} differs from current v{HARNESS_CONTRACT_SCHEMA_VERSION}",
+                self.schema_version
+            ));
+        }
+
+        if !self.is_active() {
+            errors.push("contract has no [[stages]] and no [[verify]] rows".into());
+        }
+
+        if self.harness.id.trim().is_empty() {
+            warnings.push("[harness].id is empty — set a stable id for telemetry and reuse".into());
+        }
+
+        let stage_ids: std::collections::HashSet<&str> =
+            self.stages.iter().map(|s| s.id.as_str()).collect();
+        if stage_ids.len() != self.stages.len() {
+            errors.push("duplicate [[stages]].id values".into());
+        }
+
+        for stage in &self.stages {
+            for req in &stage.requires {
+                if !stage_ids.contains(req.as_str()) {
+                    errors.push(format!(
+                        "stage `{}` requires unknown stage `{req}`",
+                        stage.id
+                    ));
+                }
+            }
+            if stage.tools.is_empty() {
+                warnings.push(format!("stage `{}` exposes no tools", stage.id));
+            }
+        }
+
+        for (i, entry) in self.verify.iter().enumerate() {
+            let row = entry
+                .id
+                .as_deref()
+                .or(entry.stage.as_deref())
+                .unwrap_or("verify");
+            if entry.predicate.trim().is_empty() {
+                errors.push(format!("[[verify]] row {i} (`{row}`): missing predicate"));
+                continue;
+            }
+            if !predicates::is_registered(&entry.predicate) {
+                errors.push(format!(
+                    "[[verify]] row {i} (`{row}`): unknown predicate `{}` (registered: {})",
+                    entry.predicate,
+                    predicates::ALL.join(", ")
+                ));
+            }
+            if let Some(stage) = &entry.stage
+                && !stage_ids.contains(stage.as_str())
+            {
+                errors.push(format!(
+                    "[[verify]] row {i}: stage `{stage}` is not defined in [[stages]]"
+                ));
+            }
+            if entry.stage.is_none() && entry.id.is_none() {
+                warnings.push(format!(
+                    "[[verify]] row {i}: flat gate row should set `id` for stable telemetry"
+                ));
+            }
+        }
+
+        if !self.stages.is_empty() && self.verify.iter().all(|v| v.stage.is_none()) {
+            warnings.push(
+                "staged contract has no stage-bound [[verify]] rows — stage gate may never advance"
+                    .into(),
+            );
+        }
+
+        if self.rollback.strategy != "snapshot" && self.rollback.strategy != "none" {
+            warnings.push(format!(
+                "[rollback].strategy `{}` is not recognized (expected snapshot|none)",
+                self.rollback.strategy
+            ));
+        }
+
+        ContractValidationReport {
+            ok: errors.is_empty(),
+            errors,
+            warnings,
+            verify_count: self.verify.len(),
+            stage_count: self.stages.len(),
+        }
+    }
+
+    /// Flat verify rows for night-queue gate (skips stage-bound skill rows).
+    #[must_use]
+    pub fn flat_queue_gate_rows(&self) -> Vec<ContractVerifyStage> {
+        self.verify
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.stage.is_none())
+            .map(|(i, entry)| ContractVerifyStage {
+                stage: entry.id.clone().unwrap_or_else(|| format!("gate-{i}")),
+                predicate: entry.predicate.clone(),
+                args: entry.args.clone(),
+            })
+            .collect()
     }
 
     #[must_use]
@@ -263,6 +418,43 @@ mod tests {
             Some("write")
         );
         assert!(contract.tool_allowed("write_office", &verified));
+    }
+
+    #[test]
+    fn validate_rejects_unknown_predicate() {
+        let contract = HarnessContract {
+            verify: vec![VerifyEntry {
+                stage: None,
+                id: Some("x".into()),
+                predicate: "not_registered".into(),
+                args: json!({}),
+            }],
+            ..Default::default()
+        };
+        let report = contract.validate();
+        assert!(!report.ok);
+        assert!(report.errors.iter().any(|e| e.contains("not_registered")));
+    }
+
+    #[test]
+    fn validate_office_fixture_ok() {
+        let contract = HarnessContract::parse_toml(OFFICE_FIXTURE).expect("office fixture");
+        let report = contract.validate();
+        assert!(report.ok, "{:?}", report.errors);
+    }
+
+    #[test]
+    fn flat_queue_gate_rows_skip_staged_verify() {
+        let contract = HarnessContract::parse_toml(OFFICE_FIXTURE).expect("office fixture");
+        assert!(contract.flat_queue_gate_rows().is_empty());
+        let flat = HarnessContract::parse_toml(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/harness/code-edit-skill-manifest.toml"
+        )))
+        .expect("code-edit");
+        let rows = flat.flat_queue_gate_rows();
+        assert_eq!(rows.len(), 2);
+        assert!(rows.iter().any(|r| r.stage == "compile"));
     }
 
     #[test]

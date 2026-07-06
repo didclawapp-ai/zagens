@@ -79,6 +79,24 @@ struct LoadSkillInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(inline)]
 #[serde(deny_unknown_fields)]
+struct DraftSkillInput {
+    #[schemars(description = "Stable skill id (lowercase, digits, hyphens; 1–64 chars).")]
+    pub name: String,
+    #[schemars(description = "When-to-use summary (shown in ## Skills catalogue).")]
+    pub description: String,
+    #[schemars(description = "SKILL.md body markdown (frontmatter added automatically).")]
+    pub body: String,
+    #[schemars(
+        description = "Optional HarnessContract TOML (stages + verify rows). Validated before write."
+    )]
+    pub harness_toml: Option<String>,
+    #[schemars(description = "Overwrite an existing draft with the same id.")]
+    pub replace: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(inline)]
+#[serde(deny_unknown_fields)]
 struct RevertTurnInput {
     #[schemars(
         extend("minimum" = 1, "maximum" = REVERT_TURN_MAX_OFFSET),
@@ -181,6 +199,11 @@ pub fn recall_archive_input_schema() -> Value {
 #[must_use]
 pub fn load_skill_input_schema() -> Value {
     derived_input_schema::<LoadSkillInput>()
+}
+
+#[must_use]
+pub fn draft_skill_input_schema() -> Value {
+    derived_input_schema::<DraftSkillInput>()
 }
 
 #[must_use]

@@ -11,8 +11,9 @@ pub use completion_gate::{
     MinLinesGateConfig, VerifySource,
 };
 pub use harness_contract::{
-    ContractVerifyStage, HARNESS_CONTRACT_SCHEMA_VERSION, HarnessContract, HarnessMeta,
-    RollbackPolicy, STAGE_GATE_ALWAYS_ALLOWED, StageSpec, VerifyBudget, VerifyEntry,
+    ContractValidationReport, ContractVerifyStage, HARNESS_CONTRACT_SCHEMA_VERSION,
+    HarnessContract, HarnessMeta, RollbackPolicy, STAGE_GATE_ALWAYS_ALLOWED, StageSpec,
+    VerifyBudget, VerifyEntry, predicates as harness_predicates,
 };
 
 /// §6.7 Adversarial read-only auditor configuration (agent-independent grounding signal).

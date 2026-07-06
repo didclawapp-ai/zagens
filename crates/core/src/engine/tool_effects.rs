@@ -27,6 +27,7 @@ fn loop_guard_state_mutating_whitelist(name: &str) -> bool {
             | "batch_edit"
             | "refactor_imports"
             | "restore_file"
+            | "draft_skill"
     )
 }
 
@@ -100,11 +101,13 @@ mod tests {
             ("delegate_to_agent", false),
             ("describe_image", false),
             ("diagnostics", false),
+            ("edit_and_check", true),
             ("edit_file", true),
             ("exec_shell", true),
             ("exec_shell_cancel", false),
             ("exec_shell_interact", true),
             ("exec_shell_wait", true),
+            ("explore_codebase", false),
             ("fetch_url", false),
             ("file_info", false),
             ("file_search", false),
@@ -125,6 +128,7 @@ mod tests {
             ("list_mcp_resources", false),
             ("load_office_payload", false),
             ("load_skill", false),
+            ("draft_skill", true),
             ("multi_tool_use.parallel", false),
             ("note", false),
             ("pr_attempt_list", false),

@@ -21,7 +21,24 @@ pub async fn run(ctx: &CliContext, args: QueueArgs) -> Result<()> {
 }
 
 fn run_add(ctx: &CliContext, add: super::super::args::QueueAddArgs) -> Result<()> {
-    let gate = parse_gates(&add.gate)?;
+    let mut gate = parse_gates(&add.gate)?;
+    if add.gate_file.is_some() && add.gate_preset.is_some() {
+        bail!("--gate-file and --gate-preset are mutually exclusive");
+    }
+    if let Some(path) = add.gate_file.as_deref() {
+        gate.extend(load_gate_from_file(path)?);
+    } else if let Some(id) = add.gate_preset.as_deref() {
+        let raw = super::gate::resolve_preset(id)?;
+        let contract = zagens_core::long_horizon::HarnessContract::parse_toml(raw)?;
+        let report = contract.validate();
+        if !report.ok {
+            bail!(
+                "gate preset `{id}` failed validation: {}",
+                report.errors.join("; ")
+            );
+        }
+        gate.extend(contract_to_gate_specs(&contract));
+    }
     let task = night_queue::enqueue(&ctx.workspace, add.prompt, gate, !add.no_worktree)?;
     println!("Enqueued {} ({})", task.id, format_status(task.status));
     if !task.gate.is_empty() {
@@ -115,6 +132,38 @@ fn run_briefing(ctx: &CliContext, args: QueueBriefingArgs) -> Result<()> {
 
 fn parse_gates(specs: &[String]) -> Result<Vec<GatePredicateSpec>> {
     specs.iter().map(|s| parse_gate_spec(s)).collect()
+}
+
+fn load_gate_from_file(path: &std::path::Path) -> Result<Vec<GatePredicateSpec>> {
+    let (contract, report) = super::gate::load_gate_file(path)?;
+    if !report.ok {
+        bail!(
+            "gate file {} failed validation: {}",
+            path.display(),
+            report.errors.join("; ")
+        );
+    }
+    let rows = contract.flat_queue_gate_rows();
+    if rows.is_empty() {
+        bail!(
+            "gate file {} has no flat [[verify]] rows (stage-bound skill rows are skipped for queue)",
+            path.display()
+        );
+    }
+    Ok(contract_to_gate_specs(&contract))
+}
+
+fn contract_to_gate_specs(
+    contract: &zagens_core::long_horizon::HarnessContract,
+) -> Vec<GatePredicateSpec> {
+    contract
+        .flat_queue_gate_rows()
+        .into_iter()
+        .map(|row| GatePredicateSpec {
+            predicate: row.predicate,
+            args: row.args,
+        })
+        .collect()
 }
 
 fn parse_gate_spec(raw: &str) -> Result<GatePredicateSpec> {

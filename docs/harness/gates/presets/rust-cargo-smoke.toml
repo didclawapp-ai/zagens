@@ -1,0 +1,27 @@
+# Gate-as-Code preset: Rust workspace smoke (Phase 4.1)
+# Usage:
+#   zagens gate validate docs/harness/gates/presets/rust-cargo-smoke.toml
+#   zagens queue add "fix clippy" --gate-file docs/harness/gates/presets/rust-cargo-smoke.toml
+
+schema_version = 1
+
+[harness]
+id = "rust-cargo-smoke"
+description = "cargo check + cargo test via predicate library (cross-platform)."
+
+[verify_budget]
+max_retries = 1
+timeout_ms = 900000
+
+[rollback]
+strategy = "snapshot"
+
+[[verify]]
+id = "compile"
+predicate = "tests_pass"
+args = { toolchain = "cargo", cmd = "cargo check --workspace" }
+
+[[verify]]
+id = "unit_tests"
+predicate = "tests_pass"
+args = { toolchain = "cargo" }

@@ -7,6 +7,7 @@
 //! validates and delegates through core before sending `Op::SendMessage`.
 
 pub mod approval;
+pub mod composite_tool_events;
 pub mod config;
 pub mod context;
 pub mod context_assembly;

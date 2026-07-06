@@ -22,6 +22,22 @@ pub async fn run(cli: Cli) -> Result<()> {
         Commands::Models(args) => handlers::models::run(&ctx, args).await,
         Commands::Exec(args) => handlers::exec::run(&cli, &ctx, args).await,
         Commands::Queue(args) => handlers::queue::run(&ctx, args).await,
+        Commands::Gate(args) => {
+            let code = handlers::gate::run(args)?;
+            std::process::exit(if code == std::process::ExitCode::SUCCESS {
+                0
+            } else {
+                1
+            });
+        }
+        Commands::Skill(args) => {
+            let code = handlers::skill::run(&ctx, args)?;
+            std::process::exit(if code == std::process::ExitCode::SUCCESS {
+                0
+            } else {
+                1
+            });
+        }
         Commands::Report(args) => handlers::report::run(&ctx, args).await,
         Commands::Review(args) => handlers::review::run_review(&ctx, args).await,
         Commands::Apply(args) => handlers::review::run_apply(&ctx.workspace, args),
@@ -61,6 +77,14 @@ pub async fn run(cli: Cli) -> Result<()> {
                 }
                 crate::cli::args::TraceCommand::Compare(args) => {
                     let code = handlers::trace_compare::run(&ctx, args)?;
+                    std::process::exit(if code == std::process::ExitCode::SUCCESS {
+                        0
+                    } else {
+                        1
+                    });
+                }
+                crate::cli::args::TraceCommand::Benchmark(args) => {
+                    let code = handlers::trace_benchmark::run(&ctx, args)?;
                     std::process::exit(if code == std::process::ExitCode::SUCCESS {
                         0
                     } else {

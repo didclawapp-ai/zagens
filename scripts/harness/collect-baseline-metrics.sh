@@ -28,10 +28,14 @@ if [[ -d "$REPLAY_FIXTURES" ]]; then
 fi
 
 TOOLS_JSON='null'
+SEQ_JSON='null'
 if command -v zagens >/dev/null 2>&1; then
   TOOLS_JSON="$(zagens doctor --tools --json 2>/dev/null || echo 'null')"
 elif [[ -x "$ROOT/target/debug/zagens" ]]; then
   TOOLS_JSON="$("$ROOT/target/debug/zagens" doctor --tools --json 2>/dev/null || echo 'null')"
+fi
+if command -v jq >/dev/null 2>&1 && [[ "$TOOLS_JSON" != "null" ]]; then
+  SEQ_JSON="$(printf '%s' "$TOOLS_JSON" | jq -c '.tool_sequences // null')"
 fi
 
 cat >"$OUT" <<EOF
@@ -60,7 +64,8 @@ cat >"$OUT" <<EOF
     "first_turn_tool_schema_tokens": null,
     "note": "Populate after T1 aggregation matures; tool telemetry seeds from tools section."
   },
-  "tools_telemetry": $TOOLS_JSON
+  "tools_telemetry": $TOOLS_JSON,
+  "tool_sequences": $SEQ_JSON
 }
 EOF
 

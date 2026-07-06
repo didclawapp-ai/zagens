@@ -1,0 +1,17 @@
+schema_version = 1
+
+[harness]
+id = "desktop-draft-test"
+description = "桌面手测 — 确认 deliverables/ 下至少 1 个文件"
+
+[verify_budget]
+max_retries = 0
+timeout_ms = 60000
+
+[rollback]
+strategy = "snapshot"
+
+[[verify]]
+id = "deliverables_min"
+predicate = "file_count"
+args = { glob = "deliverables/**", min = 1 }

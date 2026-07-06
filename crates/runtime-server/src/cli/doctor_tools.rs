@@ -90,6 +90,35 @@ pub fn print_tool_telemetry_human(report: &ToolTelemetryReport) {
             println!("  {mark} {} — {}", entry.name, summary);
         }
     }
+
+    if let Some(seq) = &report.tool_sequences {
+        println!();
+        println!("{}", "Tool sequences (T5 candidacy)".bold());
+        println!(
+            "  turns with tools: {} · threshold: {}%",
+            seq.turns_with_tools, seq.threshold_pct
+        );
+        if seq.t5_candidates.is_empty() {
+            println!("  no patterns ≥ threshold yet");
+        } else {
+            for stat in &seq.t5_candidates {
+                println!(
+                    "  ✓ {} — {} turns ({:.2}%)",
+                    stat.pattern, stat.turn_hits, stat.turn_share_pct
+                );
+            }
+        }
+        if !seq.top_patterns.is_empty() {
+            println!("  top patterns:");
+            for stat in seq.top_patterns.iter().take(8) {
+                let mark = if stat.t5_eligible { "✓" } else { "·" };
+                println!(
+                    "  {mark} {} — {} turns ({:.2}%)",
+                    stat.pattern, stat.turn_hits, stat.turn_share_pct
+                );
+            }
+        }
+    }
 }
 
 #[cfg(test)]

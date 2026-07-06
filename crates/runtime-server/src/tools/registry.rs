@@ -561,6 +561,15 @@ impl ToolRegistryBuilder {
         }
     }
 
+    /// Include T5 composite tools (Phase 4.3) when T1 sequences meet threshold.
+    #[must_use]
+    pub fn with_composite_tools(self) -> Self {
+        use super::edit_and_check::EditAndCheckTool;
+        use super::explore_codebase::ExploreCodebaseTool;
+        self.with_tool(Arc::new(ExploreCodebaseTool))
+            .with_tool(Arc::new(EditAndCheckTool))
+    }
+
     /// Include T4 harness assert tools (predicate library only).
     #[must_use]
     pub fn with_harness_assert_tools(self) -> Self {
@@ -602,8 +611,10 @@ impl ToolRegistryBuilder {
     /// shown in the system prompt's `## Skills` section.
     #[must_use]
     pub fn with_skill_tools(self) -> Self {
+        use super::draft_skill::DraftSkillTool;
         use super::skill::LoadSkillTool;
         self.with_tool(Arc::new(LoadSkillTool))
+            .with_tool(Arc::new(DraftSkillTool))
     }
 
     /// Include project mapping tools.
@@ -841,6 +852,7 @@ impl ToolRegistryBuilder {
             .with_office_write_tool()
             .with_describe_image_tool()
             .with_test_runner_tool()
+            .with_composite_tools()
             .with_validation_tools()
             .with_runtime_task_tools()
             .with_revert_turn_tool();

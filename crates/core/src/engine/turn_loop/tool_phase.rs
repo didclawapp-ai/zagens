@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use zagens_tools::{ToolError, ToolResult};
 
 use crate::chat::{ContentBlock, Message, Tool};
+use crate::engine::composite_tool_events::emit_composite_step_kernel_events;
 use crate::engine::context::{compact_tool_result_for_context, summarize_text};
 use crate::engine::dispatch::{
     caller_allowed_for_tool, caller_type_for_tool_use, format_tool_error,
@@ -254,6 +255,10 @@ pub async fn run_tool_execution_phase<H: InnerStepHost>(
         let should_stop_this_turn =
             should_stop_after_plan_tool(mode == TurnLoopMode::Plan, &outcome.name, &outcome.result);
         let session_content_for_log;
+        let composite_output = match &outcome.result {
+            Ok(output) => Some(output.clone()),
+            Err(_) => None,
+        };
 
         match outcome.result {
             Ok(output) => {
@@ -434,9 +439,12 @@ pub async fn run_tool_execution_phase<H: InnerStepHost>(
                         .unwrap_or(0),
                     wrote_state: wrote,
                     result_preview,
-                    session_content: session_content_for_log,
+                    session_content: session_content_for_log.clone(),
                 },
             );
+            if let Some(output) = composite_output {
+                emit_composite_step_kernel_events(host, &turn.id, &outcome.id, &output);
+            }
         }
 
         turn.record_tool_call(tool_call);

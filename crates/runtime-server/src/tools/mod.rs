@@ -12,6 +12,9 @@ pub mod file_info;
 pub mod file_search;
 pub mod finance;
 
+pub mod composite;
+pub mod edit_and_check;
+pub mod explore_codebase;
 pub mod fetch_url;
 pub mod fim;
 pub mod git;
@@ -46,6 +49,7 @@ pub mod scratchpad;
 pub mod scratchpad_agent;
 pub use zagens_runtime_adapters::tools::schema_sanitize;
 pub mod automation_inputs;
+mod draft_skill;
 pub mod git_inputs;
 pub mod github_inputs;
 pub mod misc_inputs;

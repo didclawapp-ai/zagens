@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Gate-as-Code (Phase 4.1):** `docs/harness/gates/` — public format, predicate reference, migration guide from legacy completion gate; bundled presets under `presets/`; `zagens gate validate|list`; `zagens queue add --gate-file|--gate-preset`; `HarnessContract::validate()` + `flat_queue_gate_rows()`.
+- **H4 draft_skill (Phase 4.2):** `draft_skill` tool → `.zagens/skill-drafts/`; `zagens skill drafts|promote` human-in-loop install; `HarnessContract` validation on write/promote; security checklist `docs/harness/h4-draft-skill-security.md`.
+- **T5 composite tools (Phase 4.3):** `explore_codebase` (glob→grep→read) + `edit_and_check` (edit→run_tests); T1 `tool_sequences` mining in `doctor --tools`; composite sub-steps mirrored to `kernel_events` via `composite_steps` metadata.
+- **Model migration benchmark (Phase 4.4):** `zagens trace benchmark` — validate golden replay corpus, optional thread pack export, baseline metric diff; `collect-baseline-metrics` archives `tool_sequences`.
 - **H3 harness module (Phase 3.1):** `crates/runtime-server/src/harness/` — `RegistrySurface` adapter (stage gate tool exposure), `HarnessStateAdapter` (queue/handoff paths), `verify_loop` facade, shared `telemetry` + T3 `hints` aggregation.
 - **Agent 体检 UI (Phase 3.3):** Desktop side panel + `GET /v1/agent-health` — same `harness::telemetry` report as `zagens doctor --tools` (T1 + `harness_verify` + stage gate + hint coverage).
 - **Python CSV pipeline skill (Phase 3.2):** Bundled `python-csv-pipeline` + staged `harness.toml` (inspect→analyze→deliver→verify); fixture `fixtures/harness/python-csv-skill-manifest.toml`; `BUNDLED_SKILL_VERSION` **9→10**.

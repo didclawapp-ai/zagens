@@ -13,6 +13,7 @@ use zagens_runtime_adapters::persist::kernel_event_log::{
 use zagens_runtime_adapters::persist::session_manager::default_sessions_dir;
 
 use super::hints;
+use super::tool_sequences::{ToolSequenceReport, mine_tool_sequences};
 
 const TELEMETRY_KINDS: &[&str] = &[
     "tool_call_finished",
@@ -67,6 +68,8 @@ pub struct ToolTelemetryReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint_coverage_rate: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_sequences: Option<ToolSequenceReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
@@ -91,6 +94,7 @@ impl ToolTelemetryReport {
             top_by_failure_rate: Vec::new(),
             hint_coverage_top_failures: Vec::new(),
             hint_coverage_rate: None,
+            tool_sequences: None,
             note: Some(note.into()),
         }
     }
@@ -135,19 +139,19 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
     let mut stage_gate_blocked_events = 0u64;
     let mut turns_with_tools = HashMap::<String, ()>::new();
 
-    for envelope in envelopes {
-        match envelope.event {
+    for envelope in &envelopes {
+        match &envelope.event {
             KernelEvent::ToolCallFinished {
                 turn_id,
                 tool_name,
                 outcome,
                 ..
             } => {
-                turns_with_tools.insert(turn_id, ());
+                turns_with_tools.insert(turn_id.clone(), ());
                 let tool_name = if tool_name.trim().is_empty() {
                     "<unknown>".to_string()
                 } else {
-                    tool_name
+                    tool_name.clone()
                 };
                 let entry = stats.entry(tool_name.clone()).or_insert_with(|| ToolStat {
                     name: tool_name,
@@ -177,12 +181,12 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
             }
             KernelEvent::HarnessVerify { pass, retry_no, .. } => {
                 harness_verify_events = harness_verify_events.saturating_add(1);
-                if pass {
+                if *pass {
                     harness_verify_passes = harness_verify_passes.saturating_add(1);
                 }
-                if retry_no > 0 {
+                if *retry_no > 0 {
                     harness_verify_retries = harness_verify_retries.saturating_add(1);
-                    if pass {
+                    if *pass {
                         harness_verify_retries_passed =
                             harness_verify_retries_passed.saturating_add(1);
                     }
@@ -226,6 +230,17 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
     let (hint_coverage_top_failures, hint_coverage_rate) =
         build_hint_coverage(&top_by_failure_rate);
 
+    let tool_call_envelopes: Vec<_> = envelopes
+        .iter()
+        .filter(|e| matches!(e.event, KernelEvent::ToolCallFinished { .. }))
+        .cloned()
+        .collect();
+    let tool_sequences = if tool_call_envelopes.is_empty() {
+        None
+    } else {
+        Some(mine_tool_sequences(&tool_call_envelopes))
+    };
+
     let tool_failure_rate = if tool_calls > 0 {
         Some((tool_failures as f64 / tool_calls as f64 * 100.0 * 100.0).round() / 100.0)
     } else {
@@ -266,6 +281,7 @@ pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemet
         top_by_failure_rate,
         hint_coverage_top_failures,
         hint_coverage_rate,
+        tool_sequences,
         note: if tool_calls == 0 {
             Some("No tool_call_finished events yet".into())
         } else {

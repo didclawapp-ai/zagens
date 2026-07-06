@@ -8,6 +8,7 @@ pub mod registry_surface;
 pub mod state;
 pub mod symbol_search;
 pub mod telemetry;
+pub mod tool_sequences;
 pub mod verify_loop;
 
 pub use affected_tests::{
@@ -27,6 +28,10 @@ pub use state::{HarnessStateAdapter, WorkspaceHarnessState};
 pub use telemetry::{
     ToolHintAuditEntry, ToolStat, ToolTelemetryReport, build_tool_telemetry_report,
     default_sessions_db_path,
+};
+pub use tool_sequences::{
+    EDIT_CHECK_SUBSEQUENCE, EDIT_SHELL_CHECK_SUBSEQUENCE, EXPLORE_SUBSEQUENCE,
+    T5_MIN_TURN_SHARE_PCT, ToolSequenceReport, ToolSequenceStat, mine_tool_sequences,
 };
 pub use verify_loop::{
     HarnessVerifyLoop, HarnessVerifyLoopConfig, HarnessVerifyOutcome, HarnessVerifyRecord,

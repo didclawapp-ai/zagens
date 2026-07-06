@@ -71,7 +71,8 @@ $Doc = @"
     "first_turn_tool_schema_tokens": null,
     "note": "Populate after T1 aggregation matures; tool telemetry seeds from tools section."
   },
-  "tools_telemetry": $ToolsJson
+  "tools_telemetry": $ToolsJson,
+  "tool_sequences": $(if ($parsed -and $parsed.tool_sequences) { ($parsed.tool_sequences | ConvertTo-Json -Compress -Depth 20) } else { "null" })
 }
 "@
 

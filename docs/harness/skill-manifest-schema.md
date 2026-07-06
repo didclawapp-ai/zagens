@@ -132,7 +132,8 @@ Stage verify and flat gate rows produce `harness_verify` via `HarnessVerifyLoop`
 |---------|---------|
 | [`fixtures/harness/office-write-skill-manifest.toml`](../../fixtures/harness/office-write-skill-manifest.toml) | Office staged skill (Phase 2a.3 pilot) |
 | [`fixtures/harness/code-edit-skill-manifest.toml`](../../fixtures/harness/code-edit-skill-manifest.toml) | Code edit + tests gate |
-| [`fixtures/harness/microstack-completion-gate.toml`](../../fixtures/harness/microstack-completion-gate.toml) | Legacy Layer-2 completion gate (migrate to `predicate` rows over time) |
+| [`fixtures/harness/microstack-completion-gate.toml`](../../fixtures/harness/microstack-completion-gate.toml) | Legacy Layer-2 completion gate (migrate via [gates/MIGRATION.md](./gates/MIGRATION.md)) |
+| [`docs/harness/gates/presets/`](./gates/presets/) | Gate-as-Code bundled presets (Phase 4.1) |
 
 ### 4.1 Co-located skill manifest
 

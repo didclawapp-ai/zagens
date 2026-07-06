@@ -1,5 +1,6 @@
 //! Skill discovery and registry for local SKILL.md files.
 
+pub mod draft;
 pub mod install;
 mod system;
 // Re-exports kept for documentation parity and downstream consumers; the
