@@ -2,7 +2,7 @@
 
 use chrono::Utc;
 
-use crate::cli::doctor_tools::ToolTelemetryReport;
+use crate::harness::telemetry::ToolTelemetryReport;
 use crate::night_queue::{NightQueueDocument, QueueTaskStatus};
 
 use super::context::{ReportContext, ReportSection};

@@ -30,6 +30,7 @@ mod cycle_manager;
 mod error_taxonomy;
 mod execpolicy;
 mod features;
+pub mod harness;
 mod harness_report;
 mod hooks;
 mod hooks_load;

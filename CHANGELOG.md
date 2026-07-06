@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **H3 harness module (Phase 3.1):** `crates/runtime-server/src/harness/` — `RegistrySurface` adapter (stage gate tool exposure), `HarnessStateAdapter` (queue/handoff paths), `verify_loop` facade, shared `telemetry` + T3 `hints` aggregation.
+- **Agent 体检 UI (Phase 3.3):** Desktop side panel + `GET /v1/agent-health` — same `harness::telemetry` report as `zagens doctor --tools` (T1 + `harness_verify` + stage gate + hint coverage).
+- **Python CSV pipeline skill (Phase 3.2):** Bundled `python-csv-pipeline` + staged `harness.toml` (inspect→analyze→deliver→verify); fixture `fixtures/harness/python-csv-skill-manifest.toml`; `BUNDLED_SKILL_VERSION` **9→10**.
+- **Replay pack v0 (Phase 3.4):** `zagens_core::engine::replay_pack` + `zagens trace pack export|validate` — single-file trace + optional session companion; golden `kernel-v3-replay/` compatible.
+- **Symbol search + affected tests (Phase 3.5):** `GET /v1/symbol-index/search`; `file_search(symbol_index: true)` merges `symbol_hits`; desktop Index panel symbol search; T3 `[T3 affected tests]` suffix after edit tools via `harness::affected_tests`.
 - **Harness contract schema (Phase 2a.1):** `docs/harness/skill-manifest-schema.md` — skill manifest = gate manifest (`stages` / `verify` / `verify_budget` / `rollback`); fixtures `office-write-skill-manifest.toml` + `code-edit-skill-manifest.toml`; Rust type `HarnessContract` in `zagens_core::long_horizon`.
 - **Skill stage gate (Phase 2a.2):** `long_horizon/stage_gate.rs` — staged tool exposure + execution fallback; `KernelEvent::StageGateBlocked` (`stage_gate_blocked` kind); activate via `[long_horizon.stage_gate].manifest` or co-located skill `harness.toml` on `load_skill`.
 - **T4 `assert_*` tools (Phase 2a.4):** `assert_file_count` / `assert_output_matches` / `assert_tests_pass` — internal `predicate::*` only; new `file_count` predicate for glob bounds.

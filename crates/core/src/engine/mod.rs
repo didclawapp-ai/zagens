@@ -26,6 +26,7 @@ pub mod lsp_edit_paths;
 pub mod op;
 pub mod op_loop;
 pub mod platform_ext;
+pub mod replay_pack;
 pub mod request_fingerprint;
 pub mod runtime;
 pub mod runtime_new;
@@ -94,6 +95,12 @@ pub use kernel_turn_host::KernelTurnHost;
 pub use loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 pub use lsp_edit_paths::{edited_paths_for_tool, parse_patch_paths};
 pub use op::Op;
+pub use replay_pack::{
+    REPLAY_PACK_SCHEMA_VERSION, ReplayPack, ReplayPackMetadata, ReplayPackValidation,
+    build_replay_pack, build_replay_pack_from_fixture, companion_session_path,
+    load_companion_session, parse_replay_pack_json, replay_pack_to_json, replay_pack_trace_json,
+    validate_replay_pack,
+};
 pub use request_fingerprint::{RequestFingerprint, compute_request_fingerprint, sha256_hex};
 pub use runtime::Engine;
 pub use scratchpad_state::ScratchpadStepState;

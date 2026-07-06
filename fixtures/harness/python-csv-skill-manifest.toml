@@ -1,0 +1,44 @@
+# Python CSV pipeline — harness contract (Phase 3.2 fixture)
+# Non-office, non-Rust third-surface pilot for staged gate + verify predicates.
+
+schema_version = 1
+
+[harness]
+id = "python-csv-pipeline"
+description = "Ingest CSV → run Python summary → write JSON deliverable with machine verify."
+
+[verify_budget]
+max_retries = 2
+timeout_ms = 180000
+
+[rollback]
+strategy = "snapshot"
+
+[[stages]]
+id = "inspect"
+tools = ["read_file", "list_dir", "glob_files"]
+
+[[stages]]
+id = "analyze"
+tools = ["exec_shell"]
+requires = ["inspect"]
+
+[[stages]]
+id = "deliver"
+tools = ["write_file"]
+requires = ["analyze"]
+
+[[stages]]
+id = "verify"
+tools = ["assert_file_count", "assert_output_matches"]
+requires = ["deliver"]
+
+[[verify]]
+stage = "deliver"
+predicate = "file_exists"
+args = { path = "deliverables/summary.json" }
+
+[[verify]]
+stage = "verify"
+predicate = "file_count"
+args = { glob = "deliverables/*.json", min = 1 }

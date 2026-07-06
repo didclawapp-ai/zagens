@@ -44,6 +44,21 @@ pub async fn run(cli: Cli) -> Result<()> {
                         1
                     });
                 }
+                crate::cli::args::TraceCommand::Pack { command } => {
+                    let code = match command {
+                        crate::cli::args::TracePackCommand::Export(args) => {
+                            handlers::trace_pack::run_export(&ctx, args)?
+                        }
+                        crate::cli::args::TracePackCommand::Validate(args) => {
+                            handlers::trace_pack::run_validate(args)?
+                        }
+                    };
+                    std::process::exit(if code == std::process::ExitCode::SUCCESS {
+                        0
+                    } else {
+                        1
+                    });
+                }
                 crate::cli::args::TraceCommand::Compare(args) => {
                     let code = handlers::trace_compare::run(&ctx, args)?;
                     std::process::exit(if code == std::process::ExitCode::SUCCESS {

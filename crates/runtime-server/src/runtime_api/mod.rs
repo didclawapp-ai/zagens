@@ -11,6 +11,7 @@ use crate::task_manager::SharedTaskManager;
 
 pub mod openapi;
 
+mod agent_health;
 mod automations;
 mod blackboards;
 pub(crate) mod channel_events;
@@ -23,6 +24,7 @@ mod sessions;
 mod skills;
 mod state;
 mod stream;
+mod symbol_search;
 mod tasks;
 mod thread_config;
 mod threads;
@@ -32,6 +34,7 @@ mod trace_report;
 mod usage;
 pub(crate) mod workspace;
 
+pub(crate) use agent_health::get_agent_health;
 pub(crate) use automations::{
     create_automation, delete_automation, get_automation, list_automation_runs, list_automations,
     pause_automation, resume_automation, run_automation, update_automation,
@@ -48,6 +51,7 @@ pub(crate) use sessions::{
     delete_session, get_resume_task, get_session, list_sessions, resume_session_thread,
 };
 pub(crate) use skills::{create_skill, import_skill_local, install_skill_remote, list_skills};
+pub(crate) use symbol_search::search_symbol_index;
 pub(crate) use tasks::{cancel_task, clear_tasks, create_task, get_task, list_tasks};
 pub(crate) use thread_config::{delete_thread_config_field, get_thread_config, put_thread_config};
 pub(crate) use threads::{

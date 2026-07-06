@@ -129,6 +129,19 @@ export default function IconRail({
           </IconRailSvg>
         </IconRailButton>
         <IconRailButton
+          label={t('sidebar.agentHealth')}
+          active={activeInspector === 'agent-health'}
+          onClick={() => {
+            onExpandRightPanel?.();
+            onInspectorChange('agent-health');
+          }}
+        >
+          <IconRailSvg>
+            <path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10z" />
+            <path d="M12 11v4M12 8h.01" />
+          </IconRailSvg>
+        </IconRailButton>
+        <IconRailButton
           label={t('sidebar.usage')}
           active={activeInspector === 'usage'}
           onClick={() => {

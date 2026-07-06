@@ -12,21 +12,22 @@ use super::{
     cancel_task, clear_tasks, compact_thread, create_automation, create_skill, create_task,
     create_thread, delete_automation, delete_mcp_server, delete_session,
     delete_thread_config_field, discover_mcp, edit_last_thread_turn, fork_thread,
-    fork_thread_at_user_message, get_automation, get_blackboard, get_kernel_thread_replay,
-    get_kernel_turn_replay, get_mcp_server, get_office_environment, get_resume_task,
-    get_routing_rules, get_runtime_active_turns, get_session, get_task, get_thread,
-    get_thread_checklist, get_thread_config, get_thread_context, get_thread_context_breakdown,
-    get_thread_harness_cycles, get_thread_harness_task_graph, get_thread_scratchpad_status,
-    get_thread_trace_report, get_topic_memory, get_trace_compare, get_usage, import_skill_local,
-    init_thread_scratchpad, install_skill_remote, interrupt_thread_turn, list_automation_runs,
-    list_automations, list_blackboards, list_mcp_calls, list_mcp_servers, list_mcp_tools,
-    list_sessions, list_skills, list_tasks, list_thread_snapshots, list_threads,
-    list_threads_summary, merge_mcp_config_json, pause_automation, persist_thread_session,
-    post_thread_channel_event, put_thread_config, read_thread_workspace_file,
-    read_workspace_file_by_root, rebuild_symbol_index, reload_mcp_config, resolve_approval,
-    restore_thread_snapshot, resume_automation, resume_session_thread, resume_thread,
-    revert_thread_workspace_turn, run_automation, set_routing_rules, start_thread_turn,
-    steer_thread_turn, update_automation, update_mcp_server, update_thread, workspace_status,
+    fork_thread_at_user_message, get_agent_health, get_automation, get_blackboard,
+    get_kernel_thread_replay, get_kernel_turn_replay, get_mcp_server, get_office_environment,
+    get_resume_task, get_routing_rules, get_runtime_active_turns, get_session, get_task,
+    get_thread, get_thread_checklist, get_thread_config, get_thread_context,
+    get_thread_context_breakdown, get_thread_harness_cycles, get_thread_harness_task_graph,
+    get_thread_scratchpad_status, get_thread_trace_report, get_topic_memory, get_trace_compare,
+    get_usage, import_skill_local, init_thread_scratchpad, install_skill_remote,
+    interrupt_thread_turn, list_automation_runs, list_automations, list_blackboards,
+    list_mcp_calls, list_mcp_servers, list_mcp_tools, list_sessions, list_skills, list_tasks,
+    list_thread_snapshots, list_threads, list_threads_summary, merge_mcp_config_json,
+    pause_automation, persist_thread_session, post_thread_channel_event, put_thread_config,
+    read_thread_workspace_file, read_workspace_file_by_root, rebuild_symbol_index,
+    reload_mcp_config, resolve_approval, restore_thread_snapshot, resume_automation,
+    resume_session_thread, resume_thread, revert_thread_workspace_turn, run_automation,
+    search_symbol_index, set_routing_rules, start_thread_turn, steer_thread_turn,
+    update_automation, update_mcp_server, update_thread, workspace_status,
 };
 
 pub fn build_router(state: RuntimeApiState) -> Router {
@@ -184,11 +185,13 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/automations/{id}/resume", post(resume_automation))
         .route("/v1/automations/{id}/runs", get(list_automation_runs))
         .route("/v1/usage", get(get_usage))
+        .route("/v1/agent-health", get(get_agent_health))
         .route(
             "/v1/apps/routing/rules",
             get(get_routing_rules).put(set_routing_rules),
         )
         .route("/v1/symbol-index/rebuild", post(rebuild_symbol_index))
+        .route("/v1/symbol-index/search", get(search_symbol_index))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_runtime_token::<RuntimeApiState>,

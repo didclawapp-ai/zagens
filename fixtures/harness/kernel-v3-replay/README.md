@@ -30,6 +30,8 @@ Replay notes (Phase D):
 | `message_body_rebuild.session.json` | Canonical session JSON for 5c byte-parity gate |
 | `resume_thread_parity.session.json` | Canonical session JSON paired with `resume_thread_parity.json` |
 
+**Replay pack v0 (Phase 3.4):** export with `zagens trace pack export --fixture fixtures/harness/kernel-v3-replay/message_body_rebuild.json --out /tmp/pack.zagens-replay.json`; validate with `zagens trace pack validate --input /tmp/pack.zagens-replay.json`.
+
 Run: `cargo test -p zagens-core golden_replay`
 
 Resume (`POST /v1/sessions/{id}/resume`) cross-checks session compaction artifacts

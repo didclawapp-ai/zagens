@@ -82,6 +82,14 @@ pub struct FileSearchInput {
     )]
     pub extensions: Option<Vec<String>>,
     #[schemars(
+        description = "Also search the symbol index for definitions matching the query (default: false)."
+    )]
+    pub symbol_index: Option<bool>,
+    #[schemars(description = "Optional symbol kind filter when symbol_index is true.")]
+    pub symbol_kind: Option<String>,
+    #[schemars(description = "Maximum symbol hits when symbol_index is true (default: 15).")]
+    pub symbol_limit: Option<u64>,
+    #[schemars(
         description = "Honor .gitignore when true (default: true). Set false to search ignored paths (like grep_files)."
     )]
     pub respect_gitignore: Option<bool>,

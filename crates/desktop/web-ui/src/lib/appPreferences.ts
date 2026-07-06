@@ -325,6 +325,7 @@ export function loadStoredInspector(): RightPanelView {
       s === 'sandbox' ||
       s === 'mcp' ||
       s === 'usage' ||
+      s === 'agent-health' ||
       s === 'tasks' ||
       s === 'skills' ||
       s === 'agents' ||

@@ -4,6 +4,7 @@ import type { invoke as InvokeFn } from '@tauri-apps/api/core';
 import ModelProvidersPanel from './ModelProvidersPanel';
 import McpPanel from './McpPanel';
 import UsageDashboard from './UsageDashboard';
+import AgentHealthPanel from './AgentHealthPanel';
 import AutomationPanel from './AutomationPanel';
 import AgentPanel from './AgentPanel';
 import TopicMemoryPanel from './TopicMemoryPanel';
@@ -50,6 +51,7 @@ export type RightPanelView =
   | 'schedule'
   | 'mcp'
   | 'usage'
+  | 'agent-health'
   | 'tasks'
   | 'skills'
   | 'agents'
@@ -167,6 +169,7 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   schedule: 'panels.schedule',
   mcp: 'panels.mcp',
   usage: 'panels.usage',
+  'agent-health': 'panels.agentHealth',
   tasks: 'panels.tasks',
   skills: 'panels.skills',
   agents: 'panels.agents',
@@ -856,6 +859,14 @@ export default function RightPanel({
           />
         )}
 
+        {view === 'agent-health' && (
+          <AgentHealthPanel
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+          />
+        )}
+
         {view === 'tasks' && (
           <AutomationPanel
             variant="tasks"
@@ -1000,6 +1011,7 @@ export default function RightPanel({
             onRebuild={onRebuildIndex}
             rebuilding={rebuildingIndex}
             rebuildError={rebuildIndexError}
+            onRevealFile={revealWorkspaceFile}
           />
         )}
       </div>

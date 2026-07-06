@@ -2120,6 +2120,66 @@
           "count",
           "threads"
         ]
+      },
+      "SymbolSearchHit": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "format": "uint",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "match_priority": {
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0,
+            "maximum": 255
+          }
+        },
+        "required": [
+          "file",
+          "line",
+          "kind",
+          "name",
+          "match_priority"
+        ]
+      },
+      "SymbolSearchResult": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "SymbolSearchResult",
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SymbolSearchHit"
+            }
+          },
+          "index_status": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query",
+          "hits",
+          "index_status",
+          "truncated"
+        ]
       }
     }
   },
@@ -3734,6 +3794,29 @@
         ]
       }
     },
+    "/v1/agent-health": {
+      "get": {
+        "operationId": "getAgentHealth",
+        "summary": "Agent health / harness telemetry (T1)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolTelemetryReport"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/apps/routing/rules": {
       "get": {
         "operationId": "getRoutingRules",
@@ -3799,6 +3882,29 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/symbol-index/search": {
+      "get": {
+        "operationId": "searchSymbolIndex",
+        "summary": "Search workspace symbol index",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SymbolSearchResult"
                 }
               }
             }

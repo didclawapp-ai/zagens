@@ -238,6 +238,53 @@ pub fn build_trace_bundle_for_thread(
     Ok(bundle)
 }
 
+/// Build a replay pack v0 for a persisted thread (trace + optional session transcript).
+pub fn build_replay_pack_for_thread(
+    thread_id: &str,
+    config: &Config,
+    workspace: &Path,
+    include_harness: bool,
+    include_session: bool,
+    redact: bool,
+) -> Result<zagens_core::engine::ReplayPack> {
+    use zagens_core::engine::{ReplayPackMetadata, build_replay_pack};
+    use zagens_runtime_orchestrator::runtime_threads::persist::reconstruct_messages_for_store;
+
+    let trace =
+        build_trace_bundle_for_thread(thread_id, config, workspace, include_harness, redact)?;
+
+    let session_messages = if include_session {
+        let task_data_dir = default_tasks_dir();
+        let manager_cfg = RuntimeThreadManagerConfig::from_task_data_dir(task_data_dir);
+        let store = RuntimeThreadStore::open(manager_cfg.data_dir.clone())?;
+        let turns = store.list_turns_for_thread(thread_id)?;
+        let messages = reconstruct_messages_for_store(&store, &turns)?;
+        if messages.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_value(messages)?)
+        }
+    } else {
+        None
+    };
+
+    Ok(build_replay_pack(
+        trace,
+        session_messages.clone(),
+        ReplayPackMetadata {
+            exported_at_ms: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0),
+            workspace_label: workspace.to_str().map(str::to_string),
+            thread_id: Some(thread_id.to_string()),
+            fixture_path: None,
+            includes_session: session_messages.is_some(),
+            golden_replay_compatible: false,
+        },
+    ))
+}
+
 /// Build a compare document from two persisted threads.
 pub fn build_trace_compare_for_threads(
     left_id: &str,

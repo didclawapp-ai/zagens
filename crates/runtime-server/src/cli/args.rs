@@ -642,10 +642,57 @@ pub struct CoverageGateArgs {
 pub enum TraceCommand {
     /// Export a fixture or thread to HTML / JSON bundle
     Export(TraceExportArgs),
+    /// Export or validate a single-file replay pack (Phase 3.4)
+    Pack {
+        #[command(subcommand)]
+        command: TracePackCommand,
+    },
     /// Compare two threads or fixtures
     Compare(TraceCompareArgs),
     /// Local preview HTTP server (`--watch` for live thread tail)
     Serve(TraceServeArgs),
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum TracePackCommand {
+    /// Export replay pack JSON (trace + optional session metadata)
+    Export(TracePackExportArgs),
+    /// Validate an imported replay pack
+    Validate(TracePackValidateArgs),
+}
+
+/// Arguments for `zagens trace pack export`
+#[derive(Args, Debug, Clone)]
+pub struct TracePackExportArgs {
+    /// Golden fixture JSON (`fixtures/harness/kernel-v3-replay/*.json`)
+    #[arg(long, conflicts_with = "thread")]
+    pub fixture: Option<PathBuf>,
+    /// Runtime thread id
+    #[arg(long, conflicts_with = "fixture")]
+    pub thread: Option<String>,
+    /// Attach offline harness task-graph snapshot (thread mode only)
+    #[arg(long, default_value_t = true)]
+    pub include_harness: bool,
+    /// Include reconstructed session transcript (thread mode only)
+    #[arg(long, default_value_t = true)]
+    pub include_session: bool,
+    /// Output `.zagens-replay.json` path
+    #[arg(short, long)]
+    pub out: PathBuf,
+    /// Disable secret redaction (thread exports redact by default)
+    #[arg(long)]
+    pub no_redact: bool,
+}
+
+/// Arguments for `zagens trace pack validate`
+#[derive(Args, Debug, Clone)]
+pub struct TracePackValidateArgs {
+    /// Replay pack JSON file
+    #[arg(long)]
+    pub input: PathBuf,
+    /// Emit JSON validation report
+    #[arg(long)]
+    pub json: bool,
 }
 
 /// Arguments for `zagens trace export`

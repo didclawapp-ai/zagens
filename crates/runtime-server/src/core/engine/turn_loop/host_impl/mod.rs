@@ -380,6 +380,21 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
         )
         .await;
 
+        if success && crate::harness::affected_tests::is_edit_tool(tool_name) {
+            if let Some(suffix) = crate::harness::affected_tests::hint_suffix_for_tool(
+                &self.session.workspace,
+                tool_name,
+                tool_input,
+            ) {
+                let state = &mut self.runtime_ext_mut().long_horizon_state;
+                state.pending_tool_result_suffix =
+                    Some(match state.pending_tool_result_suffix.take() {
+                        Some(existing) => format!("{existing}{suffix}"),
+                        None => suffix,
+                    });
+            }
+        }
+
         if !self.config.long_horizon.enabled {
             return;
         }

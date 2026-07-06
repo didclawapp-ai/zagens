@@ -11,6 +11,7 @@ import type {
   McpServerConfigPayload,
 } from '../types/mcp';
 import type { UsageAggregation, UsageParams } from '../types/usage';
+import type { AgentHealthReport } from '../types/agentHealth';
 import type {
   TaskSummary,
   TasksResponse,
@@ -1056,6 +1057,10 @@ export async function fetchUsage(params?: UsageParams): Promise<UsageAggregation
   if (params?.group_by) qs.set('group_by', params.group_by);
   const suffix = qs.toString();
   return fetchJson<UsageAggregation>(`/v1/usage${suffix ? `?${suffix}` : ''}`);
+}
+
+export async function fetchAgentHealth(): Promise<AgentHealthReport> {
+  return fetchJson<AgentHealthReport>('/v1/agent-health');
 }
 
 // ========== Tasks / Automations / Skills ==========
@@ -2155,4 +2160,33 @@ export async function fetchSymbolIndexInfo(workspace: string): Promise<SymbolInd
 export async function deleteSymbolIndex(workspace: string): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core');
   await invoke('delete_symbol_index', { workspace });
+}
+
+export interface SymbolSearchHit {
+  file: string;
+  line: number;
+  kind: string;
+  name: string;
+  match_priority: number;
+}
+
+export interface SymbolSearchResult {
+  query: string;
+  hits: SymbolSearchHit[];
+  index_status: string;
+  truncated: boolean;
+}
+
+export async function fetchSymbolIndexSearch(
+  query: string,
+  options?: { kind?: string; limit?: number },
+): Promise<SymbolSearchResult> {
+  const params = new URLSearchParams({ q: query.trim() });
+  if (options?.kind?.trim()) {
+    params.set('kind', options.kind.trim());
+  }
+  if (options?.limit != null && options.limit > 0) {
+    params.set('limit', String(options.limit));
+  }
+  return fetchJson<SymbolSearchResult>(`/v1/symbol-index/search?${params.toString()}`);
 }

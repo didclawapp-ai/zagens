@@ -12,7 +12,7 @@ pub use templates::{from_night_queue, from_tool_telemetry};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::doctor_tools::ToolTelemetryReport;
+    use crate::harness::telemetry::ToolTelemetryReport;
 
     #[test]
     fn telemetry_markdown_contains_metrics() {

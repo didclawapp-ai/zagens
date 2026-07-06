@@ -33,6 +33,8 @@ struct FileSearchResult {
     truncated: bool,
     /// Whether `.gitignore` was honored during the walk.
     respect_gitignore: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    symbol_hits: Option<Vec<crate::harness::SymbolSearchHit>>,
 }
 
 pub struct FileSearchTool;
@@ -73,7 +75,20 @@ impl ToolSpec for FileSearchTool {
 
         let respect_gitignore = optional_bool(&input, "respect_gitignore", true);
         let extensions = parse_extensions(&input);
-        let result = search_files(query, &base_path, extensions, limit, respect_gitignore)?;
+        let mut result = search_files(query, &base_path, extensions, limit, respect_gitignore)?;
+        if optional_bool(&input, "symbol_index", false) {
+            let symbol_limit = optional_u64(&input, "symbol_limit", 15).clamp(1, 50) as usize;
+            let kind = optional_str(&input, "symbol_kind");
+            let symbol = crate::harness::search_workspace_symbols(
+                &context.workspace,
+                query,
+                kind,
+                symbol_limit,
+            );
+            if !symbol.hits.is_empty() {
+                result.symbol_hits = Some(symbol.hits);
+            }
+        }
         ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
     }
 }
@@ -163,6 +178,7 @@ fn search_files(
         returned,
         truncated: total_matches > returned,
         respect_gitignore,
+        symbol_hits: None,
     })
 }
 
@@ -262,7 +278,7 @@ fn compare_match(a: &FileSearchMatch, b: &FileSearchMatch) -> Ordering {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
     use tempfile::tempdir;
 
     #[tokio::test]
@@ -384,5 +400,34 @@ mod tests {
         assert_eq!(parsed["total_matches"].as_u64().unwrap(), 1);
         assert_eq!(parsed["returned"].as_u64().unwrap(), 1);
         assert!(!parsed["truncated"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_file_search_symbol_index_merges_hits() {
+        let tmp = tempdir().expect("tempdir");
+        let root = tmp.path();
+        let meta = root.join(".zagens");
+        std::fs::create_dir_all(&meta).expect("mkdir");
+        std::fs::write(
+            meta.join("symbols.json"),
+            r#"{"schema_version":5,"generated_at":"x","files":{"src/lib.rs":{"symbols":[{"kind":"fn","name":"hello_world","line":10}]}}}"#,
+        )
+        .expect("write index");
+
+        let ctx = ToolContext::new(root.to_path_buf());
+        let tool = FileSearchTool;
+        let result = tool
+            .execute(
+                json!({"query": "hello", "symbol_index": true, "symbol_limit": 5}),
+                &ctx,
+            )
+            .await
+            .expect("execute");
+
+        assert!(result.success);
+        let parsed: Value = serde_json::from_str(&result.content).expect("json");
+        let hits = parsed["symbol_hits"].as_array().expect("symbol_hits");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0]["name"].as_str().unwrap(), "hello_world");
     }
 }

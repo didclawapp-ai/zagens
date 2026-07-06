@@ -14,4 +14,5 @@ pub mod serve;
 pub mod setup;
 pub mod trace;
 pub mod trace_compare;
+pub mod trace_pack;
 pub mod trace_serve;

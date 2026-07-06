@@ -788,6 +788,17 @@ pub fn build_paths() -> Map<String, Value> {
         )],
     );
     add(
+        "/v1/agent-health",
+        vec![json_op(
+            "get",
+            "getAgentHealth",
+            "Agent health / harness telemetry (T1)",
+            None,
+            "ToolTelemetryReport",
+            u,
+        )],
+    );
+    add(
         "/v1/apps/routing/rules",
         vec![
             json_op(
@@ -816,6 +827,17 @@ pub fn build_paths() -> Map<String, Value> {
             "Rebuild symbol index",
             None,
             "ErrorBody",
+            u,
+        )],
+    );
+    add(
+        "/v1/symbol-index/search",
+        vec![json_op(
+            "get",
+            "searchSymbolIndex",
+            "Search workspace symbol index",
+            None,
+            "SymbolSearchResult",
             u,
         )],
     );
