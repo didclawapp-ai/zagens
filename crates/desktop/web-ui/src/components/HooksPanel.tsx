@@ -22,6 +22,9 @@ const HOOK_EVENTS = [
   'post_compact',
   'subagent_start',
   'subagent_end',
+  'night_queue_enqueue',
+  'night_queue_run_start',
+  'night_queue_run_end',
 ] as const;
 
 const HOOK_CONDITION_TYPES = [

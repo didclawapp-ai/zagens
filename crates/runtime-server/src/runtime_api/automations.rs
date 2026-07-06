@@ -73,7 +73,12 @@ pub(crate) async fn run_automation(
 ) -> Result<Json<AutomationRunRecord>, ApiError> {
     let manager = state.automations.lock().await;
     let run = manager
-        .run_now(&id, &state.task_manager)
+        .run_now(
+            &id,
+            state.config(),
+            &state.task_manager,
+            state.automations.clone(),
+        )
         .await
         .map_err(map_automation_err)?;
     Ok(Json(run))

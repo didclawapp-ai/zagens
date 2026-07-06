@@ -17,6 +17,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::task_manager::{NewTaskRequest, SharedTaskManager, TaskStatus};
 use crate::utils::spawn_supervised;
 
@@ -56,6 +57,10 @@ pub enum AutomationTriggerKind {
     Prompt,
     /// Enqueue a background task using stored model/mode/workspace/shell/trust flags.
     Task,
+    /// Append a prompt (and optional gate) to `.zagens/night_queue.json`.
+    NightQueueEnqueue,
+    /// Run pending night-queue tasks for the automation workspace (+ briefing by default).
+    NightQueueRun,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +85,18 @@ pub struct AutomationRecord {
     pub trust_mode: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_approve: Option<bool>,
+    /// Gate preset id for `night_queue_enqueue` (`--gate-preset`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate_preset: Option<String>,
+    /// Inline gate specs for `night_queue_enqueue`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gate: Vec<String>,
+    /// Use git worktree isolation for night queue tasks (default true).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub use_worktree: Option<bool>,
+    /// Write morning briefing to `.zagens/handoff.md` after `night_queue_run`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_briefing: Option<bool>,
     pub status: AutomationStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -110,6 +127,10 @@ pub struct AutomationRunRecord {
     pub turn_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub night_queue_task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -133,6 +154,14 @@ pub struct CreateAutomationRequest {
     pub auto_approve: Option<bool>,
     #[serde(default)]
     pub status: Option<AutomationStatus>,
+    #[serde(default)]
+    pub gate_preset: Option<String>,
+    #[serde(default)]
+    pub gate: Vec<String>,
+    #[serde(default)]
+    pub use_worktree: Option<bool>,
+    #[serde(default)]
+    pub write_briefing: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -148,6 +177,10 @@ pub struct UpdateAutomationRequest {
     pub trust_mode: Option<bool>,
     pub auto_approve: Option<bool>,
     pub status: Option<AutomationStatus>,
+    pub gate_preset: Option<String>,
+    pub gate: Option<Vec<String>>,
+    pub use_worktree: Option<bool>,
+    pub write_briefing: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -731,7 +764,7 @@ impl AutomationManager {
     }
 
     pub fn create_automation(&self, req: CreateAutomationRequest) -> Result<AutomationRecord> {
-        validate_name_and_prompt(&req.name, &req.prompt)?;
+        validate_automation_request(&req.name, &req.prompt, req.trigger_kind, &req.cwds)?;
         let schedule = AutomationSchedule::parse_rrule(&req.rrule)?;
         let now = Utc::now();
         let status = req.status.unwrap_or(AutomationStatus::Active);
@@ -758,6 +791,10 @@ impl AutomationManager {
             allow_shell: req.allow_shell,
             trust_mode: req.trust_mode,
             auto_approve: req.auto_approve,
+            gate_preset: normalize_optional_string(req.gate_preset),
+            gate: req.gate,
+            use_worktree: req.use_worktree,
+            write_briefing: req.write_briefing,
             status,
             created_at: now,
             updated_at: now,
@@ -853,7 +890,9 @@ impl AutomationManager {
             existing.name = name.trim().to_string();
         }
         if let Some(prompt) = req.prompt {
-            if prompt.trim().is_empty() {
+            if prompt.trim().is_empty()
+                && !matches!(existing.trigger_kind, AutomationTriggerKind::NightQueueRun)
+            {
                 bail!("Automation prompt cannot be empty");
             }
             existing.prompt = prompt.trim().to_string();
@@ -890,6 +929,18 @@ impl AutomationManager {
         }
         if let Some(v) = req.auto_approve {
             existing.auto_approve = Some(v);
+        }
+        if req.gate_preset.is_some() {
+            existing.gate_preset = normalize_optional_string(req.gate_preset);
+        }
+        if let Some(gate) = req.gate {
+            existing.gate = gate;
+        }
+        if let Some(v) = req.use_worktree {
+            existing.use_worktree = Some(v);
+        }
+        if let Some(v) = req.write_briefing {
+            existing.write_briefing = Some(v);
         }
         if let Some(status) = req.status {
             existing.status = status;
@@ -985,35 +1036,81 @@ impl AutomationManager {
         Ok(out)
     }
 
-    fn save_run(&self, run: &AutomationRunRecord) -> Result<()> {
+    pub(crate) fn get_run(&self, automation_id: &str, run_id: &str) -> Result<AutomationRunRecord> {
+        let path = self.run_path(automation_id, run_id);
+        let raw = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read automation run {}", path.display()))?;
+        let run: AutomationRunRecord = serde_json::from_str(&raw)
+            .with_context(|| format!("Failed to parse automation run {}", path.display()))?;
+        Ok(run)
+    }
+
+    pub(crate) fn save_run(&self, run: &AutomationRunRecord) -> Result<()> {
         let dir = self.runs_dir_for(&run.automation_id);
         fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
         write_json_atomic(&self.run_path(&run.automation_id, &run.id), run)
     }
 
-    async fn enqueue_run_task(
+    async fn execute_automation_run(
         &self,
         automation: &AutomationRecord,
         run: &mut AutomationRunRecord,
+        config: &Config,
         task_manager: &SharedTaskManager,
+        automations: SharedAutomationManager,
     ) -> Result<()> {
-        let new_task = task_request_for_automation(automation);
-
-        match task_manager.add_task(new_task).await {
-            Ok(task) => {
-                run.status = AutomationRunStatus::Running;
+        match automation.trigger_kind {
+            AutomationTriggerKind::NightQueueEnqueue => {
                 run.started_at = Some(Utc::now());
-                run.task_id = Some(task.id.clone());
-                run.thread_id = task.thread_id.clone();
-                run.turn_id = task.turn_id.clone();
-                run.error = None;
+                match crate::night_queue_automation::enqueue_from_automation(config, automation)
+                    .await
+                {
+                    Ok((task_id, _workspace)) => {
+                        run.status = AutomationRunStatus::Completed;
+                        run.ended_at = Some(Utc::now());
+                        run.night_queue_task_id = Some(task_id);
+                        run.result_summary = Some("enqueued".to_string());
+                        run.error = None;
+                    }
+                    Err(err) => {
+                        run.status = AutomationRunStatus::Failed;
+                        run.ended_at = Some(Utc::now());
+                        run.error = Some(err.to_string());
+                    }
+                }
                 Ok(())
             }
-            Err(err) => {
-                run.status = AutomationRunStatus::Failed;
-                run.ended_at = Some(Utc::now());
-                run.error = Some(format!("Failed to enqueue task: {err}"));
+            AutomationTriggerKind::NightQueueRun => {
+                run.status = AutomationRunStatus::Running;
+                run.started_at = Some(Utc::now());
+                self.save_run(run)?;
+                crate::night_queue_automation::spawn_scheduled_queue_run(
+                    automations,
+                    config.clone(),
+                    automation.clone(),
+                    run.clone(),
+                );
                 Ok(())
+            }
+            AutomationTriggerKind::Prompt | AutomationTriggerKind::Task => {
+                let new_task = task_request_for_automation(automation);
+                match task_manager.add_task(new_task).await {
+                    Ok(task) => {
+                        run.status = AutomationRunStatus::Running;
+                        run.started_at = Some(Utc::now());
+                        run.task_id = Some(task.id.clone());
+                        run.thread_id = task.thread_id.clone();
+                        run.turn_id = task.turn_id.clone();
+                        run.error = None;
+                        Ok(())
+                    }
+                    Err(err) => {
+                        run.status = AutomationRunStatus::Failed;
+                        run.ended_at = Some(Utc::now());
+                        run.error = Some(format!("Failed to enqueue task: {err}"));
+                        Ok(())
+                    }
+                }
             }
         }
     }
@@ -1021,7 +1118,9 @@ impl AutomationManager {
     pub async fn run_now(
         &self,
         automation_id: &str,
+        config: &Config,
         task_manager: &SharedTaskManager,
+        automations: SharedAutomationManager,
     ) -> Result<AutomationRunRecord> {
         let mut automation = self.get_automation(automation_id)?;
         let now = Utc::now();
@@ -1038,23 +1137,33 @@ impl AutomationManager {
             thread_id: None,
             turn_id: None,
             error: None,
+            night_queue_task_id: None,
+            result_summary: None,
         };
 
-        self.enqueue_run_task(&automation, &mut run, task_manager)
+        self.execute_automation_run(&automation, &mut run, config, task_manager, automations)
             .await?;
         self.save_run(&run)?;
 
         automation.updated_at = Utc::now();
+        if run.ended_at.is_some() {
+            automation.last_run_at = run.ended_at;
+        }
         self.save_automation(&automation)?;
 
         Ok(run)
     }
 
-    pub async fn scheduler_tick(&self, task_manager: &SharedTaskManager) -> Result<()> {
+    pub async fn scheduler_tick(
+        &self,
+        config: &Config,
+        task_manager: &SharedTaskManager,
+        automations: SharedAutomationManager,
+    ) -> Result<()> {
         let now = Utc::now();
-        let mut automations = self.list_automations()?;
+        let mut records = self.list_automations()?;
 
-        for automation in &mut automations {
+        for automation in &mut records {
             if !matches!(automation.status, AutomationStatus::Active) {
                 continue;
             }
@@ -1107,10 +1216,18 @@ impl AutomationManager {
                 thread_id: None,
                 turn_id: None,
                 error: None,
+                night_queue_task_id: None,
+                result_summary: None,
             };
 
-            self.enqueue_run_task(automation, &mut run, task_manager)
-                .await?;
+            self.execute_automation_run(
+                automation,
+                &mut run,
+                config,
+                task_manager,
+                automations.clone(),
+            )
+            .await?;
             self.save_run(&run)?;
 
             automation.updated_at = now;
@@ -1249,17 +1366,42 @@ pub fn task_request_for_automation(automation: &AutomationRecord) -> NewTaskRequ
             trust_mode: Some(false),
             auto_approve: Some(true),
         },
+        AutomationTriggerKind::NightQueueEnqueue | AutomationTriggerKind::NightQueueRun => {
+            unreachable!("night queue triggers do not enqueue background tasks")
+        }
     }
 }
 
-fn validate_name_and_prompt(name: &str, prompt: &str) -> Result<()> {
+fn validate_automation_request(
+    name: &str,
+    prompt: &str,
+    trigger_kind: AutomationTriggerKind,
+    cwds: &[PathBuf],
+) -> Result<()> {
     if name.trim().is_empty() {
         bail!("Automation name is required");
     }
-    if prompt.trim().is_empty() {
-        bail!("Automation prompt is required");
+    match trigger_kind {
+        AutomationTriggerKind::Prompt | AutomationTriggerKind::Task => {
+            if prompt.trim().is_empty() {
+                bail!("Automation prompt is required");
+            }
+        }
+        AutomationTriggerKind::NightQueueEnqueue => {
+            if prompt.trim().is_empty() {
+                bail!("Night queue enqueue requires a prompt");
+            }
+            crate::night_queue_automation::validate_night_queue_workspace(cwds)?;
+        }
+        AutomationTriggerKind::NightQueueRun => {
+            crate::night_queue_automation::validate_night_queue_workspace(cwds)?;
+        }
     }
     Ok(())
+}
+
+fn validate_name_and_prompt(name: &str, prompt: &str) -> Result<()> {
+    validate_automation_request(name, prompt, AutomationTriggerKind::Prompt, &[])
 }
 
 fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
@@ -1310,14 +1452,15 @@ impl Default for AutomationSchedulerConfig {
 pub fn spawn_scheduler(
     automations: SharedAutomationManager,
     task_manager: SharedTaskManager,
+    config: std::sync::Arc<Config>,
     cancel: CancellationToken,
-    config: AutomationSchedulerConfig,
+    scheduler_config: AutomationSchedulerConfig,
 ) -> tokio::task::JoinHandle<()> {
     spawn_supervised(
         "automation-scheduler",
         std::panic::Location::caller(),
         async move {
-            let interval = config.tick_interval_secs.max(5);
+            let interval = scheduler_config.tick_interval_secs.max(5);
             loop {
                 if cancel.is_cancelled() {
                     break;
@@ -1325,7 +1468,10 @@ pub fn spawn_scheduler(
 
                 {
                     let manager = automations.lock().await;
-                    if let Err(err) = manager.scheduler_tick(&task_manager).await {
+                    if let Err(err) = manager
+                        .scheduler_tick(&config, &task_manager, automations.clone())
+                        .await
+                    {
                         tracing::warn!("automation scheduler tick failed: {err}");
                     }
                     if let Err(err) = manager.reconcile_run_statuses(&task_manager).await {

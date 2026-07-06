@@ -80,7 +80,18 @@ export interface TasksResponse {
 /** Automation record from GET /v1/automations */
 export type AutomationStatus = 'active' | 'paused';
 
-export type AutomationTriggerKind = 'prompt' | 'task';
+export type AutomationTriggerKind =
+  | 'prompt'
+  | 'task'
+  | 'night_queue_enqueue'
+  | 'night_queue_run';
+
+export function parseAutomationTriggerKind(raw?: string | null): AutomationTriggerKind {
+  if (raw === 'task') return 'task';
+  if (raw === 'night_queue_enqueue') return 'night_queue_enqueue';
+  if (raw === 'night_queue_run') return 'night_queue_run';
+  return 'prompt';
+}
 
 export interface AutomationRecord {
   schema_version: number;
@@ -95,6 +106,10 @@ export interface AutomationRecord {
   allow_shell?: boolean | null;
   trust_mode?: boolean | null;
   auto_approve?: boolean | null;
+  gate_preset?: string | null;
+  gate?: string[];
+  use_worktree?: boolean | null;
+  write_briefing?: boolean | null;
   status: AutomationStatus;
   created_at: string;
   updated_at: string;
@@ -172,6 +187,10 @@ export interface CreateAutomationRequest {
   allow_shell?: boolean;
   trust_mode?: boolean;
   auto_approve?: boolean;
+  gate_preset?: string;
+  gate?: string[];
+  use_worktree?: boolean;
+  write_briefing?: boolean;
   status?: AutomationStatus;
 }
 
@@ -187,6 +206,10 @@ export interface UpdateAutomationRequest {
   allow_shell?: boolean;
   trust_mode?: boolean;
   auto_approve?: boolean;
+  gate_preset?: string;
+  gate?: string[];
+  use_worktree?: boolean;
+  write_briefing?: boolean;
   status?: AutomationStatus;
 }
 
@@ -209,4 +232,6 @@ export interface AutomationRunRecord {
   thread_id: string | null;
   turn_id: string | null;
   error: string | null;
+  night_queue_task_id?: string | null;
+  result_summary?: string | null;
 }

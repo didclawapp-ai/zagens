@@ -1,3 +1,6 @@
+import type { AutomationTriggerKind } from '../types/automation';
+import { parseAutomationTriggerKind } from '../types/automation';
+
 export type ScheduleKind =
   | 'minutely'
   | 'hourly'
@@ -91,28 +94,40 @@ export function formValuesFromAutomation(item: {
   allow_shell?: boolean | null;
   trust_mode?: boolean | null;
   auto_approve?: boolean | null;
+  gate_preset?: string | null;
+  gate?: string[];
+  use_worktree?: boolean | null;
+  write_briefing?: boolean | null;
 }): ScheduleFormValues & {
   name: string;
   prompt: string;
-  triggerKind: 'prompt' | 'task';
+  triggerKind: AutomationTriggerKind;
   mode: string;
   model: string;
   workspace: string;
   allowShell: boolean;
   trustMode: boolean;
   autoApprove: boolean;
+  gatePreset: string;
+  gateInline: string;
+  useWorktree: boolean;
+  writeBriefing: boolean;
 } {
   const parsed = parseRrule(item.rrule) ?? defaultScheduleFormValues();
   return {
     name: item.name,
     prompt: item.prompt,
-    triggerKind: item.trigger_kind === 'task' ? 'task' : 'prompt',
+    triggerKind: parseAutomationTriggerKind(item.trigger_kind),
     mode: item.mode ?? 'agent',
     model: item.model ?? '',
     workspace: item.cwds?.[0] ?? '',
     allowShell: item.allow_shell ?? false,
     trustMode: item.trust_mode ?? false,
     autoApprove: item.auto_approve !== false,
+    gatePreset: item.gate_preset ?? '',
+    gateInline: item.gate?.[0] ?? '',
+    useWorktree: item.use_worktree !== false,
+    writeBriefing: item.write_briefing !== false,
     ...parsed,
   };
 }

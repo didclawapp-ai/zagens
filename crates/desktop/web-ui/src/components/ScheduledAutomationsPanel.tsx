@@ -17,6 +17,7 @@ import type {
   CreateAutomationRequest,
   UpdateAutomationRequest,
 } from '../types/automation';
+import { parseAutomationTriggerKind } from '../types/automation';
 import { useT } from '../i18n';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import { confirmDialog } from '../lib/confirmDialog';
@@ -55,7 +56,39 @@ function formatDateTime(iso: string | null): string {
 }
 
 function triggerKindOf(item: AutomationRecord): AutomationTriggerKind {
-  return item.trigger_kind === 'task' ? 'task' : 'prompt';
+  return parseAutomationTriggerKind(item.trigger_kind);
+}
+
+function isNightQueueTrigger(kind: AutomationTriggerKind): boolean {
+  return kind === 'night_queue_enqueue' || kind === 'night_queue_run';
+}
+
+const SCHEDULE_TRIGGER_KINDS: AutomationTriggerKind[] = [
+  'prompt',
+  'task',
+  'night_queue_enqueue',
+  'night_queue_run',
+];
+
+function appendNightQueueFields(
+  body: CreateAutomationRequest | UpdateAutomationRequest,
+  triggerKind: AutomationTriggerKind,
+  gatePreset: string,
+  gateInline: string,
+  useWorktree: boolean,
+  writeBriefing: boolean,
+) {
+  if (triggerKind === 'night_queue_enqueue') {
+    body.use_worktree = useWorktree;
+    const preset = gatePreset.trim();
+    if (preset) body.gate_preset = preset;
+    const gate = gateInline.trim();
+    if (gate) body.gate = [gate];
+  }
+  if (triggerKind === 'night_queue_run') {
+    body.use_worktree = useWorktree;
+    body.write_briefing = writeBriefing;
+  }
 }
 
 interface Props {
@@ -291,13 +324,25 @@ function AutomationCard({
               className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
                 kind === 'task'
                   ? 'bg-accent-soft text-accent'
-                  : 'bg-canvas text-t-text-muted border border-card-border'
+                  : isNightQueueTrigger(kind)
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                    : 'bg-canvas text-t-text-muted border border-card-border'
               }`}
             >
-              {kind === 'task' ? t('schedule.triggerTask') : t('schedule.triggerPrompt')}
+              {kind === 'task'
+                ? t('schedule.triggerTask')
+                : kind === 'night_queue_enqueue'
+                  ? t('schedule.triggerNightQueueEnqueue')
+                  : kind === 'night_queue_run'
+                    ? t('schedule.triggerNightQueueRun')
+                    : t('schedule.triggerPrompt')}
             </span>
           </div>
-          <div className="mt-0.5 text-[10px] text-t-text-muted line-clamp-2">{item.prompt}</div>
+          {item.prompt ? (
+            <div className="mt-0.5 text-[10px] text-t-text-muted line-clamp-2">{item.prompt}</div>
+          ) : kind === 'night_queue_run' ? (
+            <div className="mt-0.5 text-[10px] text-t-text-muted">{t('schedule.nightQueueRunDesc')}</div>
+          ) : null}
           {kind === 'task' && (
             <div className="mt-1 text-[10px] text-t-text-muted font-mono">
               {[item.mode ?? 'agent', item.model ?? t('schedule.defaultModel')]
@@ -496,6 +541,10 @@ function AutomationForm({
   const [allowShell, setAllowShell] = useState(initial?.allowShell ?? false);
   const [trustMode, setTrustMode] = useState(initial?.trustMode ?? false);
   const [autoApprove, setAutoApprove] = useState(initial?.autoApprove ?? true);
+  const [gatePreset, setGatePreset] = useState(initial?.gatePreset ?? '');
+  const [gateInline, setGateInline] = useState(initial?.gateInline ?? '');
+  const [useWorktree, setUseWorktree] = useState(initial?.useWorktree ?? true);
+  const [writeBriefing, setWriteBriefing] = useState(initial?.writeBriefing ?? true);
   const [scheduleKind, setScheduleKind] = useState<ScheduleKind>(initial?.scheduleKind ?? defaults.scheduleKind);
   const [intervalMinutes, setIntervalMinutes] = useState(initial?.intervalMinutes ?? defaults.intervalMinutes);
   const [intervalHours, setIntervalHours] = useState(initial?.intervalHours ?? defaults.intervalHours);
@@ -539,7 +588,13 @@ function AutomationForm({
     e.preventDefault();
     const trimmedName = name.trim();
     const trimmedPrompt = prompt.trim();
-    if (!trimmedName || !trimmedPrompt) return;
+    const ws = workspace.trim();
+    if (!trimmedName) return;
+    if (triggerKind !== 'night_queue_run' && !trimmedPrompt) return;
+    if (isNightQueueTrigger(triggerKind) && !ws) {
+      setErrorText(t('schedule.nightQueueWorkspaceRequired'));
+      return;
+    }
 
     const rrule = buildRrule(scheduleValues());
 
@@ -552,7 +607,7 @@ function AutomationForm({
           prompt: trimmedPrompt,
           rrule,
           trigger_kind: triggerKind,
-          cwds: workspace.trim() ? [workspace.trim()] : [],
+          cwds: ws ? [ws] : [],
         };
         if (triggerKind === 'task') {
           body.mode = mode_;
@@ -561,6 +616,7 @@ function AutomationForm({
           body.trust_mode = trustMode;
           body.auto_approve = autoApprove;
         }
+        appendNightQueueFields(body, triggerKind, gatePreset, gateInline, useWorktree, writeBriefing);
         await updateAutomation(initialItem.id, body);
       } else {
         const body: CreateAutomationRequest = {
@@ -569,7 +625,6 @@ function AutomationForm({
           rrule,
           trigger_kind: triggerKind,
         };
-        const ws = workspace.trim();
         if (ws) body.cwds = [ws];
         if (triggerKind === 'task') {
           body.mode = mode_;
@@ -578,6 +633,7 @@ function AutomationForm({
           body.trust_mode = trustMode;
           body.auto_approve = autoApprove;
         }
+        appendNightQueueFields(body, triggerKind, gatePreset, gateInline, useWorktree, writeBriefing);
         await createAutomation(body);
       }
       await onSaved();
@@ -620,7 +676,7 @@ function AutomationForm({
       <p className="text-[10px] text-t-text-muted leading-relaxed">{t('schedule.createDesc')}</p>
 
       <div className="flex flex-wrap gap-1.5">
-        {(['prompt', 'task'] as AutomationTriggerKind[]).map((kind) => (
+        {SCHEDULE_TRIGGER_KINDS.map((kind) => (
           <button
             key={kind}
             type="button"
@@ -632,10 +688,22 @@ function AutomationForm({
                 : 'border-card-border bg-canvas text-t-text-muted hover:text-t-text'
             }`}
           >
-            {kind === 'task' ? t('schedule.triggerTask') : t('schedule.triggerPrompt')}
+            {kind === 'task'
+              ? t('schedule.triggerTask')
+              : kind === 'night_queue_enqueue'
+                ? t('schedule.triggerNightQueueEnqueue')
+                : kind === 'night_queue_run'
+                  ? t('schedule.triggerNightQueueRun')
+                  : t('schedule.triggerPrompt')}
           </button>
         ))}
       </div>
+      {triggerKind === 'night_queue_enqueue' ? (
+        <p className="text-[10px] text-t-text-muted">{t('schedule.triggerNightQueueEnqueueHint')}</p>
+      ) : null}
+      {triggerKind === 'night_queue_run' ? (
+        <p className="text-[10px] text-t-text-muted">{t('schedule.triggerNightQueueRunHint')}</p>
+      ) : null}
 
       <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
         {t('schedule.name')}
@@ -648,17 +716,86 @@ function AutomationForm({
           className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text"
         />
       </label>
-      <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
-        {triggerKind === 'task' ? t('schedule.taskPrompt') : t('schedule.prompt')}
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={3}
-          required
-          disabled={submitting}
-          className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text resize-y min-h-[64px]"
-        />
-      </label>
+      {triggerKind !== 'night_queue_run' ? (
+        <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
+          {triggerKind === 'task'
+            ? t('schedule.taskPrompt')
+            : triggerKind === 'night_queue_enqueue'
+              ? t('schedule.nightQueuePrompt')
+              : t('schedule.prompt')}
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={3}
+            required
+            disabled={submitting}
+            className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text resize-y min-h-[64px]"
+          />
+        </label>
+      ) : null}
+
+      {isNightQueueTrigger(triggerKind) ? (
+        <div className="rounded-md border border-card-border/70 bg-canvas p-2.5 space-y-2">
+          <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
+            {t('schedule.nightQueueWorkspaceRequiredLabel')}
+            <input
+              type="text"
+              value={workspace}
+              onChange={(e) => setWorkspace(e.target.value)}
+              required
+              disabled={submitting}
+              placeholder={t('schedule.workspacePlaceholder')}
+              className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text font-mono"
+            />
+          </label>
+          {triggerKind === 'night_queue_enqueue' ? (
+            <>
+              <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
+                {t('schedule.gatePresetOptional')}
+                <input
+                  type="text"
+                  value={gatePreset}
+                  onChange={(e) => setGatePreset(e.target.value)}
+                  disabled={submitting || Boolean(gateInline.trim())}
+                  placeholder="rust-cargo-smoke"
+                  className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text font-mono"
+                />
+              </label>
+              <label className="text-[10px] text-t-text-muted flex flex-col gap-0.5">
+                {t('schedule.gateInlineOptional')}
+                <input
+                  type="text"
+                  value={gateInline}
+                  onChange={(e) => setGateInline(e.target.value)}
+                  disabled={submitting || Boolean(gatePreset.trim())}
+                  placeholder="file_exists:path=deliverables/out.txt"
+                  className="rounded-md border border-card-border bg-canvas px-2 py-1 text-xs text-t-text font-mono"
+                />
+              </label>
+            </>
+          ) : null}
+          <label className="flex items-center gap-2 text-[10px] text-t-text-muted cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useWorktree}
+              onChange={(e) => setUseWorktree(e.target.checked)}
+              disabled={submitting}
+            />
+            {t('schedule.nightQueueUseWorktree')}
+          </label>
+          {triggerKind === 'night_queue_run' ? (
+            <label className="flex items-center gap-2 text-[10px] text-t-text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={writeBriefing}
+                onChange={(e) => setWriteBriefing(e.target.checked)}
+                disabled={submitting}
+              />
+              {t('schedule.nightQueueWriteBriefing')}
+            </label>
+          ) : null}
+        </div>
+      ) : null}
 
       {triggerKind === 'task' && (
         <div className="rounded-md border border-card-border/70 bg-canvas p-2.5 space-y-2">

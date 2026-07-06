@@ -25,7 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gate-as-Code (Phase 4.1):** `docs/harness/gates/` — public format, predicate reference, migration guide from legacy completion gate; bundled presets under `presets/`; `zagens gate validate|list`; `zagens queue add --gate-file|--gate-preset`; `HarnessContract::validate()` + `flat_queue_gate_rows()`.
 - **H4 draft_skill (Phase 4.2):** `draft_skill` tool → `.zagens/skill-drafts/`; `zagens skill drafts|promote` human-in-loop install; `HarnessContract` validation on write/promote; security checklist `docs/harness/h4-draft-skill-security.md`.
 - **T5 composite tools (Phase 4.3):** `explore_codebase` (glob→grep→read) + `edit_and_check` (edit→run_tests); T1 `tool_sequences` mining in `doctor --tools`; composite sub-steps mirrored to `kernel_events` via `composite_steps` metadata.
-- **Model migration benchmark (Phase 4.4):** `zagens trace benchmark` — validate golden replay corpus, optional thread pack export, baseline metric diff; `collect-baseline-metrics` archives `tool_sequences`.
+- **Desktop night queue UI (Phase 1a.5):** side panel **夜间队列** — enqueue with gate preset / inline predicate, list tasks, run queue, write briefing; runtime `GET/POST /v1/night-queue`, `/run`, `/briefing`, `/gate-presets`.
+- **Night queue ↔ schedule:** automations `trigger_kind` **`night_queue_enqueue`** / **`night_queue_run`** — RRULE-driven enqueue or batch run + briefing; hooks **`night_queue_enqueue`**, **`night_queue_run_start`**, **`night_queue_run_end`**.
 - **H3 harness module (Phase 3.1):** `crates/runtime-server/src/harness/` — `RegistrySurface` adapter (stage gate tool exposure), `HarnessStateAdapter` (queue/handoff paths), `verify_loop` facade, shared `telemetry` + T3 `hints` aggregation.
 - **Agent 体检 UI (Phase 3.3):** Desktop side panel + `GET /v1/agent-health` — same `harness::telemetry` report as `zagens doctor --tools` (T1 + `harness_verify` + stage gate + hint coverage).
 - **Python CSV pipeline skill (Phase 3.2):** Bundled `python-csv-pipeline` + staged `harness.toml` (inspect→analyze→deliver→verify); fixture `fixtures/harness/python-csv-skill-manifest.toml`; `BUNDLED_SKILL_VERSION` **9→10**.
@@ -49,6 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **LHT macro CRAFT hang:** `spawn_macro_craft_review` now wires `parent_completion_tx` so the parent turn loop receives the Review sub-agent completion and can inject remediation instead of waiting forever in "生成中".
 - **Snapshot restore:** Removes untracked files created after the target snapshot (queue/worktree rollback no longer leaves agent artifacts behind).
 - **Night queue:** Gate-failure events appended after snapshot restore; briefing block replaces prior content instead of duplicating; enqueue guarded by file lock against concurrent `queue add` races.
+- **Desktop night queue panel white screen:** tolerate API tasks with omitted empty `gate` field (was crashing on `task.gate.length` after enqueue/reload).
+- **Night queue ↔ schedule ↔ hooks:** scheduled automations support `night_queue_enqueue` and `night_queue_run` trigger kinds; lifecycle hooks `night_queue_enqueue`, `night_queue_run_start`, `night_queue_run_end`.
 - **T1 tool telemetry (`zagens doctor --tools`):** Read-only aggregation of local `kernel_events` (`tool_call_finished`, `loop_guard_triggered`) — tool failure rate, loop-guard retry proxy, top tools by calls and by failure rate (≥3 calls). JSON via `--tools --json`. Phase 0.3 / 2026 H2 harness plan.
 - **Harness baseline collector:** `scripts/harness/collect-baseline-metrics.{sh,ps1}` writes maintainer-private `baseline-2026-H2.json` (golden replay fixture count + optional `doctor --tools` snapshot).
 

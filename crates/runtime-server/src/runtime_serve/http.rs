@@ -108,6 +108,7 @@ pub async fn run_http_server(
     let scheduler_handle = spawn_scheduler(
         automations.clone(),
         task_manager.clone(),
+        std::sync::Arc::new(config.clone()),
         scheduler_cancel.clone(),
         AutomationSchedulerConfig::default(),
     );

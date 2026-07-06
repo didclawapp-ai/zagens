@@ -1063,6 +1063,42 @@ export async function fetchAgentHealth(): Promise<AgentHealthReport> {
   return fetchJson<AgentHealthReport>('/v1/agent-health');
 }
 
+// ========== Night queue (Phase 1a desktop enqueue) ==========
+
+export async function fetchNightQueue(): Promise<import('../types/nightQueue').NightQueueResponse> {
+  const res = await fetchJson<import('../types/nightQueue').NightQueueResponse>('/v1/night-queue');
+  return {
+    ...res,
+    tasks: res.tasks.map((task) => ({
+      ...task,
+      gate: task.gate ?? [],
+    })),
+  };
+}
+
+export async function fetchGatePresets(): Promise<import('../types/nightQueue').GatePresetsResponse> {
+  return fetchJson('/v1/night-queue/gate-presets');
+}
+
+export async function createNightQueueTask(
+  body: import('../types/nightQueue').CreateNightQueueTaskRequest,
+): Promise<import('../types/nightQueue').NightQueueTask> {
+  const res = await postJson<import('../types/nightQueue').NightQueueTask>('/v1/night-queue', body);
+  return res;
+}
+
+export async function runNightQueue(
+  body: import('../types/nightQueue').RunNightQueueRequest = {},
+): Promise<import('../types/nightQueue').RunNightQueueResponse> {
+  return postJson('/v1/night-queue/run', body);
+}
+
+export async function postNightQueueBriefing(
+  writeHandoff = true,
+): Promise<import('../types/nightQueue').NightQueueBriefingResponse> {
+  return postJson('/v1/night-queue/briefing', { write_handoff: writeHandoff });
+}
+
 // ========== Tasks / Automations / Skills ==========
 
 export async function fetchTasks(): Promise<TaskSummary[]> {

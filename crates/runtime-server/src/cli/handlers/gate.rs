@@ -64,6 +64,11 @@ pub fn resolve_preset(id: &str) -> Result<&'static str> {
         })
 }
 
+/// Bundled Gate-as-Code preset metadata for HTTP / desktop UI.
+pub fn bundled_gate_presets() -> impl Iterator<Item = (&'static str, &'static str)> {
+    BUNDLED_PRESETS.iter().map(|p| (p.id, p.description))
+}
+
 fn run_validate(args: GateValidateArgs) -> Result<ExitCode> {
     let (source_label, raw) = match (&args.file, &args.preset) {
         (Some(path), None) => {

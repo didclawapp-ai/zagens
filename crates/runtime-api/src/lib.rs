@@ -11,6 +11,7 @@ pub mod auth;
 pub mod cors;
 pub mod error;
 pub mod health;
+pub mod night_queue;
 pub mod openapi;
 pub mod router;
 pub mod state;

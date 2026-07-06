@@ -5,6 +5,7 @@ import ModelProvidersPanel from './ModelProvidersPanel';
 import McpPanel from './McpPanel';
 import UsageDashboard from './UsageDashboard';
 import AgentHealthPanel from './AgentHealthPanel';
+import NightQueuePanel from './NightQueuePanel';
 import AutomationPanel from './AutomationPanel';
 import AgentPanel from './AgentPanel';
 import TopicMemoryPanel from './TopicMemoryPanel';
@@ -52,6 +53,7 @@ export type RightPanelView =
   | 'mcp'
   | 'usage'
   | 'agent-health'
+  | 'night-queue'
   | 'tasks'
   | 'skills'
   | 'agents'
@@ -170,6 +172,7 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   mcp: 'panels.mcp',
   usage: 'panels.usage',
   'agent-health': 'panels.agentHealth',
+  'night-queue': 'panels.nightQueue',
   tasks: 'panels.tasks',
   skills: 'panels.skills',
   agents: 'panels.agents',
@@ -861,6 +864,14 @@ export default function RightPanel({
 
         {view === 'agent-health' && (
           <AgentHealthPanel
+            runtimeConn={runtimeConn}
+            streaming={streaming}
+            runtimeSessionEstablished={runtimeSessionEstablished}
+          />
+        )}
+
+        {view === 'night-queue' && (
+          <NightQueuePanel
             runtimeConn={runtimeConn}
             streaming={streaming}
             runtimeSessionEstablished={runtimeSessionEstablished}

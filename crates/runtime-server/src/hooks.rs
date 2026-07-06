@@ -54,6 +54,12 @@ pub enum HookEvent {
     SubagentStart,
     /// Triggered when a sub-agent task reaches a terminal state.
     SubagentEnd,
+    /// Triggered after a task is enqueued into `.zagens/night_queue.json`.
+    NightQueueEnqueue,
+    /// Triggered when a night queue run batch starts (`queue run` / scheduled run).
+    NightQueueRunStart,
+    /// Triggered when a night queue run batch finishes (success or error).
+    NightQueueRunEnd,
 }
 
 impl HookEvent {
@@ -73,6 +79,9 @@ impl HookEvent {
             HookEvent::PostCompact => "post_compact",
             HookEvent::SubagentStart => "subagent_start",
             HookEvent::SubagentEnd => "subagent_end",
+            HookEvent::NightQueueEnqueue => "night_queue_enqueue",
+            HookEvent::NightQueueRunStart => "night_queue_run_start",
+            HookEvent::NightQueueRunEnd => "night_queue_run_end",
         }
     }
 }
@@ -282,6 +291,16 @@ pub struct HookContext {
     pub compaction_messages_before: Option<usize>,
     /// Message count after compaction (when available)
     pub compaction_messages_after: Option<usize>,
+    /// Night queue action slug (`enqueue` / `run`) for queue lifecycle hooks.
+    pub night_queue_action: Option<String>,
+    /// Enqueued queue task id (`q-…`) when applicable.
+    pub night_queue_task_id: Option<String>,
+    /// Tasks claimed in the last queue run batch.
+    pub night_queue_ran: Option<usize>,
+    /// Passed tasks in the last queue run batch.
+    pub night_queue_passed: Option<usize>,
+    /// Failed / rolled-back tasks in the last queue run batch.
+    pub night_queue_failed: Option<usize>,
 }
 
 impl HookContext {
@@ -391,6 +410,23 @@ impl HookContext {
         self
     }
 
+    pub fn with_night_queue_action(mut self, action: &str) -> Self {
+        self.night_queue_action = Some(action.to_string());
+        self
+    }
+
+    pub fn with_night_queue_task_id(mut self, task_id: &str) -> Self {
+        self.night_queue_task_id = Some(task_id.to_string());
+        self
+    }
+
+    pub fn with_night_queue_report(mut self, ran: usize, passed: usize, failed: usize) -> Self {
+        self.night_queue_ran = Some(ran);
+        self.night_queue_passed = Some(passed);
+        self.night_queue_failed = Some(failed);
+        self
+    }
+
     /// Convert to environment variables
     pub fn to_env_vars(&self) -> HashMap<String, String> {
         let mut env = HashMap::new();
@@ -483,6 +519,27 @@ impl HookContext {
             env.insert(
                 "DEEPSEEK_COMPACTION_MESSAGES_AFTER".to_string(),
                 after.to_string(),
+            );
+        }
+        if let Some(ref action) = self.night_queue_action {
+            env.insert("DEEPSEEK_NIGHT_QUEUE_ACTION".to_string(), action.clone());
+        }
+        if let Some(ref task_id) = self.night_queue_task_id {
+            env.insert("DEEPSEEK_NIGHT_QUEUE_TASK_ID".to_string(), task_id.clone());
+        }
+        if let Some(ran) = self.night_queue_ran {
+            env.insert("DEEPSEEK_NIGHT_QUEUE_RAN".to_string(), ran.to_string());
+        }
+        if let Some(passed) = self.night_queue_passed {
+            env.insert(
+                "DEEPSEEK_NIGHT_QUEUE_PASSED".to_string(),
+                passed.to_string(),
+            );
+        }
+        if let Some(failed) = self.night_queue_failed {
+            env.insert(
+                "DEEPSEEK_NIGHT_QUEUE_FAILED".to_string(),
+                failed.to_string(),
             );
         }
 

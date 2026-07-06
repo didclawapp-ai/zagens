@@ -33,6 +33,9 @@ Hooks run **user-defined shell commands** at agent lifecycle points: session bou
 | `post_compact` | No | After successful compaction |
 | `subagent_start` | **Yes** | Before a sub-agent task is spawned |
 | `subagent_end` | No | When a sub-agent reaches a terminal state |
+| `night_queue_enqueue` | No | After a task is appended to `.zagens/night_queue.json` |
+| `night_queue_run_start` | No | Before a batch `queue run` starts (CLI, HTTP, or scheduled) |
+| `night_queue_run_end` | No | After a batch `queue run` finishes (includes `DEEPSEEK_NIGHT_QUEUE_*` env vars) |
 
 ### Cursor-compatible aliases
 

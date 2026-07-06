@@ -25,6 +25,7 @@ if (Test-Path $ReplayDir) {
 }
 
 $ToolsJson = "null"
+$SeqJson = "null"
 $ZagensExe = Join-Path $Root "target\debug\zagens.exe"
 $RawTools = $null
 if (Test-Path $ZagensExe) {
@@ -33,11 +34,13 @@ if (Test-Path $ZagensExe) {
     $RawTools = & zagens doctor --tools --json 2>$null
 }
 if ($RawTools) {
-    try {
-        $parsed = $RawTools | ConvertFrom-Json
-        $ToolsJson = ($parsed | ConvertTo-Json -Compress -Depth 20)
-    } catch {
-        $ToolsJson = "null"
+    $trimmed = $RawTools.Trim()
+    if ($trimmed.StartsWith("{")) {
+        # Embed raw JSON — avoid ConvertTo-Json mangling Unicode arrows (→) in tool_sequences.
+        $ToolsJson = $trimmed
+        if ($trimmed -match '"tool_sequences"\s*:\s*(\{.*\})\s*\}\s*$') {
+            $SeqJson = $Matches[1]
+        }
     }
 }
 
@@ -72,9 +75,10 @@ $Doc = @"
     "note": "Populate after T1 aggregation matures; tool telemetry seeds from tools section."
   },
   "tools_telemetry": $ToolsJson,
-  "tool_sequences": $(if ($parsed -and $parsed.tool_sequences) { ($parsed.tool_sequences | ConvertTo-Json -Compress -Depth 20) } else { "null" })
+  "tool_sequences": $SeqJson
 }
 "@
 
-Set-Content -Path $Output -Value $Doc -Encoding utf8
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($Output, $Doc, $utf8NoBom)
 Write-Host "Wrote baseline snapshot: $Output"

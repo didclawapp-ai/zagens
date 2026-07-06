@@ -1,0 +1,20 @@
+# External Gate-as-Code sample (Phase 4 exit) — NOT a bundled CLI preset.
+# Simulates a contributor/project-local contract reused via `queue add --gate-file`.
+
+schema_version = 1
+
+[harness]
+id = "zagens-h2-external-exit"
+description = "Phase 4 external gate smoke — README.md must exist in workspace root."
+
+[verify_budget]
+max_retries = 0
+timeout_ms = 60000
+
+[rollback]
+strategy = "snapshot"
+
+[[verify]]
+id = "readme_present"
+predicate = "file_exists"
+args = { path = "README.md" }

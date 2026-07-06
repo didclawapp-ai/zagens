@@ -17,6 +17,7 @@ mod blackboards;
 pub(crate) mod channel_events;
 pub(crate) mod kernel_replay;
 mod mcp;
+mod night_queue;
 mod office;
 mod router;
 mod runtime_status;
@@ -45,6 +46,10 @@ pub(crate) use kernel_replay::{get_kernel_thread_replay, get_kernel_turn_replay}
 pub(crate) use mcp::{
     add_mcp_server, delete_mcp_server, discover_mcp, get_mcp_server, list_mcp_calls,
     list_mcp_servers, list_mcp_tools, merge_mcp_config_json, reload_mcp_config, update_mcp_server,
+};
+pub(crate) use night_queue::{
+    create_night_queue_task, get_night_queue, list_gate_presets, post_night_queue_briefing,
+    run_night_queue,
 };
 pub(crate) use office::get_office_environment;
 pub(crate) use sessions::{
@@ -128,6 +133,10 @@ impl RuntimeApiState {
             resume_tracker,
             shared_mcp_pool,
         }
+    }
+
+    pub(crate) fn config(&self) -> &Config {
+        &self.config
     }
 }
 

@@ -22,6 +22,10 @@ Each automation stores a `trigger_kind`:
 |------|----------|----------|
 | `prompt` | Lightweight prompt | Enqueues a background task with **conservative defaults**: Agent mode, no shell, auto-approve tools. Model/mode/shell flags on the record are ignored at enqueue time. |
 | `task` | Full Task | Enqueues using stored **model**, **mode**, **workspace**, **allow_shell**, **trust_mode**, and **auto_approve** — equivalent to manually creating a Task with those options. |
+| `night_queue_enqueue` | Night queue enqueue | Appends a prompt (optional **gate preset** / inline gate, **use_worktree**) to `{workspace}/.zagens/night_queue.json`. Does **not** run the queue. |
+| `night_queue_run` | Run night queue | Runs pending tasks in `{workspace}/.zagens/night_queue.json` (agent + gate + optional **write_briefing**). Requires **workspace** in `cwds`. |
+
+Use **night_queue_enqueue** on a day/evening schedule and **night_queue_run** on a nightly schedule for unattended batch runs. Optional hooks: `night_queue_enqueue`, `night_queue_run_start`, `night_queue_run_end` (see [HOOKS.md](./HOOKS.md)).
 
 Use **prompt** for low-risk periodic summaries or scans. Use **task** when the scheduled job needs shell access, a specific model, YOLO mode, or other Task parameters.
 

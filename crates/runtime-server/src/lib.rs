@@ -43,6 +43,7 @@ mod mcp_shared;
 mod memory;
 mod models;
 mod night_queue;
+mod night_queue_automation;
 mod office_env;
 mod path_guard;
 mod project_context;

@@ -154,9 +154,15 @@ impl ToolAutomationHost for AutomationManagerHost {
     }
 
     async fn run_now(&self, automation_id: &str) -> Result<Value, String> {
+        let config = crate::config::Config::load(None, None).map_err(|e| e.to_string())?;
         let manager = self.automations.lock().await;
         let run = manager
-            .run_now(automation_id, &self.tasks)
+            .run_now(
+                automation_id,
+                &config,
+                &self.tasks,
+                self.automations.clone(),
+            )
             .await
             .map_err(|e| e.to_string())?;
         serde_json::to_value(run).map_err(|e| e.to_string())

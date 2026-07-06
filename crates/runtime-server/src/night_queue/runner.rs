@@ -44,115 +44,138 @@ pub struct RunReport {
 pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) -> Result<RunReport> {
     let claimed = store::claim_pending_tasks(&ctx.workspace, opts.max_parallel)?;
 
-    let mut report = RunReport {
-        ran: 0,
-        passed: 0,
-        failed: 0,
-    };
-
     if claimed.is_empty() {
-        return Ok(report);
+        return Ok(RunReport {
+            ran: 0,
+            passed: 0,
+            failed: 0,
+        });
     }
 
-    let wt_config = config.worktrees_config().runtime_config();
-    let model = config.default_model();
+    super::hooks::dispatch_run_start(config, &ctx.workspace);
 
-    for mut task in claimed {
-        let (run_workspace, worktree_cleanup) =
-            allocate_workspace(&ctx.workspace, &task, opts.use_worktree, &wt_config)?;
-        task.worktree_path = Some(run_workspace.clone());
+    let run_result: Result<RunReport> = async {
+        let wt_config = config.worktrees_config().runtime_config();
+        let model = config.default_model();
+        let mut report = RunReport {
+            ran: 0,
+            passed: 0,
+            failed: 0,
+        };
 
-        let pre_snapshot = take_pre_snapshot(&run_workspace, &task.id);
-        task.pre_snapshot_id = pre_snapshot.clone();
-        store::persist_task(&ctx.workspace, task.clone())?;
+        for mut task in claimed {
+            let (run_workspace, worktree_cleanup) =
+                allocate_workspace(&ctx.workspace, &task, opts.use_worktree, &wt_config)?;
+            task.worktree_path = Some(run_workspace.clone());
 
-        let exec_result = run_queue_exec_agent(
-            config,
-            &model,
-            &task.prompt,
-            run_workspace.clone(),
-            config.max_subagents(),
-        )
-        .await;
+            let pre_snapshot = take_pre_snapshot(&run_workspace, &task.id);
+            task.pre_snapshot_id = pre_snapshot.clone();
+            store::persist_task(&ctx.workspace, task.clone())?;
 
-        if let Err(err) = exec_result {
-            task.status = QueueTaskStatus::Failed;
-            task.error = Some(err.to_string());
-            task.finished_at = Some(Utc::now());
-            store::persist_task(&ctx.workspace, task)?;
-            report.ran += 1;
-            report.failed += 1;
-            cleanup_worktree(worktree_cleanup);
-            continue;
-        }
+            let exec_result = run_queue_exec_agent(
+                config,
+                &model,
+                &task.prompt,
+                run_workspace.clone(),
+                config.max_subagents(),
+            )
+            .await;
 
-        let gate_result = gate::run_gate(&run_workspace, &task.gate, None).await?;
-        task.gate_summary = Some(gate_result.summary.clone());
-        task.finished_at = Some(Utc::now());
-
-        if gate_result.passed {
-            store::append_event(
-                &ctx.workspace,
-                &QueueEventRecord {
-                    kind: "queue_gate_result".into(),
-                    ts: Utc::now(),
-                    task_id: task.id.clone(),
-                    payload: Some(serde_json::json!({
-                        "pass": gate_result.passed,
-                        "failing_predicate": gate_result.failing_predicate,
-                    })),
-                },
-            )?;
-            task.status = QueueTaskStatus::Passed;
-            report.passed += 1;
-        } else {
-            if let Some(ref snap) = pre_snapshot {
-                rollback_snapshot(&run_workspace, snap);
+            if let Err(err) = exec_result {
+                task.status = QueueTaskStatus::Failed;
+                task.error = Some(err.to_string());
+                task.finished_at = Some(Utc::now());
+                store::persist_task(&ctx.workspace, task)?;
+                report.ran += 1;
+                report.failed += 1;
+                cleanup_worktree(worktree_cleanup);
+                continue;
             }
-            // Append after rollback — snapshot restore would otherwise revert `.zagens/queue_events.jsonl`.
-            store::append_event(
-                &ctx.workspace,
-                &QueueEventRecord {
-                    kind: "queue_gate_result".into(),
-                    ts: Utc::now(),
-                    task_id: task.id.clone(),
-                    payload: Some(serde_json::json!({
-                        "pass": gate_result.passed,
-                        "failing_predicate": gate_result.failing_predicate,
-                    })),
-                },
-            )?;
-            if pre_snapshot.is_some() {
+
+            let gate_result = gate::run_gate(&run_workspace, &task.gate, None).await?;
+            task.gate_summary = Some(gate_result.summary.clone());
+            task.finished_at = Some(Utc::now());
+
+            if gate_result.passed {
                 store::append_event(
                     &ctx.workspace,
                     &QueueEventRecord {
-                        kind: "queue_rollback".into(),
+                        kind: "queue_gate_result".into(),
                         ts: Utc::now(),
                         task_id: task.id.clone(),
                         payload: Some(serde_json::json!({
-                            "snapshot_id": pre_snapshot,
-                            "reason": gate_result.failing_predicate,
+                            "pass": gate_result.passed,
+                            "failing_predicate": gate_result.failing_predicate,
                         })),
                     },
                 )?;
+                task.status = QueueTaskStatus::Passed;
+                report.passed += 1;
+            } else {
+                if let Some(ref snap) = pre_snapshot {
+                    rollback_snapshot(&run_workspace, snap);
+                }
+                store::append_event(
+                    &ctx.workspace,
+                    &QueueEventRecord {
+                        kind: "queue_gate_result".into(),
+                        ts: Utc::now(),
+                        task_id: task.id.clone(),
+                        payload: Some(serde_json::json!({
+                            "pass": gate_result.passed,
+                            "failing_predicate": gate_result.failing_predicate,
+                        })),
+                    },
+                )?;
+                if pre_snapshot.is_some() {
+                    store::append_event(
+                        &ctx.workspace,
+                        &QueueEventRecord {
+                            kind: "queue_rollback".into(),
+                            ts: Utc::now(),
+                            task_id: task.id.clone(),
+                            payload: Some(serde_json::json!({
+                                "snapshot_id": pre_snapshot,
+                                "reason": gate_result.failing_predicate,
+                            })),
+                        },
+                    )?;
+                }
+                task.status = QueueTaskStatus::RolledBack;
+                task.error = gate_result.suggestion.clone();
+                report.failed += 1;
             }
-            task.status = QueueTaskStatus::RolledBack;
-            task.error = gate_result.suggestion.clone();
-            report.failed += 1;
+
+            report.ran += 1;
+            store::persist_task(&ctx.workspace, task)?;
+            cleanup_worktree(worktree_cleanup);
         }
 
-        report.ran += 1;
-        store::persist_task(&ctx.workspace, task)?;
-        cleanup_worktree(worktree_cleanup);
+        let doc = store::finalize_run(&ctx.workspace, Utc::now())?;
+
+        if opts.write_briefing {
+            briefing::write_briefing_to_handoff(&ctx.workspace, &doc)?;
+        }
+
+        Ok(report)
+    }
+    .await;
+
+    match &run_result {
+        Ok(rep) => super::hooks::dispatch_run_end(config, &ctx.workspace, rep, None),
+        Err(err) => super::hooks::dispatch_run_end(
+            config,
+            &ctx.workspace,
+            &RunReport {
+                ran: 0,
+                passed: 0,
+                failed: 0,
+            },
+            Some(&err.to_string()),
+        ),
     }
 
-    let doc = store::finalize_run(&ctx.workspace, Utc::now())?;
-
-    if opts.write_briefing {
-        briefing::write_briefing_to_handoff(&ctx.workspace, &doc)?;
-    }
-
-    Ok(report)
+    run_result
 }
 
 struct WorktreeCleanup {

@@ -81,6 +81,9 @@ pub fn parse_hook_event_name(raw: &str) -> Result<(HookEvent, Option<HookConditi
         "post_compact" | "postcompact" => Ok((HookEvent::PostCompact, None)),
         "subagent_start" | "subagentstart" => Ok((HookEvent::SubagentStart, None)),
         "subagent_end" | "subagentstop" | "subagent_stop" => Ok((HookEvent::SubagentEnd, None)),
+        "night_queue_enqueue" | "nightqueueenqueue" => Ok((HookEvent::NightQueueEnqueue, None)),
+        "night_queue_run_start" | "nightqueuerunstart" => Ok((HookEvent::NightQueueRunStart, None)),
+        "night_queue_run_end" | "nightqueuerunend" => Ok((HookEvent::NightQueueRunEnd, None)),
         other => Err(format!("unknown hook event: {other}")),
     }
 }
