@@ -31,8 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Desktop streaming timeline — duplicate final prose:** `reconcileAssistantBlocks` no longer appends a second copy of equal-length / overlapping assistant text when the persisted snapshot is only richer on tools (e.g. thr_f6f6 final report shown twice).
 - **Desktop chat — assistant turn actions:** After a turn finishes streaming, show an icon toolbar under the assistant bubble (copy message prose).
 - **Desktop streaming timeline — office tools collapse:** `read_office` / `write_office` / `load_office_payload` join activity bundling as category `office` (compact rows + mixed merges with explore/write).
-- **Desktop streaming timeline — workflow tools collapse:** `load_skill` / `scratchpad_*` join activity bundling as category `workflow` (no longer full ToolCards between explore runs).
+- **Desktop streaming timeline — workflow tools collapse:** `load_skill` / `scratchpad_*` / `tool_search_tool_regex` / `tool_search_tool_bm25` join activity bundling as category `workflow` (no longer full ToolCards between explore runs).
 - **Desktop streaming timeline — sub-agent tools collapse:** `agent_spawn` / `agent_wait` / `agent_result` / aliases join activity bundling as category `agent`.
+
+### Fixed
+
+- **Desktop + Runtime (Stop during agent_wait):** Composer no longer re-locks to「生成中」after user Stop while a turn is still `in_progress` on `agent_wait` — 8s reconcile and `finishOnce` respect `userStopRequested` / store idle; `agent_wait` polls honor `cancel_token` and exit with `wait_canceled`.
 - **Gate-as-Code (Phase 4.1):** `docs/harness/gates/` — public format, predicate reference, migration guide from legacy completion gate; bundled presets under `presets/`; `zagens gate validate|list`; `zagens queue add --gate-file|--gate-preset`; `HarnessContract::validate()` + `flat_queue_gate_rows()`.
 - **H4 draft_skill (Phase 4.2):** `draft_skill` tool → `.zagens/skill-drafts/`; `zagens skill drafts|promote` human-in-loop install; `HarnessContract` validation on write/promote; security checklist `docs/harness/h4-draft-skill-security.md`.
 - **T5 composite tools (Phase 4.3):** `explore_codebase` (glob→grep→read) + `edit_and_check` (edit→run_tests); T1 `tool_sequences` mining in `doctor --tools`; composite sub-steps mirrored to `kernel_events` via `composite_steps` metadata.

@@ -32,7 +32,11 @@ import { mergeThreadTranscript } from './turnSend/completeStreamUi';
 import {
   collectReconcileThreadIds,
 } from '../lib/chat/streamContextStore';
-import { applyThreadStatusEvent } from '../lib/chat/threadStatusStore';
+import {
+  applyThreadStatusEvent,
+  getThreadStatusEntry,
+  isThreadStreamActive,
+} from '../lib/chat/threadStatusStore';
 import {
   hasAnyActiveStreamHandle,
   invokeFinishOnce,
@@ -82,6 +86,8 @@ export type UseTurnStreamRecoveryParams = {
   notifyRuntimeTransient: (message: string) => void;
   refreshThreadContext: (threadId: string) => Promise<void>;
   streamRegistry: StreamContextRegistry;
+  /** When true, reconcile must not re-lock Composer after user Stop (agent_wait lag). */
+  userStopRequestedRef?: MutableRefObject<boolean>;
 };
 
 export type UseTurnStreamRecoveryResult = {
@@ -101,6 +107,13 @@ function appendDetachBanner(content: string, banner: string): string {
   return `[${banner}] ${content}`;
 }
 
+/** True when local authority already says idle (user Stop / SSE idle) — do not re-lock. */
+function threadStoreSaysIdle(threadId: string): boolean {
+  const entry = getThreadStatusEntry(threadId);
+  if (!entry) return false;
+  return !isThreadStreamActive(entry.status);
+}
+
 export function useTurnStreamRecovery({
   t,
   desktopHost,
@@ -114,6 +127,7 @@ export function useTurnStreamRecovery({
   notifyRuntimeTransient,
   refreshThreadContext,
   streamRegistry,
+  userStopRequestedRef,
 }: UseTurnStreamRecoveryParams): UseTurnStreamRecoveryResult {
   const detachReasonRef = useRef<StreamDetachReason | null>(null);
   const recoveringRef = useRef(false);
@@ -175,6 +189,9 @@ export function useTurnStreamRecovery({
 
   const runTurnEventPoll = useCallback(
     async (threadId: string, turnId: string): Promise<boolean> => {
+      if (userStopRequestedRef?.current || threadStoreSaysIdle(threadId)) {
+        return false;
+      }
       const deliver = resolveEventDeliverForActive();
       if (!deliver) {
         return false;
@@ -188,6 +205,9 @@ export function useTurnStreamRecovery({
 
       const detail = await getThreadDetail(threadId);
       if (!(await threadTurnStillActive(threadId, turnId))) {
+        return false;
+      }
+      if (userStopRequestedRef?.current || threadStoreSaysIdle(threadId)) {
         return false;
       }
 
@@ -212,6 +232,7 @@ export function useTurnStreamRecovery({
       setPendingComposerStream,
       streamControllersRef,
       streamRegistry,
+      userStopRequestedRef,
     ],
   );
 
@@ -298,9 +319,15 @@ export function useTurnStreamRecovery({
     if (recoveringRef.current || detachReasonRef.current) {
       return;
     }
+    if (userStopRequestedRef?.current) {
+      return;
+    }
     const activeTurn = resolveActiveThreadTurn(streamRegistry, resumedThreadIdRef.current);
     const threadId = resumedThreadIdRef.current || activeTurn.threadId;
     if (!threadId || streamingRef.current) {
+      return;
+    }
+    if (threadStoreSaysIdle(threadId)) {
       return;
     }
     if (!(await threadTurnStillActive(threadId, activeTurn.turnId || undefined))) {
@@ -323,6 +350,9 @@ export function useTurnStreamRecovery({
       }
     }
     if (!turnId) return;
+    if (userStopRequestedRef?.current || threadStoreSaysIdle(threadId)) {
+      return;
+    }
 
     recoveringRef.current = true;
     try {
@@ -341,6 +371,7 @@ export function useTurnStreamRecovery({
     runTurnEventPoll,
     streamRegistry,
     streamingRef,
+    userStopRequestedRef,
   ]);
 
   const clearStaleStreamingUi = useCallback(
@@ -422,6 +453,12 @@ export function useTurnStreamRecovery({
         return;
       }
 
+      // User Stop (or store already idle) while turn DB may still be in_progress
+      // during agent_wait — never re-lock Composer / resume the live stream.
+      if (userStopRequestedRef?.current || threadStoreSaysIdle(tid)) {
+        return;
+      }
+
       if (isActiveView) {
         if (streamingRef.current) {
           return;
@@ -433,6 +470,9 @@ export function useTurnStreamRecovery({
         try {
           const rebuilt = await rebuildMessagesFromThreadEvents(tid);
           if (!(await threadTurnStillActive(tid, turnId))) {
+            return;
+          }
+          if (userStopRequestedRef?.current || threadStoreSaysIdle(tid)) {
             return;
           }
           const live = (streamRegistry?.getContext(tid)?.messages ?? []) as TurnChatMessage[];
@@ -480,6 +520,7 @@ export function useTurnStreamRecovery({
       streamControllersRef,
       streamRegistry,
       streamingRef,
+      userStopRequestedRef,
     ],
   );
 

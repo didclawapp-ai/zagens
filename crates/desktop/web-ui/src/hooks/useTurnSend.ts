@@ -260,6 +260,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
     notifyRuntimeTransient,
     refreshThreadContext,
     streamRegistry,
+    userStopRequestedRef,
   });
 
   useEffect(() => {
@@ -696,6 +697,11 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 return;
               }
               if (active) {
+                // User already stopped; turn may still be in_progress (e.g. agent_wait).
+                if (userStopRequestedRef.current) {
+                  completeStreamUi();
+                  return;
+                }
                 setPendingComposerStream(true);
                 setMessages((prev) => {
                   const lastId = lastAssistantMessageId(prev);

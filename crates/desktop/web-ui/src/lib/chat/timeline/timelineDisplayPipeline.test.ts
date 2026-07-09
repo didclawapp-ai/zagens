@@ -224,6 +224,22 @@ test('prepareTimelinePresentation collapses load_skill and scratchpad workflow t
   }
 });
 
+test('prepareTimelinePresentation collapses tool_search_tool_regex with workflow', () => {
+  const blocks: TurnBlock[] = [
+    tool('w1', 'scratchpad_set_area'),
+    tool('ts', 'tool_search_tool_regex'),
+    tool('w2', 'scratchpad_verify_note'),
+    { kind: 'text', id: 'x', content: '继续。', streaming: false },
+  ];
+  const items = prepareTimelinePresentation(blocks);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].kind, 'collapsed_tools');
+  if (items[0].kind === 'collapsed_tools') {
+    assert.equal(items[0].blocks.length, 3);
+    assert.equal(items[0].category, 'workflow');
+  }
+});
+
 test('prepareTimelinePresentation collapses agent_spawn sub-agent tools', () => {
   const blocks: TurnBlock[] = [
     tool('a1', 'agent_spawn'),

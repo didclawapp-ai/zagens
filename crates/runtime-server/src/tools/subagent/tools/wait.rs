@@ -49,7 +49,7 @@ impl ToolSpec for AgentWaitTool {
         vec![ToolCapability::ReadOnly]
     }
 
-    async fn execute(&self, input: Value, _context: &ToolContext) -> Result<ToolResult, ToolError> {
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let explicit_timeout_ms = input.get("timeout_ms").and_then(|v| v.as_u64());
         let mut ids = parse_wait_ids(&input);
         if ids.is_empty() {
@@ -70,6 +70,7 @@ impl ToolSpec for AgentWaitTool {
             result.metadata = Some(json!({
                 "wait_mode": wait_mode.as_str(),
                 "timed_out": false,
+                "wait_canceled": false,
                 "status": "Completed",
                 "timeout_ms": explicit_timeout_ms.unwrap_or(DEFAULT_RESULT_TIMEOUT_MS),
                 "waited_ids": [],
@@ -91,11 +92,12 @@ impl ToolSpec for AgentWaitTool {
                 .map_err(|e| ToolError::execution_failed(e.to_string()))?
         };
 
-        let (snapshots, timed_out) = wait_for_agents(
+        let (snapshots, timed_out, wait_canceled) = wait_for_agents(
             &self.manager,
             &ids,
             wait_mode,
             Duration::from_millis(timeout_ms),
+            context.cancel_token.as_ref(),
         )
         .await?;
 
@@ -124,10 +126,20 @@ impl ToolSpec for AgentWaitTool {
 
         let mut result =
             ToolResult::json(&snapshots).map_err(|e| ToolError::execution_failed(e.to_string()))?;
+        let status = if wait_canceled {
+            "Canceled"
+        } else if timed_out {
+            "TimedOut"
+        } else if all_done {
+            "Completed"
+        } else {
+            "Partial"
+        };
         let mut metadata = json!({
             "wait_mode": wait_mode.as_str(),
             "timed_out": timed_out,
-            "status": if timed_out { "TimedOut" } else if all_done { "Completed" } else { "Partial" },
+            "wait_canceled": wait_canceled,
+            "status": status,
             "timeout_ms": timeout_ms,
             "waited_ids": waited_ids,
             "completed_ids": completed_ids,
@@ -135,6 +147,7 @@ impl ToolSpec for AgentWaitTool {
             "status_by_id": status_by_id
         });
         if timed_out
+            && !wait_canceled
             && snapshots.len() == 1
             && let Some(progress) = metadata.as_object_mut()
             && let Some(progress_obj) = wait_progress_metadata(&snapshots[0]).as_object()

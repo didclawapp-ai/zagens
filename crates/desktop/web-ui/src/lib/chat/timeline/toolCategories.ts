@@ -72,6 +72,10 @@ const WORKFLOW_TOOLS = new Set([
   'scratchpad_set_area',
   'scratchpad_verify_note',
   'scratchpad_import_agent',
+  // Deferred-tool discovery (shown expanded between scratchpad/agent when left as other).
+  'tool_search_tool_regex',
+  'tool_search_tool_bm25',
+  'tool_search_bm25',
 ]);
 
 /** Sub-agent orchestration — prompts are huge; must collapse in the timeline. */

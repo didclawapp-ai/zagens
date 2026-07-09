@@ -944,15 +944,33 @@ pub(crate) async fn wait_for_result(
     }
 }
 
+/// Wait for sub-agents. Returns `(snapshots, timed_out, wait_canceled)`.
+/// When `cancel` is cancelled (parent turn interrupt), returns current snapshots
+/// with `wait_canceled = true` so the tool can exit promptly.
 pub(crate) async fn wait_for_agents(
     manager: &SharedSubAgentManager,
     ids: &[String],
     wait_mode: WaitMode,
     timeout: Duration,
-) -> Result<(Vec<SubAgentResult>, bool), ToolError> {
+    cancel: Option<&tokio_util::sync::CancellationToken>,
+) -> Result<(Vec<SubAgentResult>, bool, bool), ToolError> {
     let deadline = Instant::now() + timeout;
 
     loop {
+        if cancel.is_some_and(|token| token.is_cancelled()) {
+            let snapshots = {
+                let mut manager = manager.write().await;
+                ids.iter()
+                    .map(|id| {
+                        manager
+                            .get_result(id)
+                            .map_err(|e| ToolError::execution_failed(e.to_string()))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            return Ok((snapshots, false, true));
+        }
+
         let snapshots = {
             let mut manager = manager.write().await;
             ids.iter()
@@ -965,13 +983,22 @@ pub(crate) async fn wait_for_agents(
         };
 
         if wait_mode.condition_met(&snapshots) {
-            return Ok((snapshots, false));
+            return Ok((snapshots, false, false));
         }
         if Instant::now() >= deadline {
-            return Ok((snapshots, true));
+            return Ok((snapshots, true, false));
         }
 
-        tokio::time::sleep(RESULT_POLL_INTERVAL).await;
+        if let Some(token) = cancel {
+            tokio::select! {
+                () = token.cancelled() => {
+                    return Ok((snapshots, false, true));
+                }
+                () = tokio::time::sleep(RESULT_POLL_INTERVAL) => {}
+            }
+        } else {
+            tokio::time::sleep(RESULT_POLL_INTERVAL).await;
+        }
     }
 }
 
