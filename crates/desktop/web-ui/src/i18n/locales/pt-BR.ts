@@ -1514,6 +1514,15 @@ const ptBr: TranslationMap = {
     toolGroupReads: 'Explorou {{count}} leituras',
     toolGroupWrites: '{{count}} gravações',
     toolGroupShell: '{{count}} comandos shell',
+    timelineDegradedOrder:
+      'A ordem da linha do tempo pode ser aproximada — recarregue pelos eventos do thread.',
+    timelineExploredOne: 'Explorou {{target}}',
+    timelineEditedFile: 'Editou {{file}}',
+    timelinePlanUpdated: 'Plano atualizado',
+    timelineThinkingNotPersisted:
+      'O raciocínio não foi persistido — blocos Thought podem faltar após recarregar.',
+    timelineStepBadge: 'Etapa {{index}}/{{total}}',
+    timelineStepUntitled: 'Etapa {{index}}/{{total}}',
   },
   terminalCard: {
     runningEmpty: 'Em execução — ainda sem saída de terminal (muitos scripts Python não imprimem nada em caso de sucesso).',

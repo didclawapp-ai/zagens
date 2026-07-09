@@ -1512,6 +1512,15 @@ const en: TranslationMap = {
     toolGroupReads: 'Explored {{count}} reads',
     toolGroupWrites: '{{count}} writes',
     toolGroupShell: '{{count}} shell commands',
+    timelineDegradedOrder:
+      'Timeline order may be approximate — reload from thread events for the full sequence.',
+    timelineExploredOne: 'Explored {{target}}',
+    timelineEditedFile: 'Edited {{file}}',
+    timelinePlanUpdated: 'Updated plan',
+    timelineThinkingNotPersisted:
+      'Reasoning was not persisted — Thought blocks may be missing after reload.',
+    timelineStepBadge: 'Step {{index}}/{{total}}',
+    timelineStepUntitled: 'Step {{index}}/{{total}}',
   },
   terminalCard: {
     runningEmpty: 'Running — no terminal output yet (many Python scripts print nothing on success).',

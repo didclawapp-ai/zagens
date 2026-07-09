@@ -1,8 +1,11 @@
 import { useLayoutEffect, useRef } from 'react';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
-import { MessageBubble } from './MessageBubble';
 import type { ToolCardModel } from './ToolCard';
 import type { AgentState } from '../types/agent';
+import type { TurnBlock } from '../lib/chat/timeline/turnBlockTypes';
+import { MessageBubble } from './MessageBubble';
+import { AssistantTurnFrame } from './chat/timeline/AssistantTurnFrame';
+import { useTurnScroll } from './chat/timeline/useTurnScroll';
 import { isLastUserMessage } from '../lib/chat/backtrackDepth';
 import { useT } from '../i18n';
 import { ChatEmptyState } from './ChatEmptyState';
@@ -16,6 +19,7 @@ interface Message {
   content: string;
   thinking?: string;
   tools?: ToolCardModel[];
+  blocks?: TurnBlock[];
   isStreaming?: boolean;
 }
 
@@ -38,14 +42,14 @@ interface Props {
   onRetrySessionRestore?: () => void;
 }
 
-/** Assistant body scroll cap handles follow-scroll while tokens arrive. */
+/** Assistant body scroll: timeline text blocks or legacy content while streaming. */
 function delegatesStreamingBodyScroll(messages: Message[]): boolean {
   const last = messages[messages.length - 1];
-  return (
-    last?.role === 'assistant' &&
-    Boolean(last.isStreaming) &&
-    Boolean(last.content?.trim())
-  );
+  if (last?.role !== 'assistant' || !last.isStreaming) return false;
+  const textBlocks = last.blocks?.filter((b) => b.kind === 'text');
+  const textFromBlocks = textBlocks?.[textBlocks.length - 1];
+  if (textFromBlocks?.kind === 'text' && textFromBlocks.content.trim()) return true;
+  return Boolean(last.content?.trim());
 }
 
 export default function ChatView({
@@ -80,6 +84,12 @@ export default function ChatView({
   };
 
   const delegateBodyScroll = delegatesStreamingBodyScroll(messages);
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+  useTurnScroll(
+    scrollRef,
+    lastAssistant?.blocks ?? [],
+    Boolean(lastAssistant?.isStreaming),
+  );
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -113,25 +123,37 @@ export default function ChatView({
 
         {messages.map((msg) => (
           <ChatErrorBoundary key={msg.id}>
-            <MessageBubble
-              message={msg}
-              workspaceRoot={workspaceRoot}
-              desktopHost={desktopHost}
-              agentStates={agentStates}
-              onOpenWorkspacePath={onOpenWorkspacePath}
-              onRevealWorkspacePath={onRevealWorkspacePath}
-              onEditMessage={onEditMessage}
-              onRetryMessage={onRetryMessage}
-              onOpenDiffInPanel={onOpenDiffInPanel}
-              onBacktrackFromMessage={onBacktrackFromMessage}
-              backtrackEnabled={
-                msg.role === 'user' &&
-                Boolean(onBacktrackFromMessage) &&
-                !isLastUserMessage(messages, msg.id)
-              }
-              onRewindWorkspaceFromMessage={onRewindWorkspaceFromMessage}
-              rewindWorkspaceEnabled={msg.role === 'user' && Boolean(onRewindWorkspaceFromMessage)}
-            />
+            {msg.role === 'assistant' ? (
+              <AssistantTurnFrame
+                message={msg}
+                workspaceRoot={workspaceRoot}
+                desktopHost={desktopHost}
+                agentStates={agentStates}
+                onOpenWorkspacePath={onOpenWorkspacePath}
+                onRevealWorkspacePath={onRevealWorkspacePath}
+                onOpenDiffInPanel={onOpenDiffInPanel}
+              />
+            ) : (
+              <MessageBubble
+                message={msg}
+                workspaceRoot={workspaceRoot}
+                desktopHost={desktopHost}
+                agentStates={agentStates}
+                onOpenWorkspacePath={onOpenWorkspacePath}
+                onRevealWorkspacePath={onRevealWorkspacePath}
+                onEditMessage={onEditMessage}
+                onRetryMessage={onRetryMessage}
+                onOpenDiffInPanel={onOpenDiffInPanel}
+                onBacktrackFromMessage={onBacktrackFromMessage}
+                backtrackEnabled={
+                  msg.role === 'user' &&
+                  Boolean(onBacktrackFromMessage) &&
+                  !isLastUserMessage(messages, msg.id)
+                }
+                onRewindWorkspaceFromMessage={onRewindWorkspaceFromMessage}
+                rewindWorkspaceEnabled={msg.role === 'user' && Boolean(onRewindWorkspaceFromMessage)}
+              />
+            )}
           </ChatErrorBoundary>
         ))}
 

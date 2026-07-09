@@ -21,6 +21,12 @@ import {
   type SseTurnEvent,
 } from '../api/client';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
+import {
+  applyStreamEventToMessages,
+} from './turnSend/applyStreamEventToMessages';
+import { reconcileMessagesFromThread, mergeThreadTranscript } from './turnSend/completeStreamUi';
+import { createEmptyTimelineState } from '../lib/chat/timeline/turnTimelineReducer';
+import type { TimelineState } from '../lib/chat/timeline/turnBlockTypes';
 import { persistThreadSessionDeduped } from '../lib/chat/persistThreadSessionDedup';
 import { sessionMessageRichness } from '../lib/chat/sessionMessagePick';
 import type { ComposerOutboundMessage } from '../components/Composer';
@@ -28,10 +34,8 @@ import { normalizeDesktopStreamEvent, type NormalizedStreamEvent } from '../api/
 import { notifyCraftBlackboardChanged } from '../lib/craftBlackboard';
 import { loadNotifyMethod } from '../lib/appPreferences';
 import {
-  appendCappedToolOutput,
   capToolOutputForDisplay,
   mergeStreamingToolOutput,
-  stringifyToolInput,
   toolOutputString,
 } from '../lib/chat/toolOutput';
 import {
@@ -68,7 +72,6 @@ import type { FinishOnceOptions } from './useTurnStream';
 import { saveStoredActiveSessionId } from '../lib/windowBridge';
 import { turnCacheHitPercent } from '../lib/cacheUsage';
 import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
-import { appendStreamingTextDelta, mergeAgentMessageSegment } from '../lib/chat/formatAssistantContent';
 import {
   anyAssistantStreaming,
   clearStreamingAssistants,
@@ -107,7 +110,10 @@ export type TurnChatMessage = {
     output?: string;
     status: 'running' | 'done' | 'error';
   }[];
+  blocks?: import('../lib/chat/timeline/turnBlockTypes').TurnBlock[];
   isStreaming?: boolean;
+  /** Set when replay lacks persisted thinking segments (P1.1). */
+  thinkingIncomplete?: boolean;
 };
 
 let msgId = 0;
@@ -369,6 +375,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         id: streamTarget.assistantId,
         role: 'assistant',
         content: '',
+        blocks: [],
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -385,37 +392,30 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         const ctx = {
           currentToolId: { current: null as string | null },
         };
+        let timelineState = createEmptyTimelineState();
+
+        const applyTimelineNorm = (norm: NormalizedStreamEvent, finalize = false) => {
+          setMessages((prev) => {
+            const targetId = resolveStreamTargetId(prev, streamTarget);
+            const result = applyStreamEventToMessages(prev, timelineState, norm, {
+              streamTargetId: targetId,
+              currentToolId: ctx.currentToolId.current,
+              finalize,
+            });
+            timelineState = result.timelineState;
+            const tid = ownerThreadId || deliveryThreadId;
+            if (tid && streamRegistry.getContext(tid)) {
+              streamRegistry.patchContext(tid, { timelineState });
+            }
+            return result.messages;
+          });
+        };
 
         const flushToolProgressToState = () => {
           const chunk = toolProgressPending;
           if (!chunk) return;
           toolProgressPending = '';
-          setMessages((prev) => {
-            const targetId = resolveStreamTargetId(prev, streamTarget);
-            return prev.map((m) => {
-              if (m.id !== targetId) return m;
-              const tools = [...(m.tools ?? [])];
-              let idx = -1;
-              if (ctx.currentToolId.current) {
-                idx = tools.findIndex((tool) => tool.id === ctx.currentToolId.current);
-              }
-              if (idx < 0) {
-                for (let i = tools.length - 1; i >= 0; i--) {
-                  if (tools[i].status === 'running') {
-                    idx = i;
-                    break;
-                  }
-                }
-              }
-              if (idx < 0) return m;
-              const tool = tools[idx];
-              tools[idx] = {
-                ...tool,
-                output: appendCappedToolOutput(tool.output ?? '', chunk),
-              };
-              return { ...m, tools };
-            });
-          });
+          applyTimelineNorm({ kind: 'tool_progress', output: chunk });
         };
 
         const scheduleToolProgressFlush = () => {
@@ -563,14 +563,18 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               setMessages((prev) => {
                 const cleared = clearStreamingAssistants(prev);
-                if (sessionMessageRichness(rebuilt) <= sessionMessageRichness(cleared)) {
+                const reconciled = mergeThreadTranscript(
+                  cleared,
+                  rebuilt as TurnChatMessage[],
+                );
+                if (sessionMessageRichness(reconciled) <= sessionMessageRichness(cleared)) {
                   return prev;
                 }
                 const sid = activeSessionIdRef.current;
                 if (sid) {
-                  cacheSessionUiMessages(sessionUiCacheRef.current, sid, rebuilt);
+                  cacheSessionUiMessages(sessionUiCacheRef.current, sid, reconciled);
                 }
-                return rebuilt as TurnChatMessage[];
+                return reconciled;
               });
             } catch {
               /* keep live snapshot */
@@ -603,7 +607,19 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           }
           setPendingComposerStream(false);
           setMessages((prev) => {
-            const next = clearStreamingAssistants(prev);
+            const targetId = resolveStreamTargetId(prev, streamTarget);
+            let working = prev;
+            if (timelineState.blocks.length > 0) {
+              const finalized = applyStreamEventToMessages(prev, timelineState, {
+                kind: 'turn_completed',
+              }, {
+                streamTargetId: targetId,
+                finalize: true,
+              });
+              working = finalized.messages;
+              timelineState = finalized.timelineState;
+            }
+            const next = clearStreamingAssistants(working);
             const sid = activeSessionIdRef.current;
             if (sid) {
               cacheSessionUiMessages(sessionUiCacheRef.current, sid, next);
@@ -907,6 +923,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
 
           switch (norm.kind) {
             case 'turn_started':
+              timelineState = createEmptyTimelineState();
               ownerThreadId = norm.threadId;
               pendingSend = false;
               if (norm.threadId) {
@@ -920,6 +937,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 streamRegistry.patchContext(norm.threadId, {
                   sessionId: ownerSessionId,
                   isStreaming: true,
+                  timelineState: createEmptyTimelineState(),
                 });
                 writeStreamSession(streamRegistry, norm.threadId, { markInterrupted, finishOnce });
                 writeLiveDeliver(streamRegistry, norm.threadId, onSseEvent);
@@ -946,56 +964,18 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               break;
             case 'thinking_delta':
-              setMessages((prev) => {
-                const targetId = resolveStreamTargetId(prev, streamTarget);
-                return prev.map((m) => {
-                  if (m.id !== targetId) return m;
-                  return {
-                    ...m,
-                    thinking: appendStreamingTextDelta(m.thinking ?? '', norm.content),
-                  };
-                });
-              });
+              applyTimelineNorm(norm);
               break;
             case 'message_delta':
-              setMessages((prev) => {
-                const targetId = resolveStreamTargetId(prev, streamTarget);
-                return prev.map((m) => {
-                  if (m.id !== targetId) return m;
-                  return {
-                    ...m,
-                    content: appendStreamingTextDelta(m.content, norm.content),
-                  };
-                });
-              });
+              applyTimelineNorm(norm);
               break;
             case 'message_segment':
-              setMessages((prev) => {
-                const targetId = resolveStreamTargetId(prev, streamTarget);
-                return prev.map((m) => {
-                  if (m.id !== targetId) return m;
-                  return {
-                    ...m,
-                    content: mergeAgentMessageSegment(m.content, norm.content),
-                  };
-                });
-              });
+              applyTimelineNorm(norm);
               break;
             case 'tool_started': {
               ctx.currentToolId.current = norm.id;
               onAgentSpawnToolStarted(norm.id, norm.name, norm.input);
-              const inputStr = stringifyToolInput(norm.input);
-              setMessages((prev) => {
-                const targetId = resolveStreamTargetId(prev, streamTarget);
-                return prev.map((m) => {
-                  if (m.id !== targetId) return m;
-                  const tools = [
-                    ...(m.tools ?? []),
-                    { id: norm.id, name: norm.name, input: inputStr, status: 'running' as const },
-                  ];
-                  return { ...m, tools };
-                });
-              });
+              applyTimelineNorm(norm);
               break;
             }
             case 'tool_progress':
@@ -1009,36 +989,25 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               flushToolProgressToState();
               const outStr = capToolOutputForDisplay(toolOutputString(norm.output));
+              applyTimelineNorm({
+                kind: 'tool_completed',
+                id: norm.id,
+                success: norm.success,
+                output: outStr,
+              });
               setMessages((prev) => {
                 const targetId = resolveStreamTargetId(prev, streamTarget);
-                return prev.map((m) => {
-                  if (m.id !== targetId) return m;
-                  const tools = [...(m.tools ?? [])];
-                  let idx = tools.findIndex((tool) => tool.id === norm.id);
-                  if (idx < 0) {
-                    for (let i = tools.length - 1; i >= 0; i--) {
-                      if (tools[i].status === 'running') {
-                        idx = i;
-                        break;
-                      }
-                    }
-                  }
-                  if (idx < 0) return m;
-                  const tool = tools[idx];
-                  const prevOut = (tool.output ?? '').trim();
-                  const finalOut = outStr.trim();
+                const assistant = prev.find((m) => m.id === targetId);
+                const tool = assistant?.tools?.find((t) => t.id === norm.id)
+                  ?? assistant?.tools?.slice().reverse().find((t) => t.status === 'running');
+                if (tool) {
                   const merged = capToolOutputForDisplay(
-                    mergeStreamingToolOutput(prevOut, finalOut || ''),
+                    mergeStreamingToolOutput(tool.output ?? '', outStr || ''),
                   );
-                  tools[idx] = {
-                    ...tool,
-                    output: merged,
-                    status: norm.success ? ('done' as const) : ('error' as const),
-                  };
                   onAgentSpawnToolCompleted(norm.id, tool.name, merged);
                   onToolCompleted?.(tool.name, norm.success, merged);
-                  return { ...m, tools };
-                });
+                }
+                return prev;
               });
               if (ctx.currentToolId.current === norm.id) {
                 ctx.currentToolId.current = null;

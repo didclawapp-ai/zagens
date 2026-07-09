@@ -1489,6 +1489,13 @@ const zhHans = {
     toolGroupReads: '探索 {{count}} 次读取',
     toolGroupWrites: '写入 {{count}} 项',
     toolGroupShell: '执行 {{count}} 条命令',
+    timelineDegradedOrder: '时间线顺序可能不完整——请从线程事件重载以恢复完整序列。',
+    timelineExploredOne: '探索 {{target}}',
+    timelineEditedFile: '编辑 {{file}}',
+    timelinePlanUpdated: '已更新计划',
+    timelineThinkingNotPersisted: '推理过程未持久化——刷新后可能看不到 Thought 段。',
+    timelineStepBadge: '步骤 {{index}}/{{total}}',
+    timelineStepUntitled: '步骤 {{index}}/{{total}}',
   },
   terminalCard: {
     runningEmpty: '正在执行，尚未收到终端输出…（不少 Python 脚本成功时也不打印任何内容）',

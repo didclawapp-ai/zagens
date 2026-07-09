@@ -111,11 +111,14 @@ impl CodeTaskGraph {
         checklist: &TodoListSnapshot,
     ) -> Option<u32> {
         let graph = Self::from_snapshots(plan, checklist);
-        if graph.is_empty() || graph.is_trivial() {
+        if graph.is_empty() {
             return None;
         }
         if graph.incomplete() {
-            return Some(graph.open_items);
+            // Do not gate on `is_trivial`: a single checklist/plan item can still
+            // need hundreds of tool steps; skipping trivial graphs caused hard
+            // `Reached maximum steps` at the default 100-step cap (thr_c551 regression).
+            return Some(graph.open_items.max(1));
         }
         // Checklist reads complete but plan still has an InProgress phase — the
         // model often executes via checklist while `update_plan` lags (Whiteboard-2
@@ -301,6 +304,63 @@ mod tests {
         assert_eq!(
             CodeTaskGraph::continuation_open_items(&plan, &checklist),
             Some(2)
+        );
+    }
+
+    #[test]
+    fn continuation_open_items_trivial_single_checklist_in_progress() {
+        let plan = empty_plan();
+        let checklist = TodoListSnapshot {
+            items: vec![TodoItem {
+                id: 1,
+                content: "implement timeline".into(),
+                status: TodoStatus::InProgress,
+            }],
+            completion_pct: 0,
+            in_progress_id: Some(1),
+        };
+        assert_eq!(
+            CodeTaskGraph::continuation_open_items(&plan, &checklist),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn continuation_open_items_trivial_single_plan_in_progress() {
+        let plan = PlanSnapshot {
+            explanation: None,
+            items: vec![PlanItemArg {
+                step: "Ship feature".into(),
+                status: StepStatus::InProgress,
+            }],
+        };
+        assert_eq!(
+            CodeTaskGraph::continuation_open_items(&plan, &empty_checklist()),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn continuation_open_items_trivial_done_checklist_plan_lag() {
+        let plan = PlanSnapshot {
+            explanation: None,
+            items: vec![PlanItemArg {
+                step: "Phase 1".into(),
+                status: StepStatus::InProgress,
+            }],
+        };
+        let checklist = TodoListSnapshot {
+            items: vec![TodoItem {
+                id: 1,
+                content: "done".into(),
+                status: TodoStatus::Completed,
+            }],
+            completion_pct: 100,
+            in_progress_id: None,
+        };
+        assert_eq!(
+            CodeTaskGraph::continuation_open_items(&plan, &checklist),
+            Some(1)
         );
     }
 

@@ -28,6 +28,7 @@ import {
   rebindStreamingAssistant,
 } from '../lib/chat/activeTurnStreamUi';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
+import { mergeThreadTranscript } from './turnSend/completeStreamUi';
 import {
   collectReconcileThreadIds,
 } from '../lib/chat/streamContextStore';
@@ -434,7 +435,9 @@ export function useTurnStreamRecovery({
           if (!(await threadTurnStillActive(tid, turnId))) {
             return;
           }
-          const { messages, assistantId } = markLastAssistantStreaming(rebuilt);
+          const live = (streamRegistry?.getContext(tid)?.messages ?? []) as TurnChatMessage[];
+          const merged = mergeThreadTranscript(live, rebuilt as TurnChatMessage[]);
+          const { messages, assistantId } = markLastAssistantStreaming(merged);
           if (!assistantId) {
             return;
           }
@@ -453,7 +456,9 @@ export function useTurnStreamRecovery({
           clearBackgroundStreamingUi(tid);
           return;
         }
-        const { messages: marked } = markLastAssistantStreaming(rebuilt);
+        const live = (streamRegistry?.getContext(tid)?.messages ?? []) as TurnChatMessage[];
+        const merged = mergeThreadTranscript(live, rebuilt as TurnChatMessage[]);
+        const { messages: marked } = markLastAssistantStreaming(merged);
         const sessionId = streamRegistry?.getContext(tid)?.sessionId ?? null;
         streamRegistry?.ensureContext(tid, sessionId);
         streamRegistry?.patchContext(tid, {

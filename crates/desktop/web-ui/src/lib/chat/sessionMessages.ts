@@ -1,9 +1,13 @@
+import type { TurnBlock } from './timeline/turnBlockTypes';
+
 export interface UiMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   thinking?: string;
   tools?: UiToolCall[];
+  blocks?: TurnBlock[];
+  isStreaming?: boolean;
 }
 
 export interface UiToolCall {

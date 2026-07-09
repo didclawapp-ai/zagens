@@ -13,6 +13,7 @@ import {
 } from '../api/client';
 import { persistThreadSessionDeduped } from '../lib/chat/persistThreadSessionDedup';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
+import { mergeThreadTranscript } from './turnSend/completeStreamUi';
 import {
   pickBestSessionMessagesWithSource,
   snapshotHasAssistantMeta,
@@ -354,11 +355,18 @@ export function useSessionNavigation({
         setRuntimeSessionEstablished(true);
         restoreThreadContextFromCache(resumed.thread_id);
         try {
-          const fromThread = await rebuildMessagesFromThreadEvents(resumed.thread_id, {
+          let fromThread = await rebuildMessagesFromThreadEvents(resumed.thread_id, {
             signal: selectAbort.signal,
           });
           if (gen !== selectSessionGenerationRef.current) {
             return;
+          }
+          const ctxMessages = streamRegistry.getContext(resumed.thread_id)?.messages ?? [];
+          if (fromThread.length > 0 && ctxMessages.length > 0) {
+            fromThread = mergeThreadTranscript(
+              ctxMessages as import('./useTurnSend').TurnChatMessage[],
+              fromThread as import('./useTurnSend').TurnChatMessage[],
+            );
           }
           if (fromThread.length > 0) {
             restoreCandidates.push({ source: 'thread', messages: fromThread });
@@ -530,11 +538,18 @@ export function useSessionNavigation({
       writeThreadTurn(streamRegistry, trimmed, '');
 
       try {
-        const fromThread = await rebuildMessagesFromThreadEvents(trimmed, {
+        let fromThread = await rebuildMessagesFromThreadEvents(trimmed, {
           signal: selectAbort.signal,
         });
         if (gen !== selectSessionGenerationRef.current) {
           return;
+        }
+        const ctxMessages = streamRegistry.getContext(trimmed)?.messages ?? [];
+        if (fromThread.length > 0 && ctxMessages.length > 0) {
+          fromThread = mergeThreadTranscript(
+            ctxMessages as import('./useTurnSend').TurnChatMessage[],
+            fromThread as import('./useTurnSend').TurnChatMessage[],
+          );
         }
         if (fromThread.length > 0) {
           const reattached = await reattachStreamingIfNeeded(trimmed, fromThread, null);

@@ -61,6 +61,8 @@ export type StreamContext = {
   recoveryCtx: StreamRecoveryContext | null;
   panelSlice: PanelSlice;
   pendingApproval: ApprovalState | null;
+  /** Per-turn timeline reducer state (live SSE → interleaved blocks). */
+  timelineState?: import('../lib/chat/timeline/turnBlockTypes').TimelineState;
   /**
    * Render-aux only — NOT the streaming authority (P3). The single source of
    * truth for "is this thread producing" is `threadStatusStore` (fed by the

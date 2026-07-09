@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Desktop streaming timeline (P0–P2):** Assistant turns with `message.blocks` render via `AssistantTurnFrame` — interleaved thinking / tool / text blocks live (`applyStreamEventToMessages` + `turnTimelineReducer`), on turn end (`reconcileMessagesFromThread`), and on replay (`buildAssistantBlocksForTurn`); `StepCard` + `stepGrouper` / `proseConsolidation` for long-turn scanability; compact tool rows; `useTurnScroll`; i18n `timelineStepBadge` / `timelineThinkingNotPersisted`.
 - **Gate-as-Code (Phase 4.1):** `docs/harness/gates/` — public format, predicate reference, migration guide from legacy completion gate; bundled presets under `presets/`; `zagens gate validate|list`; `zagens queue add --gate-file|--gate-preset`; `HarnessContract::validate()` + `flat_queue_gate_rows()`.
 - **H4 draft_skill (Phase 4.2):** `draft_skill` tool → `.zagens/skill-drafts/`; `zagens skill drafts|promote` human-in-loop install; `HarnessContract` validation on write/promote; security checklist `docs/harness/h4-draft-skill-security.md`.
 - **T5 composite tools (Phase 4.3):** `explore_codebase` (glob→grep→read) + `edit_and_check` (edit→run_tests); T1 `tool_sequences` mining in `doctor --tools`; composite sub-steps mirrored to `kernel_events` via `composite_steps` metadata.
@@ -47,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop streaming timeline — duplicate prose:** Replay no longer double-applies `agent_message` items (`rebuildMessagesFromThread`); `message_segment` skips when text already present; Step captions are excluded from in-card prose (`stepGrouper`).
+- **Runtime (LHT — step-limit continuation, trivial graph regression):** `CodeTaskGraph::continuation_open_items` no longer bails on `is_trivial()` graphs before evaluating incomplete work or plan-lag rules — single-item checklist/plan tasks and checklist-100%/plan-InProgress cases regain bounded step-budget grants (up to 4× baseline) instead of hard `Reached maximum steps` at 100 tool steps.
 - **LHT macro CRAFT hang:** `spawn_macro_craft_review` now wires `parent_completion_tx` so the parent turn loop receives the Review sub-agent completion and can inject remediation instead of waiting forever in "生成中".
 - **Snapshot restore:** Removes untracked files created after the target snapshot (queue/worktree rollback no longer leaves agent artifacts behind).
 - **Night queue:** Gate-failure events appended after snapshot restore; briefing block replaces prior content instead of duplicating; enqueue guarded by file lock against concurrent `queue add` races.

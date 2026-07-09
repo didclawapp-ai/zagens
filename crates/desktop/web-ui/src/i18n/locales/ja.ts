@@ -1512,6 +1512,15 @@ const ja: TranslationMap = {
     toolGroupReads: '{{count}} 件を読み取り',
     toolGroupWrites: '{{count}} 件を書き込み',
     toolGroupShell: 'シェルコマンド {{count}} 件',
+    timelineDegradedOrder:
+      'タイムラインの順序が近似表示の場合があります。スレッドイベントから再読み込みしてください。',
+    timelineExploredOne: '探索: {{target}}',
+    timelineEditedFile: '編集: {{file}}',
+    timelinePlanUpdated: 'プランを更新',
+    timelineThinkingNotPersisted:
+      '推論は永続化されていません。再読み込み後に Thought が表示されない場合があります。',
+    timelineStepBadge: 'ステップ {{index}}/{{total}}',
+    timelineStepUntitled: 'ステップ {{index}}/{{total}}',
   },
   terminalCard: {
     runningEmpty: '実行中 — ターミナル出力はまだありません（成功時に出力しない Python スクリプトが多いです）。',
