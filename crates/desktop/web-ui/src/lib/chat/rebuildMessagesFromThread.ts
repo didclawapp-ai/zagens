@@ -1,12 +1,8 @@
-import { replayThreadEvents } from '../../api/client';
+import { getThreadDetail, replayThreadEvents } from '../../api/client';
+import type { TurnItemRecord } from '../../api/runtimeTypes';
 import { normalizeDesktopStreamEvent } from '../../api/streamNormalize';
 import type { TurnChatMessage } from '../../hooks/useTurnSend';
-import { mergeAgentMessageSegment } from './formatAssistantContent';
-import {
-  mergeStreamingToolOutput,
-  stringifyToolInput,
-  toolOutputString,
-} from './toolOutput';
+import { stringifyToolInput } from './toolOutput';
 import { blocksToLegacyFields } from './timeline/legacyMessageAdapter';
 import {
   applyTimelineEvent,
@@ -15,6 +11,12 @@ import {
 } from './timeline/turnTimelineReducer';
 import type { TimelineState } from './timeline/turnBlockTypes';
 import { resetBlockIdCounter, type TurnBlock } from './timeline/turnBlockTypes';
+import {
+  buildAssistantBlocksForTurn,
+  orderedTurnIdsFromItems,
+  partitionRawEventsByTurn,
+  type RawThreadEvent,
+} from './timeline/turnTimelineReplay';
 import {
   nextUiMessageId,
   resetUiMessageIdCounter,
@@ -228,6 +230,81 @@ function applyEvent(state: HistoryState, ev: { event: string; data: string }): v
   applyRawRecord(state, ev);
 }
 
+function pushAssistantFromBlocks(
+  messages: TurnChatMessage[],
+  blocks: TurnBlock[],
+  thinkingIncomplete?: boolean,
+): void {
+  if (blocks.length === 0) return;
+  const legacy = blocksToLegacyFields(blocks);
+  messages.push({
+    id: nextUiMessageId('asst'),
+    role: 'assistant',
+    content: legacy.content,
+    ...(legacy.thinking ? { thinking: legacy.thinking } : {}),
+    ...(legacy.tools ? { tools: legacy.tools } : {}),
+    blocks,
+    ...(thinkingIncomplete ? { thinkingIncomplete: true } : {}),
+  });
+}
+
+/**
+ * P1 SSOT: durable items as interleaved spine + events for thinking (and gaps).
+ * Falls back to events-only when `items` is empty.
+ */
+export function rebuildMessagesFromItemsAndEvents(
+  items: readonly TurnItemRecord[],
+  events: readonly RawThreadEvent[],
+): TurnChatMessage[] {
+  resetUiMessageIdCounter();
+  resetBlockIdCounter();
+
+  if (items.length === 0) {
+    return rebuildMessagesFromEventRecords([...events]);
+  }
+
+  const messages: TurnChatMessage[] = [];
+  const eventsByTurn = partitionRawEventsByTurn(events);
+  const turnIds = orderedTurnIdsFromItems(items);
+  for (const turnId of eventsByTurn.keys()) {
+    if (!turnIds.includes(turnId)) turnIds.push(turnId);
+  }
+
+  for (const turnId of turnIds) {
+    const turnItems = items.filter((item) => item.turn_id === turnId);
+    for (const item of turnItems) {
+      if (item.kind !== 'user_message') continue;
+      const text = (item.detail ?? item.summary).trim();
+      if (!text) continue;
+      messages.push({
+        id: item.id || nextUiMessageId('user'),
+        role: 'user',
+        content: text,
+      });
+    }
+
+    const turnEvents = eventsByTurn.get(turnId) ?? [];
+    if (turnItems.length > 0) {
+      const { blocks, thinkingIncomplete } = buildAssistantBlocksForTurn(
+        turnId,
+        items,
+        turnEvents,
+      );
+      pushAssistantFromBlocks(messages, blocks, thinkingIncomplete);
+    } else if (turnEvents.length > 0) {
+      const subset = rebuildMessagesFromEventRecords([...turnEvents]);
+      for (const msg of subset) {
+        messages.push({
+          ...msg,
+          id: nextUiMessageId(msg.role === 'user' ? 'user' : 'asst'),
+        });
+      }
+    }
+  }
+
+  return messages;
+}
+
 /** Synchronous rebuild with interleaved `blocks` from raw SSE/event records. */
 export function rebuildMessagesFromEventRecords(
   events: Array<{ event: string; data: string }>,
@@ -250,31 +327,29 @@ export function rebuildMessagesFromEventRecords(
 
 /**
  * Rebuild chat UI messages (including interleaved timeline blocks) from persisted
- * runtime thread events.
+ * thread items + events. Prefer items spine when `GET /v1/threads/{id}` returns items.
  */
 export async function rebuildMessagesFromThreadEvents(
   threadId: string,
   options?: { signal?: AbortSignal },
 ): Promise<UiMessage[]> {
-  resetUiMessageIdCounter();
-  resetBlockIdCounter();
-  const state: HistoryState = {
-    messages: [],
-    currentAssistantId: null,
-    timeline: createEmptyTimelineState(),
-    currentToolId: null,
-    pendingParagraphBreak: false,
-  };
-
+  const events: RawThreadEvent[] = [];
   await replayThreadEvents(
     threadId,
     0,
     (ev) => {
-      applyEvent(state, ev);
+      events.push({ event: ev.event, data: ev.data });
     },
     { signal: options?.signal, waitForStreamClose: true },
   );
 
-  flushAssistant(state);
-  return state.messages;
+  let items: TurnItemRecord[] = [];
+  try {
+    const detail = await getThreadDetail(threadId);
+    items = detail.items ?? [];
+  } catch {
+    /* events-only fallback */
+  }
+
+  return rebuildMessagesFromItemsAndEvents(items, events);
 }

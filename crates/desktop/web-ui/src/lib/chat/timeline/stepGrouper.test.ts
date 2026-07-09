@@ -6,6 +6,11 @@ import type { TurnBlock } from './turnBlockTypes';
 
 test('step group title prose is not rendered twice in body', () => {
   const caption = 'Now write the HTML and build config.';
+  const longPhase =
+    'Second phase with a much longer description that exceeds the caption threshold for grouping. ' +
+    'It continues with enough detail about architecture, file layout, and verification steps so the ' +
+    'step splitter treats this block as a major narrative boundary rather than a tool-run caption.';
+  assert.ok(longPhase.length > 280, `longPhase len=${longPhase.length}`);
   const blocks: TurnBlock[] = [
     { kind: 'thinking', id: 'th1', text: 'plan', streaming: false, status: 'done' },
     { kind: 'text', id: 'tx1', content: caption, streaming: false },
@@ -15,8 +20,7 @@ test('step group title prose is not rendered twice in body', () => {
     {
       kind: 'text',
       id: 'tx2',
-      content:
-        'Second phase with a much longer description that exceeds the caption threshold for grouping.',
+      content: longPhase,
       streaming: false,
     },
     { kind: 'tool', id: 'tool2', name: 'read_file', input: '{}', status: 'done' },

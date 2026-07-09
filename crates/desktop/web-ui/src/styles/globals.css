@@ -889,6 +889,16 @@ body {
     background: linear-gradient(to top, var(--color-canvas) 0%, transparent 100%);
   }
 
+  /* Long user prompt preview fade (MessageBubble / UserPromptClamp). */
+  .user-prompt-clamp-fade {
+    background: linear-gradient(
+      to top,
+      var(--color-msg-user-bg) 0%,
+      color-mix(in srgb, var(--color-msg-user-bg) 55%, transparent) 55%,
+      transparent 100%
+    );
+  }
+
   .composer-shell {
     background: var(--color-card);
     border: 1px solid var(--color-card-border);

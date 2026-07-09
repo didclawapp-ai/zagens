@@ -860,6 +860,8 @@ export interface ThreadDetailResponse {
   latest_seq: number;
   /** Present on wire; `usage.output_tokens` can restore last-turn hint; context % uses transcript estimate. */
   turns?: ThreadTurnRecord[];
+  /** Durable turn items (interleaved spine for timeline replay). */
+  items?: import('./runtimeTypes').TurnItemRecord[];
 }
 
 export async function getThreadDetail(threadId: string): Promise<ThreadDetailResponse> {

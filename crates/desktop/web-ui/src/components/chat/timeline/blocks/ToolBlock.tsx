@@ -1,9 +1,14 @@
 import type { TurnBlock } from '../../../../lib/chat/timeline/turnBlockTypes';
 import type { AgentState } from '../../../../types/agent';
-import { isExploreTool, isPlanTool, isWriteTool } from '../../../../lib/chat/timeline/toolCategories';
+import { isCollapsibleToolCategory, toolCategory } from '../../../../lib/chat/timeline/toolCategories';
 import { CompactToolRow } from '../CompactToolRow';
 import { renderToolBlockCard, toolBlockToCardModel } from './toolBlockRouter';
 import { useT } from '../../../../i18n';
+
+function prefersCompact(block: Extract<TurnBlock, { kind: 'tool' }>): boolean {
+  if (block.status === 'running') return false;
+  return isCollapsibleToolCategory(toolCategory(block.name));
+}
 
 export function ToolBlock({
   block,
@@ -27,14 +32,10 @@ export function ToolBlock({
     );
   }
 
-  if (
-    block.status !== 'running' &&
-    (isExploreTool(block.name) || isPlanTool(block.name) || isWriteTool(block.name))
-  ) {
+  if (prefersCompact(block)) {
     return (
       <CompactToolRow
         block={block}
-        isTurnStreaming={false}
         onOpenDiffInPanel={onOpenDiffInPanel}
         agentStates={agentStates}
       />

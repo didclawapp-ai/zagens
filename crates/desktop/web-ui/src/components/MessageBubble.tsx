@@ -6,6 +6,7 @@ import DiffCard from './DiffCard';
 import { AgentSpawnInline } from './AgentSpawnInline';
 import { extractUnifiedDiff, parseFileNameFromToolInput } from '../lib/diff/diffEntries';
 import { MessageMetaBar } from './chat/MessageMetaBar';
+import { UserPromptClamp } from './chat/UserPromptClamp';
 import { IconCopy, IconPencil, IconRefresh, IconSparkle, IconUndo, IconWrench } from './icons/FlatIcons';
 import { formatToolsForCopy } from '../lib/formatToolCopy';
 import { summarizeToolCalls } from '../lib/chat/summarizeToolCalls';
@@ -292,7 +293,7 @@ export function MessageBubble({
             <div
               ref={reasoningScrollRef}
               onScroll={onReasoningScroll}
-              className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap"
+              className="max-h-[4.5rem] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed"
             >
               {message.thinking ||
                 (message.isStreaming ? t('message.reasoningStreamingPlaceholder') : '')}
@@ -399,15 +400,29 @@ export function MessageBubble({
           }`}
         >
           {message.content.trim() ? (
-            <ChatMarkdown
-              content={message.content}
-              variant={message.role === 'user' ? 'user' : message.role === 'system' ? 'system' : 'assistant'}
-              isStreaming={message.isStreaming}
-              workspaceRoot={workspaceRoot}
-              desktopHost={desktopHost}
-              onOpenWorkspacePath={onOpenWorkspacePath}
-              onRevealWorkspacePath={onRevealWorkspacePath}
-            />
+            isUser ? (
+              <UserPromptClamp>
+                <ChatMarkdown
+                  content={message.content}
+                  variant="user"
+                  isStreaming={message.isStreaming}
+                  workspaceRoot={workspaceRoot}
+                  desktopHost={desktopHost}
+                  onOpenWorkspacePath={onOpenWorkspacePath}
+                  onRevealWorkspacePath={onRevealWorkspacePath}
+                />
+              </UserPromptClamp>
+            ) : (
+              <ChatMarkdown
+                content={message.content}
+                variant={message.role === 'system' ? 'system' : 'assistant'}
+                isStreaming={message.isStreaming}
+                workspaceRoot={workspaceRoot}
+                desktopHost={desktopHost}
+                onOpenWorkspacePath={onOpenWorkspacePath}
+                onRevealWorkspacePath={onRevealWorkspacePath}
+              />
+            )
           ) : (
             <span className="whitespace-pre-wrap">{!message.isStreaming ? '...' : ''}</span>
           )}

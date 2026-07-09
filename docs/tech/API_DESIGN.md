@@ -296,6 +296,18 @@ Public endpoints (no auth):
 - When `schema_version` increments, new fields are additive; clients MUST NOT fail on unknown fields.
 - WebView normalizes to UI events in `streamNormalize.ts`.
 
+**Desktop UI block mapping** (Zagens `web-ui` timeline; live + replay):
+
+| SSE / normalized | `TurnBlock.kind` | Notes |
+|------------------|------------------|-------|
+| `thinking.delta` / `thinking_delta` | `thinking` | Boundary after tool/message opens a **new** thinking block |
+| `message.delta` / `message_delta` | `text` | Streaming prose |
+| `message.segment` / `message_segment` | `text` | Completes a text segment; duplicate prose skipped |
+| `tool.started` / `tool_*` | `tool` | Closes open thinking/text; explore/write may collapse in presentation |
+| `item.*` (replay) | same via normalize or item spine | Prefer durable `ThreadDetail.items` + events (`buildAssistantBlocksForTurn`) |
+
+Presentation (`AssistantTurnFrame`) does not add block kinds: step grouping and compact tool rows are display-only.
+
 ---
 
 ### 3.3 Endpoint Reference

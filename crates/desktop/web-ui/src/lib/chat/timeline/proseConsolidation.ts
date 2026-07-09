@@ -1,8 +1,12 @@
 import type { TurnBlock } from './turnBlockTypes';
 import { isPlanTool } from './toolCategories';
 
-/** Max chars for a text block to be treated as a step caption (P2.3). */
-export const STEP_CAPTION_MAX_CHARS = 120;
+/**
+ * Max chars for a text block to be treated as a step / tool-run caption (P2.3 / P4.5).
+ * Raised so mid-turn planning asides (e.g. thr_9409 ~80–256) absorb into tool groups
+ * instead of fragmenting the timeline; long final reports still exceed this.
+ */
+export const STEP_CAPTION_MAX_CHARS = 280;
 
 export type ProseCaption = {
   text: string;

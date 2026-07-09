@@ -1,10 +1,6 @@
 import type { TurnBlock } from './turnBlockTypes';
 import { isPlanTool } from './toolCategories';
-import {
-  consolidateProseWithTools,
-  STEP_CAPTION_MAX_CHARS,
-  type ProseConsolidatedBlock,
-} from './proseConsolidation';
+import { STEP_CAPTION_MAX_CHARS } from './proseConsolidation';
 import type {
   TimelinePresentationItem,
   TimelinePresentationRoot,
@@ -45,12 +41,9 @@ function splitStepSegments(blocks: TurnBlock[]): TurnBlock[][] {
   };
 
   for (const block of blocks) {
+    // Long prose = phase boundary (final report / major narrative).
+    // Plan tools no longer split steps — they collapse inside the segment (P4.5).
     if (block.kind === 'text' && block.content.trim().length > STEP_CAPTION_MAX_CHARS) {
-      flush();
-      segments.push([block]);
-      continue;
-    }
-    if (block.kind === 'tool' && isPlanTool(block.name)) {
       flush();
       segments.push([block]);
       continue;
@@ -101,28 +94,23 @@ function presentationItemsFromSegment(
     });
   }
 
-  const consolidated: ProseConsolidatedBlock[] = consolidateProseWithTools(working);
-  const blocksForPipeline: TurnBlock[] = [];
-
-  for (const entry of consolidated) {
-    if (entry.kind === 'caption') {
-      if (title && entry.caption.text.trim() === title) {
-        blocksForPipeline.push(entry.block);
-        continue;
-      }
-      blocksForPipeline.push({
-        kind: 'text',
-        id: entry.caption.blockId,
-        content: entry.caption.text,
-        streaming: false,
-      });
-      blocksForPipeline.push(entry.block);
+  // Drop short lead-in prose that only captions the following tool run (P4.2).
+  const stripped: TurnBlock[] = [];
+  for (let i = 0; i < working.length; i++) {
+    const block = working[i];
+    const next = working[i + 1];
+    if (
+      block.kind === 'text' &&
+      block.content.trim().length > 0 &&
+      block.content.trim().length <= STEP_CAPTION_MAX_CHARS &&
+      next?.kind === 'tool'
+    ) {
       continue;
     }
-    blocksForPipeline.push(entry.block);
+    stripped.push(block);
   }
 
-  return prepareItems(blocksForPipeline);
+  return prepareItems(stripped);
 }
 
 /**

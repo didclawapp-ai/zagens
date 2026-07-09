@@ -8,6 +8,8 @@ export interface UiMessage {
   tools?: UiToolCall[];
   blocks?: TurnBlock[];
   isStreaming?: boolean;
+  /** Replay lacked persisted thinking (items-only / events missing). */
+  thinkingIncomplete?: boolean;
 }
 
 export interface UiToolCall {

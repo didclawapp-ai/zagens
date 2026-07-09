@@ -13,6 +13,7 @@ import {
 import { renderTurnBlock } from './blockRenderers';
 import { CollapsedToolRunBlock } from './CollapsedToolRunBlock';
 import { StepCard } from './StepCard';
+import { AssistantTurnActions } from './AssistantTurnActions';
 
 function isStepGroup(item: TimelinePresentationRoot): item is Extract<TimelinePresentationRoot, { kind: 'step' }> {
   return typeof item === 'object' && item !== null && 'kind' in item && item.kind === 'step';
@@ -30,6 +31,7 @@ function renderPresentationItem(
       key={item.id}
       blocks={item.blocks}
       category={item.category}
+      absorbedThinking={item.absorbedThinking}
       onOpenDiffInPanel={blockCtx.onOpenDiffInPanel}
       agentStates={blockCtx.agentStates}
     />
@@ -104,10 +106,12 @@ export function AssistantTurnFrame({
             return renderPresentationItem(item, blockCtx);
           })}
         </div>
-        {isTurnStreaming && (
+        {isTurnStreaming ? (
           <div className="streaming-status-line mt-2" aria-live="polite">
             {t('message.generating')}
           </div>
+        ) : (
+          <AssistantTurnActions blocks={blocks} legacyContent={message.content} />
         )}
       </div>
     </div>

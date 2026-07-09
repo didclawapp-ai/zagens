@@ -4,6 +4,9 @@ import { IconSparkle } from '../../../icons/FlatIcons';
 import { useT } from '../../../../i18n';
 import type { TurnBlock } from '../../../../lib/chat/timeline/turnBlockTypes';
 
+/** ~3–4 lines of text-sm / leading-relaxed (P4.5). */
+const REASONING_PREVIEW_MAX_CLASS = 'max-h-[4.5rem]';
+
 export function ThinkingBlock({
   block,
   isTurnStreaming,
@@ -62,7 +65,7 @@ export function ThinkingBlock({
           stickBottomRef.current =
             el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
         }}
-        className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap"
+        className={`${REASONING_PREVIEW_MAX_CLASS} overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed`}
       >
         {block.text ||
           (active ? t('message.reasoningStreamingPlaceholder') : '')}

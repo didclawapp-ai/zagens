@@ -75,19 +75,77 @@ test('buildAssistantBlocksForTurn merges item spine with event thinking', () => 
   const events = [
     {
       event: 'thinking.delta',
-      data: JSON.stringify({ payload: { content: 'hmm' } }),
+      data: JSON.stringify({ content: 'hmm' }),
     },
     {
       event: 'tool.started',
-      data: JSON.stringify({ payload: { id: 't1', name: 'grep_files', input: '{}' } }),
+      data: JSON.stringify({ id: 't1', name: 'grep_files', input: '{}' }),
     },
     {
       event: 'tool.completed',
-      data: JSON.stringify({ payload: { id: 't1', success: true, output: 'out' } }),
+      data: JSON.stringify({ id: 't1', success: true, output: 'out' }),
     },
   ];
 
   const { blocks } = buildAssistantBlocksForTurn(TURN_ID, items, events);
   assert.ok(blocks.some((b) => b.kind === 'thinking'));
   assert.ok(blocks.some((b) => b.kind === 'tool'));
+});
+
+test('buildAssistantBlocksForTurn marks thinkingIncomplete when items-only', () => {
+  const items: TurnItemRecord[] = [
+    {
+      schema_version: 3,
+      id: 'i1',
+      turn_id: TURN_ID,
+      kind: 'tool_call',
+      status: 'completed',
+      summary: 'out',
+      metadata: { tool: { id: 't1', name: 'grep_files', input: {} } },
+      artifact_refs: [],
+    },
+  ];
+  const { blocks, thinkingIncomplete } = buildAssistantBlocksForTurn(TURN_ID, items, []);
+  assert.equal(blocks.some((b) => b.kind === 'thinking'), false);
+  assert.equal(thinkingIncomplete, true);
+});
+
+test('toolNameFromItem prefers canonical_tool and tool_name over kind fallback', () => {
+  const items: TurnItemRecord[] = [
+    {
+      schema_version: 3,
+      id: 'i1',
+      turn_id: TURN_ID,
+      kind: 'tool_call',
+      status: 'completed',
+      summary: 'list_dir: empty',
+      metadata: { tool_name: 'list_dir', tool_input: { path: '.' } },
+      artifact_refs: [],
+    },
+    {
+      schema_version: 3,
+      id: 'i2',
+      turn_id: TURN_ID,
+      kind: 'file_change',
+      status: 'completed',
+      summary: 'checklist_write: updated',
+      metadata: { canonical_tool: 'checklist_write' },
+      artifact_refs: [],
+    },
+    {
+      schema_version: 3,
+      id: 'i3',
+      turn_id: TURN_ID,
+      kind: 'tool_call',
+      status: 'completed',
+      summary: 'read_file: body',
+      metadata: {},
+      artifact_refs: [],
+    },
+  ];
+  const blocks = turnTimelineReplayFromThreadItems(items, TURN_ID);
+  assert.equal(blocks.length, 3);
+  assert.equal(blocks[0].kind === 'tool' && blocks[0].name, 'list_dir');
+  assert.equal(blocks[1].kind === 'tool' && blocks[1].name, 'checklist_write');
+  assert.equal(blocks[2].kind === 'tool' && blocks[2].name, 'read_file');
 });

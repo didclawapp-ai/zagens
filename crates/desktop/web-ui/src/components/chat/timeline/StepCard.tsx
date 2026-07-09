@@ -54,6 +54,7 @@ export function StepCard({
                 key={item.id}
                 blocks={item.blocks}
                 category={item.category}
+                absorbedThinking={item.absorbedThinking}
                 onOpenDiffInPanel={blockCtx.onOpenDiffInPanel}
                 agentStates={blockCtx.agentStates}
               />
