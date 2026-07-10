@@ -9,6 +9,7 @@ test('summarizeToolCalls', () => {
       'message.toolGroupReads': `探索 ${params?.count ?? ''} 次读取`,
       'message.toolGroupWrites': `写入 ${params?.count ?? ''} 项`,
       'message.toolGroupShell': `执行 ${params?.count ?? ''} 条命令`,
+      'message.toolActivityFailed': `${params?.count ?? ''} 失败`,
       'message.toolGroupPlan': `更新计划 ${params?.count ?? ''} 次`,
       'message.toolGroupOffice': `办公文档 ${params?.count ?? ''} 次`,
       'message.toolGroupWorkflow': `工作流 ${params?.count ?? ''} 次`,
@@ -190,5 +191,36 @@ test('summarizeToolCalls', () => {
     ]),
     'go build ./...',
     'uses chronological last tool (shell command)',
+  );
+
+  assert.equal(
+    summarizeToolCalls(
+      [
+        { id: '1', name: 'exec_shell', input: '{}', status: 'done' },
+        { id: '2', name: 'exec_shell', input: '{}', status: 'error' },
+        { id: '3', name: 'exec_shell', input: '{}', status: 'done' },
+      ],
+      t,
+    ),
+    '执行 3 条命令 · 1 失败',
+    'surfaces failed count in shell activity summary',
+  );
+
+  assert.equal(
+    summarizeToolCalls(
+      [
+        { id: '1', name: 'exec_shell', input: '{}', status: 'done' },
+        {
+          id: '2',
+          name: 'exec_shell',
+          input: JSON.stringify({ command: 'npm install' }),
+          status: 'error',
+        },
+      ],
+      t,
+      { captions: ['安装依赖并验证编译。'] },
+    ),
+    '安装依赖并验证编译。 · 执行 2 条命令 · 1 失败 · npm install',
+    'caption leads the activity label (thr_ea9c)',
   );
 });

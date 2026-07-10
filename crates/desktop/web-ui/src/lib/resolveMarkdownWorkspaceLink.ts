@@ -17,7 +17,17 @@ export function resolveMarkdownLinkToWorkspaceRel(
     return null;
   }
 
-  const normHref = raw.replace(/\\/g, '/');
+  // markdown-it / browsers may percent-encode non-ASCII path segments.
+  let decoded = raw;
+  if (/%[0-9A-Fa-f]{2}/.test(decoded)) {
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      /* keep encoded */
+    }
+  }
+
+  const normHref = decoded.replace(/\\/g, '/');
   const fromWorkspaceRoot = normHref.startsWith('/');
   const pathPart = fromWorkspaceRoot ? normHref.slice(1) : normHref;
   const base = (baseWorkspaceRel ?? '').trim().replace(/\\/g, '/');

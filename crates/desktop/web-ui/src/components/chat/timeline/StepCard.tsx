@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useT } from '../../../i18n';
 import type { TimelinePresentationItem } from '../../../lib/chat/timeline/timelinePresentationTypes';
+import { stepHasVisibleProse } from '../../../lib/chat/timeline/settledTurnDisplay';
 import { renderTurnBlock, type BlockRendererContext } from './blockRenderers';
 import { CollapsedToolRunBlock } from './CollapsedToolRunBlock';
 
@@ -18,7 +19,24 @@ export function StepCard({
   blockCtx: BlockRendererContext;
 }) {
   const { t } = useT();
-  const [expanded, setExpanded] = useState(true);
+  const isTurnStreaming = Boolean(blockCtx.isTurnStreaming);
+  const hasFinalProse = stepHasVisibleProse(items);
+  // While streaming: keep steps open so live work is visible.
+  // After settle: only steps with final prose stay open (thr_ea9c).
+  const preferExpanded = isTurnStreaming || hasFinalProse;
+  const [expanded, setExpanded] = useState(preferExpanded);
+  const userToggledRef = useRef(false);
+
+  useEffect(() => {
+    userToggledRef.current = false;
+    setExpanded(preferExpanded);
+  }, [stepIndex, preferExpanded]);
+
+  useEffect(() => {
+    if (userToggledRef.current) return;
+    setExpanded(preferExpanded);
+  }, [preferExpanded]);
+
   const label =
     title.trim() ||
     t('message.timelineStepUntitled', {
@@ -31,7 +49,10 @@ export function StepCard({
       <button
         type="button"
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-medium text-t-text-muted hover:text-t-text"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => {
+          userToggledRef.current = true;
+          setExpanded((v) => !v);
+        }}
         aria-expanded={expanded}
       >
         <span className="tabular-nums text-t-text-muted/80">
@@ -55,6 +76,7 @@ export function StepCard({
                 blocks={item.blocks}
                 category={item.category}
                 absorbedThinking={item.absorbedThinking}
+                absorbedCaptions={item.absorbedCaptions}
                 onOpenDiffInPanel={blockCtx.onOpenDiffInPanel}
                 agentStates={blockCtx.agentStates}
               />

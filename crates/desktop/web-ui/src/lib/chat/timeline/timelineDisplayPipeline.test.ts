@@ -37,7 +37,7 @@ test('prepareTimelinePresentation collapses long explore runs', () => {
   assert.equal(items[1].kind, 'block');
 });
 
-test('prepareTimelinePresentation keeps running tools expanded', () => {
+test('prepareTimelinePresentation collapses running tools into live activity', () => {
   const blocks: TurnBlock[] = [
     { kind: 'tool', id: 'r1', name: 'read_file', input: '{}', status: 'running' },
     tool('d1', 'read_file'),
@@ -45,19 +45,26 @@ test('prepareTimelinePresentation keeps running tools expanded', () => {
     tool('d3', 'read_file'),
   ];
   const items = prepareTimelinePresentation(blocks);
-  assert.equal(items[0].kind, 'block');
-  assert.equal(items[1].kind, 'collapsed_tools');
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, 'collapsed_tools');
+  if (items[0].kind === 'collapsed_tools') {
+    assert.equal(items[0].blocks.length, 4);
+    assert.equal(items[0].blocks[0].status, 'running');
+  }
 });
 
-test('prepareTimelinePresentation does not merge running into adjacent done activity', () => {
+test('prepareTimelinePresentation merges running into adjacent done activity', () => {
   const blocks: TurnBlock[] = [
     { kind: 'tool', id: 'r1', name: 'scratchpad_set_area', input: '{}', status: 'running' },
     tool('d1', 'scratchpad_append'),
     tool('d2', 'scratchpad_status'),
   ];
   const items = prepareTimelinePresentation(blocks);
-  assert.equal(items[0].kind, 'block');
-  assert.equal(items[1].kind, 'collapsed_tools');
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, 'collapsed_tools');
+  if (items[0].kind === 'collapsed_tools') {
+    assert.equal(items[0].blocks.length, 3);
+  }
 });
 
 test('prepareTimelinePresentation absorbs short prose between explore tools', () => {
@@ -76,17 +83,24 @@ test('prepareTimelinePresentation absorbs short prose between explore tools', ()
     },
   ];
   const items = prepareTimelinePresentation(blocks);
-  assert.equal(items.length, 2);
+  // Captions soft-split activities (thr_ea9c) while remaining as phase labels.
+  assert.equal(items.length, 3);
   assert.equal(items[0].kind, 'collapsed_tools');
   if (items[0].kind === 'collapsed_tools') {
-    assert.equal(items[0].blocks.length, 3);
-    assert.equal(items[0].category, 'explore');
+    assert.equal(items[0].blocks.length, 1);
+    assert.equal(items[0].absorbedCaptions?.length, 1);
+    assert.equal(items[0].absorbedCaptions?.[0]?.content, 'Reading key files next.');
   }
-  assert.equal(items[1].kind, 'block');
-  assert.equal(items[1].kind === 'block' && items[1].block.kind, 'text');
+  assert.equal(items[1].kind, 'collapsed_tools');
+  if (items[1].kind === 'collapsed_tools') {
+    assert.equal(items[1].blocks.length, 2);
+    assert.equal(items[1].absorbedCaptions?.[0]?.content, 'One more.');
+  }
+  assert.equal(items[2].kind, 'block');
+  assert.equal(items[2].kind === 'block' && items[2].block.kind, 'text');
 });
 
-test('prepareTimelinePresentation collapses shell runs and leaves errors expanded', () => {
+test('prepareTimelinePresentation merges failed shells into the same activity', () => {
   const blocks: TurnBlock[] = [
     tool('s1', 'exec_shell'),
     tool('s2', 'exec_shell'),
@@ -94,17 +108,12 @@ test('prepareTimelinePresentation collapses shell runs and leaves errors expande
     { kind: 'tool', id: 's4', name: 'exec_shell', input: '{}', status: 'error', output: 'fail' },
   ];
   const items = prepareTimelinePresentation(blocks);
-  assert.equal(items.length, 2);
+  assert.equal(items.length, 1);
   assert.equal(items[0].kind, 'collapsed_tools');
   if (items[0].kind === 'collapsed_tools') {
     assert.equal(items[0].category, 'shell');
-    assert.equal(items[0].blocks.length, 3);
-  }
-  // Lone error stays in its own activity row (not merged with done shells).
-  assert.equal(items[1].kind, 'collapsed_tools');
-  if (items[1].kind === 'collapsed_tools') {
-    assert.equal(items[1].blocks.length, 1);
-    assert.equal(items[1].blocks[0].status, 'error');
+    assert.equal(items[0].blocks.length, 4);
+    assert.equal(items[0].blocks.filter((b) => b.status === 'error').length, 1);
   }
 });
 
@@ -118,16 +127,12 @@ test('prepareTimelinePresentation collapses consecutive failed shells and plan c
     tool('p3', 'update_plan'),
   ];
   const items = prepareTimelinePresentation(blocks);
-  assert.equal(items.length, 2);
+  // No caption between shell and plan → one mixed activity (thr_ea9c merge).
+  assert.equal(items.length, 1);
   assert.equal(items[0].kind, 'collapsed_tools');
   if (items[0].kind === 'collapsed_tools') {
-    assert.equal(items[0].category, 'shell');
-    assert.equal(items[0].blocks.length, 3);
-  }
-  assert.equal(items[1].kind, 'collapsed_tools');
-  if (items[1].kind === 'collapsed_tools') {
-    assert.equal(items[1].category, 'plan');
-    assert.equal(items[1].blocks.length, 3);
+    assert.equal(items[0].category, 'mixed');
+    assert.equal(items[0].blocks.length, 6);
   }
 });
 
@@ -150,6 +155,10 @@ test('prepareTimelinePresentation absorbs mid-length planning asides before tool
   const items = prepareTimelinePresentation(blocks);
   assert.equal(items.length, 2);
   assert.equal(items[0].kind, 'collapsed_tools');
+  if (items[0].kind === 'collapsed_tools') {
+    assert.equal(items[0].blocks.length, 2);
+    assert.equal(items[0].absorbedCaptions?.length, 1);
+  }
   assert.equal(items[1].kind, 'block');
   assert.equal(items[1].kind === 'block' && items[1].block.kind, 'text');
 });
@@ -319,7 +328,7 @@ test('dedupeTimelineProseBlocks collapses joined near-duplicate final reports', 
 
 test('buildTimelinePresentation folds trailing thinking into final-report step', () => {
   const report =
-    '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
+    '协同白板项目已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
     '后端 Go + LevelDB。'.repeat(40);
   const blocks: TurnBlock[] = [
     { kind: 'text', id: 'cap', content: '开始构建。', streaming: false },
@@ -339,4 +348,40 @@ test('buildTimelinePresentation folds trailing thinking into final-report step',
   const last = steps[1];
   assert.ok(last.kind === 'step');
   assert.ok(last.items.some((i) => i.kind === 'block' && i.block.kind === 'thinking'));
+});
+
+test('prepareTimelinePresentation thr_ea9c: shell fail/done zigzag + caption phases', () => {
+  const blocks: TurnBlock[] = [
+    { kind: 'text', id: 'c1', content: '安装依赖并验证编译。', streaming: false },
+    tool('s1', 'exec_shell'),
+    { kind: 'tool', id: 's2', name: 'exec_shell', input: '{}', status: 'error' },
+    tool('s3', 'exec_shell'),
+    { kind: 'tool', id: 's4', name: 'exec_shell', input: '{}', status: 'error' },
+    tool('s5', 'exec_shell'),
+    { kind: 'text', id: 'c2', content: '由于环境限制，改用纯 JS 转译。', streaming: false },
+    tool('w1', 'write_file'),
+    tool('w2', 'write_file'),
+    { kind: 'tool', id: 's6', name: 'exec_shell', input: '{}', status: 'running' },
+    {
+      kind: 'text',
+      id: 'report',
+      content: '协同白板项目完成。以下是完整的架构总结和运行说明。\n\n## 项目结构\n\n' + 'x'.repeat(400),
+      streaming: false,
+    },
+  ];
+  const items = prepareTimelinePresentation(blocks);
+  assert.equal(items.length, 3, 'two caption phases + final report');
+  assert.equal(items[0].kind, 'collapsed_tools');
+  if (items[0].kind === 'collapsed_tools') {
+    assert.equal(items[0].blocks.length, 5);
+    assert.equal(items[0].blocks.filter((b) => b.status === 'error').length, 2);
+    assert.equal(items[0].absorbedCaptions?.[0]?.content, '安装依赖并验证编译。');
+  }
+  assert.equal(items[1].kind, 'collapsed_tools');
+  if (items[1].kind === 'collapsed_tools') {
+    assert.equal(items[1].blocks.length, 3);
+    assert.equal(items[1].blocks.some((b) => b.status === 'running'), true);
+    assert.equal(items[1].absorbedCaptions?.[0]?.content, '由于环境限制，改用纯 JS 转译。');
+  }
+  assert.equal(items[2].kind === 'block' && items[2].block.kind, 'text');
 });

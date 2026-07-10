@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { groupPresentationIntoSteps, shortenStepTitle } from './stepGrouper';
+import { groupPresentationIntoSteps, shortenStepTitle, deriveStepGroupHintFromBlocks } from './stepGrouper';
 import { prepareTimelinePresentation } from './timelineDisplayPipeline';
 import type { TurnBlock } from './turnBlockTypes';
 
@@ -106,4 +106,74 @@ test('CJK first sentence title does not require space after period', () => {
     '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。 ## 技术选型',
   );
   assert.equal(title, '协同白板应用已全部构建完成。');
+});
+
+test('deriveStepGroupHintFromBlocks reads todos and in_progress updates', () => {
+  const blocks: TurnBlock[] = [
+    {
+      kind: 'tool',
+      id: 'c1',
+      name: 'checklist_write',
+      input: JSON.stringify({
+        todos: [
+          { content: '创建项目目录结构', status: 'in_progress' },
+          { content: '实现共享类型', status: 'pending' },
+          { content: '实现 CRDT', status: 'pending' },
+        ],
+      }),
+      status: 'done',
+    },
+    {
+      kind: 'tool',
+      id: 'c2',
+      name: 'checklist_write',
+      input: JSON.stringify({ id: 2, status: 'in_progress' }),
+      status: 'done',
+    },
+  ];
+  const hint = deriveStepGroupHintFromBlocks(blocks);
+  assert.ok(hint);
+  assert.equal(hint?.checklistItems?.length, 3);
+  assert.equal(hint?.checklistItems?.[0]?.content, '创建项目目录结构');
+  assert.equal(hint?.inProgressChecklistId, 2);
+});
+
+test('tool-only step titles fall back to checklist; report keeps prose title', () => {
+  const report =
+    '协同白板项目完成。以下是完整的架构总结。\n\n## 结构\n\n' + 'x'.repeat(300);
+  const todos = JSON.stringify({
+    todos: [
+      { content: '创建项目目录结构 & package.json 配置', status: 'completed' },
+      { content: '实现共享类型定义', status: 'in_progress' },
+    ],
+  });
+  const blocks: TurnBlock[] = [
+    {
+      kind: 'tool',
+      id: 'c1',
+      name: 'checklist_write',
+      input: todos,
+      status: 'done',
+    },
+    { kind: 'tool', id: 'w1', name: 'write_file', input: '{}', status: 'done' },
+    { kind: 'tool', id: 'w2', name: 'write_file', input: '{}', status: 'done' },
+    { kind: 'tool', id: 'w3', name: 'write_file', input: '{}', status: 'done' },
+    { kind: 'tool', id: 's1', name: 'exec_shell', input: '{}', status: 'done' },
+    { kind: 'tool', id: 's2', name: 'exec_shell', input: '{}', status: 'done' },
+    { kind: 'tool', id: 's3', name: 'exec_shell', input: '{}', status: 'done' },
+    { kind: 'text', id: 'report', content: report, streaming: false },
+  ];
+  const roots = groupPresentationIntoSteps(blocks, prepareTimelinePresentation, {
+    checklistItems: [
+      { id: 1, content: '创建项目目录结构 & package.json 配置' },
+      { id: 2, content: '实现共享类型定义' },
+    ],
+    inProgressChecklistId: 2,
+  });
+  const steps = roots.filter((r) => r.kind === 'step');
+  assert.equal(steps.length, 2);
+  assert.ok(steps[0].kind === 'step');
+  assert.ok(steps[0].title.includes('创建项目目录结构'));
+  assert.ok(steps[1].kind === 'step');
+  assert.ok(steps[1].title.startsWith('协同白板项目完成'));
 });

@@ -14,6 +14,15 @@ export function normalizeWorkspaceRelPath(raw: string): string {
   if (s.startsWith('./')) {
     s = s.slice(2);
   }
+  // markdown-it percent-encodes non-ASCII hrefs (e.g. 全库 → %E5%85%A8%E5%BA%93).
+  // Decode once so filesystem / runtime APIs see the real path (thr_6f9c).
+  if (/%[0-9A-Fa-f]{2}/.test(s)) {
+    try {
+      s = decodeURIComponent(s);
+    } catch {
+      /* keep percent-encoded form */
+    }
+  }
   return s;
 }
 

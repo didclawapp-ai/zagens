@@ -5,19 +5,17 @@ import {
   legacyFieldsToBlocks,
   usesDegenerateLegacyLayout,
 } from '../../../lib/chat/timeline/legacyMessageAdapter';
+import { buildTimelinePresentation } from '../../../lib/chat/timeline/timelineDisplayPipeline';
 import {
-  buildTimelinePresentation,
-  type TimelinePresentationItem,
-  type TimelinePresentationRoot,
-} from '../../../lib/chat/timeline/timelineDisplayPipeline';
+  isStepGroup,
+  partitionPresentationForSettledView,
+} from '../../../lib/chat/timeline/settledTurnDisplay';
+import type { TimelinePresentationItem } from '../../../lib/chat/timeline/timelinePresentationTypes';
 import { renderTurnBlock } from './blockRenderers';
 import { CollapsedToolRunBlock } from './CollapsedToolRunBlock';
 import { StepCard } from './StepCard';
+import { TurnProcessBundle } from './TurnProcessBundle';
 import { AssistantTurnActions } from './AssistantTurnActions';
-
-function isStepGroup(item: TimelinePresentationRoot): item is Extract<TimelinePresentationRoot, { kind: 'step' }> {
-  return typeof item === 'object' && item !== null && 'kind' in item && item.kind === 'step';
-}
 
 function renderPresentationItem(
   item: TimelinePresentationItem,
@@ -32,6 +30,7 @@ function renderPresentationItem(
       blocks={item.blocks}
       category={item.category}
       absorbedThinking={item.absorbedThinking}
+      absorbedCaptions={item.absorbedCaptions}
       onOpenDiffInPanel={blockCtx.onOpenDiffInPanel}
       agentStates={blockCtx.agentStates}
     />
@@ -90,21 +89,48 @@ export function AssistantTurnFrame({
           </p>
         )}
         <div className="space-y-2">
-          {presentation.map((item) => {
-            if (isStepGroup(item)) {
-              return (
-                <StepCard
-                  key={item.id}
-                  stepIndex={item.stepIndex}
-                  stepTotal={item.stepTotal}
-                  title={item.title}
-                  items={item.items}
-                  blockCtx={blockCtx}
-                />
-              );
-            }
-            return renderPresentationItem(item, blockCtx);
-          })}
+          {isTurnStreaming
+            ? presentation.map((item) => {
+                if (isStepGroup(item)) {
+                  return (
+                    <StepCard
+                      key={item.id}
+                      stepIndex={item.stepIndex}
+                      stepTotal={item.stepTotal}
+                      title={item.title}
+                      items={item.items}
+                      blockCtx={blockCtx}
+                    />
+                  );
+                }
+                return renderPresentationItem(item, blockCtx);
+              })
+            : partitionPresentationForSettledView(presentation).map((segment) => {
+                if (segment.kind === 'final-step') {
+                  return (
+                    <StepCard
+                      key={segment.id}
+                      stepIndex={segment.step.stepIndex}
+                      stepTotal={segment.step.stepTotal}
+                      title={segment.step.title}
+                      items={segment.step.items}
+                      blockCtx={blockCtx}
+                    />
+                  );
+                }
+                if (segment.kind === 'final-item') {
+                  return renderPresentationItem(segment.item, blockCtx);
+                }
+                return (
+                  <TurnProcessBundle
+                    key={segment.id}
+                    items={segment.items}
+                    stepCount={segment.stepCount}
+                    blockCtx={blockCtx}
+                    defaultExpanded={false}
+                  />
+                );
+              })}
         </div>
         {isTurnStreaming ? (
           <div className="streaming-status-line mt-2" aria-live="polite">

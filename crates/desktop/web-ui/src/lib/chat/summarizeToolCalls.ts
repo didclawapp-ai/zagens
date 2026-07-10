@@ -52,13 +52,15 @@ function basenamePath(path: string): string {
 }
 
 function tryParseShellCommand(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed || trimmed === '{}') return null;
   try {
     const parsed = JSON.parse(input) as { command?: string };
     return typeof parsed.command === 'string' && parsed.command.trim()
       ? parsed.command.trim()
       : null;
   } catch {
-    return null;
+    return trimmed || null;
   }
 }
 
@@ -88,7 +90,7 @@ export function lastToolActivityDetail(tools: ToolCardModel[]): string | null {
     const tool = tools[i];
     const cat = toolCategory(tool.name);
     if (cat === 'shell') {
-      const cmd = tryParseShellCommand(tool.input) ?? tool.input.trim();
+      const cmd = tryParseShellCommand(tool.input);
       if (cmd) return truncateDetail(cmd);
       continue;
     }
@@ -160,20 +162,59 @@ function withLastDetail(summary: string, tools: ToolCardModel[]): string {
   return `${summary} · ${detail}`;
 }
 
-/** Collapsed tools header — counts + last file/command for scanability. */
+function withFailedCount(
+  summary: string,
+  tools: ToolCardModel[],
+  t: (key: string, params?: Record<string, string>) => string,
+): string {
+  const failed = tools.filter((tool) => tool.status === 'error').length;
+  if (failed <= 0) return summary;
+  return `${summary} · ${t('message.toolActivityFailed', { count: String(failed) })}`;
+}
+
+/** Prefer the latest absorbed caption as the activity phase label. */
+export function activityCaptionLabel(captions: readonly string[] | undefined): string | null {
+  if (!captions?.length) return null;
+  for (let i = captions.length - 1; i >= 0; i--) {
+    const text = captions[i]?.replace(/\s+/g, ' ').trim();
+    if (text) return truncateDetail(text);
+  }
+  return null;
+}
+
+export type SummarizeToolCallsOptions = {
+  /** Absorbed lead-in prose for this activity (thr_ea9c phase label). */
+  captions?: readonly string[];
+};
+
+/** Collapsed tools header — optional caption + counts + failures + last file/command. */
 export function summarizeToolCalls(
   tools: ToolCardModel[],
   t: (key: string, params?: Record<string, string>) => string,
+  options?: SummarizeToolCallsOptions,
 ): string {
   if (tools.length === 0) {
     return t('message.toolCallsDefault');
   }
 
   const uniform = uniformCategory(tools);
-  const summary =
+  let summary =
     uniform !== 'mixed'
       ? groupLabel(uniform, tools.length, t)
       : summarizeActivityByCategory(tools, t);
+
+  summary = withFailedCount(summary, tools, t);
+
+  const caption = activityCaptionLabel(options?.captions);
+  if (caption) {
+    // Caption first for scanability; still append last file/command when distinct.
+    const withCaption = `${caption} · ${summary}`;
+    const detail = lastToolActivityDetail(tools);
+    if (detail && detail !== caption) {
+      return `${withCaption} · ${detail}`;
+    }
+    return withCaption;
+  }
 
   return withLastDetail(summary, tools);
 }

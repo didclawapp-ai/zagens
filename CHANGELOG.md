@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Desktop streaming timeline — thr_ea9c activity polish:** done/error/running tools share one activity row (failure count in summary); mid-turn captions soft-split phases and label the row; live shell thrash no longer expands every command.
+- **Desktop streaming timeline — settled auto-collapse:** When a turn finishes, tool-only steps/activities fold into a collapsed「工作过程」row; steps with final prose stay open so the transcript shows results first.
+- **Desktop streaming timeline — checklist step titles:** `deriveStepGroupHintFromBlocks` from `checklist_*` tool inputs; prose/caption still win over todo text for report steps.
+- **Desktop chat — CJK workspace links:** Decode percent-encoded markdown hrefs before opening (`doc/报告.md` no longer fails as `doc/%E6%8A%A5…` / path not found).
 - **Desktop streaming timeline (P0–P2):** Assistant turns with `message.blocks` render via `AssistantTurnFrame` — interleaved thinking / tool / text blocks live (`applyStreamEventToMessages` + `turnTimelineReducer`), on turn end (`reconcileMessagesFromThread`), and on replay (`buildAssistantBlocksForTurn`); `StepCard` + `stepGrouper` / `proseConsolidation` for long-turn scanability; compact tool rows; `useTurnScroll`; i18n `timelineStepBadge` / `timelineThinkingNotPersisted`.
 - **Desktop streaming timeline — replay SSOT:** Production rebuild uses `ThreadDetail.items` + events (`rebuildMessagesFromItemsAndEvents` → `buildAssistantBlocksForTurn`); items-only sets `thinkingIncomplete` for the Thought-missing note; unit tests for apply/reconcile/display/items+events.
 - **Desktop streaming timeline — de-fragment (P4):** Item replay resolves `canonical_tool` / `tool_name` / summary prefix; short lead-in prose no longer breaks explore/write/shell collapse; shell runs collapse (≥2); completed tools stay compact while the turn is still streaming.

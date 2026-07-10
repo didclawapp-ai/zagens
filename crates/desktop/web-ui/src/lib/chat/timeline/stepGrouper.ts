@@ -17,9 +17,63 @@ export type { TimelinePresentationRoot, TimelineStepGroup };
 /** Max chars for a step card title (scanability; thr_82ac long reports). */
 export const STEP_TITLE_MAX_CHARS = 72;
 
+/**
+ * Derive step titles from checklist_* tool inputs in the turn (no panel wiring).
+ * Uses the latest full `todos` write + latest in_progress id.
+ */
+export function deriveStepGroupHintFromBlocks(
+  blocks: readonly TurnBlock[],
+): StepGroupHint | undefined {
+  let checklistItems: { id: number; content: string }[] = [];
+  let inProgressChecklistId: number | null = null;
+
+  for (const block of blocks) {
+    if (block.kind !== 'tool' || !isPlanTool(block.name)) continue;
+    let input: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(block.input || '{}') as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+      input = parsed as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+
+    const todos = input.todos;
+    if (Array.isArray(todos) && todos.length > 0) {
+      const next: { id: number; content: string }[] = [];
+      for (let i = 0; i < todos.length; i++) {
+        const row = todos[i];
+        if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+        const t = row as Record<string, unknown>;
+        const content = typeof t.content === 'string' ? t.content.trim() : '';
+        if (!content) continue;
+        const id = typeof t.id === 'number' && Number.isFinite(t.id) ? t.id : i + 1;
+        next.push({ id, content });
+        if (t.status === 'in_progress') inProgressChecklistId = id;
+      }
+      if (next.length > 0) checklistItems = next;
+      continue;
+    }
+
+    if (typeof input.id === 'number' && Number.isFinite(input.id)) {
+      if (input.status === 'in_progress') inProgressChecklistId = input.id;
+      else if (input.status === 'completed' && inProgressChecklistId === input.id) {
+        inProgressChecklistId = null;
+      }
+    }
+  }
+
+  if (checklistItems.length === 0) return undefined;
+  return { checklistItems, inProgressChecklistId };
+}
+
 function checklistTitle(hint: StepGroupHint | undefined, stepIndex: number): string | null {
-  const id = hint?.inProgressChecklistId;
-  if (id == null || !hint?.checklistItems?.length) return null;
+  if (!hint?.checklistItems?.length) return null;
+  // Positional match for tool-only steps (step 1 → first todo, …).
+  const byPos = hint.checklistItems[stepIndex - 1];
+  if (byPos?.content.trim()) return byPos.content.trim();
+  const id = hint.inProgressChecklistId;
+  if (id == null) return null;
   const item = hint.checklistItems.find((c) => c.id === id);
   if (!item?.content.trim()) return null;
   return item.content.trim();
@@ -116,10 +170,7 @@ function segmentTitle(
   stepIndex: number,
   hint: StepGroupHint | undefined,
 ): string {
-  const fromChecklist = checklistTitle(hint, stepIndex);
-  if (fromChecklist) return shortenStepTitle(fromChecklist);
-
-  // Prefer a short caption over a long final-report body when both exist.
+  // Caption / report prose first — checklist must not override final-report titles.
   const shortProse = segment.find(
     (b) => b.kind === 'text' && b.content.trim().length <= STEP_CAPTION_MAX_CHARS,
   );
@@ -133,6 +184,9 @@ function segmentTitle(
     const titled = titleFromTextBlock(prose);
     if (titled) return titled;
   }
+
+  const fromChecklist = checklistTitle(hint, stepIndex);
+  if (fromChecklist) return shortenStepTitle(fromChecklist);
 
   const plan = segment.find((b) => b.kind === 'tool' && isPlanTool(b.name));
   if (plan?.kind === 'tool') {
@@ -166,23 +220,9 @@ function presentationItemsFromSegment(
     });
   }
 
-  // Drop short lead-in prose that only captions the following tool run (P4.2).
-  const stripped: TurnBlock[] = [];
-  for (let i = 0; i < working.length; i++) {
-    const block = working[i];
-    const next = working[i + 1];
-    if (
-      block.kind === 'text' &&
-      block.content.trim().length > 0 &&
-      block.content.trim().length <= STEP_CAPTION_MAX_CHARS &&
-      next?.kind === 'tool'
-    ) {
-      continue;
-    }
-    stripped.push(block);
-  }
-
-  return prepareItems(stripped);
+  // Keep mid-step captions for activity soft-splits + labels (thr_ea9c).
+  // prepareTimelinePresentation absorbs them into collapsed_tools.absorbedCaptions.
+  return prepareItems(working);
 }
 
 function isThinkingOnlyPresentation(items: TimelinePresentationItem[]): boolean {

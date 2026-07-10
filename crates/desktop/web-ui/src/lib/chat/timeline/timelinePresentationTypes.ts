@@ -12,6 +12,11 @@ export type TimelinePresentationItem =
       category: TimelineCollapsedCategory;
       /** Completed thinking segments absorbed between tools (P4.6). */
       absorbedThinking?: Extract<TurnBlock, { kind: 'thinking' }>[];
+      /**
+       * Short lead-in prose absorbed into this activity (thr_ea9c).
+       * Used as the activity row label; mid-run captions also soft-split activities.
+       */
+      absorbedCaptions?: Extract<TurnBlock, { kind: 'text' }>[];
     };
 
 export type TimelineStepGroup = {

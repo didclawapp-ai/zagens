@@ -6,6 +6,7 @@ import {
 import { isCollapsibleToolCategory, toolCategory } from './toolCategories';
 import {
   groupPresentationIntoSteps,
+  deriveStepGroupHintFromBlocks,
   type StepGroupHint,
 } from './stepGrouper';
 import { STEP_CAPTION_MAX_CHARS } from './proseConsolidation';
@@ -22,6 +23,7 @@ export type {
   TimelineStepGroup,
 } from './timelinePresentationTypes';
 export type { StepGroupHint };
+export { deriveStepGroupHintFromBlocks } from './stepGrouper';
 
 /** Collapse when an activity run reaches this tool count (P4.2). */
 export const MIN_COLLAPSE_COUNT = 2;
@@ -83,12 +85,19 @@ function isAbsorbedGapAt(blocks: readonly TurnBlock[], index: number): boolean {
   return isAbsorbedCaptionAt(blocks, index) || isAbsorbedThinkingAt(blocks, index);
 }
 
-function collapseBucket(
-  block: Extract<TurnBlock, { kind: 'tool' }>,
-): 'done' | 'error' | null {
-  if (block.status === 'done') return 'done';
-  if (block.status === 'error') return 'error';
-  return null;
+/**
+ * Collapsible tool that may join an activity row.
+ * Includes running tools so live shell thrash collapses (thr_ea9c).
+ * done + error share one activity; failure count is surfaced in the summary.
+ */
+function isActivityTool(
+  block: TurnBlock,
+): block is Extract<TurnBlock, { kind: 'tool' }> {
+  return (
+    block.kind === 'tool' &&
+    canCollapseCategory(toolCategory(block.name)) &&
+    (block.status === 'done' || block.status === 'error' || block.status === 'running')
+  );
 }
 
 function resolveCollapsedCategory(
@@ -102,27 +111,34 @@ function resolveCollapsedCategory(
   return first;
 }
 
+type LeadingAbsorbed = {
+  thinking: Extract<TurnBlock, { kind: 'thinking' }>[];
+  captions: Extract<TurnBlock, { kind: 'text' }>[];
+};
+
 /** Thinking/captions skipped just before a tool run — attach into the activity. */
-function collectLeadingAbsorbedThinking(
+function collectLeadingAbsorbed(
   blocks: readonly TurnBlock[],
   toolIndex: number,
-): Extract<TurnBlock, { kind: 'thinking' }>[] {
-  const out: Extract<TurnBlock, { kind: 'thinking' }>[] = [];
+): LeadingAbsorbed {
+  const thinking: Extract<TurnBlock, { kind: 'thinking' }>[] = [];
+  const captions: Extract<TurnBlock, { kind: 'text' }>[] = [];
   let k = toolIndex - 1;
   while (k >= 0) {
     const prev = blocks[k];
     if (isAbsorbedThinkingAt(blocks, k) && prev.kind === 'thinking') {
-      out.unshift(prev);
+      thinking.unshift(prev);
       k -= 1;
       continue;
     }
-    if (isAbsorbedCaptionAt(blocks, k)) {
+    if (isAbsorbedCaptionAt(blocks, k) && prev.kind === 'text') {
+      captions.unshift(prev);
       k -= 1;
       continue;
     }
     break;
   }
-  return out;
+  return { thinking, captions };
 }
 
 function asCollapsibleToolBlock(
@@ -131,12 +147,7 @@ function asCollapsibleToolBlock(
   if (item.kind === 'collapsed_tools' && item.blocks.length > 0) {
     return item.blocks[0];
   }
-  if (
-    item.kind === 'block' &&
-    item.block.kind === 'tool' &&
-    canCollapseCategory(toolCategory(item.block.name)) &&
-    collapseBucket(item.block) != null
-  ) {
+  if (item.kind === 'block' && isActivityTool(item.block)) {
     return item.block;
   }
   return null;
@@ -156,9 +167,30 @@ function itemAbsorbedThinking(
   return item.kind === 'collapsed_tools' ? (item.absorbedThinking ?? []) : [];
 }
 
+function itemAbsorbedCaptions(
+  item: TimelinePresentationItem,
+): Extract<TurnBlock, { kind: 'text' }>[] {
+  return item.kind === 'collapsed_tools' ? (item.absorbedCaptions ?? []) : [];
+}
+
+function collapsedActivityItem(
+  blocks: Extract<TurnBlock, { kind: 'tool' }>[],
+  absorbedThinking: Extract<TurnBlock, { kind: 'thinking' }>[],
+  absorbedCaptions: Extract<TurnBlock, { kind: 'text' }>[],
+): TimelinePresentationItem {
+  return {
+    kind: 'collapsed_tools',
+    id: `collapsed-${blocks[0].id}`,
+    blocks,
+    category: resolveCollapsedCategory(blocks),
+    ...(absorbedThinking.length > 0 ? { absorbedThinking } : {}),
+    ...(absorbedCaptions.length > 0 ? { absorbedCaptions } : {}),
+  };
+}
+
 /**
  * Merge adjacent collapsed bundles and lone collapsible tool rows (thr_82ac).
- * Keeps done/error buckets separate; category becomes `mixed` when kinds differ.
+ * Does not merge across a caption-marked phase boundary (thr_ea9c).
  */
 export function mergeAdjacentActivityItems(
   items: TimelinePresentationItem[],
@@ -172,32 +204,22 @@ export function mergeAdjacentActivityItems(
       continue;
     }
 
-    const bucket = collapseBucket(tool);
     const prev = out[out.length - 1];
     const prevTool = prev ? asCollapsibleToolBlock(prev) : null;
-    const prevBucket = prevTool ? collapseBucket(prevTool) : null;
+    const incomingCaptions = itemAbsorbedCaptions(item);
 
-    if (prev && prevTool && prevBucket != null && prevBucket === bucket) {
+    // Caption on the incoming row marks a narrative phase — keep separate.
+    if (prev && prevTool && incomingCaptions.length === 0) {
       const blocks = [...itemToolBlocks(prev), ...itemToolBlocks(item)];
       const absorbed = [...itemAbsorbedThinking(prev), ...itemAbsorbedThinking(item)];
-      out[out.length - 1] = {
-        kind: 'collapsed_tools',
-        id: `collapsed-${blocks[0].id}`,
-        blocks,
-        category: resolveCollapsedCategory(blocks),
-        ...(absorbed.length > 0 ? { absorbedThinking: absorbed } : {}),
-      };
+      const captions = [...itemAbsorbedCaptions(prev), ...incomingCaptions];
+      out[out.length - 1] = collapsedActivityItem(blocks, absorbed, captions);
       continue;
     }
 
     // Promote a lone collapsible tool to a one-tool activity row for consistent chrome.
     if (item.kind === 'block' && item.block.kind === 'tool') {
-      out.push({
-        kind: 'collapsed_tools',
-        id: `collapsed-${item.block.id}`,
-        blocks: [item.block],
-        category: resolveCollapsedCategory([item.block]),
-      });
+      out.push(collapsedActivityItem([item.block], [], []));
       continue;
     }
 
@@ -208,14 +230,15 @@ export function mergeAdjacentActivityItems(
 }
 
 /**
- * Bundle tool activity for scanability (P2.2 / P4 / P4.6).
+ * Bundle tool activity for scanability (P2.2 / P4 / P4.6 / thr_ea9c).
  *
  * - Short prose and **completed thinking** between tools are absorbed (not top-level rows).
- * - explore / write / shell / plan / office / workflow / agent may merge across those gaps into one activity
+ * - Mid-run **captions soft-split** activities so long turns keep phase labels.
+ * - explore / write / shell / plan / office / workflow / agent may merge across thinking gaps
  *   (category `mixed` when kinds differ).
- * - done vs error stay in separate bundles.
- * - Running tools and long final prose stay expanded.
- * - Adjacent activity rows (incl. single tools) are merged (audit-turn polish).
+ * - done + error + running share one activity; failure/running counts surface in the summary.
+ * - Long final prose stays expanded.
+ * - Adjacent activity rows merge unless a caption marks a new phase.
  */
 export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresentationItem[] {
   const items: TimelinePresentationItem[] = [];
@@ -235,33 +258,30 @@ export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresen
       continue;
     }
 
-    const bucket = collapseBucket(block);
-    if (!canCollapseCategory(toolCategory(block.name)) || bucket == null) {
+    if (!isActivityTool(block)) {
       items.push({ kind: 'block', block });
       i += 1;
       continue;
     }
 
+    const leading = collectLeadingAbsorbed(blocks, i);
     const run: Extract<TurnBlock, { kind: 'tool' }>[] = [block];
-    const absorbedThinking = collectLeadingAbsorbedThinking(blocks, i);
+    const absorbedThinking = [...leading.thinking];
+    const absorbedCaptions = [...leading.captions];
     let j = i + 1;
 
     while (j < blocks.length) {
       const next = blocks[j];
+      // Caption after tools already collected → soft phase boundary (thr_ea9c).
       if (isAbsorbedCaptionAt(blocks, j)) {
-        j += 1;
-        continue;
+        break;
       }
       if (isAbsorbedThinkingAt(blocks, j)) {
         if (next.kind === 'thinking') absorbedThinking.push(next);
         j += 1;
         continue;
       }
-      if (
-        next.kind === 'tool' &&
-        canCollapseCategory(toolCategory(next.name)) &&
-        collapseBucket(next) === bucket
-      ) {
+      if (isActivityTool(next)) {
         run.push(next);
         j += 1;
         continue;
@@ -269,21 +289,15 @@ export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresen
       break;
     }
 
-    const category = resolveCollapsedCategory(run);
-    // Collapse multi-tool runs, single collapsible tools, or runs that absorbed reasoning.
+    // Collapse multi-tool runs, single collapsible tools, or runs that absorbed reasoning/captions.
     const shouldCollapse =
       run.length >= MIN_COLLAPSE_COUNT ||
       run.length === 1 ||
-      absorbedThinking.length > 0;
+      absorbedThinking.length > 0 ||
+      absorbedCaptions.length > 0;
 
     if (shouldCollapse && run.length >= 1) {
-      items.push({
-        kind: 'collapsed_tools',
-        id: `collapsed-${run[0].id}`,
-        blocks: run,
-        category,
-        ...(absorbedThinking.length > 0 ? { absorbedThinking } : {}),
-      });
+      items.push(collapsedActivityItem(run, absorbedThinking, absorbedCaptions));
     } else {
       for (const tool of run) {
         items.push({ kind: 'block', block: tool });
@@ -338,5 +352,6 @@ export function buildTimelinePresentation(
   if (!options.stepGrouping || deduped.length < 8) {
     return prepareTimelinePresentation(deduped);
   }
-  return groupPresentationIntoSteps(deduped, prepareTimelinePresentation, options.stepHint);
+  const stepHint = options.stepHint ?? deriveStepGroupHintFromBlocks(deduped);
+  return groupPresentationIntoSteps(deduped, prepareTimelinePresentation, stepHint);
 }

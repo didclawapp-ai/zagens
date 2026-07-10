@@ -13,12 +13,14 @@ export function CollapsedToolRunBlock({
   blocks,
   category,
   absorbedThinking,
+  absorbedCaptions,
   onOpenDiffInPanel,
   agentStates,
 }: {
   blocks: Extract<TurnBlock, { kind: 'tool' }>[];
   category: TimelineCollapsedCategory;
   absorbedThinking?: Extract<TurnBlock, { kind: 'thinking' }>[];
+  absorbedCaptions?: Extract<TurnBlock, { kind: 'text' }>[];
   onOpenDiffInPanel?: () => void;
   agentStates?: AgentState[];
 }) {
@@ -26,7 +28,9 @@ export function CollapsedToolRunBlock({
   const [expanded, setExpanded] = useState(false);
   const [thinkingOpen, setThinkingOpen] = useState(false);
   const tools = blocks.map(toolBlockToCardModel);
-  const label = summarizeToolCalls(tools, t);
+  const label = summarizeToolCalls(tools, t, {
+    captions: absorbedCaptions?.map((c) => c.content),
+  });
   const thinkingCount = absorbedThinking?.length ?? 0;
   const runningCount = tools.filter((tool) => tool.status === 'running').length;
   // Chevron already signals expandability — only surface live running status.
