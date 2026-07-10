@@ -14,6 +14,9 @@ export type StepGroupHint = {
 
 export type { TimelinePresentationRoot, TimelineStepGroup };
 
+/** Max chars for a step card title (scanability; thr_82ac long reports). */
+export const STEP_TITLE_MAX_CHARS = 72;
+
 function checklistTitle(hint: StepGroupHint | undefined, stepIndex: number): string | null {
   const id = hint?.inProgressChecklistId;
   if (id == null || !hint?.checklistItems?.length) return null;
@@ -22,11 +25,65 @@ function checklistTitle(hint: StepGroupHint | undefined, stepIndex: number): str
   return item.content.trim();
 }
 
+/** Prefer leading heading / first sentence over a long truncated dump. */
+export function shortenStepTitle(text: string, maxChars = STEP_TITLE_MAX_CHARS): string {
+  let s = text.replace(/\r\n/g, '\n').trim();
+  if (!s) return '';
+
+  // Only treat a heading as the title when it opens the block (not mid-report).
+  const leadingHeading = s.match(/^#{1,6}\s+(.+?)(?:\n|$)/);
+  if (leadingHeading?.[1]?.trim()) {
+    s = leadingHeading[1].trim();
+  } else {
+    const firstLine = s.split('\n').find((line) => line.trim()) ?? s;
+    s = firstLine.trim();
+    // Prefer the first sentence (CJK often has no space after 。！？).
+    const cjkSentence = s.match(/^(.+?[。！？])/);
+    if (cjkSentence?.[1] && cjkSentence[1].length >= 4) {
+      s = cjkSentence[1];
+    } else {
+      const latinSentence = s.match(/^(.+?[.!?])(?:\s|$)/);
+      if (latinSentence?.[1] && latinSentence[1].length >= 8) {
+        s = latinSentence[1].trim();
+      }
+    }
+  }
+
+  if (s.length <= maxChars) return s;
+  return `${s.slice(0, maxChars).trimEnd()}…`;
+}
+
 function titleFromTextBlock(block: Extract<TurnBlock, { kind: 'text' }>): string | null {
   const text = block.content.trim();
   if (!text) return null;
-  if (text.length <= STEP_CAPTION_MAX_CHARS) return text;
-  return `${text.slice(0, STEP_CAPTION_MAX_CHARS).trimEnd()}…`;
+  return shortenStepTitle(text);
+}
+
+/** Trailing completed-thinking after a long final report — not a real phase. */
+function isThinkingOnlySegment(segment: TurnBlock[]): boolean {
+  return (
+    segment.length > 0 &&
+    segment.every(
+      (b) =>
+        b.kind === 'thinking' &&
+        b.streaming !== true &&
+        b.status !== 'running',
+    )
+  );
+}
+
+/**
+ * Fold trailing thinking-only segments into the previous phase.
+ * Fixes empty "步骤 N/N" cards that only contain collapsed 推理 after a final report.
+ */
+function coalesceTrailingThinkingSegments(segments: TurnBlock[][]): TurnBlock[][] {
+  if (segments.length < 2) return segments;
+  const out = segments.map((s) => [...s]);
+  while (out.length >= 2 && isThinkingOnlySegment(out[out.length - 1])) {
+    const trailing = out.pop()!;
+    out[out.length - 1] = [...out[out.length - 1], ...trailing];
+  }
+  return out;
 }
 
 function splitStepSegments(blocks: TurnBlock[]): TurnBlock[][] {
@@ -51,7 +108,7 @@ function splitStepSegments(blocks: TurnBlock[]): TurnBlock[][] {
     current.push(block);
   }
   flush();
-  return segments;
+  return coalesceTrailingThinkingSegments(segments);
 }
 
 function segmentTitle(
@@ -60,7 +117,16 @@ function segmentTitle(
   hint: StepGroupHint | undefined,
 ): string {
   const fromChecklist = checklistTitle(hint, stepIndex);
-  if (fromChecklist) return fromChecklist;
+  if (fromChecklist) return shortenStepTitle(fromChecklist);
+
+  // Prefer a short caption over a long final-report body when both exist.
+  const shortProse = segment.find(
+    (b) => b.kind === 'text' && b.content.trim().length <= STEP_CAPTION_MAX_CHARS,
+  );
+  if (shortProse?.kind === 'text') {
+    const titled = titleFromTextBlock(shortProse);
+    if (titled) return titled;
+  }
 
   const prose = segment.find((b) => b.kind === 'text');
   if (prose?.kind === 'text') {
@@ -86,9 +152,15 @@ function presentationItemsFromSegment(
   if (title) {
     let removed = false;
     working = segment.filter((block) => {
-      if (!removed && block.kind === 'text' && block.content.trim() === title) {
-        removed = true;
-        return false;
+      if (removed || block.kind !== 'text') return true;
+      const raw = block.content.trim();
+      // Exact match (short caption used as title) or title derived from this block.
+      if (raw === title || shortenStepTitle(raw) === title) {
+        // Only strip short captions from the body — keep long final reports visible.
+        if (raw.length <= STEP_CAPTION_MAX_CHARS) {
+          removed = true;
+          return false;
+        }
       }
       return true;
     });
@@ -113,9 +185,21 @@ function presentationItemsFromSegment(
   return prepareItems(stripped);
 }
 
+function isThinkingOnlyPresentation(items: TimelinePresentationItem[]): boolean {
+  if (items.length === 0) return false;
+  return items.every(
+    (item) =>
+      item.kind === 'block' &&
+      item.block.kind === 'thinking' &&
+      item.block.streaming !== true &&
+      item.block.status !== 'running',
+  );
+}
+
 /**
  * Group presentation items into step cards (P2.2).
- * Uses long text / plan tools as boundaries; optional checklist hint for titles.
+ * Uses long text as phase boundaries; optional checklist hint for titles.
+ * Trailing thinking-only phases fold into the previous step (no empty 步骤 N/N).
  */
 export function groupPresentationIntoSteps(
   blocks: TurnBlock[],
@@ -134,6 +218,17 @@ export function groupPresentationIntoSteps(
     const title = segmentTitle(segment, stepIndex + 1, hint);
     const items = presentationItemsFromSegment(segment, prepareItems, title);
     if (items.length === 0) continue;
+
+    // Safety net: untitled thinking-only cards merge into the previous step.
+    if (!title.trim() && isThinkingOnlyPresentation(items) && roots.length > 0) {
+      const prev = roots[roots.length - 1];
+      roots[roots.length - 1] = {
+        ...prev,
+        items: [...prev.items, ...items],
+      };
+      continue;
+    }
+
     stepIndex += 1;
     roots.push({
       kind: 'step',

@@ -56,6 +56,66 @@ export function enhanceAssistantParagraphBreaks(content: string): string {
     .trim();
 }
 
+/** Opening cue used to detect rewritten final-report duplicates. */
+function proseHeadCue(text: string): string {
+  const s = text.replace(/\r\n/g, '\n').trim();
+  const cjk = s.match(/^(.+?[。！？])/);
+  if (cjk?.[1] && cjk[1].length >= 4) return cjk[1];
+  const latin = s.match(/^(.+?[.!?])(?:\s|$)/);
+  if (latin?.[1] && latin[1].length >= 8) return latin[1].trim();
+  return s.slice(0, 48).trim();
+}
+
+/**
+ * True when two long prose blobs are the same report with minor edits
+ * (e.g. path typo fixes) — not two distinct sections of one answer.
+ */
+export function isNearDuplicateProse(a: string, b: string): boolean {
+  const x = a.replace(/\r\n/g, '\n').trim();
+  const y = b.replace(/\r\n/g, '\n').trim();
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (Math.min(x.length, y.length) < 200) return false;
+  const ratio = x.length / y.length;
+  if (ratio < 0.45 || ratio > 2.2) return false;
+
+  const hx = proseHeadCue(x);
+  const hy = proseHeadCue(y);
+  if (hx.length >= 12 && (hx === hy || x.startsWith(hy) || y.startsWith(hx))) {
+    return true;
+  }
+
+  const nx = x.replace(/\s+/g, ' ');
+  const ny = y.replace(/\s+/g, ' ');
+  const probe = Math.min(96, Math.floor(Math.min(nx.length, ny.length) * 0.25));
+  if (probe >= 48) {
+    if (nx.includes(ny.slice(0, probe)) || ny.includes(nx.slice(0, probe))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * If a single text block is two near-duplicate final reports joined by blank lines,
+ * keep the longer copy. Safe for normal multi-section answers (halves won't match).
+ */
+export function collapseNearDuplicateReport(content: string): string {
+  const s = content.replace(/\r\n/g, '\n').trim();
+  if (s.length < 400) return content;
+
+  const re = /\n{2,}/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(s)) !== null) {
+    const left = s.slice(0, match.index).trim();
+    const right = s.slice(match.index + match[0].length).trim();
+    if (left.length >= 200 && right.length >= 200 && isNearDuplicateProse(left, right)) {
+      return left.length >= right.length ? left : right;
+    }
+  }
+  return content;
+}
+
 /**
  * Merge a completed agent_message segment into accumulated turn text (thread replay).
  * Mirrors live SSE: one assistant bubble per turn, no duplicate flush on item.completed.
@@ -77,6 +137,10 @@ export function mergeAgentMessageSegment(current: string, incoming: string): str
   }
   if (cur.includes(next) && next.length < cur.length) {
     return current;
+  }
+  // Rewritten final report (same opening, minor path/typo diffs) — keep the longer copy.
+  if (isNearDuplicateProse(cur, next)) {
+    return next.length >= cur.length ? next : current;
   }
   const sep = cur.endsWith('\n') ? '\n' : '\n\n';
   return `${current}${sep}${next}`;

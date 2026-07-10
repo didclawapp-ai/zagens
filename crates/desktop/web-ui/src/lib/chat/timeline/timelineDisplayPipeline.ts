@@ -1,4 +1,8 @@
 import type { TurnBlock } from './turnBlockTypes';
+import {
+  collapseNearDuplicateReport,
+  isNearDuplicateProse,
+} from '../formatAssistantContent';
 import { isCollapsibleToolCategory, toolCategory } from './toolCategories';
 import {
   groupPresentationIntoSteps,
@@ -121,6 +125,88 @@ function collectLeadingAbsorbedThinking(
   return out;
 }
 
+function asCollapsibleToolBlock(
+  item: TimelinePresentationItem,
+): Extract<TurnBlock, { kind: 'tool' }> | null {
+  if (item.kind === 'collapsed_tools' && item.blocks.length > 0) {
+    return item.blocks[0];
+  }
+  if (
+    item.kind === 'block' &&
+    item.block.kind === 'tool' &&
+    canCollapseCategory(toolCategory(item.block.name)) &&
+    collapseBucket(item.block) != null
+  ) {
+    return item.block;
+  }
+  return null;
+}
+
+function itemToolBlocks(
+  item: TimelinePresentationItem,
+): Extract<TurnBlock, { kind: 'tool' }>[] {
+  if (item.kind === 'collapsed_tools') return item.blocks;
+  if (item.kind === 'block' && item.block.kind === 'tool') return [item.block];
+  return [];
+}
+
+function itemAbsorbedThinking(
+  item: TimelinePresentationItem,
+): Extract<TurnBlock, { kind: 'thinking' }>[] {
+  return item.kind === 'collapsed_tools' ? (item.absorbedThinking ?? []) : [];
+}
+
+/**
+ * Merge adjacent collapsed bundles and lone collapsible tool rows (thr_82ac).
+ * Keeps done/error buckets separate; category becomes `mixed` when kinds differ.
+ */
+export function mergeAdjacentActivityItems(
+  items: TimelinePresentationItem[],
+): TimelinePresentationItem[] {
+  const out: TimelinePresentationItem[] = [];
+
+  for (const item of items) {
+    const tool = asCollapsibleToolBlock(item);
+    if (!tool) {
+      out.push(item);
+      continue;
+    }
+
+    const bucket = collapseBucket(tool);
+    const prev = out[out.length - 1];
+    const prevTool = prev ? asCollapsibleToolBlock(prev) : null;
+    const prevBucket = prevTool ? collapseBucket(prevTool) : null;
+
+    if (prev && prevTool && prevBucket != null && prevBucket === bucket) {
+      const blocks = [...itemToolBlocks(prev), ...itemToolBlocks(item)];
+      const absorbed = [...itemAbsorbedThinking(prev), ...itemAbsorbedThinking(item)];
+      out[out.length - 1] = {
+        kind: 'collapsed_tools',
+        id: `collapsed-${blocks[0].id}`,
+        blocks,
+        category: resolveCollapsedCategory(blocks),
+        ...(absorbed.length > 0 ? { absorbedThinking: absorbed } : {}),
+      };
+      continue;
+    }
+
+    // Promote a lone collapsible tool to a one-tool activity row for consistent chrome.
+    if (item.kind === 'block' && item.block.kind === 'tool') {
+      out.push({
+        kind: 'collapsed_tools',
+        id: `collapsed-${item.block.id}`,
+        blocks: [item.block],
+        category: resolveCollapsedCategory([item.block]),
+      });
+      continue;
+    }
+
+    out.push(item);
+  }
+
+  return out;
+}
+
 /**
  * Bundle tool activity for scanability (P2.2 / P4 / P4.6).
  *
@@ -129,6 +215,7 @@ function collectLeadingAbsorbedThinking(
  *   (category `mixed` when kinds differ).
  * - done vs error stay in separate bundles.
  * - Running tools and long final prose stay expanded.
+ * - Adjacent activity rows (incl. single tools) are merged (audit-turn polish).
  */
 export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresentationItem[] {
   const items: TimelinePresentationItem[] = [];
@@ -183,8 +270,11 @@ export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresen
     }
 
     const category = resolveCollapsedCategory(run);
-    // Collapse multi-tool runs, or any run that absorbed reasoning (kills 推理↔执行 flicker).
-    const shouldCollapse = run.length >= MIN_COLLAPSE_COUNT || absorbedThinking.length > 0;
+    // Collapse multi-tool runs, single collapsible tools, or runs that absorbed reasoning.
+    const shouldCollapse =
+      run.length >= MIN_COLLAPSE_COUNT ||
+      run.length === 1 ||
+      absorbedThinking.length > 0;
 
     if (shouldCollapse && run.length >= 1) {
       items.push({
@@ -202,7 +292,7 @@ export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresen
     i = j;
   }
 
-  return items;
+  return mergeAdjacentActivityItems(items);
 }
 
 export type BuildTimelinePresentationOptions = {
@@ -210,13 +300,43 @@ export type BuildTimelinePresentationOptions = {
   stepHint?: StepGroupHint;
 };
 
+/**
+ * Drop rewritten final-report duplicates (in-block halves or adjacent text blocks)
+ * before step grouping / activity collapse.
+ */
+export function dedupeTimelineProseBlocks(blocks: TurnBlock[]): TurnBlock[] {
+  const out: TurnBlock[] = [];
+  for (const block of blocks) {
+    if (block.kind !== 'text') {
+      out.push(block);
+      continue;
+    }
+    const content = collapseNearDuplicateReport(block.content);
+    const normalized =
+      content === block.content ? block : { ...block, content };
+    const prev = out[out.length - 1];
+    if (
+      prev?.kind === 'text' &&
+      isNearDuplicateProse(prev.content, normalized.content)
+    ) {
+      if (normalized.content.length > prev.content.length) {
+        out[out.length - 1] = { ...prev, content: normalized.content };
+      }
+      continue;
+    }
+    out.push(normalized);
+  }
+  return out;
+}
+
 /** Full display pipeline: optional step groups + activity collapse (P2 / P4 / P4.6). */
 export function buildTimelinePresentation(
   blocks: TurnBlock[],
   options: BuildTimelinePresentationOptions = {},
 ): TimelinePresentationRoot[] {
-  if (!options.stepGrouping || blocks.length < 8) {
-    return prepareTimelinePresentation(blocks);
+  const deduped = dedupeTimelineProseBlocks(blocks);
+  if (!options.stepGrouping || deduped.length < 8) {
+    return prepareTimelinePresentation(deduped);
   }
-  return groupPresentationIntoSteps(blocks, prepareTimelinePresentation, options.stepHint);
+  return groupPresentationIntoSteps(deduped, prepareTimelinePresentation, options.stepHint);
 }

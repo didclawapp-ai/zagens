@@ -1,6 +1,10 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { prepareTimelinePresentation } from './timelineDisplayPipeline';
+import {
+  buildTimelinePresentation,
+  dedupeTimelineProseBlocks,
+  prepareTimelinePresentation,
+} from './timelineDisplayPipeline';
 import type { TurnBlock } from './turnBlockTypes';
 
 function tool(id: string, name: string): Extract<TurnBlock, { kind: 'tool' }> {
@@ -39,6 +43,17 @@ test('prepareTimelinePresentation keeps running tools expanded', () => {
     tool('d1', 'read_file'),
     tool('d2', 'read_file'),
     tool('d3', 'read_file'),
+  ];
+  const items = prepareTimelinePresentation(blocks);
+  assert.equal(items[0].kind, 'block');
+  assert.equal(items[1].kind, 'collapsed_tools');
+});
+
+test('prepareTimelinePresentation does not merge running into adjacent done activity', () => {
+  const blocks: TurnBlock[] = [
+    { kind: 'tool', id: 'r1', name: 'scratchpad_set_area', input: '{}', status: 'running' },
+    tool('d1', 'scratchpad_append'),
+    tool('d2', 'scratchpad_status'),
   ];
   const items = prepareTimelinePresentation(blocks);
   assert.equal(items[0].kind, 'block');
@@ -85,8 +100,12 @@ test('prepareTimelinePresentation collapses shell runs and leaves errors expande
     assert.equal(items[0].category, 'shell');
     assert.equal(items[0].blocks.length, 3);
   }
-  assert.equal(items[1].kind, 'block');
-  assert.equal(items[1].kind === 'block' && items[1].block.status, 'error');
+  // Lone error stays in its own activity row (not merged with done shells).
+  assert.equal(items[1].kind, 'collapsed_tools');
+  if (items[1].kind === 'collapsed_tools') {
+    assert.equal(items[1].blocks.length, 1);
+    assert.equal(items[1].blocks[0].status, 'error');
+  }
 });
 
 test('prepareTimelinePresentation collapses consecutive failed shells and plan chips', () => {
@@ -170,7 +189,11 @@ test('prepareTimelinePresentation keeps streaming thinking visible', () => {
   const items = prepareTimelinePresentation(blocks);
   assert.equal(items.length, 2);
   assert.equal(items[0].kind === 'block' && items[0].block.kind, 'thinking');
-  assert.equal(items[1].kind, 'block');
+  assert.equal(items[1].kind, 'collapsed_tools');
+  if (items[1].kind === 'collapsed_tools') {
+    assert.equal(items[1].blocks.length, 1);
+    assert.equal(items[1].blocks[0].name, 'exec_shell');
+  }
 });
 
 test('prepareTimelinePresentation collapses office tool runs', () => {
@@ -254,4 +277,66 @@ test('prepareTimelinePresentation collapses agent_spawn sub-agent tools', () => 
     assert.equal(items[0].blocks.length, 3);
     assert.equal(items[0].category, 'agent');
   }
+});
+
+test('prepareTimelinePresentation collapses lone workflow/office tools (thr_82ac)', () => {
+  const blocks: TurnBlock[] = [
+    tool('a', 'read_file'),
+    tool('b', 'read_file'),
+    tool('solo', 'scratchpad_set_area'),
+    tool('c', 'grep_files'),
+    tool('office', 'write_office'),
+    tool('d', 'write_file'),
+    { kind: 'text', id: 'x', content: '报告完成。', streaming: false },
+  ];
+  const items = prepareTimelinePresentation(blocks);
+  assert.equal(items.length, 2, 'one activity + final prose');
+  assert.equal(items[0].kind, 'collapsed_tools');
+  if (items[0].kind === 'collapsed_tools') {
+    assert.equal(items[0].blocks.length, 6);
+    assert.equal(items[0].category, 'mixed');
+  }
+  assert.equal(items[1].kind === 'block' && items[1].block.kind, 'text');
+});
+
+test('dedupeTimelineProseBlocks collapses joined near-duplicate final reports', () => {
+  const halfA =
+    '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
+    '路径 server/store.go。端口 :300。\n' +
+    '功能矩阵。'.repeat(30);
+  const halfB =
+    '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
+    '路径 server/store/store.go。端口 :3000。\n' +
+    '功能矩阵。'.repeat(32);
+  const blocks: TurnBlock[] = [
+    { kind: 'text', id: 'dup', content: `${halfA}\n\n${halfB}`, streaming: false },
+  ];
+  const out = dedupeTimelineProseBlocks(blocks);
+  assert.equal(out.length, 1);
+  assert.ok(out[0].kind === 'text');
+  assert.equal(out[0].content, halfB);
+});
+
+test('buildTimelinePresentation folds trailing thinking into final-report step', () => {
+  const report =
+    '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
+    '后端 Go + LevelDB。'.repeat(40);
+  const blocks: TurnBlock[] = [
+    { kind: 'text', id: 'cap', content: '开始构建。', streaming: false },
+    tool('w1', 'write_file'),
+    tool('w2', 'write_file'),
+    tool('w3', 'write_file'),
+    tool('s1', 'exec_shell'),
+    tool('s2', 'exec_shell'),
+    tool('s3', 'exec_shell'),
+    { kind: 'text', id: 'report', content: report, streaming: false },
+    { kind: 'thinking', id: 'th', text: '收尾。', streaming: false, status: 'done' },
+  ];
+  const roots = buildTimelinePresentation(blocks, { stepGrouping: true });
+  const steps = roots.filter((r) => r.kind === 'step');
+  assert.equal(steps.length, 2);
+  assert.ok(steps.every((s) => s.kind === 'step' && s.title.trim()));
+  const last = steps[1];
+  assert.ok(last.kind === 'step');
+  assert.ok(last.items.some((i) => i.kind === 'block' && i.block.kind === 'thinking'));
 });

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   appendStreamingTextDelta,
+  collapseNearDuplicateReport,
   enhanceAssistantParagraphBreaks,
+  isNearDuplicateProse,
   mergeAgentMessageSegment,
 } from './formatAssistantContent';
 import { rebuildMessagesFromEventRecords } from './rebuildMessagesFromThread';
@@ -112,4 +114,41 @@ test('formatAssistantContent', () => {
     'assistant segments merge into one bubble with paragraph breaks',
   );
   assert.equal(rebuilt[1].tools?.length, 1, 'tool cards stay in the same assistant bubble');
+});
+
+test('mergeAgentMessageSegment keeps longer near-duplicate final report', () => {
+  const v1 =
+    '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
+    '后端 Go。路径 server/store.go。端口 :300。\n' +
+    '功能矩阵与运行方式。'.repeat(20);
+  const v2 =
+    '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
+    '后端 Go。路径 server/store/store.go。端口 :3000。\n' +
+    '功能矩阵与运行方式。'.repeat(22);
+  assert.ok(isNearDuplicateProse(v1, v2));
+  assert.equal(mergeAgentMessageSegment(v1, v2), v2);
+  assert.equal(mergeAgentMessageSegment(v2, v1), v2);
+});
+
+test('collapseNearDuplicateReport keeps one half of joined duplicates', () => {
+  const halfA =
+    '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
+    '后端 Go。路径 server/store.go。\n' +
+    '覆盖功能矩阵。'.repeat(25);
+  const halfB =
+    '协同白板应用已全部构建完成。以下是完整的设计说明和运行指南。\n\n## 技术选型\n\n' +
+    '后端 Go。路径 server/store/store.go。\n' +
+    '覆盖功能矩阵。'.repeat(28);
+  const joined = `${halfA}\n\n${halfB}`;
+  const collapsed = collapseNearDuplicateReport(joined);
+  assert.equal(collapsed, halfB);
+});
+
+test('collapseNearDuplicateReport leaves distinct sections alone', () => {
+  const a =
+    '第一部分：架构说明。这里描述模块边界与依赖方向。\n' + '架构细节。'.repeat(40);
+  const b =
+    '第二部分：运行指南。这里描述如何启动服务与联调。\n' + '运行细节。'.repeat(40);
+  const joined = `${a}\n\n${b}`;
+  assert.equal(collapseNearDuplicateReport(joined), joined);
 });

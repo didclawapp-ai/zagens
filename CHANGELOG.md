@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Desktop + Runtime (Stop during agent_wait):** Composer no longer re-locks to「生成中」after user Stop while a turn is still `in_progress` on `agent_wait` — 8s reconcile and `finishOnce` respect `userStopRequested` / store idle; `agent_wait` polls honor `cancel_token` and exit with `wait_canceled`.
+- **Desktop streaming timeline — audit-turn polish:** Lone collapsible tools (e.g. `scratchpad_set_area` / `write_office`) join activity rows; adjacent activity bundles merge; step titles prefer heading/first sentence (≤72 chars) instead of dumping long report prose.
+- **Desktop streaming timeline — empty trailing step + near-dup final report:** Trailing completed-thinking after a long final report folds into that step (no empty「步骤 N/N」); near-duplicate rewritten final prose is collapsed in merge + display pipeline (keeps the longer copy).
 - **Gate-as-Code (Phase 4.1):** `docs/harness/gates/` — public format, predicate reference, migration guide from legacy completion gate; bundled presets under `presets/`; `zagens gate validate|list`; `zagens queue add --gate-file|--gate-preset`; `HarnessContract::validate()` + `flat_queue_gate_rows()`.
 - **H4 draft_skill (Phase 4.2):** `draft_skill` tool → `.zagens/skill-drafts/`; `zagens skill drafts|promote` human-in-loop install; `HarnessContract` validation on write/promote; security checklist `docs/harness/h4-draft-skill-security.md`.
 - **T5 composite tools (Phase 4.3):** `explore_codebase` (glob→grep→read) + `edit_and_check` (edit→run_tests); T1 `tool_sequences` mining in `doctor --tools`; composite sub-steps mirrored to `kernel_events` via `composite_steps` metadata.
