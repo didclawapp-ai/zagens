@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.5`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.5**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.6`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.6**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,22 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-07-11
+
+**Release highlights**
+
+- **Harness 2026 H2 (Phase 0–4):** Predicate library, night queue, `HarnessVerifyLoop`, skill stage gates, Gate-as-Code, `draft_skill`, T5 composites (`explore_codebase` / `edit_and_check`), Agent 体检, replay pack, `trace benchmark`.
+- **Desktop streaming timeline:** Interleaved thinking / tool / text blocks with activity bundles, settled auto-collapse, and long-turn scanability (office / workflow / sub-agent collapse).
+- **Desktop night queue UI** + schedule/hooks triggers; **sub-agent step journals**; LHT verify-hygiene and completion-gate live status.
+
 ### Added
 
 - **Sub-agent observability (anti-black-box):** Persist compact step journals under `.zagens/state/subagent-journals/{agent_id}.json` (tool name, path/pattern summary, result bytes, estimated context growth — not full transcripts); expose `tools_executed` on disk snapshots / `agent_list`; AgentPanel shows steps + last progress on failed/interrupted cards and can export the journal.
-
-### Changed
-
-- **LHT completion gate — silent hang UX:** Emit live `manifest_gate_running` / start status while toolchain verify runs (was buffered until the whole round finished, so UI stayed on「生成中」); product toolchain timeout 600s→120s; MacroRemediation reports real `blockers_added`; leave remediation phase once CRAFT gaps are done.
-- **LHT presets — hard verify by mode:** `long-refactor` / `long-fix` write product gates (`auto_verify_replay` / `toolchain_gate` / `stub_gate`) to **enforce** (preserving custom `verify`/`deliverable` rows); `code-default` / `craft-audit` stay **observe**. Composer **strict** sync also persists enforce. Verify-hygiene nudges (insufficient / mismatch / unverified) run before early CRAFT so macro review cannot skip false-green checks. Desktop preset copy updated (zh/en/ja/pt-BR).
-- **Desktop streaming UI — render batching:** Live `thinking_delta` / `message_delta` coalesce on a ~24ms window before React setState; `ThinkingBlock` / `TextBlock` / `ToolBlock` wrapped in `React.memo` to skip re-renders of settled sibling blocks.
-- **Runtime streaming — tool preparing announce:** Emit `ToolCallStarted` at tool-use block start (Null input) so UI shows the tool name while args stream; finalize on block stop. Monitor/TUI upsert by tool id.
-- **Runtime streaming — length continuation locale:** Auto-continue hints after `finish_reason=length` follow `locale_tag` (zh vs en) instead of hard-coded Chinese.
-- **Runtime streaming — thinking backpressure coalesce:** When `ThinkingDelta` send blocks ≥200ms, engine buffers further deltas (flush at 512B / ThinkingComplete) to reduce idle-close risk alongside monitor flush.
-- **Agent prompts — deliverables recap table:** Final-reply file recap prefers a Markdown table (file link / purpose / +− diff) instead of a bare bullet list of paths.
-
-### Added
-
 - **Harness+Loop supplement (HL-1–HL-4 / HL-6):** Wire `HarnessVerifyLoop::run_with_act` into stage gate (`try_pass_stage` / `run_flat_verify`) and night-queue gate; emit `HarnessVerify` from stage/queue/post-edit into `kernel_events`; mark `rollback_triggered` on exhausted retries and align queue snapshot restore; optional `[long_horizon] post_edit_run_tests` runs scoped `tests_pass` after edits (default off).
 - **Desktop streaming timeline — thr_ea9c activity polish:** done/error/running tools share one activity row (failure count in summary); mid-turn captions soft-split phases and label the row; live shell thrash no longer expands every command.
 - **Desktop streaming timeline — settled auto-collapse:** When a turn finishes, tool-only steps/activities fold into a collapsed「工作过程」row; steps with final prose stay open so the transcript shows results first.
@@ -52,16 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Desktop streaming timeline — office tools collapse:** `read_office` / `write_office` / `load_office_payload` join activity bundling as category `office` (compact rows + mixed merges with explore/write).
 - **Desktop streaming timeline — workflow tools collapse:** `load_skill` / `scratchpad_*` / `tool_search_tool_regex` / `tool_search_tool_bm25` join activity bundling as category `workflow` (no longer full ToolCards between explore runs).
 - **Desktop streaming timeline — sub-agent tools collapse:** `agent_spawn` / `agent_wait` / `agent_result` / aliases join activity bundling as category `agent`.
-
-### Fixed
-
-- **OpenAPI — `GET /v1/agent-health`:** Export `ToolTelemetryReport` (and nested telemetry schemas) so `openapi-typescript` / CI `generate:api-types` can resolve the response `$ref`.
-- **Desktop streaming timeline — `file_info` explore collapse:** Classify `file_info` as explore so metadata probes bundle into activity rows instead of one full ToolCard each.
-- **Desktop streaming timeline — tool category coverage:** Map remaining registry tools (git_*, fetch_url, batch_edit, run_tests, checklist_add/list, note/remember, task_*/pr_attempt_*/automation_*, wait alias, …) into explore/write/shell/plan/workflow so they collapse; keep `request_user_input` / `multi_tool_use.parallel` as expanded `other`.
-- **Runtime streaming — empty-body retry:** Outer stream retry now covers clean `upstream_eof` / `chunk_timeout` with no sendable text/tools (including thinking-only mid-reasoning truncation), not only rounds that already recorded `stream_errors` with zero content.
-- **Desktop + Runtime (Stop during agent_wait):** Composer no longer re-locks to「生成中」after user Stop while a turn is still `in_progress` on `agent_wait` — 8s reconcile and `finishOnce` respect `userStopRequested` / store idle; `agent_wait` polls honor `cancel_token` and exit with `wait_canceled`.
-- **Desktop streaming timeline — audit-turn polish:** Lone collapsible tools (e.g. `scratchpad_set_area` / `write_office`) join activity rows; adjacent activity bundles merge; step titles prefer heading/first sentence (≤72 chars) instead of dumping long report prose.
-- **Desktop streaming timeline — empty trailing step + near-dup final report:** Trailing completed-thinking after a long final report folds into that step (no empty「步骤 N/N」); near-duplicate rewritten final prose is collapsed in merge + display pipeline (keeps the longer copy).
 - **Gate-as-Code (Phase 4.1):** `docs/harness/gates/` — public format, predicate reference, migration guide from legacy completion gate; bundled presets under `presets/`; `zagens gate validate|list`; `zagens queue add --gate-file|--gate-preset`; `HarnessContract::validate()` + `flat_queue_gate_rows()`.
 - **H4 draft_skill (Phase 4.2):** `draft_skill` tool → `.zagens/skill-drafts/`; `zagens skill drafts|promote` human-in-loop install; `HarnessContract` validation on write/promote; security checklist `docs/harness/h4-draft-skill-security.md`.
 - **T5 composite tools (Phase 4.3):** `explore_codebase` (glob→grep→read) + `edit_and_check` (edit→run_tests); T1 `tool_sequences` mining in `doctor --tools`; composite sub-steps mirrored to `kernel_events` via `composite_steps` metadata.
@@ -84,9 +69,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`HarnessVerifyLoop` skeleton (Phase 1b.2):** `long_horizon/harness_verify_loop.rs` — act→verify→retry loop over predicate library; `KernelEvent::HarnessVerify` (`harness_verify` kind) for T1 aggregation (Phase 1b.3).
 - **Harness verify-loop turn_loop wiring (Phase 1b.2–1b.3):** completion gate queues `HarnessVerifyRecord` → sidecar `long_horizon.harness_verify` status + `kernel_events` double-write; `zagens doctor --tools` aggregates `harness_verify` pass/self-heal rates.
 - **Linux queue smoke:** `scripts/harness/queue-smoke.sh` — pass / fail+rollback / queue event assertions (POSIX, no bash-only gate oracle).
+- **T1 tool telemetry (`zagens doctor --tools`):** Read-only aggregation of local `kernel_events` (`tool_call_finished`, `loop_guard_triggered`) — tool failure rate, loop-guard retry proxy, top tools by calls and by failure rate (≥3 calls). JSON via `--tools --json`. Phase 0.3 / 2026 H2 harness plan.
+- **Harness baseline collector:** `scripts/harness/collect-baseline-metrics.{sh,ps1}` writes maintainer-private `baseline-2026-H2.json` (golden replay fixture count + optional `doctor --tools` snapshot).
+
+### Changed
+
+- **LHT completion gate — silent hang UX:** Emit live `manifest_gate_running` / start status while toolchain verify runs (was buffered until the whole round finished, so UI stayed on「生成中」); product toolchain timeout 600s→120s; MacroRemediation reports real `blockers_added`; leave remediation phase once CRAFT gaps are done.
+- **LHT presets — hard verify by mode:** `long-refactor` / `long-fix` write product gates (`auto_verify_replay` / `toolchain_gate` / `stub_gate`) to **enforce** (preserving custom `verify`/`deliverable` rows); `code-default` / `craft-audit` stay **observe**. Composer **strict** sync also persists enforce. Verify-hygiene nudges (insufficient / mismatch / unverified) run before early CRAFT so macro review cannot skip false-green checks. Desktop preset copy updated (zh/en/ja/pt-BR).
+- **Desktop streaming UI — render batching:** Live `thinking_delta` / `message_delta` coalesce on a ~24ms window before React setState; `ThinkingBlock` / `TextBlock` / `ToolBlock` wrapped in `React.memo` to skip re-renders of settled sibling blocks.
+- **Runtime streaming — tool preparing announce:** Emit `ToolCallStarted` at tool-use block start (Null input) so UI shows the tool name while args stream; finalize on block stop. Monitor/TUI upsert by tool id.
+- **Runtime streaming — length continuation locale:** Auto-continue hints after `finish_reason=length` follow `locale_tag` (zh vs en) instead of hard-coded Chinese.
+- **Runtime streaming — thinking backpressure coalesce:** When `ThinkingDelta` send blocks ≥200ms, engine buffers further deltas (flush at 512B / ThinkingComplete) to reduce idle-close risk alongside monitor flush.
+- **Agent prompts — deliverables recap table:** Final-reply file recap prefers a Markdown table (file link / purpose / +− diff) instead of a bare bullet list of paths.
+- **Night queue gate:** `night_queue/gate.rs` routes all predicates through `HarnessVerifyLoop::verify_stages` (CLI subprocess fallback for headless `queue run`).
+- **`docs/tech/RUNTIME_ARCHITECTURE.md`:** §0.1 harness engine boundary (capability / discipline / orchestration layers + H0 naming table).
 
 ### Fixed
 
+- **OpenAPI — `GET /v1/agent-health`:** Export `ToolTelemetryReport` (and nested telemetry schemas) so `openapi-typescript` / CI `generate:api-types` can resolve the response `$ref`.
+- **Desktop streaming timeline — `file_info` explore collapse:** Classify `file_info` as explore so metadata probes bundle into activity rows instead of one full ToolCard each.
+- **Desktop streaming timeline — tool category coverage:** Map remaining registry tools (git_*, fetch_url, batch_edit, run_tests, checklist_add/list, note/remember, task_*/pr_attempt_*/automation_*, wait alias, …) into explore/write/shell/plan/workflow so they collapse; keep `request_user_input` / `multi_tool_use.parallel` as expanded `other`.
+- **Runtime streaming — empty-body retry:** Outer stream retry now covers clean `upstream_eof` / `chunk_timeout` with no sendable text/tools (including thinking-only mid-reasoning truncation), not only rounds that already recorded `stream_errors` with zero content.
+- **Desktop + Runtime (Stop during agent_wait):** Composer no longer re-locks to「生成中」after user Stop while a turn is still `in_progress` on `agent_wait` — 8s reconcile and `finishOnce` respect `userStopRequested` / store idle; `agent_wait` polls honor `cancel_token` and exit with `wait_canceled`.
+- **Desktop streaming timeline — audit-turn polish:** Lone collapsible tools (e.g. `scratchpad_set_area` / `write_office`) join activity rows; adjacent activity bundles merge; step titles prefer heading/first sentence (≤72 chars) instead of dumping long report prose.
+- **Desktop streaming timeline — empty trailing step + near-dup final report:** Trailing completed-thinking after a long final report folds into that step (no empty「步骤 N/N」); near-duplicate rewritten final prose is collapsed in merge + display pipeline (keeps the longer copy).
 - **Desktop streaming timeline — duplicate prose:** Replay no longer double-applies `agent_message` items (`rebuildMessagesFromThread`); `message_segment` skips when text already present; Step captions are excluded from in-card prose (`stepGrouper`).
 - **Runtime (LHT — step-limit continuation, trivial graph regression):** `CodeTaskGraph::continuation_open_items` no longer bails on `is_trivial()` graphs before evaluating incomplete work or plan-lag rules — single-item checklist/plan tasks and checklist-100%/plan-InProgress cases regain bounded step-budget grants (up to 4× baseline) instead of hard `Reached maximum steps` at 100 tool steps.
 - **LHT macro CRAFT hang:** `spawn_macro_craft_review` now wires `parent_completion_tx` so the parent turn loop receives the Review sub-agent completion and can inject remediation instead of waiting forever in "生成中".
@@ -94,13 +100,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Night queue:** Gate-failure events appended after snapshot restore; briefing block replaces prior content instead of duplicating; enqueue guarded by file lock against concurrent `queue add` races.
 - **Desktop night queue panel white screen:** tolerate API tasks with omitted empty `gate` field (was crashing on `task.gate.length` after enqueue/reload).
 - **Night queue ↔ schedule ↔ hooks:** scheduled automations support `night_queue_enqueue` and `night_queue_run` trigger kinds; lifecycle hooks `night_queue_enqueue`, `night_queue_run_start`, `night_queue_run_end`.
-- **T1 tool telemetry (`zagens doctor --tools`):** Read-only aggregation of local `kernel_events` (`tool_call_finished`, `loop_guard_triggered`) — tool failure rate, loop-guard retry proxy, top tools by calls and by failure rate (≥3 calls). JSON via `--tools --json`. Phase 0.3 / 2026 H2 harness plan.
-- **Harness baseline collector:** `scripts/harness/collect-baseline-metrics.{sh,ps1}` writes maintainer-private `baseline-2026-H2.json` (golden replay fixture count + optional `doctor --tools` snapshot).
-
-### Changed
-
-- **Night queue gate:** `night_queue/gate.rs` routes all predicates through `HarnessVerifyLoop::verify_stages` (CLI subprocess fallback for headless `queue run`).
-- **`docs/tech/RUNTIME_ARCHITECTURE.md`:** §0.1 harness engine boundary (capability / discipline / orchestration layers + H0 naming table).
 
 ## [0.8.5] - 2026-06-28
 

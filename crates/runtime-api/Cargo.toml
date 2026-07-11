@@ -16,10 +16,10 @@ path = "src/lib.rs"
 
 [dependencies]
 chrono.workspace = true
-zagens-core = { path = "../core", version = "0.8.5" }
-zagens-protocol = { path = "../protocol", version = "0.8.5" }
-zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.8.5" }
-zagens-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.8.5" }
+zagens-core = { path = "../core", version = "0.8.6" }
+zagens-protocol = { path = "../protocol", version = "0.8.6" }
+zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.8.6" }
+zagens-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.8.6" }
 axum.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }

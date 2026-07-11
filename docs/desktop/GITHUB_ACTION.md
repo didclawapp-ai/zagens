@@ -35,10 +35,10 @@ jobs:
 Pin a release tag so the action can build the CLI:
 
 ```yaml
-- uses: didclawapp-ai/zagens/.github/actions/coverage-gate@v0.8.5
+- uses: didclawapp-ai/zagens/.github/actions/coverage-gate@v0.8.6
   with:
     workspace: .
-    zagens-ref: v0.8.5
+    zagens-ref: v0.8.6
     run-tests: 'true'   # optional, slower
 ```
 
