@@ -224,12 +224,12 @@ fn extract_read_targets(grep_content: &str, glob_paths: &[String], limit: u64) -
         if let Some(matches) = value.get("matches").and_then(|v| v.as_array()) {
             let mut out = Vec::new();
             for m in matches {
-                if let Some(path) = m.get("path").and_then(|p| p.as_str()) {
-                    if !out.iter().any(|existing: &String| existing == path) {
-                        out.push(path.to_string());
-                        if out.len() >= limit as usize {
-                            break;
-                        }
+                if let Some(path) = m.get("path").and_then(|p| p.as_str())
+                    && !out.iter().any(|existing: &String| existing == path)
+                {
+                    out.push(path.to_string());
+                    if out.len() >= limit as usize {
+                        break;
                     }
                 }
             }

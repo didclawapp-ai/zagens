@@ -37,10 +37,10 @@ impl ReportFormats {
             return Self::default_bundle();
         }
         Self {
-            markdown: parts.iter().any(|p| *p == "md" || *p == "markdown"),
-            docx: parts.iter().any(|p| *p == "docx"),
-            xlsx: parts.iter().any(|p| *p == "xlsx"),
-            pptx: parts.iter().any(|p| *p == "pptx"),
+            markdown: parts.contains(&"md") || parts.contains(&"markdown"),
+            docx: parts.contains(&"docx"),
+            xlsx: parts.contains(&"xlsx"),
+            pptx: parts.contains(&"pptx"),
         }
     }
 

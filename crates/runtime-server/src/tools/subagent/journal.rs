@@ -129,12 +129,12 @@ pub(crate) fn summarize_tool_input(input: &Value) -> Option<String> {
         "cmd",
         "url",
     ] {
-        if let Some(v) = obj.get(key) {
-            if let Some(s) = v.as_str() {
-                let t = s.trim();
-                if !t.is_empty() {
-                    return Some(format!("{key}={}", truncate_chars(t, DETAIL_PREVIEW_CHARS)));
-                }
+        if let Some(v) = obj.get(key)
+            && let Some(s) = v.as_str()
+        {
+            let t = s.trim();
+            if !t.is_empty() {
+                return Some(format!("{key}={}", truncate_chars(t, DETAIL_PREVIEW_CHARS)));
             }
         }
     }

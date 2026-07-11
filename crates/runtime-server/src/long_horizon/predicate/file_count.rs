@@ -36,7 +36,7 @@ pub fn evaluate_sync(workspace: &Path, args: &Value) -> Result<PredicateResult, 
     })?;
 
     let count = count_glob_matches(workspace, &glob_set);
-    let pass = count >= min && max.map_or(true, |m| count <= m);
+    let pass = count >= min && max.is_none_or(|m| count <= m);
     let duration_ms = u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX);
 
     if pass {

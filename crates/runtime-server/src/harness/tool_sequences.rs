@@ -42,7 +42,7 @@ pub fn mine_tool_sequences(envelopes: &[KernelEventEnvelope]) -> ToolSequenceRep
             turn_id, tool_name, ..
         } = &envelope.event
         {
-            let name = normalize_tool_name(&tool_name);
+            let name = normalize_tool_name(tool_name);
             turn_tools.entry(turn_id.clone()).or_default().push(name);
         }
     }

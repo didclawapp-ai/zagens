@@ -311,12 +311,12 @@ fn print_human(report: &TraceBenchmarkReport) {
             println!("    - {}: {b} → {c}{d}", row.metric);
         }
     }
-    if let Some(seq) = &report.tools_telemetry.tool_sequences {
-        if !seq.t5_candidates.is_empty() {
-            println!("  T5 eligible patterns:");
-            for stat in &seq.t5_candidates {
-                println!("    - {} ({:.2}%)", stat.pattern, stat.turn_share_pct);
-            }
+    if let Some(seq) = &report.tools_telemetry.tool_sequences
+        && !seq.t5_candidates.is_empty()
+    {
+        println!("  T5 eligible patterns:");
+        for stat in &seq.t5_candidates {
+            println!("    - {} ({:.2}%)", stat.pattern, stat.turn_share_pct);
         }
     }
     println!(

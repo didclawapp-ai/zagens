@@ -173,7 +173,7 @@ pub fn promote_draft(
         );
     }
 
-    if let Some(raw) = fs::read_to_string(draft_dir.join("harness.toml")).ok() {
+    if let Ok(raw) = fs::read_to_string(draft_dir.join("harness.toml")) {
         let contract = HarnessContract::parse_toml(&raw)?;
         let report = contract.validate();
         if !report.ok {
