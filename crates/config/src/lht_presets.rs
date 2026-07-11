@@ -1,6 +1,6 @@
 //! LHT harness presets (§5.2 LONG_HORIZON_CODE_TASKS) — config.toml overlays.
 
-use crate::lht_config::{LongHorizonConfigToml, MacroLoopConfigToml};
+use crate::lht_config::{CompletionGateConfigToml, LongHorizonConfigToml, MacroLoopConfigToml};
 
 /// Known harness preset ids (Desktop LHT settings panel).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,23 @@ impl LhtPresetId {
     }
 }
 
-/// Apply a harness preset onto `[long_horizon]`, preserving operator completion_gate rows.
+/// Overlay the three product gates while preserving operator `verify` /
+/// `deliverable` / `min_lines` rows (users should not hand-edit gate modes).
+fn with_product_gate_modes(
+    base: Option<CompletionGateConfigToml>,
+    auto_verify_replay: &str,
+    toolchain_gate: &str,
+    stub_gate: &str,
+) -> Option<CompletionGateConfigToml> {
+    let mut gate = base.unwrap_or_default();
+    gate.auto_verify_replay = Some(auto_verify_replay.into());
+    gate.toolchain_gate = Some(toolchain_gate.into());
+    gate.stub_gate = Some(stub_gate.into());
+    Some(gate)
+}
+
+/// Apply a harness preset onto `[long_horizon]`, preserving operator completion_gate rows
+/// while setting product gate modes for the preset (observe vs hard enforce).
 pub fn apply_lht_preset(base: &mut LongHorizonConfigToml, preset: LhtPresetId) {
     let gate = base.completion_gate.clone();
     match preset {
@@ -48,7 +64,8 @@ pub fn apply_lht_preset(base: &mut LongHorizonConfigToml, preset: LhtPresetId) {
                 progress_via_git: Some(true),
                 auto_continue: Some(false),
                 max_auto_continue_rounds: Some(16),
-                completion_gate: gate,
+                // Soft: observe toolchain / stub / verify-replay (no hard stop).
+                completion_gate: with_product_gate_modes(gate, "observe", "observe", "observe"),
                 macro_loop: Some(MacroLoopConfigToml {
                     enabled: Some(false),
                     ..MacroLoopConfigToml::default()
@@ -69,7 +86,9 @@ pub fn apply_lht_preset(base: &mut LongHorizonConfigToml, preset: LhtPresetId) {
                 // silently on the remediation leg.
                 auto_continue: Some(true),
                 max_auto_continue_rounds: Some(16),
-                completion_gate: gate,
+                // Hard acceptance without per-task verify TOML: toolchain +
+                // stub + model `[verify:]` replay all enforce.
+                completion_gate: with_product_gate_modes(gate, "enforce", "enforce", "enforce"),
                 macro_loop: Some(MacroLoopConfigToml {
                     enabled: Some(true),
                     max_macro_cycles: Some(3),
@@ -90,7 +109,8 @@ pub fn apply_lht_preset(base: &mut LongHorizonConfigToml, preset: LhtPresetId) {
                 progress_via_git: Some(true),
                 auto_continue: Some(false),
                 max_auto_continue_rounds: Some(16),
-                completion_gate: gate,
+                // Verification-focused without macro CRAFT: hard product gates.
+                completion_gate: with_product_gate_modes(gate, "enforce", "enforce", "enforce"),
                 macro_loop: Some(MacroLoopConfigToml {
                     enabled: Some(false),
                     ..MacroLoopConfigToml::default()
@@ -107,7 +127,8 @@ pub fn apply_lht_preset(base: &mut LongHorizonConfigToml, preset: LhtPresetId) {
                 progress_via_git: Some(true),
                 auto_continue: Some(false),
                 max_auto_continue_rounds: Some(16),
-                completion_gate: gate,
+                // LHT off — leave gate modes soft so re-enabling is not surprising.
+                completion_gate: with_product_gate_modes(gate, "observe", "observe", "observe"),
                 macro_loop: Some(MacroLoopConfigToml {
                     enabled: Some(false),
                     ..MacroLoopConfigToml::default()
@@ -120,6 +141,7 @@ pub fn apply_lht_preset(base: &mut LongHorizonConfigToml, preset: LhtPresetId) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lht_config::CompletionGateVerifyToml;
 
     #[test]
     fn long_refactor_enables_macro_loop() {
@@ -131,5 +153,46 @@ mod tests {
         let ml = lh.macro_loop.unwrap();
         assert_eq!(ml.enabled, Some(true));
         assert_eq!(ml.auto_enter_craft.as_deref(), Some("on_graph_complete"));
+    }
+
+    #[test]
+    fn long_refactor_and_long_fix_enforce_product_gates() {
+        let mut lh = LongHorizonConfigToml::default();
+        apply_lht_preset(&mut lh, LhtPresetId::LongRefactor);
+        let gate = lh.completion_gate.as_ref().expect("gate");
+        assert_eq!(gate.auto_verify_replay.as_deref(), Some("enforce"));
+        assert_eq!(gate.toolchain_gate.as_deref(), Some("enforce"));
+        assert_eq!(gate.stub_gate.as_deref(), Some("enforce"));
+
+        apply_lht_preset(&mut lh, LhtPresetId::LongFix);
+        let gate = lh.completion_gate.as_ref().expect("gate");
+        assert_eq!(gate.auto_verify_replay.as_deref(), Some("enforce"));
+        assert_eq!(gate.toolchain_gate.as_deref(), Some("enforce"));
+        assert_eq!(gate.stub_gate.as_deref(), Some("enforce"));
+        assert_eq!(lh.mode.as_deref(), Some("auto"));
+        assert_eq!(lh.macro_loop.as_ref().and_then(|m| m.enabled), Some(false));
+    }
+
+    #[test]
+    fn code_default_observes_and_preserves_verify_rows() {
+        let mut lh = LongHorizonConfigToml {
+            completion_gate: Some(CompletionGateConfigToml {
+                verify: vec![CompletionGateVerifyToml {
+                    id: "custom".into(),
+                    cmd: Some("npm test".into()),
+                    ..Default::default()
+                }],
+                auto_verify_replay: Some("off".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        apply_lht_preset(&mut lh, LhtPresetId::CodeDefault);
+        let gate = lh.completion_gate.as_ref().expect("gate");
+        assert_eq!(gate.verify.len(), 1);
+        assert_eq!(gate.verify[0].id, "custom");
+        assert_eq!(gate.auto_verify_replay.as_deref(), Some("observe"));
+        assert_eq!(gate.toolchain_gate.as_deref(), Some("observe"));
+        assert_eq!(gate.stub_gate.as_deref(), Some("observe"));
     }
 }

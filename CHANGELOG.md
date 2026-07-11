@@ -20,8 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Sub-agent observability (anti-black-box):** Persist compact step journals under `.zagens/state/subagent-journals/{agent_id}.json` (tool name, path/pattern summary, result bytes, estimated context growth — not full transcripts); expose `tools_executed` on disk snapshots / `agent_list`; AgentPanel shows steps + last progress on failed/interrupted cards and can export the journal.
+
 ### Changed
 
+- **LHT completion gate — silent hang UX:** Emit live `manifest_gate_running` / start status while toolchain verify runs (was buffered until the whole round finished, so UI stayed on「生成中」); product toolchain timeout 600s→120s; MacroRemediation reports real `blockers_added`; leave remediation phase once CRAFT gaps are done.
+- **LHT presets — hard verify by mode:** `long-refactor` / `long-fix` write product gates (`auto_verify_replay` / `toolchain_gate` / `stub_gate`) to **enforce** (preserving custom `verify`/`deliverable` rows); `code-default` / `craft-audit` stay **observe**. Composer **strict** sync also persists enforce. Verify-hygiene nudges (insufficient / mismatch / unverified) run before early CRAFT so macro review cannot skip false-green checks. Desktop preset copy updated (zh/en/ja/pt-BR).
 - **Desktop streaming UI — render batching:** Live `thinking_delta` / `message_delta` coalesce on a ~24ms window before React setState; `ThinkingBlock` / `TextBlock` / `ToolBlock` wrapped in `React.memo` to skip re-renders of settled sibling blocks.
 - **Runtime streaming — tool preparing announce:** Emit `ToolCallStarted` at tool-use block start (Null input) so UI shows the tool name while args stream; finalize on block stop. Monitor/TUI upsert by tool id.
 - **Runtime streaming — length continuation locale:** Auto-continue hints after `finish_reason=length` follow `locale_tag` (zh vs en) instead of hard-coded Chinese.
@@ -30,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Harness+Loop supplement (HL-1–HL-4 / HL-6):** Wire `HarnessVerifyLoop::run_with_act` into stage gate (`try_pass_stage` / `run_flat_verify`) and night-queue gate; emit `HarnessVerify` from stage/queue/post-edit into `kernel_events`; mark `rollback_triggered` on exhausted retries and align queue snapshot restore; optional `[long_horizon] post_edit_run_tests` runs scoped `tests_pass` after edits (default off).
 - **Desktop streaming timeline — thr_ea9c activity polish:** done/error/running tools share one activity row (failure count in summary); mid-turn captions soft-split phases and label the row; live shell thrash no longer expands every command.
 - **Desktop streaming timeline — settled auto-collapse:** When a turn finishes, tool-only steps/activities fold into a collapsed「工作过程」row; steps with final prose stay open so the transcript shows results first.
 - **Desktop streaming timeline — checklist step titles:** `deriveStepGroupHintFromBlocks` from `checklist_*` tool inputs; prose/caption still win over todo text for report steps.
@@ -48,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop streaming timeline — `file_info` explore collapse:** Classify `file_info` as explore so metadata probes bundle into activity rows instead of one full ToolCard each.
+- **Desktop streaming timeline — tool category coverage:** Map remaining registry tools (git_*, fetch_url, batch_edit, run_tests, checklist_add/list, note/remember, task_*/pr_attempt_*/automation_*, wait alias, …) into explore/write/shell/plan/workflow so they collapse; keep `request_user_input` / `multi_tool_use.parallel` as expanded `other`.
 - **Runtime streaming — empty-body retry:** Outer stream retry now covers clean `upstream_eof` / `chunk_timeout` with no sendable text/tools (including thinking-only mid-reasoning truncation), not only rounds that already recorded `stream_errors` with zero content.
 - **Desktop + Runtime (Stop during agent_wait):** Composer no longer re-locks to「生成中」after user Stop while a turn is still `in_progress` on `agent_wait` — 8s reconcile and `finishOnce` respect `userStopRequested` / store idle; `agent_wait` polls honor `cancel_token` and exit with `wait_canceled`.
 - **Desktop streaming timeline — audit-turn polish:** Lone collapsible tools (e.g. `scratchpad_set_area` / `write_office`) join activity rows; adjacent activity bundles merge; step titles prefer heading/first sentence (≤72 chars) instead of dumping long report prose.

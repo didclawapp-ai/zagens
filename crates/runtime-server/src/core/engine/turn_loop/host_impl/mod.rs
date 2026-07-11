@@ -396,6 +396,19 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
                         None => suffix,
                     });
             }
+
+            // HL-4: optional auto scoped tests via verify-loop (default off).
+            if self.config.long_horizon.post_edit_run_tests
+                && let Some(auto_suffix) =
+                    run_post_edit_tests_verify(self, tool_name, tool_input).await
+            {
+                let state = &mut self.runtime_ext_mut().long_horizon_state;
+                state.pending_tool_result_suffix =
+                    Some(match state.pending_tool_result_suffix.take() {
+                        Some(existing) => format!("{existing}{auto_suffix}"),
+                        None => auto_suffix,
+                    });
+            }
         }
 
         if !self.config.long_horizon.enabled {
@@ -1191,6 +1204,81 @@ pub(crate) fn turn_loop_to_app_mode(mode: TurnLoopMode) -> AppMode {
         TurnLoopMode::Yolo => AppMode::Yolo,
         TurnLoopMode::Plan => AppMode::Plan,
     }
+}
+
+/// HL-4: run scoped `tests_pass` via `HarnessVerifyLoop::run_with_act` after an edit.
+async fn run_post_edit_tests_verify(
+    engine: &mut Engine,
+    tool_name: &str,
+    tool_input: &serde_json::Value,
+) -> Option<String> {
+    use crate::long_horizon::harness_verify_loop::{
+        HarnessVerifyLoop, HarnessVerifyLoopConfig, HarnessVerifyOutcome, VerifyStageSpec,
+        outcome_records, record_to_kernel_event,
+    };
+    use crate::long_horizon::predicate::{CompletionGateExec, names};
+    use zagens_core::engine::edited_paths_for_tool;
+
+    let workspace = engine.session.workspace.clone();
+    let paths = edited_paths_for_tool(tool_name, tool_input);
+    let suggestion = crate::harness::affected_tests::suggest_for_edited_paths(&workspace, &paths)?;
+
+    let stages = [VerifyStageSpec {
+        stage: "post_edit".into(),
+        predicate: names::TESTS_PASS.into(),
+        args: serde_json::json!({
+            "cmd": format!("cargo test {}", suggestion.run_tests_args),
+        }),
+    }];
+
+    let shell_manager = engine.runtime_ext().shell_manager.clone();
+    let cancel = engine.cancel_token.clone();
+    let exec = CompletionGateExec {
+        shell_manager: &shell_manager,
+        cancel_token: Some(&cancel),
+        progress_tx: None,
+    };
+    let loop_ = HarnessVerifyLoop::new(&workspace)
+        .with_exec(&exec)
+        .with_config(HarnessVerifyLoopConfig {
+            max_retries: 1,
+            timeout_ms: 300_000,
+        });
+
+    let outcome = loop_.run_with_act(&stages, |_| async {}).await;
+    let records = outcome_records(&outcome).to_vec();
+    let turn_id = engine
+        .runtime_ext()
+        .kernel_active_turn_id
+        .clone()
+        .unwrap_or_else(|| "unknown".into());
+    for record in &records {
+        emit_kernel_event(engine, record_to_kernel_event(turn_id.clone(), record));
+    }
+    engine
+        .runtime_ext_mut()
+        .long_horizon_state
+        .pending_harness_verify
+        .extend(records.clone());
+    crate::harness::telemetry::append_harness_verify_records(&turn_id, &records);
+
+    let pass = matches!(outcome, HarnessVerifyOutcome::Passed { .. });
+    let retry = records.last().map(|r| r.retry_no).unwrap_or(0);
+    let detail = records
+        .iter()
+        .find(|r| !r.pass)
+        .and_then(|r| r.suggestion.clone())
+        .unwrap_or_default();
+    Some(format!(
+        "\n\n[HL-4 post_edit_run_tests] `cargo test {}` → {} (retry_no={retry}){extra}",
+        suggestion.run_tests_args,
+        if pass { "pass" } else { "fail" },
+        extra = if detail.is_empty() {
+            String::new()
+        } else {
+            format!("\n{detail}")
+        }
+    ))
 }
 
 #[cfg(test)]

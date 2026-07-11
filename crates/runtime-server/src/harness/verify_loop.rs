@@ -2,5 +2,5 @@
 
 pub use crate::long_horizon::harness_verify_loop::{
     HarnessVerifyLoop, HarnessVerifyLoopConfig, HarnessVerifyOutcome, HarnessVerifyRecord,
-    VerifyStageSpec,
+    VerifyStageSpec, mark_records_rollback, outcome_records,
 };

@@ -25,6 +25,7 @@ use zagens_core::subagent::{
 use super::constants::*;
 use super::craft;
 use super::factory::SharedSubAgentManager;
+use super::journal::{self, JournalKind, summarize_tool_input};
 use super::parse::build_assignment_prompt;
 use super::prompts::{
     build_subagent_system_prompt, findings_to_verdict, parse_structured_findings_result,
@@ -120,6 +121,47 @@ pub(crate) async fn run_subagent_task(task: SubAgentTask) {
             Err(anyhow!("panic: {panic_msg}"))
         }
     };
+
+    match &result {
+        Ok(res) => match &res.status {
+            SubAgentStatus::Interrupted(msg) | SubAgentStatus::Failed(msg) => {
+                journal::journal_terminal(
+                    &task.runtime.context.workspace,
+                    &agent_id,
+                    res.steps_taken,
+                    JournalKind::Failed,
+                    Some(msg.clone()),
+                );
+            }
+            SubAgentStatus::Cancelled => {
+                journal::journal_terminal(
+                    &task.runtime.context.workspace,
+                    &agent_id,
+                    res.steps_taken,
+                    JournalKind::Cancelled,
+                    None,
+                );
+            }
+            SubAgentStatus::Completed | SubAgentStatus::Running => {
+                journal::journal_terminal(
+                    &task.runtime.context.workspace,
+                    &agent_id,
+                    res.steps_taken,
+                    JournalKind::Complete,
+                    res.completion_reason.as_ref().map(|r| format!("{r:?}")),
+                );
+            }
+        },
+        Err(err) => {
+            journal::journal_terminal(
+                &task.runtime.context.workspace,
+                &agent_id,
+                0,
+                JournalKind::Failed,
+                Some(err.to_string()),
+            );
+        }
+    }
 
     let mut manager = task.manager_handle.write().await;
     match &result {
@@ -573,14 +615,25 @@ async fn run_subagent(
     if let Some(mb) = runtime.mailbox.as_ref() {
         let _ = mb.send(MailboxMessage::started(&agent_id, agent_type.as_str()));
     }
+    let started_status = format!("started ({})", agent_type.as_str());
     record_and_emit_progress(
         manager_handle,
         runtime,
         &agent_id,
         0,
-        format!("started ({})", agent_type.as_str()),
+        started_status.clone(),
     )
     .await;
+    journal::journal_started(
+        &runtime.context.workspace,
+        &agent_id,
+        agent_type.as_str(),
+        &prompt,
+        runtime.context.runtime.wire.active_thread_id.as_deref(),
+    );
+
+    let mut tools_executed: u32 = 0;
+    let mut last_progress_status = started_status;
 
     let mut messages = vec![Message {
         role: "user".to_string(),
@@ -605,12 +658,13 @@ async fn run_subagent(
         // us while we were between steps. Children derive their token from
         // the parent's via `child_token()` so this propagates the whole tree.
         if runtime.cancel_token.is_cancelled() {
+            last_progress_status = format!("step {steps}/{max_steps}: cancelled");
             record_and_emit_progress(
                 manager_handle,
                 runtime,
                 &agent_id,
                 steps,
-                format!("step {steps}/{max_steps}: cancelled"),
+                last_progress_status.clone(),
             )
             .await;
             if let Some(mb) = runtime.mailbox.as_ref() {
@@ -627,6 +681,7 @@ async fn run_subagent(
                 status: SubAgentStatus::Cancelled,
                 result: None,
                 steps_taken: steps,
+                tools_executed,
                 duration_ms: u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
                 from_prior_session: false,
                 structured_verdict: None,
@@ -638,21 +693,17 @@ async fn run_subagent(
                 structured_findings_parse_failure: None,
                 scratchpad_run_id: None,
                 parent_thread_id: runtime.context.runtime.wire.active_thread_id.clone(),
-                progress_status: None,
+                progress_status: Some(last_progress_status.clone()),
                 stuck_suspected: false,
                 idle_ms: 0,
             });
         }
 
         steps += 1;
-        record_and_emit_progress(
-            manager_handle,
-            runtime,
-            &agent_id,
-            steps,
-            format!("step {steps}/{max_steps}: requesting model response"),
-        )
-        .await;
+        let model_status = format!("step {steps}/{max_steps}: requesting model response");
+        last_progress_status = model_status.clone();
+        record_and_emit_progress(manager_handle, runtime, &agent_id, steps, model_status).await;
+        journal::journal_model_request(&runtime.context.workspace, &agent_id, steps);
 
         while let Ok(input) = input_rx.try_recv() {
             if input.interrupt {
@@ -694,12 +745,14 @@ async fn run_subagent(
         let response = tokio::select! {
             biased;
             () = runtime.cancel_token.cancelled() => {
+                last_progress_status =
+                    format!("step {steps}/{max_steps}: cancelled mid-request");
                 record_and_emit_progress(
                     manager_handle,
                     runtime,
                     &agent_id,
                     steps,
-                    format!("step {steps}/{max_steps}: cancelled mid-request"),
+                    last_progress_status.clone(),
                 )
                 .await;
                 if let Some(mb) = runtime.mailbox.as_ref() {
@@ -716,6 +769,7 @@ async fn run_subagent(
                     status: SubAgentStatus::Cancelled,
                     result: None,
                     steps_taken: steps,
+                    tools_executed,
                     duration_ms: u64::try_from(started_at.elapsed().as_millis())
                         .unwrap_or(u64::MAX),
                     from_prior_session: false,
@@ -728,7 +782,7 @@ async fn run_subagent(
                     structured_findings_parse_failure: None,
                     scratchpad_run_id: None,
                     parent_thread_id: runtime.context.runtime.wire.active_thread_id.clone(),
-                    progress_status: None,
+                    progress_status: Some(last_progress_status.clone()),
                     stuck_suspected: false,
                     idle_ms: 0,
                 });
@@ -776,12 +830,14 @@ async fn run_subagent(
                 pending_inputs.push_back(input);
             }
             if pending_inputs.is_empty() {
+                let complete_status = format!("step {steps}/{max_steps}: complete");
+                last_progress_status = complete_status.clone();
                 record_and_emit_progress(
                     manager_handle,
                     runtime,
                     &agent_id,
                     steps,
-                    format!("step {steps}/{max_steps}: complete"),
+                    complete_status,
                 )
                 .await;
                 natural_break = true;
@@ -790,29 +846,33 @@ async fn run_subagent(
             continue;
         }
 
-        record_and_emit_progress(
-            manager_handle,
-            runtime,
-            &agent_id,
-            steps,
-            format!(
-                "step {steps}/{max_steps}: executing {} tool call(s)",
-                tool_uses.len()
-            ),
-        )
-        .await;
+        let exec_status = format!(
+            "step {steps}/{max_steps}: executing {} tool call(s)",
+            tool_uses.len()
+        );
+        last_progress_status = exec_status.clone();
+        record_and_emit_progress(manager_handle, runtime, &agent_id, steps, exec_status).await;
         let mut tool_results: Vec<ContentBlock> = Vec::new();
         let step_tool_budget = step_tool_budget(runtime.step_timeout);
         let mut step_tool_spent = Duration::ZERO;
         for (tool_id, tool_name, tool_input) in tool_uses {
+            let detail = summarize_tool_input(&tool_input);
+            last_progress_status = format!("step {steps}/{max_steps}: running tool '{tool_name}'");
             record_and_emit_progress(
                 manager_handle,
                 runtime,
                 &agent_id,
                 steps,
-                format!("step {steps}/{max_steps}: running tool '{tool_name}'"),
+                last_progress_status.clone(),
             )
             .await;
+            journal::journal_tool_start(
+                &runtime.context.workspace,
+                &agent_id,
+                steps,
+                &tool_name,
+                detail,
+            );
             if let Some(mb) = runtime.mailbox.as_ref() {
                 let _ = mb.send(MailboxMessage::ToolCallStarted {
                     agent_id: agent_id.clone(),
@@ -846,14 +906,31 @@ async fn run_subagent(
                 }
             };
             let tool_ok = !result.starts_with("Error:");
-            record_and_emit_progress(
-                manager_handle,
-                runtime,
+            let result_bytes = u64::try_from(result.len()).unwrap_or(u64::MAX);
+            tools_executed = tools_executed.saturating_add(1);
+            {
+                let mut mgr = manager_handle.write().await;
+                mgr.record_tool_finished(&agent_id, steps, &tool_name, tool_ok);
+            }
+            // Keep progress line in sync with manager (includes ok/error).
+            last_progress_status = format!(
+                "step {steps}/{max_steps}: finished tool '{tool_name}' ({})",
+                if tool_ok { "ok" } else { "error" }
+            );
+            emit_agent_progress(
+                runtime.event_tx.as_ref(),
+                runtime.mailbox.as_ref(),
+                &agent_id,
+                last_progress_status.clone(),
+            );
+            journal::journal_tool_end(
+                &runtime.context.workspace,
                 &agent_id,
                 steps,
-                format!("step {steps}/{max_steps}: finished tool '{tool_name}'"),
-            )
-            .await;
+                &tool_name,
+                result_bytes,
+                tool_ok,
+            );
             if let Some(mb) = runtime.mailbox.as_ref() {
                 let _ = mb.send(MailboxMessage::ToolCallCompleted {
                     agent_id: agent_id.clone(),
@@ -902,6 +979,7 @@ async fn run_subagent(
         status: SubAgentStatus::Completed,
         result: final_result,
         steps_taken: steps,
+        tools_executed,
         duration_ms: u64::try_from(started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
         from_prior_session: false,
         structured_verdict,
@@ -912,7 +990,7 @@ async fn run_subagent(
         structured_findings_parse_failure,
         scratchpad_run_id: None,
         parent_thread_id: runtime.context.runtime.wire.active_thread_id.clone(),
-        progress_status: None,
+        progress_status: Some(last_progress_status),
         stuck_suspected: false,
         idle_ms: 0,
     })

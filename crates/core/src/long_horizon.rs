@@ -261,6 +261,9 @@ pub struct LongHorizonConfig {
     pub adversarial_audit: AdversarialAuditConfig,
     /// Phase 2a: optional staged skill / gate contract (`harness.toml` or config path).
     pub stage_gate: StageGateConfig,
+    /// HL-4: after successful `edit_file` / `write_file` / `apply_patch`, run scoped
+    /// `tests_pass` via [`HarnessVerifyLoop::run_with_act`] (default off).
+    pub post_edit_run_tests: bool,
 }
 
 /// `[long_horizon.stage_gate]` — staged tool exposure (H2).
@@ -306,6 +309,7 @@ impl Default for LongHorizonConfig {
             macro_loop: MacroLoopConfig::default(),
             adversarial_audit: AdversarialAuditConfig::default(),
             stage_gate: StageGateConfig::default(),
+            post_edit_run_tests: false,
         }
     }
 }
@@ -338,6 +342,9 @@ pub struct LongHorizonConfigToml {
     pub adversarial_audit: Option<AdversarialAuditConfigToml>,
     #[serde(default)]
     pub stage_gate: Option<StageGateConfigToml>,
+    /// HL-4: auto scoped tests after code edits (default false).
+    #[serde(default)]
+    pub post_edit_run_tests: Option<bool>,
 }
 
 impl LongHorizonConfigToml {
@@ -377,6 +384,9 @@ impl LongHorizonConfigToml {
                 .stage_gate
                 .map(StageGateConfigToml::into_runtime)
                 .unwrap_or_default(),
+            post_edit_run_tests: self
+                .post_edit_run_tests
+                .unwrap_or(defaults.post_edit_run_tests),
         }
     }
 }

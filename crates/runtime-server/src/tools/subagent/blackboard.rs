@@ -1033,6 +1033,7 @@ mod tests {
             status: SubAgentStatus::Completed,
             result: Some("found two risks".into()),
             steps_taken: 5,
+            tools_executed: 0,
             duration_ms: 1000,
             from_prior_session: false,
             structured_verdict: Some(verdict),
@@ -1088,6 +1089,7 @@ mod tests {
             status: SubAgentStatus::Completed,
             result: Some("done".into()),
             steps_taken: 1,
+            tools_executed: 0,
             duration_ms: 100,
             from_prior_session: false,
             structured_verdict: Some(StructuredVerdict {
@@ -1125,6 +1127,7 @@ mod tests {
             status: SubAgentStatus::Completed,
             result: Some("blocker found".into()),
             steps_taken: 2,
+            tools_executed: 0,
             duration_ms: 200,
             from_prior_session: false,
             structured_verdict: Some(StructuredVerdict {
@@ -1185,6 +1188,7 @@ mod tests {
             status: SubAgentStatus::Completed,
             result: Some("tests failed".into()),
             steps_taken: 1,
+            tools_executed: 0,
             duration_ms: 100,
             from_prior_session: false,
             structured_verdict: Some(StructuredVerdict {
@@ -1236,6 +1240,7 @@ mod tests {
             status: SubAgentStatus::Completed,
             result: Some("CHANGES\nModified: crates/foo/src/lib.rs — add null check\n".into()),
             steps_taken: 1,
+            tools_executed: 0,
             duration_ms: 100,
             from_prior_session: false,
             structured_verdict: None,
@@ -1292,6 +1297,7 @@ mod tests {
             status: SubAgentStatus::Completed,
             result: Some("VERDICT: PASS".into()),
             steps_taken: 1,
+            tools_executed: 0,
             duration_ms: 100,
             from_prior_session: false,
             structured_verdict: Some(StructuredVerdict {
@@ -1326,6 +1332,7 @@ mod tests {
             status: SubAgentStatus::Completed,
             result: Some("VERDICT: PASS".into()),
             steps_taken: 1,
+            tools_executed: 0,
             duration_ms: 100,
             from_prior_session: false,
             structured_verdict: Some(StructuredVerdict {

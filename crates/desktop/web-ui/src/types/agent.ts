@@ -21,6 +21,10 @@ export interface AgentState {
   stepTimeoutMs?: number;
   stuckSuspected?: boolean;
   idleMs?: number;
+  /** Completed child tool calls (from disk / progress / journal). */
+  toolsExecuted?: number;
+  /** Wall time from persisted snapshot when available. */
+  durationMs?: number;
   toolCalls: AgentToolCall[];
   resultSummary: string | null;
   tokens: number;

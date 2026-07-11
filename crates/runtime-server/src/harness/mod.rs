@@ -26,8 +26,8 @@ pub use hints::{ToolHintAudit, audit_tool, audit_tools};
 pub use registry_surface::RegistrySurface;
 pub use state::{HarnessStateAdapter, WorkspaceHarnessState};
 pub use telemetry::{
-    ToolHintAuditEntry, ToolStat, ToolTelemetryReport, build_tool_telemetry_report,
-    default_sessions_db_path,
+    ToolHintAuditEntry, ToolStat, ToolTelemetryReport, append_harness_verify_records,
+    build_tool_telemetry_report, default_sessions_db_path,
 };
 pub use tool_sequences::{
     EDIT_CHECK_SUBSEQUENCE, EDIT_SHELL_CHECK_SUBSEQUENCE, EXPLORE_SUBSEQUENCE,
@@ -35,5 +35,5 @@ pub use tool_sequences::{
 };
 pub use verify_loop::{
     HarnessVerifyLoop, HarnessVerifyLoopConfig, HarnessVerifyOutcome, HarnessVerifyRecord,
-    VerifyStageSpec,
+    VerifyStageSpec, mark_records_rollback, outcome_records,
 };

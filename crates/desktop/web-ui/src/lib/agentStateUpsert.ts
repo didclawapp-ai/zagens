@@ -44,6 +44,8 @@ export function metaFromListRow(row: AgentListRowMeta): Partial<AgentState> {
     ...(row.stepTimeoutMs !== undefined ? { stepTimeoutMs: row.stepTimeoutMs } : {}),
     ...(row.stuckSuspected !== undefined ? { stuckSuspected: row.stuckSuspected } : {}),
     ...(row.idleMs !== undefined ? { idleMs: row.idleMs } : {}),
+    ...(row.toolsExecuted !== undefined ? { toolsExecuted: row.toolsExecuted } : {}),
+    ...(row.durationMs !== undefined ? { durationMs: row.durationMs } : {}),
   };
 }
 

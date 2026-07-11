@@ -18,6 +18,7 @@ async fn run_predicate(
     let exec = CompletionGateExec {
         shell_manager: &context.shell_manager,
         cancel_token: context.cancel_token.as_ref(),
+        progress_tx: None,
     };
     let pred_ctx = PredicateContext {
         workspace: &context.workspace,

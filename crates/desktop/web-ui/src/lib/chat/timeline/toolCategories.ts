@@ -8,47 +8,79 @@ export type ToolCategory =
   | 'agent'
   | 'other';
 
+/**
+ * Read / search / inspect — high-churn in long turns; must collapse.
+ * Keep in sync with runtime-server tool registry names (+ common aliases).
+ */
 const EXPLORE_TOOLS = new Set([
   'read_file',
+  'file_info',
+  'list_dir',
   'glob_file_search',
   'glob_files',
   'grep',
   'grep_files',
-  'list_dir',
   'codebase_search',
   'semantic_search',
   'search_files',
   'file_search',
+  'explore_codebase',
+  'project_map',
+  'describe_image',
   'web_search',
   'web.run',
+  'fetch_url',
+  'finance',
   'diagnostics',
+  'validate_data',
+  'review',
+  'git_status',
+  'git_diff',
+  'git_log',
+  'git_show',
+  'git_blame',
+  'github_issue_context',
+  'github_pr_context',
 ]);
 
 const WRITE_TOOLS = new Set([
   'write_file',
   'edit_file',
   'apply_patch',
+  'batch_edit',
+  'refactor_imports',
+  'restore_file',
+  'fim_edit',
+  'edit_and_check',
   'str_replace',
   'str_replace_editor',
+  'revert_turn',
 ]);
 
 const SHELL_TOOLS = new Set([
   'exec_shell',
   'exec_shell_wait',
   'exec_shell_interact',
+  'exec_shell_cancel',
   'exec_wait',
   'exec_interact',
   'task_shell_start',
   'task_shell_wait',
   'run_terminal_cmd',
+  'run_tests',
+  'code_execution',
 ]);
 
 const PLAN_TOOLS = new Set([
   'update_plan',
   'checklist_write',
+  'checklist_add',
   'checklist_update',
+  'checklist_list',
   'todo_write',
+  'todo_add',
   'todo_update',
+  'todo_list',
 ]);
 
 /** Office document tools — collapse like explore/write in activity bundles. */
@@ -59,8 +91,8 @@ const OFFICE_TOOLS = new Set([
 ]);
 
 /**
- * Setup / audit workflow tools (skills + scratchpad).
- * Shown expanded in screenshots when left as `other` — include in bundling.
+ * Setup / audit / harness / durable-task workflow tools.
+ * Shown expanded when left as `other` — include in bundling.
  */
 const WORKFLOW_TOOLS = new Set([
   'load_skill',
@@ -72,10 +104,35 @@ const WORKFLOW_TOOLS = new Set([
   'scratchpad_set_area',
   'scratchpad_verify_note',
   'scratchpad_import_agent',
-  // Deferred-tool discovery (shown expanded between scratchpad/agent when left as other).
   'tool_search_tool_regex',
   'tool_search_tool_bm25',
   'tool_search_bm25',
+  'note',
+  'remember',
+  'recall_archive',
+  'rlm',
+  'assert_file_count',
+  'assert_output_matches',
+  'assert_tests_pass',
+  'task_create',
+  'task_list',
+  'task_read',
+  'task_cancel',
+  'task_gate_run',
+  'pr_attempt_record',
+  'pr_attempt_list',
+  'pr_attempt_read',
+  'pr_attempt_preflight',
+  'automation_create',
+  'automation_list',
+  'automation_read',
+  'automation_update',
+  'automation_pause',
+  'automation_resume',
+  'automation_delete',
+  'automation_run',
+  'github_comment',
+  'github_close_issue',
 ]);
 
 /** Sub-agent orchestration — prompts are huge; must collapse in the timeline. */
@@ -84,15 +141,23 @@ const AGENT_TOOLS = new Set([
   'spawn_agent',
   'delegate_to_agent',
   'agent_wait',
+  'wait',
   'agent_result',
   'agent_cancel',
   'close_agent',
   'agent_list',
   'agent_assign',
+  'assign_agent',
   'agent_send_input',
   'send_input',
   'resume_agent',
 ]);
+
+/**
+ * Intentionally left as `other` (stay expanded / rare meta):
+ * - `request_user_input` — interactive approval UI
+ * - `multi_tool_use.parallel` — batch meta wrapper
+ */
 
 export function toolCategory(name: string): ToolCategory {
   if (EXPLORE_TOOLS.has(name)) return 'explore';

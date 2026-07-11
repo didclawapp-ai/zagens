@@ -28,6 +28,7 @@ fn make_snapshot(status: SubAgentStatus) -> SubAgentResult {
         status,
         result: None,
         steps_taken: 0,
+        tools_executed: 0,
         duration_ms: 0,
         from_prior_session: false,
         structured_verdict: None,

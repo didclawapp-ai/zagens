@@ -73,14 +73,17 @@ impl Engine {
                     }
                 }
             }
-            crate::long_horizon::LhtGateOutcome::MacroRemediation(msg) => {
+            crate::long_horizon::LhtGateOutcome::MacroRemediation {
+                message: msg,
+                blockers_added,
+            } => {
                 Engine::add_session_message(self, msg).await;
                 self.long_horizon_continue_injected_this_turn = true;
                 let phase = self.runtime_ext().long_horizon_state.macro_phase.as_str();
                 let _ = self
                     .tx_event
                     .send(Event::status(format!(
-                        "long_horizon.macro_phase: {{\"phase\":\"{phase}\"}}"
+                        "long_horizon.macro_phase: {{\"phase\":\"{phase}\",\"blockers_added\":{blockers_added}}}"
                     )))
                     .await;
                 true
@@ -167,9 +170,24 @@ impl Engine {
 
         let shell_manager = std::sync::Arc::clone(&self.runtime_ext().shell_manager);
         let cancel_token = self.0.cancel_token.clone();
+        let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let progress_out = self.tx_event.clone();
+        let _ = self
+            .tx_event
+            .send(Event::status(
+                "long_horizon.completion_gate: evaluating (toolchain/verify may take up to ~2 min per command)...",
+            ))
+            .await;
+        let progress_drain = tokio::spawn(async move {
+            while let Some(msg) = progress_rx.recv().await {
+                let _ = progress_out.send(Event::status(msg)).await;
+            }
+        });
+
         let gate_exec = crate::long_horizon::CompletionGateExec {
             shell_manager: &shell_manager,
             cancel_token: Some(&cancel_token),
+            progress_tx: Some(&progress_tx),
         };
 
         let lht_mode_override = self.runtime_ext().turn_lht_mode;
@@ -198,6 +216,8 @@ impl Engine {
         };
 
         let gate = crate::long_horizon::maybe_continue_incomplete_code_task(input).await;
+        drop(progress_tx);
+        let _ = progress_drain.await;
 
         for event in std::mem::take(
             &mut self
@@ -437,7 +457,7 @@ impl Engine {
                 return true;
             }
             gate @ (crate::long_horizon::LhtGateOutcome::MacroCraftSpawn { .. }
-            | crate::long_horizon::LhtGateOutcome::MacroRemediation(_)
+            | crate::long_horizon::LhtGateOutcome::MacroRemediation { .. }
             | crate::long_horizon::LhtGateOutcome::MacroUnmet { .. }) => {
                 return self.maybe_handle_macro_gate_outcome(gate).await;
             }
@@ -770,6 +790,10 @@ impl Engine {
                                 remaining_blockers,
                                 ..
                             } => remaining_blockers.len(),
+                            crate::long_horizon::LhtGateOutcome::MacroRemediation {
+                                blockers_added,
+                                ..
+                            } => *blockers_added as usize,
                             _ => 0,
                         };
                         let _ = self
@@ -1037,6 +1061,10 @@ impl Engine {
                             remaining_blockers,
                             ..
                         } => remaining_blockers.len(),
+                        crate::long_horizon::LhtGateOutcome::MacroRemediation {
+                            blockers_added,
+                            ..
+                        } => *blockers_added as usize,
                         _ => 0,
                     };
                     let _ = self

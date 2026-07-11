@@ -73,6 +73,13 @@ pub async fn evaluate_completion_gate(
         runtime_deliverables.len() as u32,
         gate.mode,
     );
+    // Flush start immediately so the panel leaves 「验收待跑」while commands run.
+    if let Some(exec) = exec
+        && let Some(tx) = exec.progress_tx
+        && let Some(ev) = session.pending_gate_events.last()
+    {
+        let _ = tx.send(ev.status_message());
+    }
 
     let pre_git = workspace_change_signature(workspace);
     let outcome = evaluate_completion_gate_inner(

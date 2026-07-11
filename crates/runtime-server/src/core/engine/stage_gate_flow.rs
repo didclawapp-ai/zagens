@@ -99,13 +99,17 @@ pub async fn after_tool_success(engine: &mut Engine, tool_name: &str, success: b
     let exec = CompletionGateExec {
         shell_manager: &shell_manager,
         cancel_token: Some(&cancel),
+        progress_tx: None,
     };
-    let _ = engine
+    let (passed, records) = engine
         .runtime_ext_mut()
         .long_horizon_state
         .stage_gate
         .try_pass_stage(&workspace, &stage_id, Some(&exec))
-        .await;
+        .await
+        .unwrap_or((false, Vec::new()));
+    queue_harness_verify_records(engine, records);
+    let _ = passed;
 }
 
 pub async fn after_harness_assert_tool(
@@ -130,11 +134,42 @@ pub async fn after_harness_assert_tool(
     let exec = CompletionGateExec {
         shell_manager: &shell_manager,
         cancel_token: Some(&cancel),
+        progress_tx: None,
     };
-    let _ = engine
+    let (_passed, records) = engine
         .runtime_ext_mut()
         .long_horizon_state
         .stage_gate
         .try_pass_stage(&workspace, stage, Some(&exec))
-        .await;
+        .await
+        .unwrap_or((false, Vec::new()));
+    queue_harness_verify_records(engine, records);
+}
+
+fn queue_harness_verify_records(
+    engine: &mut Engine,
+    records: Vec<crate::long_horizon::harness_verify_loop::HarnessVerifyRecord>,
+) {
+    if records.is_empty() {
+        return;
+    }
+    let turn_id = engine
+        .runtime_ext()
+        .kernel_active_turn_id
+        .clone()
+        .unwrap_or_else(|| "unknown".into());
+    for record in &records {
+        emit_kernel_event(
+            engine,
+            crate::long_horizon::harness_verify_loop::record_to_kernel_event(
+                turn_id.clone(),
+                record,
+            ),
+        );
+    }
+    engine
+        .runtime_ext_mut()
+        .long_horizon_state
+        .pending_harness_verify
+        .extend(records);
 }

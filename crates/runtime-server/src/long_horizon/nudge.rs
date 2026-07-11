@@ -1051,6 +1051,7 @@ mod tests {
             macro_loop: cfg.macro_loop,
             adversarial_audit: cfg.adversarial_audit,
             stage_gate: cfg.stage_gate,
+            post_edit_run_tests: cfg.post_edit_run_tests,
         };
         for _ in 0..3 {
             assert!(matches!(
@@ -1102,6 +1103,7 @@ mod tests {
             macro_loop: cfg.macro_loop,
             adversarial_audit: cfg.adversarial_audit,
             stage_gate: cfg.stage_gate,
+            post_edit_run_tests: cfg.post_edit_run_tests,
         };
         let mut nudges = 0;
         for _ in 0..20 {
@@ -1138,6 +1140,7 @@ mod tests {
             macro_loop: defaults.macro_loop,
             adversarial_audit: defaults.adversarial_audit,
             stage_gate: defaults.stage_gate,
+            post_edit_run_tests: defaults.post_edit_run_tests,
         };
         // Two no-progress nudges (streak = 2), then a progress turn resets it.
         let _ = tracker.prepare_nudge(Some(1), &cfg, false);

@@ -112,6 +112,7 @@ fn merge_long_horizon(
         macro_loop: patch.macro_loop.or(base.macro_loop),
         adversarial_audit: patch.adversarial_audit.or(base.adversarial_audit),
         stage_gate: patch.stage_gate.or(base.stage_gate),
+        post_edit_run_tests: patch.post_edit_run_tests.or(base.post_edit_run_tests),
     }
 }
 

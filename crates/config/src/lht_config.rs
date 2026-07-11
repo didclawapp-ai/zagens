@@ -149,7 +149,8 @@ pub fn resolve_lht(cfg: &Option<LongHorizonConfigToml>) -> LongHorizonConfigToml
 /// Keep `config.toml` `[long_horizon]` aligned with the composer tri-state in `settings.toml`.
 ///
 /// - **off** → `enabled=false`, `macro_loop.enabled=false` (baseline for auto after off).
-/// - **strict** → `enabled=true`, `mode=strict`.
+/// - **strict** → `enabled=true`, `mode=strict`, and product gates → `enforce`
+///   (matches Desktop copy: no hand-edited verify TOML required).
 /// - **auto** → no change (inherits panel baseline).
 pub fn sync_long_horizon_with_composer_mode(mode: &str) -> anyhow::Result<()> {
     use anyhow::Context;
@@ -175,6 +176,11 @@ pub fn sync_long_horizon_with_composer_mode(mode: &str) -> anyhow::Result<()> {
         "strict" => {
             lh.enabled = Some(true);
             lh.mode = Some("strict".into());
+            let mut gate = lh.completion_gate.take().unwrap_or_default();
+            gate.auto_verify_replay = Some("enforce".into());
+            gate.toolchain_gate = Some("enforce".into());
+            gate.stub_gate = Some("enforce".into());
+            lh.completion_gate = Some(gate);
         }
         _ => unreachable!(),
     }
@@ -250,6 +256,57 @@ enabled = true
         let lh = resolve_lht(&store.config.long_horizon);
         assert_eq!(lh.enabled, Some(false));
         assert_eq!(lh.macro_loop.as_ref().and_then(|m| m.enabled), Some(false));
+
+        unsafe {
+            match prev_config {
+                Some(v) => std::env::set_var("ZAGENS_CONFIG_PATH", v),
+                None => std::env::remove_var("ZAGENS_CONFIG_PATH"),
+            }
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sync_strict_writes_enforce_product_gates() {
+        let _guard = env_lock();
+        let dir =
+            std::env::temp_dir().join(format!("zagens-lht-sync-strict-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let config_path = dir.join("config.toml");
+        fs::write(
+            &config_path,
+            r#"
+[long_horizon]
+enabled = true
+mode = "auto"
+
+[long_horizon.completion_gate]
+auto_verify_replay = "observe"
+toolchain_gate = "observe"
+stub_gate = "observe"
+"#,
+        )
+        .expect("write config");
+
+        let prev_config = std::env::var("ZAGENS_CONFIG_PATH").ok();
+        unsafe {
+            std::env::set_var(
+                "ZAGENS_CONFIG_PATH",
+                config_path.to_string_lossy().to_string(),
+            );
+        }
+
+        sync_long_horizon_with_composer_mode("strict").expect("sync strict");
+
+        let store = crate::ConfigStore::load(None).expect("reload");
+        let lh = resolve_lht(&store.config.long_horizon);
+        assert_eq!(lh.enabled, Some(true));
+        assert_eq!(lh.mode.as_deref(), Some("strict"));
+        let gate = lh.completion_gate.as_ref().expect("gate");
+        assert_eq!(gate.auto_verify_replay.as_deref(), Some("enforce"));
+        assert_eq!(gate.toolchain_gate.as_deref(), Some("enforce"));
+        assert_eq!(gate.stub_gate.as_deref(), Some("enforce"));
 
         unsafe {
             match prev_config {

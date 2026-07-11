@@ -108,6 +108,36 @@ pub fn default_sessions_db_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(".zagens/sessions/sessions.db"))
 }
 
+/// HL-2: append `HarnessVerify` records to the shared sessions kernel_events log.
+///
+/// Best-effort — silently no-ops when the sessions DB cannot be opened (CI / headless).
+pub fn append_harness_verify_records(
+    turn_id: &str,
+    records: &[crate::long_horizon::harness_verify_loop::HarnessVerifyRecord],
+) {
+    if records.is_empty() {
+        return;
+    }
+    let db_path = default_sessions_db_path();
+    if let Some(parent) = db_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let Ok(conn) = Connection::open(&db_path) else {
+        return;
+    };
+    if ensure_kernel_events_table(&conn).is_err() {
+        return;
+    }
+    let mut log = KernelEventLog::new(&conn);
+    for record in records {
+        let event = crate::long_horizon::harness_verify_loop::record_to_kernel_event(
+            turn_id.to_string(),
+            record,
+        );
+        let _ = log.append(event);
+    }
+}
+
 /// Build a telemetry report from on-disk `sessions.db` (read-only).
 pub fn build_tool_telemetry_report(db_path: &Path) -> anyhow::Result<ToolTelemetryReport> {
     if !db_path.exists() {

@@ -14,4 +14,4 @@ pub use model::{GatePredicateSpec, NightQueueDocument, QUEUE_FILE, QueueTask, Qu
 pub use runner::{RunOptions, RunReport, run_pending};
 pub use store::{enqueue, load, preview, queue_path};
 
-pub use hooks::{dispatch_enqueue, dispatch_run_end, dispatch_run_start};
+pub use hooks::dispatch_enqueue;

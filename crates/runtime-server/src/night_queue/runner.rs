@@ -96,6 +96,9 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
             task.gate_summary = Some(gate_result.summary.clone());
             task.finished_at = Some(Utc::now());
 
+            // HL-2: persist harness_verify records on the queue event stream + sessions.db
+            append_harness_verify_for_task(&ctx.workspace, &task.id, &gate_result.records);
+
             if gate_result.passed {
                 store::append_event(
                     &ctx.workspace,
@@ -106,14 +109,29 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
                         payload: Some(serde_json::json!({
                             "pass": gate_result.passed,
                             "failing_predicate": gate_result.failing_predicate,
+                            "harness_verify": gate_result.records,
                         })),
                     },
                 )?;
                 task.status = QueueTaskStatus::Passed;
                 report.passed += 1;
             } else {
-                if let Some(ref snap) = pre_snapshot {
+                // HL-3: snapshot restore aligns with verify-loop rollback_triggered
+                let did_rollback = if let Some(ref snap) = pre_snapshot {
                     rollback_snapshot(&run_workspace, snap);
+                    true
+                } else {
+                    false
+                };
+                let records = if did_rollback {
+                    crate::long_horizon::harness_verify_loop::mark_records_rollback(
+                        gate_result.records.clone(),
+                    )
+                } else {
+                    gate_result.records.clone()
+                };
+                if did_rollback {
+                    append_harness_verify_for_task(&ctx.workspace, &task.id, &records);
                 }
                 store::append_event(
                     &ctx.workspace,
@@ -124,10 +142,12 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
                         payload: Some(serde_json::json!({
                             "pass": gate_result.passed,
                             "failing_predicate": gate_result.failing_predicate,
+                            "harness_verify": records,
+                            "rollback_triggered": did_rollback,
                         })),
                     },
                 )?;
-                if pre_snapshot.is_some() {
+                if did_rollback {
                     store::append_event(
                         &ctx.workspace,
                         &QueueEventRecord {
@@ -226,4 +246,17 @@ fn rollback_snapshot(workspace: &Path, snapshot_id: &str) {
     if let Ok(repo) = SnapshotRepo::open_or_init(workspace) {
         let _ = repo.restore(&SnapshotId(snapshot_id.to_string()));
     }
+}
+
+/// HL-2: write `HarnessVerify` rows into the shared sessions kernel_events log.
+fn append_harness_verify_for_task(
+    _workspace: &Path,
+    task_id: &str,
+    records: &[crate::long_horizon::harness_verify_loop::HarnessVerifyRecord],
+) {
+    if records.is_empty() {
+        return;
+    }
+    let turn_id = format!("queue:{task_id}");
+    crate::harness::telemetry::append_harness_verify_records(&turn_id, records);
 }

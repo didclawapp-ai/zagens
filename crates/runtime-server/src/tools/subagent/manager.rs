@@ -107,6 +107,7 @@ impl SubAgentManager {
                 status: agent.status.clone(),
                 result: agent.result.clone(),
                 steps_taken: agent.steps_taken,
+                tools_executed: agent.tools_executed,
                 duration_ms: u64::try_from(agent.started_at.elapsed().as_millis())
                     .unwrap_or(u64::MAX),
                 // Backward-compat: Vec on disk. None → empty vec; Some(list) → list.
@@ -203,6 +204,7 @@ impl SubAgentManager {
                     DEFAULT_MAX_STEPS
                 },
                 steps_taken: persisted.steps_taken,
+                tools_executed: persisted.tools_executed,
                 started_at,
                 last_progress_at: started_at,
                 progress_status: persisted.progress_status.clone(),
@@ -559,6 +561,7 @@ impl SubAgentManager {
             agent.status = SubAgentStatus::Running;
             agent.result = None;
             agent.steps_taken = 0;
+            agent.tools_executed = 0;
             agent.structured_verdict = None;
             agent.structured_findings = None;
             agent.structured_findings_parse_failure = None;
@@ -808,6 +811,12 @@ impl SubAgentManager {
             agent.completion_reason = result.completion_reason;
             agent.structured_findings_parse_failure = result.structured_findings_parse_failure;
             agent.steps_taken = result.steps_taken;
+            if result.tools_executed > 0 {
+                agent.tools_executed = result.tools_executed;
+            }
+            if result.progress_status.is_some() {
+                agent.progress_status = result.progress_status;
+            }
             agent.task_handle = None;
             changed = true;
         }
@@ -965,5 +974,30 @@ impl SubAgentManager {
         if step_changed {
             self.persist_state_best_effort();
         }
+    }
+
+    /// Record a finished child tool call (count + last progress line).
+    pub(crate) fn record_tool_finished(
+        &mut self,
+        agent_id: &str,
+        steps_taken: u32,
+        tool_name: &str,
+        ok: bool,
+    ) {
+        let Some(agent) = self.agents.get_mut(agent_id) else {
+            return;
+        };
+        if agent.status != SubAgentStatus::Running {
+            return;
+        }
+        agent.steps_taken = steps_taken;
+        agent.tools_executed = agent.tools_executed.saturating_add(1);
+        agent.last_progress_at = Instant::now();
+        let outcome = if ok { "ok" } else { "error" };
+        agent.progress_status = Some(format!(
+            "step {steps_taken}/{}: finished tool '{tool_name}' ({outcome})",
+            agent.max_steps
+        ));
+        self.persist_state_best_effort();
     }
 }

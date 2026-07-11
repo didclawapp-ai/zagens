@@ -11,6 +11,7 @@ mod constants;
 mod deprecation;
 mod executor;
 mod factory;
+mod journal;
 mod manager;
 mod nickname;
 mod parse;

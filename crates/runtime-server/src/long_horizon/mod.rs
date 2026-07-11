@@ -240,7 +240,10 @@ pub enum LhtGateOutcome {
         task_id: String,
     },
     /// Phase 4: remediation segment after blockers → checklist.
-    MacroRemediation(Message),
+    MacroRemediation {
+        message: Message,
+        blockers_added: u32,
+    },
     /// Phase 4: macro cycles exhausted with open CRAFT gaps.
     MacroUnmet {
         remaining_blockers: Vec<String>,
@@ -299,20 +302,9 @@ pub async fn maybe_continue_incomplete_code_task(
     }
     if !graph.incomplete() {
         let latest_user = latest_user_text(input.messages);
-        if let Some(macro_gate) =
-            macro_loop::maybe_evaluate_macro_at_graph_complete(macro_loop::MacroLoopInput {
-                config: &input.config.macro_loop,
-                effective_mode,
-                workspace: input.workspace,
-                checklist: &checklist,
-                session: input.session,
-                lang: input.lang,
-                thread_id: input.thread_id,
-                latest_user_text: latest_user,
-            })
-        {
-            return macro_gate;
-        }
+        // Verify-hygiene nudges run *before* early CRAFT (`on_graph_complete`).
+        // Otherwise long-refactor can spawn review on a checklist with zero
+        // `[verify:]` tags / unrun acceptances and skip the false-green net.
         // DEMO3 root-cause guard: a "complete" graph can still be a false green
         // when a *completed* checklist item reads like a runnable acceptance
         // (build / tests pass / run examples) yet was never actually verified —
@@ -423,6 +415,38 @@ pub async fn maybe_continue_incomplete_code_task(
                     cache_control: None,
                 }],
             });
+        }
+        // After verify hygiene: if CRAFT remediation finished (no open CRAFT gaps),
+        // leave the remediation phase so the turn can honestly reach graph_complete
+        // instead of looking "stuck" in 补全段 while machine gates run.
+        if matches!(
+            input.session.macro_phase,
+            zagens_core::long_horizon::MacroPhase::Remediation
+        ) {
+            let open_craft_gaps = checklist.items.iter().any(|i| {
+                i.status != crate::tools::todo::TodoStatus::Completed
+                    && i.content.contains("CRAFT gap")
+            });
+            if !open_craft_gaps {
+                input.session.macro_phase = zagens_core::long_horizon::MacroPhase::Implement;
+                input.session.macro_cycles_used = input.session.macro_cycles_used.saturating_add(1);
+            }
+        }
+        // After verify hygiene: optional early CRAFT (`on_graph_complete`) may
+        // still run before machine micro-gates (toolchain / stub / manifest).
+        if let Some(macro_gate) =
+            macro_loop::maybe_evaluate_macro_at_graph_complete(macro_loop::MacroLoopInput {
+                config: &input.config.macro_loop,
+                effective_mode,
+                workspace: input.workspace,
+                checklist: &checklist,
+                session: input.session,
+                lang: input.lang,
+                thread_id: input.thread_id,
+                latest_user_text: latest_user,
+            })
+        {
+            return macro_gate;
         }
         // Strict mode tightens the completion/stub gates to `enforce` so the
         // full net (false-green + stub block) applies even if the operator left

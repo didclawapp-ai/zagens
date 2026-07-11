@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use zagens_core::long_horizon::{HarnessContract, STAGE_GATE_ALWAYS_ALLOWED};
 
 use super::harness_verify_loop::HarnessVerifyLoop;
-use super::predicate::{self, CompletionGateExec, PredicateContext};
+use super::predicate::{self, CompletionGateExec};
 
 pub const HARNESS_MANIFEST_FILENAME: &str = "harness.toml";
 
@@ -122,45 +122,78 @@ impl StageGateSession {
     }
 
     /// Run all verify predicates for `stage_id`; on full pass mark stage verified.
+    ///
+    /// Uses [`HarnessVerifyLoop::run_with_act`] (HL-1) so retries honor
+    /// `verify_budget.max_retries`. Returns verify records for telemetry (HL-2).
     pub async fn try_pass_stage(
         &mut self,
         workspace: &Path,
         stage_id: &str,
         exec: Option<&CompletionGateExec<'_>>,
-    ) -> Result<bool, predicate::PredicateError> {
+    ) -> Result<
+        (bool, Vec<super::harness_verify_loop::HarnessVerifyRecord>),
+        predicate::PredicateError,
+    > {
         let Some(contract) = self.contract.clone() else {
-            return Ok(false);
+            return Ok((false, Vec::new()));
         };
         let entries = contract.verify_for_stage(stage_id);
         if entries.is_empty() {
             self.verified_stages.insert(stage_id.to_string());
-            return Ok(true);
+            return Ok((true, Vec::new()));
         }
 
-        let timeout_ms = contract.verify_budget.timeout_ms;
-        let ctx = PredicateContext {
-            workspace,
-            timeout_ms,
-            exec,
-            run_id: format!("stage-gate-{stage_id}"),
-        };
+        let stages: Vec<super::harness_verify_loop::VerifyStageSpec> = entries
+            .into_iter()
+            .map(|entry| super::harness_verify_loop::VerifyStageSpec {
+                stage: stage_id.to_string(),
+                predicate: entry.predicate.clone(),
+                args: entry.args.clone(),
+            })
+            .collect();
 
-        for entry in entries {
-            let result = predicate::evaluate(&entry.predicate, &entry.args, &ctx).await?;
-            if !result.pass {
-                return Ok(false);
+        let mut loop_ = HarnessVerifyLoop::new(workspace).with_config(
+            super::harness_verify_loop::HarnessVerifyLoopConfig {
+                max_retries: contract.verify_budget.max_retries,
+                timeout_ms: contract.verify_budget.timeout_ms,
+            },
+        );
+        if let Some(exec) = exec {
+            loop_ = loop_.with_exec(exec);
+        }
+
+        let outcome = loop_.run_with_act(&stages, |_| async {}).await;
+        let records = super::harness_verify_loop::outcome_records(&outcome).to_vec();
+        match outcome {
+            super::harness_verify_loop::HarnessVerifyOutcome::Passed { .. } => {
+                self.verified_stages.insert(stage_id.to_string());
+                Ok((true, records))
             }
+            super::harness_verify_loop::HarnessVerifyOutcome::Failed { .. } => Ok((false, records)),
         }
-        self.verified_stages.insert(stage_id.to_string());
-        Ok(true)
     }
 
-    /// Flat contract verify rows via `HarnessVerifyLoop` (queue / gate style).
+    /// Flat contract verify rows via `HarnessVerifyLoop::run_with_act` (HL-1 / HL-6).
     pub async fn run_flat_verify(
         &self,
         workspace: &Path,
         exec: Option<&CompletionGateExec<'_>>,
     ) -> super::harness_verify_loop::HarnessVerifyOutcome {
+        self.run_flat_verify_with_act(workspace, exec, |_| async {})
+            .await
+    }
+
+    /// Flat verify with a caller-supplied repair `act` between retries.
+    pub async fn run_flat_verify_with_act<F, Fut>(
+        &self,
+        workspace: &Path,
+        exec: Option<&CompletionGateExec<'_>>,
+        act: F,
+    ) -> super::harness_verify_loop::HarnessVerifyOutcome
+    where
+        F: FnMut(u32) -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
         let Some(contract) = self.contract.as_ref() else {
             return super::harness_verify_loop::HarnessVerifyOutcome::Passed {
                 records: Vec::new(),
@@ -184,7 +217,7 @@ impl StageGateSession {
         if let Some(exec) = exec {
             loop_ = loop_.with_exec(exec);
         }
-        loop_.verify_stages(&stages).await
+        loop_.run_with_act(&stages, act).await
     }
 }
 
@@ -265,7 +298,9 @@ mod tests {
         std::fs::write(dir.path().join("x.txt"), b"1").unwrap();
         let mut session = StageGateSession::default();
         session.load_contract(sample_contract(), true);
-        assert!(session.try_pass_stage(dir.path(), "a", None).await.unwrap());
+        let (ok, records) = session.try_pass_stage(dir.path(), "a", None).await.unwrap();
+        assert!(ok);
+        assert!(!records.is_empty());
         assert!(session.verified_stages.contains("a"));
         assert!(session.check_tool("write_file").is_ok());
     }
@@ -300,6 +335,7 @@ mod tests {
                 .try_pass_stage(dir.path(), "prepare", None)
                 .await
                 .unwrap()
+                .0
         );
         assert!(session.check_tool("write_office").is_ok());
 
@@ -308,6 +344,7 @@ mod tests {
                 .try_pass_stage(dir.path(), "write", None)
                 .await
                 .unwrap()
+                .0
         );
         assert_eq!(
             session.current_stage_id().as_deref(),
@@ -338,6 +375,7 @@ mod tests {
                 .try_pass_stage(dir.path(), "readback_verify", None)
                 .await
                 .unwrap()
+                .0
         );
         assert!(session.current_stage_id().is_none());
     }

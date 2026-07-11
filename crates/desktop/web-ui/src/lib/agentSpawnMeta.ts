@@ -102,6 +102,8 @@ export function mergeAgentMeta(
       | 'stepTimeoutMs'
       | 'stuckSuspected'
       | 'idleMs'
+      | 'toolsExecuted'
+      | 'durationMs'
     >
   >,
 ): AgentState {
@@ -139,6 +141,12 @@ export function mergeAgentMeta(
   if (patch.idleMs !== undefined) {
     next.idleMs = patch.idleMs;
   }
+  if (patch.toolsExecuted !== undefined) {
+    next.toolsExecuted = patch.toolsExecuted;
+  }
+  if (patch.durationMs !== undefined) {
+    next.durationMs = patch.durationMs;
+  }
   return next;
 }
 
@@ -158,6 +166,8 @@ export interface AgentListRowMeta {
   progressStatus?: string;
   stuckSuspected?: boolean;
   idleMs?: number;
+  toolsExecuted?: number;
+  durationMs?: number;
 }
 
 /** Parse one entry from runtime `agent.list` / SubAgentResult JSON. */
@@ -188,6 +198,8 @@ export function parseAgentListRow(raw: Record<string, unknown>): AgentListRowMet
   const idleMs = Number(raw.idle_ms ?? 0);
   const stuckSuspected = raw.stuck_suspected === true;
   const ownerThreadId = pickString(raw, ['parent_thread_id', 'parentThreadId']);
+  const toolsExecuted = Number(raw.tools_executed ?? 0);
+  const durationMs = Number(raw.duration_ms ?? 0);
 
   return {
     id,
@@ -204,6 +216,8 @@ export function parseAgentListRow(raw: Record<string, unknown>): AgentListRowMet
     ...(progressStatus ? { progressStatus } : {}),
     ...(stuckSuspected ? { stuckSuspected: true } : {}),
     ...(Number.isFinite(idleMs) && idleMs > 0 ? { idleMs } : {}),
+    ...(Number.isFinite(toolsExecuted) && toolsExecuted > 0 ? { toolsExecuted } : {}),
+    ...(Number.isFinite(durationMs) && durationMs > 0 ? { durationMs } : {}),
   };
 }
 

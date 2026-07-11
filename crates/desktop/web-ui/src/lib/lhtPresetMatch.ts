@@ -13,6 +13,30 @@ export const COMPOSER_MODE_FOR_PRESET: Record<LhtPresetId, LhtComposerMode> = {
   'craft-audit': 'off',
 };
 
+/** Product gate modes each preset writes into config.toml. */
+export const GATES_FOR_PRESET: Record<
+  LhtPresetId,
+  { auto_verify_replay: LhtGateMode; toolchain_gate: LhtGateMode; stub_gate: LhtGateMode } | null
+> = {
+  'code-default': {
+    auto_verify_replay: 'observe',
+    toolchain_gate: 'observe',
+    stub_gate: 'observe',
+  },
+  'long-fix': {
+    auto_verify_replay: 'enforce',
+    toolchain_gate: 'enforce',
+    stub_gate: 'enforce',
+  },
+  'long-refactor': {
+    auto_verify_replay: 'enforce',
+    toolchain_gate: 'enforce',
+    stub_gate: 'enforce',
+  },
+  // LHT off — gate modes are soft defaults; not part of the match signal.
+  'craft-audit': null,
+};
+
 export function rememberLastPreset(presetId: LhtPresetId): void {
   try {
     localStorage.setItem(LAST_PRESET_STORAGE_KEY, presetId);
@@ -38,11 +62,13 @@ export function readLastPreset(): LhtPresetId | null {
   return null;
 }
 
-function gatesAreObserve(settings: LhtSettings): boolean {
+function gatesMatchPreset(settings: LhtSettings, presetId: LhtPresetId): boolean {
+  const expected = GATES_FOR_PRESET[presetId];
+  if (!expected) return true;
   return (
-    settings.auto_verify_replay === 'observe' &&
-    settings.toolchain_gate === 'observe' &&
-    settings.stub_gate === 'observe'
+    settings.auto_verify_replay === expected.auto_verify_replay &&
+    settings.toolchain_gate === expected.toolchain_gate &&
+    settings.stub_gate === expected.stub_gate
   );
 }
 
@@ -71,6 +97,14 @@ export function matchPresetFromSettings(settings: LhtSettings): LhtPresetMatch {
     const last = readLastPreset();
     if (last === 'long-fix' || last === 'code-default') {
       return last;
+    }
+    // Prefer long-fix when product gates are already hard-enforce.
+    if (
+      settings.auto_verify_replay === 'enforce' &&
+      settings.toolchain_gate === 'enforce' &&
+      settings.stub_gate === 'enforce'
+    ) {
+      return 'long-fix';
     }
     return 'code-default';
   }
@@ -111,5 +145,5 @@ export function summarizeGateModes(settings: LhtSettings): 'off' | 'observe' | '
 }
 
 export function settingsMatchPreset(settings: LhtSettings, presetId: LhtPresetId): boolean {
-  return matchPresetFromSettings(settings) === presetId && gatesAreObserve(settings);
+  return matchPresetFromSettings(settings) === presetId && gatesMatchPreset(settings, presetId);
 }

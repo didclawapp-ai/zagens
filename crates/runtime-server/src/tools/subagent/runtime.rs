@@ -299,6 +299,8 @@ pub struct SubAgent {
     pub step_timeout: Duration,
     pub max_steps: u32,
     pub steps_taken: u32,
+    /// Completed tool invocations in this child run.
+    pub tools_executed: u32,
     pub started_at: Instant,
     pub last_progress_at: Instant,
     pub progress_status: Option<String>,
@@ -350,6 +352,7 @@ impl SubAgent {
             step_timeout,
             max_steps,
             steps_taken: 0,
+            tools_executed: 0,
             started_at,
             last_progress_at: started_at,
             progress_status: None,
@@ -376,6 +379,7 @@ impl SubAgent {
             status: self.status.clone(),
             result: self.result.clone(),
             steps_taken: self.steps_taken,
+            tools_executed: self.tools_executed,
             duration_ms: u64::try_from(self.started_at.elapsed().as_millis()).unwrap_or(u64::MAX),
             // Snapshots from the agent itself don't know the manager's
             // current boot id, so default to false. The manager fills

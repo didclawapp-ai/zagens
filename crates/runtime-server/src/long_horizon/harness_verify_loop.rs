@@ -91,11 +91,20 @@ impl<'a> HarnessVerifyLoop<'a> {
         self
     }
 
-    /// Verify all stages once (no act/retry). Used by queue gate and unit tests.
+    /// Verify all stages once (no act/retry). Used by unit tests and single-shot callers.
     pub async fn verify_stages(&self, stages: &[VerifyStageSpec]) -> HarnessVerifyOutcome {
+        self.verify_stages_at(stages, 0).await
+    }
+
+    /// Verify all stages at a fixed `retry_no` (no act).
+    pub async fn verify_stages_at(
+        &self,
+        stages: &[VerifyStageSpec],
+        retry_no: u32,
+    ) -> HarnessVerifyOutcome {
         let mut records = Vec::new();
         for stage in stages {
-            match self.run_one(stage, 0).await {
+            match self.run_one(stage, retry_no).await {
                 Ok(rec) if rec.pass => records.push(rec),
                 Ok(rec) => {
                     records.push(rec);
@@ -110,7 +119,7 @@ impl<'a> HarnessVerifyLoop<'a> {
                         stage: stage.stage.clone(),
                         predicate: stage.predicate.clone(),
                         pass: false,
-                        retry_no: 0,
+                        retry_no,
                         rollback_triggered: false,
                         duration_ms: 0,
                         code: Some("predicate_error".into()),
@@ -127,7 +136,10 @@ impl<'a> HarnessVerifyLoop<'a> {
         HarnessVerifyOutcome::Passed { records }
     }
 
-    /// act→verify loop: `act(retry_no)` runs between verify attempts.
+    /// act→verify loop: `act(retry_no)` runs before each verify attempt.
+    ///
+    /// On exhausted failure, sets `rollback_triggered` on the outcome and on
+    /// every record when `max_retries > 0` (HL-1 / HL-3).
     pub async fn run_with_act<F, Fut>(
         &self,
         stages: &[VerifyStageSpec],
@@ -140,25 +152,25 @@ impl<'a> HarnessVerifyLoop<'a> {
         let mut retry_no = 0u32;
         loop {
             act(retry_no).await;
-            match self.verify_stages(stages).await {
-                HarnessVerifyOutcome::Passed { mut records } => {
-                    for r in &mut records {
-                        r.retry_no = retry_no;
-                    }
+            match self.verify_stages_at(stages, retry_no).await {
+                HarnessVerifyOutcome::Passed { records } => {
                     return HarnessVerifyOutcome::Passed { records };
                 }
-                HarnessVerifyOutcome::Failed { mut records, .. } => {
-                    for r in &mut records {
-                        r.retry_no = retry_no;
-                    }
+                HarnessVerifyOutcome::Failed { records, .. } => {
                     if retry_no < self.config.max_retries {
                         retry_no += 1;
                         continue;
                     }
+                    let rollback = self.config.max_retries > 0;
+                    let records = if rollback {
+                        mark_records_rollback(records)
+                    } else {
+                        records
+                    };
                     return HarnessVerifyOutcome::Failed {
                         records,
                         exhausted: true,
-                        rollback_triggered: self.config.max_retries > 0,
+                        rollback_triggered: rollback,
                     };
                 }
             }
@@ -269,6 +281,24 @@ async fn run_cli_subprocess_predicate(
 
 fn ms(started: std::time::Instant) -> u32 {
     u32::try_from(started.elapsed().as_millis()).unwrap_or(u32::MAX)
+}
+
+#[must_use]
+pub fn mark_records_rollback(mut records: Vec<HarnessVerifyRecord>) -> Vec<HarnessVerifyRecord> {
+    for r in &mut records {
+        r.rollback_triggered = true;
+    }
+    records
+}
+
+/// Collect records from either outcome variant.
+#[must_use]
+pub fn outcome_records(outcome: &HarnessVerifyOutcome) -> &[HarnessVerifyRecord] {
+    match outcome {
+        HarnessVerifyOutcome::Passed { records } | HarnessVerifyOutcome::Failed { records, .. } => {
+            records
+        }
+    }
 }
 
 /// Map layer-2 manifest verify runs to harness telemetry (no re-exec).
@@ -407,6 +437,74 @@ mod tests {
         assert!(matches!(outcome, HarnessVerifyOutcome::Passed { .. }));
     }
 
+    /// HL-1: act repairs missing file on retry → pass with retry_no == 1.
+    #[tokio::test]
+    async fn run_with_act_heals_on_retry() {
+        let dir = TempDir::new().unwrap();
+        let target = dir.path().join("heal.txt");
+        let loop_ = HarnessVerifyLoop::new(dir.path()).with_config(HarnessVerifyLoopConfig {
+            max_retries: 2,
+            timeout_ms: 5_000,
+        });
+        let stages = [VerifyStageSpec {
+            stage: "heal".into(),
+            predicate: names::FILE_EXISTS.into(),
+            args: json!({"path": "heal.txt"}),
+        }];
+        let outcome = loop_
+            .run_with_act(&stages, |retry_no| {
+                let target = target.clone();
+                async move {
+                    if retry_no >= 1 {
+                        let _ = std::fs::write(&target, b"healed");
+                    }
+                }
+            })
+            .await;
+        match outcome {
+            HarnessVerifyOutcome::Passed { records } => {
+                assert_eq!(records.len(), 1);
+                assert!(records[0].pass);
+                assert_eq!(records[0].retry_no, 1);
+                assert!(!records[0].rollback_triggered);
+            }
+            other => panic!("expected pass after heal, got {other:?}"),
+        }
+    }
+
+    /// HL-3: exhausted retries mark rollback_triggered on records.
+    #[tokio::test]
+    async fn run_with_act_exhausted_marks_rollback() {
+        let dir = TempDir::new().unwrap();
+        let loop_ = HarnessVerifyLoop::new(dir.path()).with_config(HarnessVerifyLoopConfig {
+            max_retries: 1,
+            timeout_ms: 5_000,
+        });
+        let outcome = loop_
+            .run_with_act(
+                &[VerifyStageSpec {
+                    stage: "missing".into(),
+                    predicate: names::FILE_EXISTS.into(),
+                    args: json!({"path": "never.txt"}),
+                }],
+                |_| async {},
+            )
+            .await;
+        match outcome {
+            HarnessVerifyOutcome::Failed {
+                records,
+                exhausted,
+                rollback_triggered,
+            } => {
+                assert!(exhausted);
+                assert!(rollback_triggered);
+                assert!(records.iter().all(|r| r.rollback_triggered));
+                assert_eq!(records.last().map(|r| r.retry_no), Some(1));
+            }
+            other => panic!("expected exhausted fail, got {other:?}"),
+        }
+    }
+
     #[test]
     fn record_from_manifest_verify_maps_failure() {
         use super::predicate::VerifyExitClass;
@@ -472,6 +570,21 @@ mod tests {
         assert!(
             prod.contains("HarnessVerifyLoop"),
             "queue gate must route through HarnessVerifyLoop"
+        );
+        assert!(
+            prod.contains("run_with_act"),
+            "HL-1: queue gate must call run_with_act"
+        );
+    }
+
+    /// HL-1: stage gate try_pass_stage must call run_with_act.
+    #[test]
+    fn stage_gate_try_pass_uses_run_with_act() {
+        let src = include_str!("stage_gate.rs");
+        let prod = src.split("#[cfg(test)]").next().unwrap_or(src);
+        assert!(
+            prod.contains("run_with_act"),
+            "HL-1/HL-6: stage gate must call run_with_act"
         );
     }
 }

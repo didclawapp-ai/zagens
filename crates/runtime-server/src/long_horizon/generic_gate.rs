@@ -29,8 +29,10 @@ use crate::tools::todo::{TodoListSnapshot, TodoStatus};
 use super::verify::{normalize_cmd, parse_verify_command};
 
 /// Generic gates may shell out to full build/test runs — give them more head
-/// room than the per-command operator default.
-const GENERIC_TIMEOUT_SECS: u32 = 600;
+/// room than a trivial probe, but keep well under the previous 600s so a stuck
+/// `go test` / `npm test` (bad GOPATH, network) cannot freeze the turn for 10+
+/// minutes with no UI signal.
+const GENERIC_TIMEOUT_SECS: u32 = 120;
 
 /// Build-system marker files that identify a project root.
 const PROJECT_MARKERS: &[&str] = &[

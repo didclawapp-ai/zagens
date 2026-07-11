@@ -398,6 +398,7 @@ mod import_gate_tests {
             status: SubAgentStatus::Completed,
             result: Some("done".into()),
             steps_taken: 1,
+            tools_executed: 0,
             duration_ms: 100,
             from_prior_session: false,
             structured_findings: Some(StructuredFindings {

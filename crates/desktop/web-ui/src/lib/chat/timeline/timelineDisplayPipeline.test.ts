@@ -37,6 +37,41 @@ test('prepareTimelinePresentation collapses long explore runs', () => {
   assert.equal(items[1].kind, 'block');
 });
 
+test('prepareTimelinePresentation collapses file_info into explore activity', () => {
+  const blocks: TurnBlock[] = [
+    tool('a', 'file_info'),
+    tool('b', 'file_info'),
+    tool('c', 'read_file'),
+    tool('d', 'file_info'),
+    { kind: 'text', id: 'x', content: '核对完毕。', streaming: false },
+  ];
+  const items = prepareTimelinePresentation(blocks);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].kind, 'collapsed_tools');
+  if (items[0].kind === 'collapsed_tools') {
+    assert.equal(items[0].blocks.length, 4);
+    assert.equal(items[0].category, 'explore');
+  }
+  assert.equal(items[1].kind, 'block');
+});
+
+test('prepareTimelinePresentation collapses git/fetch explore tools with file_info', () => {
+  const blocks: TurnBlock[] = [
+    tool('g1', 'git_status'),
+    tool('g2', 'git_diff'),
+    tool('f1', 'fetch_url'),
+    tool('i1', 'file_info'),
+    { kind: 'text', id: 'x', content: '状态已核对。', streaming: false },
+  ];
+  const items = prepareTimelinePresentation(blocks);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].kind, 'collapsed_tools');
+  if (items[0].kind === 'collapsed_tools') {
+    assert.equal(items[0].blocks.length, 4);
+    assert.equal(items[0].category, 'explore');
+  }
+});
+
 test('prepareTimelinePresentation collapses running tools into live activity', () => {
   const blocks: TurnBlock[] = [
     { kind: 'tool', id: 'r1', name: 'read_file', input: '{}', status: 'running' },

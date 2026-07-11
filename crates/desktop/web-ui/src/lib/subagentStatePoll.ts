@@ -10,6 +10,7 @@ export type SubagentPollRow = AgentListRowMeta & {
   maxSteps: number;
   stepTimeoutMs: number;
   durationMs: number;
+  toolsExecuted: number;
   progressStatus?: string;
   stuckSuspected: boolean;
   idleMs: number;
@@ -38,6 +39,7 @@ function parsePollRow(raw: Record<string, unknown>): SubagentPollRow | null {
   const maxSteps = Number(raw.max_steps ?? 100);
   const stepTimeoutMs = Number(raw.step_timeout_ms ?? 600_000);
   const durationMs = Number(raw.duration_ms ?? 0);
+  const toolsExecuted = Number(raw.tools_executed ?? 0);
   const progressStatus =
     typeof raw.progress_status === 'string' && raw.progress_status.trim()
       ? raw.progress_status.trim()
@@ -54,6 +56,7 @@ function parsePollRow(raw: Record<string, unknown>): SubagentPollRow | null {
     maxSteps: Number.isFinite(maxSteps) ? maxSteps : 100,
     stepTimeoutMs: Number.isFinite(stepTimeoutMs) ? stepTimeoutMs : 600_000,
     durationMs: Number.isFinite(durationMs) ? durationMs : 0,
+    toolsExecuted: Number.isFinite(toolsExecuted) ? toolsExecuted : 0,
     ...(progressStatus ? { progressStatus } : {}),
     stuckSuspected,
     idleMs: Number.isFinite(idleMs) ? idleMs : 0,

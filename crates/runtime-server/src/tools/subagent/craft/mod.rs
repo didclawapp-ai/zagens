@@ -244,6 +244,7 @@ mod tests {
             status: SubAgentStatus::Completed,
             result: None,
             steps_taken: 1,
+            tools_executed: 0,
             duration_ms: 100,
             from_prior_session: false,
             structured_verdict: Some(StructuredVerdict {

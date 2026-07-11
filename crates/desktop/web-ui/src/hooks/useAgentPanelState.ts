@@ -18,13 +18,14 @@ import {
 import { parseAgentIdFromSpawnOutput } from '../lib/chat/toolOutput';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
 import { SUBAGENT_STATE_POLL_STREAMING_MS } from '../lib/runtimePoll';
+import { parseSubagentProgressStatus } from '../lib/subagentProgress';
 import {
   fetchSubagentStateFromDisk,
   filterSubagentRowsForThread,
   type SubagentPollRow,
 } from '../lib/subagentStatePoll';
 import { shouldDispatchPanelForThread } from '../lib/panelChannel';
-import type { AgentState } from '../types/agent';
+import type { AgentState, AgentToolCall } from '../types/agent';
 
 type MessageLike = {
   role: string;
@@ -72,19 +73,27 @@ function agentsForThread(all: AgentState[], threadId: string | null | undefined)
 function patchFromPollRow(
   row: SubagentPollRow,
   threadId: string,
+  existing?: AgentState,
 ): Partial<AgentState> & { status: AgentState['status'] } {
   const uiStatus = mapSubAgentUiStatus(row.status);
+  const stepsTaken = Math.max(existing?.stepsTaken ?? 0, row.stepsTaken);
+  const toolsExecuted = Math.max(existing?.toolsExecuted ?? 0, row.toolsExecuted);
   return {
     status: uiStatus,
     ownerThreadId: threadId,
     ...metaFromListRow(row),
     ...(row.progressStatus ? { progressStatus: row.progressStatus } : {}),
-    stepsTaken: row.stepsTaken,
+    stepsTaken,
     maxSteps: row.maxSteps,
     stepTimeoutMs: row.stepTimeoutMs,
     stuckSuspected: row.stuckSuspected,
     idleMs: row.idleMs,
-    completedAt: uiStatus === 'completed' || uiStatus === 'interrupted' ? Date.now() : null,
+    toolsExecuted,
+    durationMs: row.durationMs > 0 ? row.durationMs : existing?.durationMs,
+    completedAt:
+      uiStatus === 'completed' || uiStatus === 'interrupted'
+        ? (existing?.completedAt ?? Date.now())
+        : null,
   };
 }
 
@@ -111,7 +120,12 @@ function mergeDiskRowsIntoAgentState(
     if (!row.id) {
       continue;
     }
-    threadAgents = upsertAgentInList(threadAgents, row.id, patchFromPollRow(row, tid));
+    const existing = existingForThread.get(row.id);
+    threadAgents = upsertAgentInList(
+      threadAgents,
+      row.id,
+      patchFromPollRow(row, tid, existing),
+    );
   }
   for (const agent of existingForThread.values()) {
     if (!threadAgents.some((a) => a.agentId === agent.agentId)) {
@@ -213,13 +227,27 @@ export function useAgentPanelState({
           );
           return true;
         case 'agent_progress':
-          setAgentStates((prev) =>
-            upsertAgentInList(prev, norm.agentId, {
+          setAgentStates((prev) => {
+            const parsed = parseSubagentProgressStatus(norm.status ?? '');
+            const existing = prev.find((a) => a.agentId === norm.agentId);
+            let toolCalls = existing?.toolCalls ?? [];
+            if (parsed.toolName) {
+              toolCalls = appendOrUpdateToolCall(toolCalls, parsed.toolName, parsed.toolPhase, parsed.toolOk);
+            }
+            const toolsExecuted =
+              parsed.toolPhase === 'finished'
+                ? Math.max(existing?.toolsExecuted ?? 0, toolCalls.filter((t) => t.status !== 'running').length)
+                : existing?.toolsExecuted;
+            return upsertAgentInList(prev, norm.agentId, {
               status: 'running',
               ownerThreadId,
               ...(norm.status ? { progressStatus: norm.status } : {}),
-            }),
-          );
+              ...(parsed.stepsTaken !== undefined ? { stepsTaken: parsed.stepsTaken } : {}),
+              ...(parsed.maxSteps !== undefined ? { maxSteps: parsed.maxSteps } : {}),
+              ...(toolsExecuted !== undefined ? { toolsExecuted } : {}),
+              toolCalls,
+            });
+          });
           return true;
         case 'agent_completed':
           setAgentStates((prev) =>
@@ -329,4 +357,33 @@ export function useAgentPanelState({
     subagentActiveCount,
     narrativeSpawnSuspected,
   };
+}
+
+function appendOrUpdateToolCall(
+  prev: AgentToolCall[],
+  name: string,
+  phase: 'running' | 'finished' | undefined,
+  ok: boolean | undefined,
+): AgentToolCall[] {
+  const next = [...prev];
+  const last = next[next.length - 1];
+  if (phase === 'running') {
+    if (last && last.name === name && last.status === 'running') {
+      return next;
+    }
+    next.push({ name, status: 'running' });
+    return next;
+  }
+  if (phase === 'finished') {
+    if (last && last.name === name && last.status === 'running') {
+      next[next.length - 1] = {
+        ...last,
+        status: ok === false ? 'error' : 'done',
+      };
+      return next;
+    }
+    next.push({ name, status: ok === false ? 'error' : 'done' });
+    return next;
+  }
+  return next;
 }

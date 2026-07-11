@@ -8,8 +8,10 @@ import {
 } from '../lib/craftBlackboard';
 import { CRAFT_BLACKBOARD_POLL_MS } from '../lib/runtimePoll';
 import { isRuntimeApiAvailable } from '../lib/runtimeReachable';
-import type { AgentState } from '../types/agent';
+import { downloadTextFile, fetchSubagentJournalJson } from '../lib/subagentJournal';
 import { agentTypeLabel, isLikelySubAgentId, truncateObjective } from '../lib/agentSpawnMeta';
+import { toast } from '../lib/toast';
+import type { AgentState } from '../types/agent';
 
 interface Props {
   agents: AgentState[];
@@ -98,7 +100,7 @@ export default function AgentPanel({
       )}
 
       {visible.map((a) => (
-        <AgentCard key={a.agentId} agent={a} />
+        <AgentCard key={a.agentId} agent={a} workspaceRoot={workspaceRoot} />
       ))}
 
       {craftTasks.length > 0 ? (
@@ -134,7 +136,7 @@ function CraftTaskCard({ task }: { task: CraftBlackboardTaskSummary }) {
         <div className="text-t-text-muted">{t('agentPanel.craftRounds')} <span className="text-t-text-secondary">{task.implementerRounds}</span></div>
         <div className="text-t-text-muted col-span-2">{t('agentPanel.craftReviewer')} <span className={verdictClass(task.reviewerVerdict)}>{task.reviewerVerdict ?? t('agentPanel.craftDash')}</span></div>
         {task.verifierSummary ? (
-          <div className="text-t-text-muted col-span-2 line-clamp-2" title={task.verifierSummary}>
+          <div className="text-[10px] text-t-text-muted col-span-2 line-clamp-2" title={task.verifierSummary}>
             {t('agentPanel.craftVerifier')}{' '}
             <span className="text-t-text-secondary">{task.verifierSummary}</span>
           </div>
@@ -144,11 +146,17 @@ function CraftTaskCard({ task }: { task: CraftBlackboardTaskSummary }) {
   );
 }
 
-function AgentCard({ agent }: { agent: AgentState }) {
+function toolsDisplayCount(agent: AgentState): number {
+  return Math.max(agent.toolsExecuted ?? 0, agent.toolCalls.length);
+}
+
+function AgentCard({ agent, workspaceRoot }: { agent: AgentState; workspaceRoot: string }) {
   const { t } = useT();
   const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [exporting, setExporting] = useState(false);
   const isActive = agent.status === 'running' || agent.status === 'spawned';
+  const isTerminal = agent.status === 'completed' || agent.status === 'interrupted';
 
   useEffect(() => {
     if (!isActive) {
@@ -158,14 +166,26 @@ function AgentCard({ agent }: { agent: AgentState }) {
     return () => window.clearInterval(id);
   }, [isActive]);
 
-  const dotColor = agent.status === 'completed' ? 'bg-success' : agent.status === 'interrupted' ? 'bg-t-error' : 'bg-amber animate-pulse';
-  const label = agent.status === 'completed' ? t('agentPanel.completed') : agent.status === 'interrupted' ? t('agentPanel.interrupted') : t('agentPanel.running');
+  const dotColor =
+    agent.status === 'completed'
+      ? 'bg-success'
+      : agent.status === 'interrupted'
+        ? 'bg-t-error'
+        : 'bg-amber animate-pulse';
+  const label =
+    agent.status === 'completed'
+      ? t('agentPanel.completed')
+      : agent.status === 'interrupted'
+        ? t('agentPanel.interrupted')
+        : t('agentPanel.running');
   const duration =
-    agent.completedAt != null
-      ? `${((agent.completedAt - agent.spawnedAt) / 1000).toFixed(1)}s`
-      : isActive
-        ? `${((now - agent.spawnedAt) / 1000).toFixed(0)}s`
-        : '—';
+    agent.durationMs != null && agent.durationMs > 0
+      ? `${(agent.durationMs / 1000).toFixed(1)}s`
+      : agent.completedAt != null
+        ? `${((agent.completedAt - agent.spawnedAt) / 1000).toFixed(1)}s`
+        : isActive
+          ? `${((now - agent.spawnedAt) / 1000).toFixed(0)}s`
+          : '—';
   const stepTimeoutSec =
     agent.stepTimeoutMs && agent.stepTimeoutMs > 0
       ? Math.round(agent.stepTimeoutMs / 1000)
@@ -176,32 +196,87 @@ function AgentCard({ agent }: { agent: AgentState }) {
           done: String(agent.stepsTaken ?? 0),
           max: String(agent.maxSteps),
         })
-      : null;
+      : agent.stepsTaken != null && agent.stepsTaken > 0
+        ? t('agentPanel.stepsTaken', { count: String(agent.stepsTaken) })
+        : null;
+  const toolCount = toolsDisplayCount(agent);
   const typeLabel = agentTypeLabel(agent.agentType);
   const title = agent.nickname?.trim() || typeLabel || agent.agentId.slice(0, 12);
   const objective = agent.objective?.trim() ?? '';
   const objectivePreview = objective ? truncateObjective(objective, 200) : null;
+
+  const onExportJournal = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const json = await fetchSubagentJournalJson(workspaceRoot, agent.agentId);
+      if (!json) {
+        toast.warning(t('agentPanel.exportJournalMissing'));
+        return;
+      }
+      downloadTextFile(`subagent-journal-${agent.agentId.slice(0, 12)}.json`, json);
+      toast.success(t('agentPanel.exportJournalOk'));
+    } catch {
+      toast.error(t('agentPanel.exportJournalMissing'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
-    <div className="rounded-lg border border-card-border bg-canvas-alt overflow-hidden cursor-pointer" onClick={() => setExpanded(!expanded)}>
+    <div
+      className="rounded-lg border border-card-border bg-canvas-alt overflow-hidden cursor-pointer"
+      onClick={() => setExpanded(!expanded)}
+    >
       <div className="px-3 py-2.5 space-y-1.5">
         <div className="flex items-start gap-2">
           <span className={`mt-1 inline-block w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs font-medium text-t-text truncate">{title}</span>
-              {typeLabel && agent.nickname?.trim() ? <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent-soft text-accent font-medium">{typeLabel}</span> : null}
-              {agent.role?.trim() ? <span className="text-[9px] text-t-text-muted">{agent.role}</span> : null}
+              {typeLabel && agent.nickname?.trim() ? (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent-soft text-accent font-medium">
+                  {typeLabel}
+                </span>
+              ) : null}
+              {agent.role?.trim() ? (
+                <span className="text-[9px] text-t-text-muted">{agent.role}</span>
+              ) : null}
             </div>
             <div className="font-mono text-[9px] text-t-text-muted truncate">{agent.agentId}</div>
           </div>
-          <span className={`shrink-0 text-[10px] font-medium ${agent.status === 'completed' ? 'text-success' : agent.status === 'interrupted' ? 'text-t-error-text' : 'text-amber-text'}`}>{label}</span>
+          <span
+            className={`shrink-0 text-[10px] font-medium ${
+              agent.status === 'completed'
+                ? 'text-success'
+                : agent.status === 'interrupted'
+                  ? 'text-t-error-text'
+                  : 'text-amber-text'
+            }`}
+          >
+            {label}
+          </span>
         </div>
-        {objectivePreview ? <p className="text-[11px] text-t-text-secondary leading-relaxed line-clamp-3 pl-4">{objectivePreview}</p> : <p className="text-[10px] text-t-text-muted pl-4 italic">{t('agentPanel.objectiveLoading')}</p>}
-        {agent.progressStatus && isActive ? <p className="text-[10px] text-amber-text/90 pl-4 truncate" title={agent.progressStatus}>{agent.progressStatus}</p> : null}
-        {stepsLine && isActive ? (
+        {objectivePreview ? (
+          <p className="text-[11px] text-t-text-secondary leading-relaxed line-clamp-3 pl-4">
+            {objectivePreview}
+          </p>
+        ) : (
+          <p className="text-[10px] text-t-text-muted pl-4 italic">{t('agentPanel.objectiveLoading')}</p>
+        )}
+        {agent.progressStatus ? (
+          <p
+            className={`text-[10px] pl-4 truncate ${isActive ? 'text-amber-text/90' : 'text-t-text-muted'}`}
+            title={agent.progressStatus}
+          >
+            {agent.progressStatus}
+          </p>
+        ) : null}
+        {stepsLine ? (
           <p className="text-[10px] text-t-text-muted pl-4">
             {stepsLine}
-            {stepTimeoutSec != null
+            {stepTimeoutSec != null && isActive
               ? ` · ${t('agentPanel.stepCap', { sec: String(stepTimeoutSec) })}`
               : null}
           </p>
@@ -209,21 +284,55 @@ function AgentCard({ agent }: { agent: AgentState }) {
         {agent.stuckSuspected && isActive ? (
           <p className="text-[10px] text-t-error-text pl-4">{t('agentPanel.stuckSuspected')}</p>
         ) : null}
-        {agent.taskId?.trim() ? <p className="text-[9px] text-t-text-muted pl-4 font-mono truncate" title={agent.taskId}>{t('agentPanel.workPackage')}: {agent.taskId}</p> : null}
-        <div className="flex items-center gap-2 pl-4 text-[10px] text-t-text-muted"><span>{t('agentPanel.toolsCount', { count: String(agent.toolCalls.length) })} · {agent.tokens > 0 ? `${(agent.tokens / 1000).toFixed(1)}k` : '—'} · {duration}</span></div>
+        {agent.taskId?.trim() ? (
+          <p
+            className="text-[9px] text-t-text-muted pl-4 font-mono truncate"
+            title={agent.taskId}
+          >
+            {t('agentPanel.workPackage')}: {agent.taskId}
+          </p>
+        ) : null}
+        <div className="flex items-center gap-2 pl-4 text-[10px] text-t-text-muted">
+          <span>
+            {t('agentPanel.toolsCount', { count: String(toolCount) })} ·{' '}
+            {agent.tokens > 0 ? `${(agent.tokens / 1000).toFixed(1)}k` : '—'} · {duration}
+          </span>
+        </div>
       </div>
       {expanded && (
-        <div className="border-t border-divider px-3 py-2 space-y-1.5">
-          {objective ? <div className="text-[10px] text-t-text-secondary leading-relaxed whitespace-pre-wrap">{objective}</div> : null}
+        <div
+          className="border-t border-divider px-3 py-2 space-y-1.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {objective ? (
+            <div className="text-[10px] text-t-text-secondary leading-relaxed whitespace-pre-wrap">
+              {objective}
+            </div>
+          ) : null}
           {agent.toolCalls.map((tc, i) => (
             <div key={i} className="text-[10px] text-t-text-muted">
               <span className="font-mono text-accent">{tc.name}</span>
+              <span className="ml-1 text-t-text-muted">({tc.status})</span>
               {tc.output ? (
                 <span className="ml-1 text-t-text-secondary">→ {tc.output.slice(0, 80)}</span>
               ) : null}
             </div>
           ))}
-          {agent.resultSummary ? <div className="mt-1 pt-1 border-t border-divider text-[10px] text-t-text-secondary leading-relaxed whitespace-pre-wrap">{agent.resultSummary}</div> : null}
+          {agent.resultSummary ? (
+            <div className="mt-1 pt-1 border-t border-divider text-[10px] text-t-text-secondary leading-relaxed whitespace-pre-wrap">
+              {agent.resultSummary}
+            </div>
+          ) : null}
+          {isTerminal || toolCount > 0 ? (
+            <button
+              type="button"
+              className="mt-1 text-[10px] text-accent hover:underline disabled:opacity-50"
+              disabled={exporting}
+              onClick={(e) => void onExportJournal(e)}
+            >
+              {exporting ? t('agentPanel.exportJournalBusy') : t('agentPanel.exportJournal')}
+            </button>
+          ) : null}
         </div>
       )}
     </div>

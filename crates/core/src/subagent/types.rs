@@ -136,6 +136,9 @@ pub struct SubAgentResult {
     pub result: Option<String>,
     pub steps_taken: u32,
     pub duration_ms: u64,
+    /// Completed child tool calls (persisted / listed for anti-black-box UI).
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub tools_executed: u32,
     #[serde(default, skip_serializing_if = "is_false")]
     pub from_prior_session: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -182,6 +185,10 @@ fn is_false(b: &bool) -> bool {
 }
 
 fn is_zero_u64(n: &u64) -> bool {
+    *n == 0
+}
+
+fn is_zero_u32(n: &u32) -> bool {
     *n == 0
 }
 

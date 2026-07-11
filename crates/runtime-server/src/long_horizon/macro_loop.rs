@@ -331,8 +331,9 @@ pub fn evaluate_after_micro_pass(input: MacroLoopInput<'_>) -> MacroLoopOutcome 
     evaluate_macro_loop(input, MacroTrigger::MicroPass)
 }
 
-/// When the checklist/plan graph is complete, offer CRAFT before micro-gate nudges
-/// (`on_graph_complete`) or user confirm (`user_confirm`).
+/// When the checklist/plan graph is complete, offer CRAFT after verify-hygiene
+/// nudges but before machine micro-gate nudges (`on_graph_complete`) or user
+/// confirm (`user_confirm`).
 #[must_use]
 pub fn maybe_evaluate_macro_at_graph_complete(input: MacroLoopInput<'_>) -> Option<LhtGateOutcome> {
     if !input.config.enabled || !input.effective_mode.is_strict() {
@@ -424,13 +425,16 @@ pub async fn on_craft_review_complete(
     let micro_pending = session.macro_after_audit_unmet;
     let hints = session.macro_pending_manifest_hints.clone();
     let text = build_remediation_nudge(lang, added, micro_pending, &hints);
-    Some(LhtGateOutcome::MacroRemediation(Message {
-        role: "user".to_string(),
-        content: vec![ContentBlock::Text {
-            text,
-            cache_control: None,
-        }],
-    }))
+    Some(LhtGateOutcome::MacroRemediation {
+        blockers_added: added,
+        message: Message {
+            role: "user".to_string(),
+            content: vec![ContentBlock::Text {
+                text,
+                cache_control: None,
+            }],
+        },
+    })
 }
 
 fn read_remaining_blocker_summaries(workspace: &Path, task_id: &str) -> Vec<String> {

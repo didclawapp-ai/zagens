@@ -109,6 +109,8 @@ pub(crate) struct PersistedSubAgent {
     pub(crate) result: Option<String>,
     pub(crate) steps_taken: u32,
     pub(crate) duration_ms: u64,
+    #[serde(default, skip_serializing_if = "is_zero_persisted_u32")]
+    pub(crate) tools_executed: u32,
     pub(crate) allowed_tools: Vec<String>,
     pub(crate) updated_at_ms: u64,
     /// Stable id of the manager / process boot that spawned this agent
@@ -141,6 +143,10 @@ fn default_persisted_max_steps() -> u32 {
 
 fn default_persisted_step_timeout_ms() -> u64 {
     u64::try_from(super::constants::STEP_API_TIMEOUT.as_millis()).unwrap_or(600_000)
+}
+
+fn is_zero_persisted_u32(n: &u32) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

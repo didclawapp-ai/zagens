@@ -69,6 +69,16 @@ pub async fn run_manifest_gate(
             continue;
         }
 
+        if let Some(tx) = exec.progress_tx {
+            let cmd = entry.cmd.clone().unwrap_or_else(|| command_display(entry));
+            let _ = tx.send(format!(
+                "long_horizon.manifest_gate_running: {{\"id\":\"{}\",\"cmd\":{},\"timeout_secs\":{}}}",
+                entry.id,
+                serde_json::to_string(&cmd).unwrap_or_else(|_| "\"\"".into()),
+                entry.timeout_secs
+            ));
+        }
+
         let mut run = run_manifest_verify_entry(workspace, entry, exec).await;
         if run.exit_code == 0
             && run.exit_class == VerifyExitClass::Ok

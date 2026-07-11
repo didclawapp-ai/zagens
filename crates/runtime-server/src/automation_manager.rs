@@ -1639,6 +1639,10 @@ mod tests {
             allow_shell: Some(true),
             trust_mode: Some(true),
             auto_approve: Some(false),
+            gate_preset: None,
+            gate: Vec::new(),
+            use_worktree: None,
+            write_briefing: None,
             status: AutomationStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -1669,6 +1673,10 @@ mod tests {
             allow_shell: Some(true),
             trust_mode: Some(true),
             auto_approve: Some(false),
+            gate_preset: None,
+            gate: Vec::new(),
+            use_worktree: None,
+            write_briefing: None,
             status: AutomationStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -1701,6 +1709,10 @@ mod tests {
                 allow_shell: None,
                 trust_mode: None,
                 auto_approve: None,
+                gate_preset: None,
+                gate: Vec::new(),
+                use_worktree: None,
+                write_briefing: None,
                 status: Some(AutomationStatus::Active),
             })
             .expect("create");
@@ -1718,6 +1730,8 @@ mod tests {
             thread_id: None,
             turn_id: None,
             error: None,
+            night_queue_task_id: None,
+            result_summary: None,
         };
         manager.save_run(&run).expect("save run");
         assert!(manager.runs_dir_for(&created.id).exists());
