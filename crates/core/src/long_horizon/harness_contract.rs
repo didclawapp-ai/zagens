@@ -27,7 +27,7 @@ pub mod predicates {
 
     #[must_use]
     pub fn is_registered(name: &str) -> bool {
-        ALL.iter().any(|p| *p == name)
+        ALL.contains(&name)
     }
 }
 
@@ -358,6 +358,19 @@ impl HarnessContract {
     }
 }
 
+impl Default for HarnessContract {
+    fn default() -> Self {
+        Self {
+            schema_version: HARNESS_CONTRACT_SCHEMA_VERSION,
+            harness: HarnessMeta::default(),
+            verify_budget: VerifyBudget::default(),
+            rollback: RollbackPolicy::default(),
+            stages: Vec::new(),
+            verify: Vec::new(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -471,18 +484,5 @@ mod tests {
         let stages = contract.verify_stages();
         assert_eq!(stages.len(), 1);
         assert_eq!(stages[0].stage, "build");
-    }
-}
-
-impl Default for HarnessContract {
-    fn default() -> Self {
-        Self {
-            schema_version: HARNESS_CONTRACT_SCHEMA_VERSION,
-            harness: HarnessMeta::default(),
-            verify_budget: VerifyBudget::default(),
-            rollback: RollbackPolicy::default(),
-            stages: Vec::new(),
-            verify: Vec::new(),
-        }
     }
 }
