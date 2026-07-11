@@ -130,7 +130,7 @@ fn format_status(status: QueueTaskStatus) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::night_queue::parse_gate_spec;
+    use crate::night_queue::gate_parse::parse_gate_spec;
 
     #[test]
     fn parse_gate_with_args() {
