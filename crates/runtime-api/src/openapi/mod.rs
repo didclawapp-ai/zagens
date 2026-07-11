@@ -144,4 +144,23 @@ mod tests {
         );
         assert!(schemas.get("SessionMetadata").is_some());
     }
+
+    #[test]
+    fn openapi_agent_health_ref_resolves_with_extra_schema() {
+        fn tool_telemetry_stub() -> schemars::Schema {
+            schemars::json_schema!({
+                "type": "object",
+                "additionalProperties": true
+            })
+        }
+        let doc = build_openapi_value_with(&[("ToolTelemetryReport", tool_telemetry_stub)]);
+        let schemas = &doc["components"]["schemas"];
+        assert!(schemas.get("ToolTelemetryReport").is_some());
+        let resp = &doc["paths"]["/v1/agent-health"]["get"]["responses"]["200"]["content"]["application/json"]
+            ["schema"]["$ref"];
+        assert_eq!(
+            resp.as_str(),
+            Some("#/components/schemas/ToolTelemetryReport")
+        );
+    }
 }

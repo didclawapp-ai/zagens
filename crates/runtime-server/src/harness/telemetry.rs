@@ -23,7 +23,7 @@ const TELEMETRY_KINDS: &[&str] = &[
 ];
 
 /// Per-tool counters derived from `tool_call_finished` events.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, schemars::JsonSchema)]
 pub struct ToolStat {
     pub name: String,
     pub calls: u64,
@@ -35,7 +35,7 @@ pub struct ToolStat {
 }
 
 /// T3 hint audit row for a high-failure tool.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ToolHintAuditEntry {
     pub name: String,
     pub failures: u64,
@@ -47,7 +47,7 @@ pub struct ToolHintAuditEntry {
 }
 
 /// Aggregate report for T1 (`zagens doctor --tools` / desktop Agent 体检).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub struct ToolTelemetryReport {
     pub sessions_db: String,
     pub present: bool,

@@ -2180,6 +2180,273 @@
           "index_status",
           "truncated"
         ]
+      },
+      "ToolStat": {
+        "description": "Per-tool counters derived from `tool_call_finished` events.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "calls": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "failures": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "blocked": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "timeouts": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "failure_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          }
+        },
+        "required": [
+          "name",
+          "calls",
+          "failures",
+          "blocked",
+          "timeouts"
+        ]
+      },
+      "ToolHintAuditEntry": {
+        "description": "T3 hint audit row for a high-failure tool.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "failures": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "failure_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "hint_covered": {
+            "type": "boolean"
+          },
+          "hint_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "failures",
+          "hint_covered"
+        ]
+      },
+      "ToolSequenceReport": {
+        "type": "object",
+        "properties": {
+          "turns_with_tools": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "threshold_pct": {
+            "type": "number",
+            "format": "double"
+          },
+          "top_patterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolSequenceStat"
+            }
+          },
+          "t5_candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolSequenceStat"
+            }
+          }
+        },
+        "required": [
+          "turns_with_tools",
+          "threshold_pct",
+          "top_patterns",
+          "t5_candidates"
+        ]
+      },
+      "ToolSequenceStat": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "turn_hits": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "turn_share_pct": {
+            "type": "number",
+            "format": "double"
+          },
+          "t5_eligible": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pattern",
+          "turn_hits",
+          "turn_share_pct",
+          "t5_eligible"
+        ]
+      },
+      "ToolTelemetryReport": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "ToolTelemetryReport",
+        "description": "Aggregate report for T1 (`zagens doctor --tools` / desktop Agent 体检).",
+        "type": "object",
+        "properties": {
+          "sessions_db": {
+            "type": "string"
+          },
+          "present": {
+            "type": "boolean"
+          },
+          "kernel_event_rows": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "tool_calls": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "tool_failures": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "tool_failure_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "loop_guard_events": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "loop_guard_retry_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "harness_verify_events": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "harness_verify_passes": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "harness_verify_self_heal_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "stage_gate_blocked_events": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "turns_with_tools": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "top_by_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolStat"
+            }
+          },
+          "top_by_failure_rate": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolStat"
+            }
+          },
+          "hint_coverage_top_failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolHintAuditEntry"
+            }
+          },
+          "hint_coverage_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "tool_sequences": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolSequenceReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sessions_db",
+          "present",
+          "kernel_event_rows",
+          "tool_calls",
+          "tool_failures",
+          "loop_guard_events",
+          "harness_verify_events",
+          "harness_verify_passes",
+          "stage_gate_blocked_events",
+          "turns_with_tools",
+          "top_by_calls",
+          "top_by_failure_rate",
+          "hint_coverage_top_failures"
+        ]
       }
     }
   },

@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use zagens_runtime::harness::symbol_search::{SymbolSearchHit, SymbolSearchResult};
+use zagens_runtime::harness::telemetry::ToolTelemetryReport;
 use zagens_runtime::runtime_api::openapi::export_openapi_json_with;
 use zagens_runtime_api::openapi::SchemaExportFn;
 
@@ -16,10 +17,15 @@ fn symbol_search_result_schema() -> schemars::Schema {
     schemars::schema_for!(SymbolSearchResult)
 }
 
+fn tool_telemetry_report_schema() -> schemars::Schema {
+    schemars::schema_for!(ToolTelemetryReport)
+}
+
 fn main() {
     let extra: &[(&str, SchemaExportFn)] = &[
         ("SymbolSearchHit", symbol_search_hit_schema),
         ("SymbolSearchResult", symbol_search_result_schema),
+        ("ToolTelemetryReport", tool_telemetry_report_schema),
     ];
     let json = export_openapi_json_with(extra);
     let out = env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| {

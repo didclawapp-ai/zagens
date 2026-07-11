@@ -969,6 +969,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/v1/agent-health": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Agent health / harness telemetry (T1) */
+        readonly get: operations["getAgentHealth"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/v1/apps/routing/rules": {
         readonly parameters: {
             readonly query?: never;
@@ -998,6 +1015,23 @@ export type paths = {
         readonly put?: never;
         /** Rebuild symbol index */
         readonly post: operations["rebuildSymbolIndex"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/v1/symbol-index/search": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Search workspace symbol index */
+        readonly get: operations["searchSymbolIndex"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1665,6 +1699,99 @@ export type components = {
                 readonly turn_id?: string;
                 readonly status: string;
             }[];
+        };
+        readonly SymbolSearchHit: {
+            readonly file: string;
+            /** Format: uint */
+            readonly line: number;
+            readonly kind: string;
+            readonly name: string;
+            /** Format: uint8 */
+            readonly match_priority: number;
+        };
+        /** SymbolSearchResult */
+        readonly SymbolSearchResult: {
+            readonly query: string;
+            readonly hits: readonly components["schemas"]["SymbolSearchHit"][];
+            readonly index_status: string;
+            readonly truncated: boolean;
+        };
+        /** @description Per-tool counters derived from `tool_call_finished` events. */
+        readonly ToolStat: {
+            readonly name: string;
+            /** Format: uint64 */
+            readonly calls: number;
+            /** Format: uint64 */
+            readonly failures: number;
+            /** Format: uint64 */
+            readonly blocked: number;
+            /** Format: uint64 */
+            readonly timeouts: number;
+            /** Format: double */
+            readonly failure_rate?: number | null;
+        };
+        /** @description T3 hint audit row for a high-failure tool. */
+        readonly ToolHintAuditEntry: {
+            readonly name: string;
+            /** Format: uint64 */
+            readonly failures: number;
+            /** Format: double */
+            readonly failure_rate?: number | null;
+            readonly hint_covered: boolean;
+            readonly hint_summary?: string | null;
+        };
+        readonly ToolSequenceReport: {
+            /** Format: uint64 */
+            readonly turns_with_tools: number;
+            /** Format: double */
+            readonly threshold_pct: number;
+            readonly top_patterns: readonly components["schemas"]["ToolSequenceStat"][];
+            readonly t5_candidates: readonly components["schemas"]["ToolSequenceStat"][];
+        };
+        readonly ToolSequenceStat: {
+            readonly pattern: string;
+            /** Format: uint64 */
+            readonly turn_hits: number;
+            /** Format: double */
+            readonly turn_share_pct: number;
+            readonly t5_eligible: boolean;
+        };
+        /**
+         * ToolTelemetryReport
+         * @description Aggregate report for T1 (`zagens doctor --tools` / desktop Agent 体检).
+         */
+        readonly ToolTelemetryReport: {
+            readonly sessions_db: string;
+            readonly present: boolean;
+            /** Format: uint64 */
+            readonly kernel_event_rows: number;
+            /** Format: uint64 */
+            readonly tool_calls: number;
+            /** Format: uint64 */
+            readonly tool_failures: number;
+            /** Format: double */
+            readonly tool_failure_rate?: number | null;
+            /** Format: uint64 */
+            readonly loop_guard_events: number;
+            /** Format: double */
+            readonly loop_guard_retry_rate?: number | null;
+            /** Format: uint64 */
+            readonly harness_verify_events: number;
+            /** Format: uint64 */
+            readonly harness_verify_passes: number;
+            /** Format: double */
+            readonly harness_verify_self_heal_rate?: number | null;
+            /** Format: uint64 */
+            readonly stage_gate_blocked_events: number;
+            /** Format: uint64 */
+            readonly turns_with_tools: number;
+            readonly top_by_calls: readonly components["schemas"]["ToolStat"][];
+            readonly top_by_failure_rate: readonly components["schemas"]["ToolStat"][];
+            readonly hint_coverage_top_failures: readonly components["schemas"]["ToolHintAuditEntry"][];
+            /** Format: double */
+            readonly hint_coverage_rate?: number | null;
+            readonly tool_sequences?: components["schemas"]["ToolSequenceReport"] | null;
+            readonly note?: string | null;
         };
     };
     responses: never;
@@ -3081,6 +3208,26 @@ export interface operations {
             };
         };
     };
+    readonly getAgentHealth: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ToolTelemetryReport"];
+                };
+            };
+        };
+    };
     readonly getRoutingRules: {
         readonly parameters: {
             readonly query?: never;
@@ -3141,6 +3288,26 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    readonly searchSymbolIndex: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description OK */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SymbolSearchResult"];
                 };
             };
         };

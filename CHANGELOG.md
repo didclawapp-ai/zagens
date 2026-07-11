@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OpenAPI — `GET /v1/agent-health`:** Export `ToolTelemetryReport` (and nested telemetry schemas) so `openapi-typescript` / CI `generate:api-types` can resolve the response `$ref`.
 - **Desktop streaming timeline — `file_info` explore collapse:** Classify `file_info` as explore so metadata probes bundle into activity rows instead of one full ToolCard each.
 - **Desktop streaming timeline — tool category coverage:** Map remaining registry tools (git_*, fetch_url, batch_edit, run_tests, checklist_add/list, note/remember, task_*/pr_attempt_*/automation_*, wait alias, …) into explore/write/shell/plan/workflow so they collapse; keep `request_user_input` / `multi_tool_use.parallel` as expanded `other`.
 - **Runtime streaming — empty-body retry:** Outer stream retry now covers clean `upstream_eof` / `chunk_timeout` with no sendable text/tools (including thinking-only mid-reasoning truncation), not only rounds that already recorded `stream_errors` with zero content.

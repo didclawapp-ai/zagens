@@ -17,7 +17,7 @@ pub const EDIT_CHECK_SUBSEQUENCE: &[&str] = &["edit_file", "run_tests"];
 /// Alternate edit+verify path (cargo test via shell).
 pub const EDIT_SHELL_CHECK_SUBSEQUENCE: &[&str] = &["edit_file", "exec_shell"];
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ToolSequenceStat {
     pub pattern: String,
     pub turn_hits: u64,
@@ -25,7 +25,7 @@ pub struct ToolSequenceStat {
     pub t5_eligible: bool,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, schemars::JsonSchema)]
 pub struct ToolSequenceReport {
     pub turns_with_tools: u64,
     pub threshold_pct: f64,
