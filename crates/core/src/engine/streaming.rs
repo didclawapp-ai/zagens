@@ -73,6 +73,78 @@ pub fn should_transparently_retry_stream(
     !any_content_received && transparent_attempts < MAX_TRANSPARENT_STREAM_RETRIES && !cancelled
 }
 
+/// Whether the outer turn loop should re-issue the stream request after a
+/// round that produced no sendable assistant content (no text, no tools).
+///
+/// Covers:
+/// - stream errors with empty actionable body (including thinking-only)
+/// - clean `upstream_eof` / `chunk_timeout` with zero content or thinking-only
+///   (mid-reasoning idle-close → empty-body `Completed`)
+///
+/// Does **not** retry on user cancel, or when text/tools already landed.
+pub fn should_outer_retry_empty_stream(
+    stream_errors: u32,
+    stream_end_reason: &str,
+    has_tools: bool,
+    has_text: bool,
+    pending_message_complete: bool,
+) -> bool {
+    if has_tools || has_text || pending_message_complete {
+        return false;
+    }
+    if stream_end_reason == "cancelled" {
+        return false;
+    }
+    if stream_errors > 0 {
+        return true;
+    }
+    matches!(stream_end_reason, "upstream_eof" | "chunk_timeout")
+}
+
+/// Model-facing length-truncation continuation copy, keyed by session locale.
+///
+/// Returns `(optional_assistant_placeholder, user_hint)`.
+pub fn length_continuation_prompts(
+    locale_tag: &str,
+    had_sendable_assistant_content: bool,
+) -> (Option<&'static str>, &'static str) {
+    let zh = locale_tag
+        .split(['-', '_'])
+        .next()
+        .unwrap_or(locale_tag)
+        .eq_ignore_ascii_case("zh");
+    if zh {
+        let placeholder = if had_sendable_assistant_content {
+            None
+        } else {
+            Some("(上一轮回复因达到输出长度上限被中断)")
+        };
+        let hint = if had_sendable_assistant_content {
+            "[系统] 你上一条回复因达到输出长度上限被截断。请从中断处继续输出剩余内容，不要重复或重写已经输出的部分。"
+        } else {
+            "[系统] 你上一轮思考因达到输出长度上限被截断，尚未产出任何回复。请基于已有分析直接给出结论或下一步操作，并精简思考过程。"
+        };
+        (placeholder, hint)
+    } else {
+        let placeholder = if had_sendable_assistant_content {
+            None
+        } else {
+            Some("(Previous reply was interrupted after hitting the output length limit)")
+        };
+        let hint = if had_sendable_assistant_content {
+            "[system] Your previous reply was truncated by the output length limit. Continue from the interruption without repeating what was already written."
+        } else {
+            "[system] Your previous reasoning was truncated by the output length limit before any reply. Give the conclusion or next action based on what you already analyzed, and keep reasoning brief."
+        };
+        (placeholder, hint)
+    }
+}
+
+/// Drop intermediate thinking deltas when the event channel is under backpressure
+/// (previous send blocked ≥ this many ms). Content is still accumulated locally
+/// and flushed on the next non-backpressured send / ThinkingComplete.
+pub const THINKING_BACKPRESSURE_COALESCE_MS: u64 = 200;
+
 pub const TOOL_CALL_START_MARKERS: [&str; 5] = [
     "[TOOL_CALL]",
     "<deepseek:tool_call",
@@ -130,4 +202,97 @@ pub fn filter_tool_call_delta(delta: &str, in_tool_call: &mut bool) -> String {
     }
 
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outer_retry_on_stream_errors_with_empty_body() {
+        assert!(should_outer_retry_empty_stream(
+            1,
+            "stream_event_break",
+            false,
+            false,
+            false
+        ));
+        // Thinking-only + errors: still empty sendable body → retry.
+        assert!(should_outer_retry_empty_stream(
+            2,
+            "stream_event_break",
+            false,
+            false,
+            false
+        ));
+    }
+
+    #[test]
+    fn outer_retry_on_upstream_eof_zero_or_thinking_only() {
+        assert!(should_outer_retry_empty_stream(
+            0,
+            "upstream_eof",
+            false,
+            false,
+            false
+        ));
+        assert!(should_outer_retry_empty_stream(
+            0,
+            "chunk_timeout",
+            false,
+            false,
+            false
+        ));
+    }
+
+    #[test]
+    fn outer_retry_skips_when_text_tools_or_cancel() {
+        assert!(!should_outer_retry_empty_stream(
+            0,
+            "upstream_eof",
+            true,
+            false,
+            false
+        ));
+        assert!(!should_outer_retry_empty_stream(
+            0,
+            "upstream_eof",
+            false,
+            true,
+            false
+        ));
+        assert!(!should_outer_retry_empty_stream(
+            1,
+            "upstream_eof",
+            false,
+            false,
+            true
+        ));
+        assert!(!should_outer_retry_empty_stream(
+            0,
+            "cancelled",
+            false,
+            false,
+            false
+        ));
+        assert!(!should_outer_retry_empty_stream(
+            0,
+            "stream_event_break",
+            false,
+            false,
+            false
+        ));
+    }
+
+    #[test]
+    fn length_continuation_prompts_follow_locale() {
+        let (ph_zh, hint_zh) = length_continuation_prompts("zh-Hans", false);
+        assert!(ph_zh.unwrap().contains("输出长度"));
+        assert!(hint_zh.contains("[系统]"));
+
+        let (ph_en, hint_en) = length_continuation_prompts("en", true);
+        assert!(ph_en.is_none());
+        assert!(hint_en.contains("[system]"));
+        assert!(hint_en.contains("truncated"));
+    }
 }

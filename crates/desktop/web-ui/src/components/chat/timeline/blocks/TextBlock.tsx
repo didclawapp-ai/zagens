@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { ChatMarkdown } from '../../../ChatMarkdown';
 import type { TurnBlock } from '../../../../lib/chat/timeline/turnBlockTypes';
 
-export function TextBlock({
+export const TextBlock = memo(function TextBlock({
   block,
   workspaceRoot,
   desktopHost,
@@ -38,4 +39,4 @@ export function TextBlock({
       )}
     </div>
   );
-}
+});

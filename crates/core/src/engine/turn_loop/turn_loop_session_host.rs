@@ -52,11 +52,17 @@ pub trait TurnLoopSessionHost: Send {
     async fn emit_session_updated(&mut self);
 
     fn estimated_input_tokens(&self) -> usize;
+
+    /// BCP-47 locale tag for model-facing system hints (e.g. length continuation).
+    #[must_use]
+    fn locale_tag(&self) -> &str {
+        "en"
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    const SESSION_HOST_METHOD_BASELINE: usize = 16;
+    const SESSION_HOST_METHOD_BASELINE: usize = 17;
 
     #[test]
     fn turn_loop_session_host_method_baseline() {
@@ -77,6 +83,7 @@ mod tests {
             "add_session_message",
             "emit_session_updated",
             "estimated_input_tokens",
+            "locale_tag",
         ];
         assert_eq!(methods.len(), SESSION_HOST_METHOD_BASELINE);
     }

@@ -64,8 +64,8 @@ mod tests {
 
     #[test]
     fn v3_turn_host_surface_partition_baselines_sum() {
-        // Session (16) + inner step (26) + outer (18) = documented host surface.
-        assert_eq!(16 + 26 + 18, 60);
+        // Session (17) + inner step (26) + outer (18) = documented host surface.
+        assert_eq!(17 + 26 + 18, 61);
     }
 
     /// Document that the composed host still satisfies the outer-loop seam.

@@ -388,14 +388,23 @@ Multiple `tool_calls` in one turn run **in parallel only when the batch is read-
 
 When this turn **created or materially modified** workspace files (e.g. via `write_file`, `edit_file`, `apply_patch`, `write_office`, or other tools that persist output), finish your **final assistant reply** — after tools have completed — with a short recap so the user can open results:
 
-1. Add a small heading in the user's language (examples: **Modified files**, **变更的文件**, **输出文件**, **Generated outputs**).
-2. List **each distinct path** you touched on disk. Prefer **Markdown links** using **workspace-relative POSIX paths** with **no** `file://` / `vscode://` and **no** leading `./`:
-   - Example: `[crates/desktop/web-ui/src/App.tsx](crates/desktop/web-ui/src/App.tsx)`
-   - Same text for label and URL is fine; keeps paths grep-friendly and turns into clickable opens in Zagens (and similar clients).
-3. Inline code with backticks is also turned into opens when the token looks like a path (e.g. `` `pptx_engine/charts.py` ``), but **prefer the explicit link form** above for clarity when you are deliberately pointing at deliverables.
-4. Skip this recap when the turn was **read-only** (searches, reasoning, failed writes before any file existed).
+1. Add a small heading in the user's language (examples: **Modified files**, **变更的文件**, **输出文件**, **Generated outputs**, **项目交付**).
+2. Present **each distinct path** you touched on disk as a **Markdown table** (not a bare bullet list). Prefer columns in the user's language, for example:
 
-Do not replace technical prose users need with links alone — one recap section at the end is enough.
+| 文件 | 作用 | 变更 |
+|------|------|------|
+| [path/to/file.ts](path/to/file.ts) | 一句话说明改了什么 / 为何需要 | +12 / −3 |
+
+English equivalent headers: **File** | **Purpose** | **Diff**.
+
+3. Column rules:
+   - **File**: Markdown link with **workspace-relative POSIX path**, **no** `file://` / `vscode://`, **no** leading `./`. Same text for label and URL is fine (clickable in Zagens).
+   - **Purpose**: One short phrase (what the file does in this turn — not a full changelog).
+   - **Diff**: Prefer real counts from `git diff --numstat` / tool results when available (`+N / −M`). For brand-new files you may write `new` or `+N` (approx. line count). If counts are unknown, use `—` rather than inventing numbers.
+4. One row per path; skip unchanged reads. Inline backticks (e.g. `` `pptx_engine/charts.py` ``) still open as paths, but **prefer the table + link form** for deliberate deliverables.
+5. Skip this recap when the turn was **read-only** (searches, reasoning, failed writes before any file existed). For a **single** trivial file, a one-row table is still preferred over a lone bullet.
+
+Do not replace technical prose users need with the table alone — one recap section at the end is enough.
 
 ## When NOT to use certain tools
 

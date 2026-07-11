@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { MessageMetaBar } from '../../MessageMetaBar';
 import { IconSparkle } from '../../../icons/FlatIcons';
 import { useT } from '../../../../i18n';
@@ -7,7 +7,7 @@ import type { TurnBlock } from '../../../../lib/chat/timeline/turnBlockTypes';
 /** ~3–4 lines of text-sm / leading-relaxed (P4.5). */
 const REASONING_PREVIEW_MAX_CLASS = 'max-h-[4.5rem]';
 
-export function ThinkingBlock({
+export const ThinkingBlock = memo(function ThinkingBlock({
   block,
   isTurnStreaming,
 }: {
@@ -72,4 +72,4 @@ export function ThinkingBlock({
       </div>
     </MessageMetaBar>
   );
-}
+});

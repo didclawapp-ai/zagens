@@ -1171,18 +1171,37 @@ pub fn apply_event(state: &mut TranscriptState, event: Event) {
         }
         Event::ToolCallStarted { id, name, input } => {
             state.touch_tool_chain_anim();
-            let detail = truncate_detail(&input.to_string());
-            let summary = format_tool_started_summary(&name, &input);
+            // Null input = preparing announce before args finalize; keep summary
+            // empty so the row shows the tool name without a "null"/"{}" stub.
+            let preparing = input.is_null();
+            let detail = if preparing {
+                String::new()
+            } else {
+                truncate_detail(&input.to_string())
+            };
+            let summary = if preparing {
+                String::new()
+            } else {
+                format_tool_started_summary(&name, &input)
+            };
             if let Some(turn) = state.active_turn_mut() {
-                turn.tools.push(TurnTool {
-                    id,
-                    name,
-                    summary,
-                    detail,
-                    expanded: false,
-                    done: false,
-                    success: None,
-                });
+                if let Some(existing) = turn.tools.iter_mut().find(|t| t.id == id) {
+                    existing.name = name;
+                    if !preparing {
+                        existing.summary = summary;
+                        existing.detail = detail;
+                    }
+                } else {
+                    turn.tools.push(TurnTool {
+                        id,
+                        name,
+                        summary,
+                        detail,
+                        expanded: false,
+                        done: false,
+                        success: None,
+                    });
+                }
             }
         }
         Event::ToolCallProgress { id, output } => {

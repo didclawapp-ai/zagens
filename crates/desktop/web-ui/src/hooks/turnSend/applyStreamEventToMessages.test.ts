@@ -60,3 +60,50 @@ test('applyStreamEventToMessages builds thinking → tool → text order', () =>
   assert.equal(messages[0].tools?.length, 1);
   void timeline;
 });
+
+test('applyStreamEventToMessages updates preparing tool with final input', () => {
+  const assistant: TurnChatMessage = {
+    id: 'asst-1',
+    role: 'assistant',
+    content: '',
+    isStreaming: true,
+    blocks: [],
+  };
+  let messages = [assistant];
+  let timeline = createEmptyTimelineState();
+
+  ({ messages, timelineState: timeline } = applyStreamEventToMessages(
+    messages,
+    timeline,
+    { kind: 'tool_started', id: 't1', name: 'write_file', input: null },
+    { streamTargetId: 'asst-1', currentToolId: 't1' },
+  ));
+  const preparing = messages[0].blocks ?? [];
+  assert.equal(preparing.length, 1);
+  assert.equal(preparing[0].kind, 'tool');
+  if (preparing[0].kind === 'tool') {
+    assert.equal(preparing[0].name, 'write_file');
+    assert.equal(preparing[0].input, '');
+    assert.equal(preparing[0].status, 'running');
+  }
+
+  ({ messages, timelineState: timeline } = applyStreamEventToMessages(
+    messages,
+    timeline,
+    {
+      kind: 'tool_started',
+      id: 't1',
+      name: 'write_file',
+      input: { path: 'a.rs', content: 'fn main() {}' },
+    },
+    { streamTargetId: 'asst-1', currentToolId: 't1' },
+  ));
+  const ready = messages[0].blocks ?? [];
+  assert.equal(ready.length, 1);
+  assert.equal(ready[0].kind, 'tool');
+  if (ready[0].kind === 'tool') {
+    assert.match(ready[0].input, /a\.rs/);
+    assert.equal(ready[0].status, 'running');
+  }
+  void timeline;
+});

@@ -272,36 +272,66 @@ where
                 });
             }
             EngineEvent::ToolCallStarted { id, name, input } => {
-                let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
-                tool_items.insert(id.clone(), item_id.clone());
-                let kind = tool_kind_for_name(&name);
-                let summary = summarize_text(&format!("{name} started"), SUMMARY_LIMIT);
-                let item = TurnItemRecord {
-                    schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
-                    id: item_id.clone(),
-                    turn_id: turn_id.clone(),
-                    kind,
-                    status: TurnItemLifecycleStatus::InProgress,
-                    summary,
-                    detail: Some(serde_json::to_string(&input).unwrap_or_default()),
-                    metadata: Some(json!({
-                        "tool_name": name,
-                        "tool_input": input,
-                        "engine_tool_id": id,
-                    })),
-                    artifact_refs: Vec::new(),
-                    started_at: Some(Utc::now()),
-                    ended_at: None,
-                };
-                mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
-                mgr.emit_event(
-                    &thread_id,
-                    Some(&turn_id),
-                    Some(&item_id),
-                    "item.started",
-                    json!({ "item": item, "tool": { "id": id, "name": name, "input": input } }),
-                )
-                .await?;
+                // Preparing announce (Null input) then finalized args share the
+                // same engine tool id — upsert so we don't double-create items.
+                if let Some(item_id) = tool_items.get(&id).cloned() {
+                    let updated = mgr
+                        .update_and_save_item_blocking(&item_id, |item| {
+                            item.summary =
+                                summarize_text(&format!("{name} started"), SUMMARY_LIMIT);
+                            item.detail = Some(serde_json::to_string(&input).unwrap_or_default());
+                            let mut meta = item.metadata.clone().unwrap_or_else(|| json!({}));
+                            if let Some(obj) = meta.as_object_mut() {
+                                obj.insert("tool_name".into(), json!(name));
+                                obj.insert("tool_input".into(), input.clone());
+                                obj.insert("engine_tool_id".into(), json!(id));
+                            }
+                            item.metadata = Some(meta);
+                        })
+                        .await?;
+                    mgr.emit_event(
+                        &thread_id,
+                        Some(&turn_id),
+                        Some(&item_id),
+                        "item.started",
+                        json!({
+                            "item": updated,
+                            "tool": { "id": id, "name": name, "input": input }
+                        }),
+                    )
+                    .await?;
+                } else {
+                    let item_id = format!("item_{}", &Uuid::new_v4().to_string()[..8]);
+                    tool_items.insert(id.clone(), item_id.clone());
+                    let kind = tool_kind_for_name(&name);
+                    let summary = summarize_text(&format!("{name} started"), SUMMARY_LIMIT);
+                    let item = TurnItemRecord {
+                        schema_version: CURRENT_RUNTIME_SCHEMA_VERSION,
+                        id: item_id.clone(),
+                        turn_id: turn_id.clone(),
+                        kind,
+                        status: TurnItemLifecycleStatus::InProgress,
+                        summary,
+                        detail: Some(serde_json::to_string(&input).unwrap_or_default()),
+                        metadata: Some(json!({
+                            "tool_name": name,
+                            "tool_input": input,
+                            "engine_tool_id": id,
+                        })),
+                        artifact_refs: Vec::new(),
+                        started_at: Some(Utc::now()),
+                        ended_at: None,
+                    };
+                    mgr.save_item_and_attach_blocking(&item, &turn_id).await?;
+                    mgr.emit_event(
+                        &thread_id,
+                        Some(&turn_id),
+                        Some(&item_id),
+                        "item.started",
+                        json!({ "item": item, "tool": { "id": id, "name": name, "input": input } }),
+                    )
+                    .await?;
+                }
             }
             EngineEvent::ToolCallProgress { id, output } => {
                 if let Some(item_id) = tool_items.get(&id) {

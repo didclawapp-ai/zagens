@@ -300,6 +300,9 @@ impl zagens_core::engine::turn_loop::TurnLoopSessionHost for Engine {
             self.session.system_prompt.as_ref(),
         )
     }
+    fn locale_tag(&self) -> &str {
+        self.config.locale_tag.as_str()
+    }
 }
 
 #[async_trait]

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { TurnBlock } from '../../../../lib/chat/timeline/turnBlockTypes';
 import type { AgentState } from '../../../../types/agent';
 import { isCollapsibleToolCategory, toolCategory } from '../../../../lib/chat/timeline/toolCategories';
@@ -10,7 +11,7 @@ function prefersCompact(block: Extract<TurnBlock, { kind: 'tool' }>): boolean {
   return isCollapsibleToolCategory(toolCategory(block.name));
 }
 
-export function ToolBlock({
+export const ToolBlock = memo(function ToolBlock({
   block,
   onOpenDiffInPanel,
   agentStates,
@@ -48,4 +49,4 @@ export function ToolBlock({
       {renderToolBlockCard(tool, onOpenDiffInPanel, t('chatMarkdown.copyTool'), agentStates)}
     </div>
   );
-}
+});

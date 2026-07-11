@@ -27,6 +27,7 @@ import {
 import { reconcileMessagesFromThread, mergeThreadTranscript } from './turnSend/completeStreamUi';
 import { createEmptyTimelineState } from '../lib/chat/timeline/turnTimelineReducer';
 import type { TimelineState } from '../lib/chat/timeline/turnBlockTypes';
+import { createStreamDeltaBatcher } from '../lib/chat/streamDeltaBatch';
 import { persistThreadSessionDeduped } from '../lib/chat/persistThreadSessionDedup';
 import { sessionMessageRichness } from '../lib/chat/sessionMessagePick';
 import type { ComposerOutboundMessage } from '../components/Composer';
@@ -412,11 +413,21 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
           });
         };
 
+        /** Coalesce token-level deltas (~24ms) before setState; flush before other timeline events. */
+        const deltaBatcher = createStreamDeltaBatcher((kind, content) => {
+          applyTimelineNorm({ kind, content });
+        });
+
+        const applyTimelineNormNow = (norm: NormalizedStreamEvent, finalize = false) => {
+          deltaBatcher.flush();
+          applyTimelineNorm(norm, finalize);
+        };
+
         const flushToolProgressToState = () => {
           const chunk = toolProgressPending;
           if (!chunk) return;
           toolProgressPending = '';
-          applyTimelineNorm({ kind: 'tool_progress', output: chunk });
+          applyTimelineNormNow({ kind: 'tool_progress', output: chunk });
         };
 
         const scheduleToolProgressFlush = () => {
@@ -586,6 +597,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         const completeStreamUi = () => {
           if (finished) return;
           finished = true;
+          deltaBatcher.flush();
           if (toolProgressRaf != null) {
             cancelAnimationFrame(toolProgressRaf);
             toolProgressRaf = null;
@@ -970,18 +982,18 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               break;
             case 'thinking_delta':
-              applyTimelineNorm(norm);
+              deltaBatcher.push('thinking_delta', norm.content);
               break;
             case 'message_delta':
-              applyTimelineNorm(norm);
+              deltaBatcher.push('message_delta', norm.content);
               break;
             case 'message_segment':
-              applyTimelineNorm(norm);
+              applyTimelineNormNow(norm);
               break;
             case 'tool_started': {
               ctx.currentToolId.current = norm.id;
               onAgentSpawnToolStarted(norm.id, norm.name, norm.input);
-              applyTimelineNorm(norm);
+              applyTimelineNormNow(norm);
               break;
             }
             case 'tool_progress':
@@ -995,7 +1007,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               flushToolProgressToState();
               const outStr = capToolOutputForDisplay(toolOutputString(norm.output));
-              applyTimelineNorm({
+              applyTimelineNormNow({
                 kind: 'tool_completed',
                 id: norm.id,
                 success: norm.success,

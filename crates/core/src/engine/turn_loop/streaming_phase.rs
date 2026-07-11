@@ -16,8 +16,9 @@ use crate::engine::kernel_event::KernelEvent;
 use crate::engine::streaming::{
     ContentBlockKind, FAKE_WRAPPER_NOTICE, MAX_LENGTH_CONTINUATIONS, MAX_STREAM_ERRORS_BEFORE_FAIL,
     MAX_STREAM_RETRIES, MAX_TRANSPARENT_STREAM_RETRIES, STREAM_CHUNK_TIMEOUT_SECS,
-    STREAM_MAX_CONTENT_BYTES, STREAM_MAX_DURATION_SECS, ToolUseState, contains_fake_tool_wrapper,
-    filter_tool_call_delta, should_transparently_retry_stream,
+    STREAM_MAX_CONTENT_BYTES, STREAM_MAX_DURATION_SECS, THINKING_BACKPRESSURE_COALESCE_MS,
+    ToolUseState, contains_fake_tool_wrapper, filter_tool_call_delta, length_continuation_prompts,
+    should_outer_retry_empty_stream, should_transparently_retry_stream,
 };
 use crate::engine::tool_parser;
 use crate::engine::turn_machine::emit_kernel_event;
@@ -231,6 +232,10 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
     // means the connection closed with no finish marker (infra/duration cut).
     let mut last_stop_reason: Option<String> = None;
     let loop_t0 = Instant::now();
+    // Under event-channel backpressure, coalesce ThinkingDelta sends (content
+    // still accumulates in `current_thinking`; flush before ThinkingComplete).
+    let mut thinking_send_pending = String::new();
+    let mut thinking_backpressured = false;
 
     // Process stream events
     loop {
@@ -432,10 +437,19 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
                     tracing::info!("Tool '{}' block start. Initial input: {:?}", name, input);
                     current_block_kind = Some(ContentBlockKind::ToolUse);
                     current_tool_index = Some(tool_uses.len());
-                    // ToolCallStarted is deferred to ContentBlockStop —
-                    // see `final_tool_input`. Emitting here would ship
-                    // the placeholder `{}` and the cell would render
-                    // `<command>` / `<file>` literals to the user.
+                    // Announce the tool name immediately (Null input = preparing)
+                    // so the UI is not stuck on a silent pause while args stream.
+                    // Final args are re-emitted on ContentBlockStop; consumers
+                    // upsert by tool id so partial JSON never paints as
+                    // `<command>` / `<file>` placeholders.
+                    let _ = host
+                        .tx_event()
+                        .send(Event::ToolCallStarted {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: serde_json::Value::Null,
+                        })
+                        .await;
                     tool_uses.push(ToolUseState {
                         id,
                         name,
@@ -452,6 +466,14 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
                     );
                     current_block_kind = Some(ContentBlockKind::ToolUse);
                     current_tool_index = Some(tool_uses.len());
+                    let _ = host
+                        .tx_event()
+                        .send(Event::ToolCallStarted {
+                            id: id.clone(),
+                            name: name.clone(),
+                            input: serde_json::Value::Null,
+                        })
+                        .await;
                     tool_uses.push(ToolUseState {
                         id,
                         name,
@@ -491,25 +513,32 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
                     stream_content_bytes = stream_content_bytes.saturating_add(thinking.len());
                     current_thinking.push_str(&thinking);
                     if !thinking.is_empty() {
-                        // Backpressure probe (stream-truncation investigation): the
-                        // event channel is bounded (256). When the monitor drains
-                        // slower than the model streams reasoning (per-delta DB
-                        // write under a global lock), this `.await` blocks — and
-                        // while blocked the loop stops polling the upstream HTTP
-                        // stream, which can let the provider idle-close the socket.
-                        let send_t0 = Instant::now();
-                        let _ = host
-                            .tx_event()
-                            .send(Event::ThinkingDelta {
-                                index: index as usize,
-                                content: thinking,
-                            })
-                            .await;
-                        let send_ms = send_t0.elapsed().as_millis() as u64;
-                        if send_ms >= 50 {
-                            eprintln!(
-                                "[stream-probe] engine ThinkingDelta send blocked {send_ms}ms on bounded event channel (backpressure stalls upstream read)"
-                            );
+                        // Backpressure probe + coalesce: the event channel is
+                        // bounded (256). When monitor drains slower than the
+                        // model streams reasoning, `.await` blocks upstream
+                        // HTTP reads. Under pressure, buffer deltas and flush
+                        // in larger chunks (monitor also coalesces; this is
+                        // the engine-side safety valve).
+                        thinking_send_pending.push_str(&thinking);
+                        let should_flush =
+                            !thinking_backpressured || thinking_send_pending.len() >= 512;
+                        if should_flush {
+                            let chunk = std::mem::take(&mut thinking_send_pending);
+                            let send_t0 = Instant::now();
+                            let _ = host
+                                .tx_event()
+                                .send(Event::ThinkingDelta {
+                                    index: index as usize,
+                                    content: chunk,
+                                })
+                                .await;
+                            let send_ms = send_t0.elapsed().as_millis() as u64;
+                            if send_ms >= 50 {
+                                eprintln!(
+                                    "[stream-probe] engine ThinkingDelta send blocked {send_ms}ms on bounded event channel (backpressure stalls upstream read)"
+                                );
+                            }
+                            thinking_backpressured = send_ms >= THINKING_BACKPRESSURE_COALESCE_MS;
                         }
                     }
                 }
@@ -541,6 +570,17 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
                         last_text_index = Some(index as usize);
                     }
                     Some(ContentBlockKind::Thinking) => {
+                        if !thinking_send_pending.is_empty() {
+                            let chunk = std::mem::take(&mut thinking_send_pending);
+                            let _ = host
+                                .tx_event()
+                                .send(Event::ThinkingDelta {
+                                    index: index as usize,
+                                    content: chunk,
+                                })
+                                .await;
+                            thinking_backpressured = false;
+                        }
                         let _ = host
                             .tx_event()
                             .send(Event::ThinkingComplete {
@@ -622,6 +662,18 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
         }
     }
 
+    // Flush any thinking deltas held under backpressure before post-stream logic.
+    if !thinking_send_pending.is_empty() {
+        let chunk = std::mem::take(&mut thinking_send_pending);
+        let _ = host
+            .tx_event()
+            .send(Event::ThinkingDelta {
+                index: 0,
+                content: chunk,
+            })
+            .await;
+    }
+
     // Stream-truncation probe: summarize how this stream ended and what it
     // produced. `upstream_eof` with non-empty thinking + empty text/tools is the
     // empty-body `Completed` truncation signature.
@@ -638,19 +690,19 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
         transparent_stream_retries,
     );
 
-    // #103 Phase 3 — transparent retry. The inner loop above bails
-    // when reqwest yields chunk decode errors three times in a row;
-    // most of the time those are recoverable proxy / HTTP/2 issues
-    // and the request can simply be re-issued. Re-issue silently up
-    // to MAX_STREAM_RETRIES, but only when the stream produced
-    // nothing actionable — if any tool call landed or text was
-    // streamed, ship the partial state to the rest of the turn
-    // pipeline so we don't double-bill the user by re-running it.
-    let stream_died_with_nothing = stream_errors > 0
-        && tool_uses.is_empty()
-        && current_text_visible.trim().is_empty()
-        && current_thinking.trim().is_empty()
-        && !pending_message_complete;
+    // #103 Phase 3 — outer retry when the stream produced no sendable
+    // content (no text / tools). Covers stream errors and clean
+    // `upstream_eof` / `chunk_timeout`, including thinking-only
+    // truncation (mid-reasoning idle-close → empty-body `Completed`).
+    // If any tool call or visible text landed, ship the partial state
+    // instead of re-billing a full re-request.
+    let stream_died_with_nothing = should_outer_retry_empty_stream(
+        stream_errors,
+        stream_end_reason,
+        !tool_uses.is_empty(),
+        !current_text_visible.trim().is_empty(),
+        pending_message_complete,
+    );
     if stream_died_with_nothing {
         let outer_retry_ok = turn_error
             .as_deref()
@@ -659,7 +711,8 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
         if outer_retry_ok && *stream_retry_attempts < MAX_STREAM_RETRIES {
             *stream_retry_attempts = stream_retry_attempts.saturating_add(1);
             tracing::warn!(
-                "Stream died with no content (attempt {}/{}); retrying request",
+                "Stream died with no sendable content (reason={stream_end_reason}, thinking_bytes={}, attempt {}/{}); retrying request",
+                current_thinking.len(),
                 stream_retry_attempts,
                 MAX_STREAM_RETRIES
             );
@@ -810,24 +863,21 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
         // the next step continues, so we only special-case the empty-tool path.)
         if truncated_by_length && *length_continuations < MAX_LENGTH_CONTINUATIONS {
             *length_continuations = length_continuations.saturating_add(1);
-            if !has_sendable_assistant_content {
+            let (placeholder, hint) =
+                length_continuation_prompts(host.locale_tag(), has_sendable_assistant_content);
+            if let Some(text) = placeholder {
                 // No assistant turn was persisted for a reasoning-only truncation;
                 // add a short placeholder so role alternation stays valid and the
                 // model gets a breadcrumb that its previous attempt was cut.
                 host.add_session_message(Message {
                     role: "assistant".to_string(),
                     content: vec![ContentBlock::Text {
-                        text: "(上一轮回复因达到输出长度上限被中断)".to_string(),
+                        text: text.to_string(),
                         cache_control: None,
                     }],
                 })
                 .await;
             }
-            let hint = if has_sendable_assistant_content {
-                "[系统] 你上一条回复因达到输出长度上限被截断。请从中断处继续输出剩余内容，不要重复或重写已经输出的部分。"
-            } else {
-                "[系统] 你上一轮思考因达到输出长度上限被截断，尚未产出任何回复。请基于已有分析直接给出结论或下一步操作，并精简思考过程。"
-            };
             host.add_session_message(Message {
                 role: "user".to_string(),
                 content: vec![ContentBlock::Text {

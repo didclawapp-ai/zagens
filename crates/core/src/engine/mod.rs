@@ -109,8 +109,10 @@ pub use start_turn::StartTurnParams;
 pub use streaming::{
     ContentBlockKind, FAKE_WRAPPER_NOTICE, MAX_STREAM_ERRORS_BEFORE_FAIL,
     MAX_TRANSPARENT_STREAM_RETRIES, STREAM_CHUNK_TIMEOUT_SECS, STREAM_MAX_CONTENT_BYTES,
-    STREAM_MAX_DURATION_SECS, TOOL_CALL_END_MARKERS, TOOL_CALL_START_MARKERS, ToolUseState,
-    contains_fake_tool_wrapper, filter_tool_call_delta, should_transparently_retry_stream,
+    STREAM_MAX_DURATION_SECS, THINKING_BACKPRESSURE_COALESCE_MS, TOOL_CALL_END_MARKERS,
+    TOOL_CALL_START_MARKERS, ToolUseState, contains_fake_tool_wrapper, filter_tool_call_delta,
+    length_continuation_prompts, should_outer_retry_empty_stream,
+    should_transparently_retry_stream,
 };
 #[allow(deprecated)]
 pub use subagent_port::SubAgentSpawnPort;
