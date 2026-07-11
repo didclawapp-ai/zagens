@@ -1,6 +1,6 @@
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import { parseSubagentProgressStatus } from './subagentProgress.ts';
+import { parseSubagentProgressStatus } from './subagentProgress';
 
 test('parseSubagentProgressStatus extracts step and tool', () => {
   const p = parseSubagentProgressStatus("step 13/100: finished tool 'read_file' (ok)");
