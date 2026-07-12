@@ -1,0 +1,20 @@
+# Gate-as-Code preset: deliverable presence (no shell exec)
+# Useful for doc/office tasks or post-run artifact checks.
+
+schema_version = 1
+
+[harness]
+id = "deliverables-min"
+description = "Require deliverables/ directory with at least one file."
+
+[verify_budget]
+max_retries = 0
+timeout_ms = 60000
+
+[rollback]
+strategy = "snapshot"
+
+[[verify]]
+id = "deliverables_dir"
+predicate = "file_count"
+args = { glob = "deliverables/**", min = 1 }

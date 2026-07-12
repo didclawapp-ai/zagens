@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **crates.io packaging (`zagens-cli`):** Embed Gate-as-Code presets from `crates/runtime-server/assets/gates/presets/` instead of repo-root `docs/…` paths so `cargo publish` verify succeeds (other `0.8.6` crates already on crates.io; `zagens-cli` upload was blocked).
+
 ## [0.8.6] - 2026-07-11
 
 **Release highlights**

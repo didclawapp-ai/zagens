@@ -21,22 +21,24 @@ const BUNDLED_PRESETS: &[BundledPreset] = &[
     BundledPreset {
         id: "rust-cargo-smoke",
         description: "cargo check + cargo test (Rust workspace smoke)",
-        raw: include_str!("../../../../../docs/harness/gates/presets/rust-cargo-smoke.toml"),
+        // Packaged under `assets/` so `cargo publish` verify works (repo-root
+        // `docs/harness/gates/presets/` is not part of the crate tarball).
+        raw: include_str!("../../../assets/gates/presets/rust-cargo-smoke.toml"),
     },
     BundledPreset {
         id: "go-build-vet",
         description: "go build, vet, and tests",
-        raw: include_str!("../../../../../docs/harness/gates/presets/go-build-vet.toml"),
+        raw: include_str!("../../../assets/gates/presets/go-build-vet.toml"),
     },
     BundledPreset {
         id: "deliverables-min",
         description: "require deliverables/** without shell exec",
-        raw: include_str!("../../../../../docs/harness/gates/presets/deliverables-min.toml"),
+        raw: include_str!("../../../assets/gates/presets/deliverables-min.toml"),
     },
     BundledPreset {
         id: "go-microstack-migrated",
         description: "MicroStack Layer-2 verify rows (predicate-native migration sample)",
-        raw: include_str!("../../../../../docs/harness/gates/presets/go-microstack-migrated.toml"),
+        raw: include_str!("../../../assets/gates/presets/go-microstack-migrated.toml"),
     },
 ];
 

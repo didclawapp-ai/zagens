@@ -1,0 +1,43 @@
+# Migrated subset of microstack-completion-gate.toml → Gate-as-Code (Phase 4.1)
+# See docs/harness/gates/MIGRATION.md for full legacy → predicate mapping.
+#
+# Layer-3 deliverable rows remain in the legacy completion_gate config until
+# a future schema extension; this preset covers Layer-2 verify oracle only.
+
+schema_version = 1
+
+[harness]
+id = "go-microstack-layer2"
+description = "MicroStack regression — predicate-native Layer-2 verify rows."
+
+[verify_budget]
+max_retries = 5
+timeout_ms = 600000
+
+[rollback]
+strategy = "snapshot"
+
+[[verify]]
+id = "build"
+predicate = "exit_code"
+args = { cmd = "go build ./..." }
+
+[[verify]]
+id = "vet"
+predicate = "exit_code"
+args = { cmd = "go vet ./..." }
+
+[[verify]]
+id = "gofmt_clean"
+predicate = "command_output_matches"
+args = { command = "gofmt -l ." }
+
+[[verify]]
+id = "contracts_stable"
+predicate = "exit_code"
+args = { cmd = "git diff --exit-code contracts/" }
+
+[[verify]]
+id = "e2e_todo"
+predicate = "exit_code"
+args = { cmd = "bash scripts/e2e_todo.sh" }

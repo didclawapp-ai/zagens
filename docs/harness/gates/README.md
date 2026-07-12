@@ -18,10 +18,14 @@ Gate-as-Code is the **portable, shareable** form of harness success criteria:
   Contributor gate TOML          Runtime consumers
   ─────────────────────          ─────────────────
   docs/harness/gates/presets/ ──▶ zagens queue add --gate-file
-                                 ▶ load_skill → stage gate
+  (public docs; edit here)       ▶ load_skill → stage gate
                                  ▶ [long_horizon.stage_gate].manifest
+
+  crates/runtime-server/assets/gates/presets/
+    └── copy of presets for `include_str!` / crates.io package
 ```
 
+When changing a bundled preset, update **both** `docs/harness/gates/presets/` and `crates/runtime-server/assets/gates/presets/` (the latter is what `zagens gate --preset` embeds at compile time).
 ---
 
 ## Quick start
