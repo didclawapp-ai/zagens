@@ -1,0 +1,74 @@
+# Publish remaining crates.io packages (manual).
+#
+# Used when local `cargo publish` fails on large crates due to CDN HTTP/2 / 503
+# (e.g. zagens-cli ~1.5MB). Smaller crates may already be on crates.io.
+#
+# Required secret: CARGO_REGISTRY_TOKEN (crates.io API token)
+#
+# Usage: Actions → Publish crates.io → Run workflow
+#   packages: zagens-cli
+#   from_git_ref: master (or a release tag)
+
+name: Publish crates.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Space-separated crate names (dependency order)"
+        required: true
+        default: "zagens-cli"
+      git_ref:
+        description: "Git ref to publish from"
+        required: true
+        default: "master"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-crates-io
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: cargo publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      CARGO_HTTP_MULTIPLEXING: "false"
+      CARGO_NET_RETRY: "10"
+      CARGO_HTTP_TIMEOUT: "300"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check version drift
+        run: bash scripts/release/check-versions.sh
+
+      - name: Publish packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is not set"
+            exit 1
+          fi
+          wait_secs=45
+          pkgs=(${{ inputs.packages }})
+          last_idx=$((${#pkgs[@]} - 1))
+          for i in "${!pkgs[@]}"; do
+            pkg="${pkgs[$i]}"
+            echo "::group::cargo publish -p ${pkg}"
+            cargo publish -p "${pkg}" --no-verify
+            echo "::endgroup::"
+            if [ "$i" -lt "$last_idx" ]; then
+              echo "Waiting ${wait_secs}s for crates.io index…"
+              sleep "${wait_secs}"
+            fi
+          done
+          echo "OK: published ${pkgs[*]}"
