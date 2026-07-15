@@ -78,6 +78,8 @@ export interface WorkspaceFilesPanelProps {
   openWorkspaceFile: (relPath: string, title?: string) => Promise<void>;
   /** Insert `@rel` into Composer (does not open preview). */
   onAddToChat?: (relPath: string, isDirectory?: boolean) => void;
+  /** Open directory (or parent of a file) in the integrated terminal. */
+  onOpenInTerminal?: (absDirPath: string) => void;
   focusFilesNonce: number;
   focusFilesRelPath?: string | null;
   /** Bumped by parent (e.g. after snapshot restore) to reload directory listing. */
@@ -98,6 +100,7 @@ export default function WorkspaceFilesPanel({
   preview,
   openWorkspaceFile,
   onAddToChat,
+  onOpenInTerminal,
   focusFilesNonce,
   focusFilesRelPath,
   externalRefreshNonce = 0,
@@ -499,6 +502,17 @@ export default function WorkspaceFilesPanel({
     onAddToChat(ctxMenu.relPath, ctxMenu.kind === 'directory');
     setCtxMenu(null);
   }, [ctxMenu, onAddToChat]);
+
+  const ctxOpenInTerminal = useCallback(() => {
+    if (!ctxMenu || !onOpenInTerminal) return;
+    const dir =
+      ctxMenu.kind === 'directory'
+        ? ctxMenu.absPath
+        : ctxMenu.absPath.replace(/[\\/][^\\/]+$/, '');
+    if (!dir.trim()) return;
+    onOpenInTerminal(dir);
+    setCtxMenu(null);
+  }, [ctxMenu, onOpenInTerminal]);
 
   const openCurrentInShell = useCallback(async () => {
     if (!desktopHost) return;
@@ -942,6 +956,15 @@ export default function WorkspaceFilesPanel({
           >
             {t('workspaceFiles.ctxOpenExplorer')}
           </button>
+          {desktopHost && onOpenInTerminal ? (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-xs text-t-text hover:bg-hover"
+              onClick={ctxOpenInTerminal}
+            >
+              {t('workspaceFiles.ctxOpenTerminal')}
+            </button>
+          ) : null}
           {ctxMenu.kind === 'file' && canOpenWithSystemApp(ctxMenu.name) && (
             <button
               type="button"

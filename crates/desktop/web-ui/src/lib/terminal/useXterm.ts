@@ -6,6 +6,8 @@ export interface UseXtermOptions {
   theme: ITheme;
   fontSize?: number;
   rows?: number;
+  /** Scrollback lines retained by xterm (default 1000). */
+  scrollback?: number;
   cursorBlink?: boolean;
   cursorStyle?: 'block' | 'underline' | 'bar';
   cursorInactiveStyle?: 'outline' | 'block' | 'bar' | 'underline' | 'none';
@@ -66,9 +68,10 @@ export function useXterm(
       theme,
       fontSize = 12,
       rows,
+      scrollback = 1000,
       cursorBlink = false,
       cursorStyle = 'bar',
-      cursorInactiveStyle = 'block',
+      cursorInactiveStyle = 'outline',
       cursorWidth = 2,
       disableStdin = false,
     } = optionsRef.current;
@@ -83,6 +86,7 @@ export function useXterm(
       fontSize,
       fontFamily: 'var(--font-mono)',
       theme,
+      scrollback,
       ...(rows != null ? { rows } : {}),
     });
 

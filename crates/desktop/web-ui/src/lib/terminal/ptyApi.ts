@@ -1,11 +1,32 @@
 import { invoke } from '@tauri-apps/api/core';
 
+export type TerminalShellKind =
+  | 'default'
+  | 'pwsh'
+  | 'powershell'
+  | 'cmd'
+  | 'bash'
+  | 'zsh'
+  | 'sh';
+
+export interface SpawnTerminalOptions {
+  shell?: TerminalShellKind;
+  loadProfile?: boolean;
+}
+
 export async function spawnTerminal(
   workspace: string,
   cols: number,
   rows: number,
+  options: SpawnTerminalOptions = {},
 ): Promise<string> {
-  return invoke<string>('spawn_terminal', { workspace, cols, rows });
+  return invoke<string>('spawn_terminal', {
+    workspace,
+    cols,
+    rows,
+    shell: options.shell ?? 'default',
+    loadProfile: options.loadProfile ?? false,
+  });
 }
 
 export async function writeTerminal(id: string, data: string): Promise<void> {

@@ -1997,8 +1997,19 @@ body {
     padding: 0;
   }
 
-  .terminal-panel-xterm .xterm-cursor-layer {
-    z-index: 2;
+  /*
+   * Unfocused outline caret: bump stroke to 2px (xterm default 1px is easy to
+   * miss in WebView2). Focused block/blink comes from xterm's injected theme CSS
+   * (requires style-src without a voiding nonce — see tauri.conf.json).
+   */
+  .terminal-panel-xterm .xterm-rows .xterm-cursor.xterm-cursor-outline {
+    background-color: transparent !important;
+    outline: 2px solid var(--zagens-term-cursor, #4ade80) !important;
+    outline-offset: -1px !important;
+  }
+
+  .terminal-panel-xterm .xterm-screen canvas {
+    image-rendering: auto;
   }
 
   .terminal-panel-xterm .xterm-link {
@@ -2009,6 +2020,7 @@ body {
 
   .terminal-panel-xterm .xterm-viewport {
     overflow-y: auto;
+    background-color: var(--zagens-term-bg, #121212);
   }
 
   .terminal-panel-xterm .xterm-viewport::-webkit-scrollbar {

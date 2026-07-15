@@ -90,8 +90,8 @@ fn resolve_terminal_cwd(workspace: &str) -> Result<PathBuf, String> {
     ))
 }
 
-fn shell_command(cwd: &Path) -> CommandBuilder {
-    let mut cmd = build_shell_program();
+fn shell_command(cwd: &Path, shell: &str, load_profile: bool) -> Result<CommandBuilder, String> {
+    let mut cmd = build_shell_program(shell, load_profile)?;
     cmd.cwd(cwd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
@@ -99,7 +99,7 @@ fn shell_command(cwd: &Path) -> CommandBuilder {
     cmd.env("FORCE_COLOR", "1");
     cmd.env("CLICOLOR_FORCE", "1");
     cmd.env("npm_config_color", "always");
-    cmd
+    Ok(cmd)
 }
 
 #[cfg(windows)]
@@ -111,7 +111,7 @@ fn executable_on_path(name: &str) -> bool {
 }
 
 #[cfg(windows)]
-fn windows_shell_exe() -> &'static str {
+fn windows_default_shell_exe() -> &'static str {
     use std::sync::OnceLock;
     static SHELL: OnceLock<String> = OnceLock::new();
     SHELL.get_or_init(|| {
@@ -123,31 +123,64 @@ fn windows_shell_exe() -> &'static str {
     })
 }
 
-fn build_shell_program() -> CommandBuilder {
+#[cfg(windows)]
+fn build_powershell(exe: &str, load_profile: bool) -> CommandBuilder {
+    let is_pwsh = exe.eq_ignore_ascii_case("pwsh.exe");
+    let mut c = CommandBuilder::new(exe);
+    c.arg("-NoLogo");
+    if !load_profile {
+        c.arg("-NoProfile");
+    }
+    // Prefer ANSI even when profile is skipped / does not set PSStyle.
+    if is_pwsh {
+        c.arg("-NoExit");
+        c.arg("-Command");
+        c.arg("$PSStyle.OutputRendering = 'Ansi'");
+    }
+    c
+}
+
+fn build_shell_program(shell: &str, load_profile: bool) -> Result<CommandBuilder, String> {
+    let kind = shell.trim().to_ascii_lowercase();
+    let kind = if kind.is_empty() {
+        "default"
+    } else {
+        kind.as_str()
+    };
+
     #[cfg(windows)]
     {
-        let exe = windows_shell_exe();
-        let is_pwsh = exe.eq_ignore_ascii_case("pwsh.exe");
-        let mut c = CommandBuilder::new(exe);
-        c.arg("-NoLogo");
-        c.arg("-NoProfile");
-        // `-NoProfile` skips PSReadLine theme init; enable ANSI rendering explicitly.
-        if is_pwsh {
-            c.arg("-NoExit");
-            c.arg("-Command");
-            c.arg("$PSStyle.OutputRendering = 'Ansi'");
+        match kind {
+            "default" => Ok(build_powershell(windows_default_shell_exe(), load_profile)),
+            "pwsh" => {
+                if !executable_on_path("pwsh.exe") {
+                    return Err("未找到 pwsh.exe（PowerShell 7+）".to_string());
+                }
+                Ok(build_powershell("pwsh.exe", load_profile))
+            }
+            "powershell" => Ok(build_powershell("powershell.exe", load_profile)),
+            "cmd" => Ok(CommandBuilder::new("cmd.exe")),
+            other => Err(format!("不支持的 Shell: {other}")),
         }
-        c
     }
     #[cfg(not(windows))]
     {
-        if let Ok(shell) = std::env::var("SHELL") {
-            let trimmed = shell.trim();
-            if !trimmed.is_empty() {
-                return CommandBuilder::new(trimmed);
+        let _ = load_profile; // POSIX login shells use profile via the user's shell; no -NoProfile analog here.
+        match kind {
+            "default" => {
+                if let Ok(shell) = std::env::var("SHELL") {
+                    let trimmed = shell.trim();
+                    if !trimmed.is_empty() {
+                        return Ok(CommandBuilder::new(trimmed));
+                    }
+                }
+                Ok(CommandBuilder::new("bash"))
             }
+            "bash" => Ok(CommandBuilder::new("bash")),
+            "zsh" => Ok(CommandBuilder::new("zsh")),
+            "sh" => Ok(CommandBuilder::new("sh")),
+            other => Err(format!("unsupported shell: {other}")),
         }
-        CommandBuilder::new("bash")
     }
 }
 
@@ -188,6 +221,10 @@ fn spawn_reader_thread(
     });
 }
 
+/// Spawn an interactive PTY shell for the workspace panel.
+///
+/// `shell`: `default` | `pwsh` | `powershell` | `cmd` (Windows) / `bash` | `zsh` | `sh` (Unix).
+/// `load_profile`: when true, PowerShell loads the user profile (omits `-NoProfile`). Ignored on Unix.
 #[tauri::command]
 pub fn spawn_terminal(
     window: tauri::WebviewWindow,
@@ -196,10 +233,14 @@ pub fn spawn_terminal(
     workspace: String,
     cols: u16,
     rows: u16,
+    shell: Option<String>,
+    load_profile: Option<bool>,
 ) -> Result<String, String> {
     let window_label = window.label().to_string();
     let cwd = resolve_terminal_cwd(&workspace)?;
     let id = Uuid::new_v4().to_string();
+    let shell_kind = shell.unwrap_or_else(|| "default".to_string());
+    let load_profile = load_profile.unwrap_or(false);
 
     let mut inner = manager
         .inner
@@ -225,7 +266,7 @@ pub fn spawn_terminal(
         .openpty(pty_size(cols, rows))
         .map_err(|e| format!("无法创建 PTY: {e}"))?;
 
-    let cmd = shell_command(&cwd);
+    let cmd = shell_command(&cwd, &shell_kind, load_profile)?;
     let child = pair
         .slave
         .spawn_command(cmd)

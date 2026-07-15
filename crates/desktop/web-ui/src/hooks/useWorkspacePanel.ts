@@ -50,10 +50,38 @@ export function useWorkspacePanel({
   const [filesRefreshNonce, setFilesRefreshNonce] = useState(0);
   const [focusWorkspaceTab, setFocusWorkspaceTab] = useState<WorkspaceTabId | null>(null);
   const [focusWorkspaceTabNonce, setFocusWorkspaceTabNonce] = useState(0);
+  const [newTerminalSessionNonce, setNewTerminalSessionNonce] = useState(0);
+  const [terminalCdNonce, setTerminalCdNonce] = useState(0);
+  const [terminalCdPath, setTerminalCdPath] = useState<string | null>(null);
 
   const bumpFocusWorkspaceTab = useCallback(() => {
     setFocusWorkspaceTabNonce((n) => n + 1);
   }, []);
+
+  const openTerminalInPanel = useCallback(() => {
+    setActiveInspector('workspace');
+    setAuditGridDismissed(true);
+    setRightPanelCollapsed(false);
+    setFocusWorkspaceTab('terminal');
+    bumpFocusWorkspaceTab();
+  }, [setActiveInspector, setAuditGridDismissed, setRightPanelCollapsed, bumpFocusWorkspaceTab]);
+
+  const requestNewTerminalSession = useCallback(() => {
+    openTerminalInPanel();
+    setNewTerminalSessionNonce((n) => n + 1);
+  }, [openTerminalInPanel]);
+
+  /** Open/focus integrated terminal and `cd` into an absolute directory. */
+  const openPathInTerminal = useCallback(
+    (absDirPath: string) => {
+      const path = absDirPath.trim();
+      if (!path) return;
+      openTerminalInPanel();
+      setTerminalCdPath(path);
+      setTerminalCdNonce((n) => n + 1);
+    },
+    [openTerminalInPanel],
+  );
 
   const bumpFilesRefresh = useCallback(() => {
     setFilesRefreshNonce((n) => n + 1);
@@ -207,5 +235,11 @@ export function useWorkspacePanel({
     focusWorkspaceTabNonce,
     setFocusWorkspaceTab,
     bumpFocusWorkspaceTab,
+    newTerminalSessionNonce,
+    openTerminalInPanel,
+    requestNewTerminalSession,
+    terminalCdNonce,
+    terminalCdPath,
+    openPathInTerminal,
   };
 }

@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop 集成终端光标（2026-07-15）：** 根因是 Tauri 给 `style-src` 注入 nonce 后令 `'unsafe-inline'` 失效，xterm 动态样式（含光标）被 CSP 拦截；对 `style-src` 启用 `dangerousDisableAssetCspModification`。配套：终端 `tabpanel` `tabIndex={-1}`；剥离 ConPTY `CSI ?25l`；获焦实心 / 失焦 `outline`（2px）；xterm 5.5 空格键补丁。
+
+### Added
+
+- **Desktop 集成终端会话生命周期（2026-07-15）：** Workspace 切走终端 tab 不再卸载 `TerminalPanel`（隐藏保活）；面板级订阅 `terminal-data`/`terminal-exit`；拖拽改面板尺寸时同步 `resize_terminal`。
+- **Desktop 集成终端 Shell / UX（2026-07-15）：** Shell 选择器与可选 PowerShell Profile；主题/字号/选中即复制；工作区变更横幅与「在此重开」；清屏与 `@xterm/addon-search`；退出态角标；Files 右键「在终端中打开」。
+- **Desktop 集成终端快捷键（2026-07-15）：** `Ctrl/Cmd+\`` 打开并聚焦 Workspace 终端；`Ctrl/Cmd+Shift+\`` 新建终端会话（物理键 `Backquote`）。
+
 ### Changed
 
 - **Desktop HTML file preview (P0a/P0b):** Workspace `.html` / `.htm` opens on the **preview** tab by default (code tab still available). Relative CSS / images / scripts in the HTML are rewritten into `data:` URLs from the workspace (bounded; no `allow-scripts` yet).

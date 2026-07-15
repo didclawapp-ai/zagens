@@ -129,6 +129,13 @@ interface Props {
   focusDiffNonce: number;
   focusWorkspaceTab?: WorkspaceTabId | null;
   focusWorkspaceTabNonce?: number;
+  /** Bumped to create an additional integrated terminal session. */
+  newTerminalSessionNonce?: number;
+  /** Bumped with `terminalCdPath` to `cd` in the integrated terminal. */
+  terminalCdNonce?: number;
+  terminalCdPath?: string | null;
+  /** Open a directory in the integrated terminal (Files context menu). */
+  onOpenInTerminal?: (absDirPath: string) => void;
   onNavigateContextCategory?: (categoryId: string) => void;
   onArchiveContext?: () => void;
   archivePending?: boolean;
@@ -221,6 +228,10 @@ export default function RightPanel({
   focusDiffNonce,
   focusWorkspaceTab = null,
   focusWorkspaceTabNonce = 0,
+  newTerminalSessionNonce = 0,
+  terminalCdNonce = 0,
+  terminalCdPath = null,
+  onOpenInTerminal,
   onNavigateContextCategory,
   onArchiveContext,
   archivePending = false,
@@ -642,7 +653,8 @@ export default function RightPanel({
                   className={`min-h-0 min-w-0 flex-1 ${workspaceTab === 'terminal' || workspaceTab === 'diff' || workspaceTab === 'files' ? 'flex flex-col overflow-hidden' : 'overflow-y-auto'}`}
                   role="tabpanel"
                   aria-labelledby={workbenchTabId(workspaceTab)}
-                  tabIndex={0}
+                  // Terminal: avoid tabIndex=0 so click-focus reaches xterm textarea, not this panel.
+                  tabIndex={workspaceTab === 'terminal' ? -1 : 0}
                 >
                   {workspaceTab === 'restore' && (
                     <div className="p-4 space-y-3 text-xs text-t-text leading-relaxed">
@@ -735,6 +747,7 @@ export default function RightPanel({
                       preview={preview}
                       openWorkspaceFile={openWorkspaceFile}
                       onAddToChat={addWorkspaceFileToChat}
+                      onOpenInTerminal={desktopHost ? onOpenInTerminal : undefined}
                       focusFilesNonce={focusFilesNonce}
                       focusFilesRelPath={focusFilesRelPath}
                       externalRefreshNonce={filesRefreshNonce}
@@ -799,12 +812,29 @@ export default function RightPanel({
                     </div>
                   )}
 
-                  {workspaceTab === 'terminal' && (
-                    <TerminalPanel
-                      workspaceRoot={workspaceRoot}
-                      desktopHost={desktopHost}
-                      active={view === 'workspace' && workspaceTab === 'terminal'}
-                    />
+                  {/* Keep TerminalPanel mounted across workspace tab switches so PTYs
+                      stay alive and session state is preserved. Kill happens on
+                      unmount (office mode / leave desktop host / window teardown). */}
+                  {desktopHost && !officeSession && (
+                    <div
+                      className={
+                        workspaceTab === 'terminal'
+                          ? 'flex min-h-0 flex-1 flex-col'
+                          : 'hidden'
+                      }
+                      aria-hidden={workspaceTab !== 'terminal'}
+                    >
+                      <TerminalPanel
+                        workspaceRoot={workspaceRoot}
+                        desktopHost={desktopHost}
+                        platform={platform}
+                        theme={theme}
+                        active={view === 'workspace' && workspaceTab === 'terminal'}
+                        createSessionNonce={newTerminalSessionNonce}
+                        cdRequestNonce={terminalCdNonce}
+                        cdRequestPath={terminalCdPath}
+                      />
+                    </div>
                   )}
 
                   {workspaceTab === 'diff' && (

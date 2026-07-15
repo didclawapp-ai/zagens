@@ -175,6 +175,10 @@ export type AppShellProps = {
   focusDiffNonce: number;
   focusWorkspaceTab?: import('./RightPanel').WorkspaceTabId | null;
   focusWorkspaceTabNonce?: number;
+  newTerminalSessionNonce?: number;
+  terminalCdNonce?: number;
+  terminalCdPath?: string | null;
+  onOpenInTerminal?: (absDirPath: string) => void;
   onNavigateContextCategory?: (categoryId: string) => void;
   onArchiveContext?: () => void;
   archivePending?: boolean;
@@ -312,6 +316,10 @@ export default function AppShell({
   focusDiffNonce,
   focusWorkspaceTab = null,
   focusWorkspaceTabNonce = 0,
+  newTerminalSessionNonce = 0,
+  terminalCdNonce = 0,
+  terminalCdPath = null,
+  onOpenInTerminal,
   onNavigateContextCategory,
   onArchiveContext,
   archivePending = false,
@@ -574,6 +582,10 @@ export default function AppShell({
             focusDiffNonce={focusDiffNonce}
             focusWorkspaceTab={focusWorkspaceTab}
             focusWorkspaceTabNonce={focusWorkspaceTabNonce}
+            newTerminalSessionNonce={newTerminalSessionNonce}
+            terminalCdNonce={terminalCdNonce}
+            terminalCdPath={terminalCdPath}
+            onOpenInTerminal={onOpenInTerminal}
             onNavigateContextCategory={onNavigateContextCategory}
             onArchiveContext={onArchiveContext}
             archivePending={archivePending}

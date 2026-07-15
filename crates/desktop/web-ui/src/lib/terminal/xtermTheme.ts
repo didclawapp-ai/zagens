@@ -1,4 +1,5 @@
 import type { ITheme } from '@xterm/xterm';
+import type { Theme } from '../appPreferences';
 
 /** Read a CSS custom property from the root element. */
 function cssVar(name: string): string {
@@ -75,18 +76,74 @@ export function xtermThemeForAppDarkMode(isDark: boolean): ITheme {
   };
 }
 
+/** Panel chrome colors for the integrated terminal header/body shell. */
+export function integratedTerminalChrome(theme: Theme): {
+  panelBg: string;
+  headerBorder: string;
+  text: string;
+  muted: string;
+  chipBg: string;
+  chipHover: string;
+  chipActive: string;
+  inputBg: string;
+  inputBorder: string;
+} {
+  if (theme === 'light') {
+    return {
+      panelBg: '#f4f4f5',
+      headerBorder: '#e4e4e7',
+      text: '#27272a',
+      muted: '#71717a',
+      chipBg: '#e4e4e7',
+      chipHover: '#d4d4d8',
+      chipActive: '#d4d4d8',
+      inputBg: '#ffffff',
+      inputBorder: '#d4d4d8',
+    };
+  }
+  return {
+    panelBg: '#121212',
+    headerBorder: '#27272a',
+    text: '#e4e4e7',
+    muted: '#a1a1aa',
+    chipBg: '#27272a',
+    chipHover: '#3f3f46',
+    chipActive: '#3f3f46',
+    inputBg: '#18181b',
+    inputBorder: '#3f3f46',
+  };
+}
+
 /**
  * Integrated terminal (right-panel workspace tab).
- * Always dark — matches the terminal panel's own dark chrome (`bg-[#121212]`).
- * Foreground and cursor are fixed neutral values that work on this background.
+ * Follows app light vs dark/dusk so the PTY surface matches chrome.
  */
-export const integratedTerminalTheme: ITheme = {
-  background: '#121212',
-  foreground: '#e4e4e7',
-  /** Block/bar fill on empty cells — must contrast with background and foreground. */
-  cursor: '#4ade80',
-  /** Foreground on block cursor when over a character. */
-  cursorAccent: '#052e16',
-  selectionBackground: '#3f3f4680',
-  ...ANSI_DARK,
-};
+export function integratedTerminalThemeForApp(theme: Theme): ITheme {
+  if (theme === 'light') {
+    return {
+      background: '#f4f4f5',
+      foreground: '#27272a',
+      // High-contrast block cursor (thin green bar was easy to miss on light chrome).
+      cursor: '#18181b',
+      cursorAccent: '#fafafa',
+      selectionBackground: '#a1a1aa55',
+      ...ANSI_LIGHT,
+    };
+  }
+  return {
+    background: '#121212',
+    foreground: '#e4e4e7',
+    /** Block fill on empty cells — must contrast with background and foreground. */
+    cursor: '#4ade80',
+    /** Foreground on block cursor when over a character. */
+    cursorAccent: '#052e16',
+    selectionBackground: '#3f3f4680',
+    ...ANSI_DARK,
+  };
+}
+
+/**
+ * @deprecated Prefer {@link integratedTerminalThemeForApp}; kept for callers that
+ * always want the dark integrated palette.
+ */
+export const integratedTerminalTheme: ITheme = integratedTerminalThemeForApp('dark');

@@ -2,18 +2,17 @@ import { useEffect } from 'react';
 
 type ShortcutHandler = () => void;
 
-interface ShortcutDef {
-  key: string;
+export interface ShortcutDef {
+  /** Logical key (`e.key`), case-insensitive. Prefer `code` for layout-stable chords. */
+  key?: string;
+  /** Physical key (`e.code`), e.g. `Backquote` for Ctrl+` / Ctrl+Shift+`. */
+  code?: string;
   ctrl?: boolean;
   shift?: boolean;
   /** When set, also fires while an input/textarea/select is focused (default skips most shortcuts there). */
   global?: boolean;
   handler: ShortcutHandler;
   description: string;
-}
-
-interface Props {
-  shortcuts: ShortcutDef[];
 }
 
 export default function useKeyboardShortcuts(shortcuts: ShortcutDef[]) {
@@ -24,20 +23,26 @@ export default function useKeyboardShortcuts(shortcuts: ShortcutDef[]) {
       const isInput = tag === 'input' || tag === 'textarea' || tag === 'select';
 
       for (const s of shortcuts) {
-        const ctrlMatch = s.ctrl ? (e.ctrlKey || e.metaKey) : true;
+        const ctrlMatch = s.ctrl ? (e.ctrlKey || e.metaKey) : !(e.ctrlKey || e.metaKey);
         const shiftMatch = s.shift ? e.shiftKey : !e.shiftKey;
-        if (e.key.toLowerCase() === s.key.toLowerCase() && ctrlMatch && shiftMatch) {
-          if (
-            isInput &&
-            !s.global &&
-            !(s.ctrl && (s.key === 'k' || s.key === 'n'))
-          ) {
-            continue;
-          }
-          e.preventDefault();
-          s.handler();
-          return;
+        const keyMatch = s.code
+          ? e.code === s.code
+          : s.key != null && e.key.toLowerCase() === s.key.toLowerCase();
+        if (!keyMatch || !ctrlMatch || !shiftMatch) {
+          continue;
         }
+        const allowInInput =
+          s.global ||
+          (s.ctrl &&
+            (s.key === 'k' ||
+              s.key === 'n' ||
+              s.code === 'Backquote'));
+        if (isInput && !allowInInput) {
+          continue;
+        }
+        e.preventDefault();
+        s.handler();
+        return;
       }
 
       // Escape in input fields: blur

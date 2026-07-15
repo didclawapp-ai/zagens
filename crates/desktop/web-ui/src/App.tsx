@@ -507,6 +507,12 @@ export default function App() {
     focusWorkspaceTabNonce,
     setFocusWorkspaceTab,
     bumpFocusWorkspaceTab,
+    newTerminalSessionNonce,
+    openTerminalInPanel,
+    requestNewTerminalSession,
+    terminalCdNonce,
+    terminalCdPath,
+    openPathInTerminal,
   } = useWorkspacePanel({
     t,
     runtimeConn,
@@ -739,50 +745,6 @@ export default function App() {
     });
   }, [t]);
 
-  useKeyboardShortcuts([
-    { key: 'k', ctrl: true, description: t('keyboard.newSession'), handler: () => handleNewSessionPreserveMode() },
-    {
-      key: 'n',
-      ctrl: true,
-      shift: true,
-      global: true,
-      description: t('keyboard.newWindow'),
-      handler: () => {
-        void createAgentWindow(selectedWorkspace).catch((e) => {
-          toast.error((e as Error).message);
-        });
-      },
-    },
-    { key: 'n', ctrl: true, description: t('keyboard.workspace'), handler: () => setActiveInspector('workspace') },
-    {
-      key: 'b',
-      ctrl: true,
-      shift: true,
-      global: true,
-      description: t('keyboard.browser'),
-      handler: () => {
-        setActiveInspector('browser');
-        setRightPanelCollapsed(false);
-      },
-    },
-    {
-      key: '.',
-      ctrl: true,
-      global: true,
-      description: t('keyboard.focusMode'),
-      handler: () => toggleFocusMode(),
-    },
-    { key: 'f12', global: true, description: t('keyboard.devtools'), handler: () => toggleDevtools() },
-    {
-      key: 'i',
-      ctrl: true,
-      shift: true,
-      global: true,
-      description: t('keyboard.devtools'),
-      handler: () => toggleDevtools(),
-    },
-  ]);
-
   useEffect(() => {
     suppressChecklistAutoSwitchRef.current = false;
     suppressAuditAutoSwitchRef.current = false;
@@ -909,6 +871,79 @@ export default function App() {
     lockedThreadTaskType,
     Boolean(resumedThreadId),
   );
+
+  useKeyboardShortcuts([
+    { key: 'k', ctrl: true, description: t('keyboard.newSession'), handler: () => handleNewSessionPreserveMode() },
+    {
+      key: 'n',
+      ctrl: true,
+      shift: true,
+      global: true,
+      description: t('keyboard.newWindow'),
+      handler: () => {
+        void createAgentWindow(selectedWorkspace).catch((e) => {
+          toast.error((e as Error).message);
+        });
+      },
+    },
+    { key: 'n', ctrl: true, description: t('keyboard.workspace'), handler: () => setActiveInspector('workspace') },
+    {
+      code: 'Backquote',
+      ctrl: true,
+      global: true,
+      description: t('keyboard.terminal'),
+      handler: () => {
+        if (officeSession) return;
+        if (!desktopHost) {
+          toast.info(t('terminal.desktopOnly'));
+          return;
+        }
+        openTerminalInPanel();
+      },
+    },
+    {
+      code: 'Backquote',
+      ctrl: true,
+      shift: true,
+      global: true,
+      description: t('keyboard.newTerminal'),
+      handler: () => {
+        if (officeSession) return;
+        if (!desktopHost) {
+          toast.info(t('terminal.desktopOnly'));
+          return;
+        }
+        requestNewTerminalSession();
+      },
+    },
+    {
+      key: 'b',
+      ctrl: true,
+      shift: true,
+      global: true,
+      description: t('keyboard.browser'),
+      handler: () => {
+        setActiveInspector('browser');
+        setRightPanelCollapsed(false);
+      },
+    },
+    {
+      key: '.',
+      ctrl: true,
+      global: true,
+      description: t('keyboard.focusMode'),
+      handler: () => toggleFocusMode(),
+    },
+    { key: 'f12', global: true, description: t('keyboard.devtools'), handler: () => toggleDevtools() },
+    {
+      key: 'i',
+      ctrl: true,
+      shift: true,
+      global: true,
+      description: t('keyboard.devtools'),
+      handler: () => toggleDevtools(),
+    },
+  ]);
 
   useEffect(() => {
     if (!resumedThreadId) {
@@ -1259,6 +1294,10 @@ export default function App() {
       focusDiffNonce={focusWorkspaceDiffNonce}
       focusWorkspaceTab={focusWorkspaceTab}
       focusWorkspaceTabNonce={focusWorkspaceTabNonce}
+      newTerminalSessionNonce={newTerminalSessionNonce}
+      terminalCdNonce={terminalCdNonce}
+      terminalCdPath={terminalCdPath}
+      onOpenInTerminal={openPathInTerminal}
       onNavigateContextCategory={navigateContextCategory}
       onArchiveContext={() => void archiveContext()}
       archivePending={archivePending}
