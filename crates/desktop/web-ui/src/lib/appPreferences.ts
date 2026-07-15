@@ -339,7 +339,8 @@ export function loadStoredInspector(): RightPanelView {
       s === 'audit' ||
       s === 'long-horizon' ||
       s === 'mermaid' ||
-      s === 'about'
+      s === 'about' ||
+      s === 'browser'
     ) {
       return s;
     }

@@ -3,12 +3,14 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 
-use zagens_runtime_adapters::tools::{RuntimeToolHostWire, ToolAutomationHost, ToolTaskHost};
+use zagens_runtime_adapters::tools::{
+    RuntimeToolHostWire, ToolAutomationHost, ToolBrowserHost, ToolTaskHost,
+};
 use zagens_runtime_orchestrator::runtime_threads::types::ThreadRecord;
 
 use crate::automation_manager::SharedAutomationManager;
 use crate::task_manager::SharedTaskManager;
-use crate::tools::host_impl::{AutomationManagerHost, TaskManagerHost};
+use crate::tools::host_impl::{AutomationManagerHost, HttpBrowserHost, TaskManagerHost};
 use crate::tools::spec::RuntimeToolServices;
 
 /// Sidecar-only slots wired into `RuntimeToolServices` at engine spawn.
@@ -58,6 +60,8 @@ impl RuntimeThreadBackgroundSlots {
                     as std::sync::Arc<dyn ToolAutomationHost>),
                 _ => None,
             };
+        let browser_host = HttpBrowserHost::from_env()
+            .map(|h| std::sync::Arc::new(h) as std::sync::Arc<dyn ToolBrowserHost>);
         RuntimeToolServices {
             wire: RuntimeToolHostWire {
                 task_data_dir: Some(task_data_dir),
@@ -71,6 +75,7 @@ impl RuntimeThreadBackgroundSlots {
             task_host,
             automation_host,
             shell_env: None,
+            browser_host,
         }
     }
 }

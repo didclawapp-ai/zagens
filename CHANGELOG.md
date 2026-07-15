@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop HTML file preview (P0a/P0b):** Workspace `.html` / `.htm` opens on the **preview** tab by default (code tab still available). Relative CSS / images / scripts in the HTML are rewritten into `data:` URLs from the workspace (bounded; no `allow-scripts` yet).
+- **Desktop Browser pane (P1 spike + tools):** New IconRail **Browser** view with address bar; `browser_*` IPC; prefer embedded child WebView (B) with auto-fallback to windowed (C). Clean profile under `%APPDATA%/zagens/browser-profile/`. Loopback HTTP bridge (`ZAGENS_BROWSER_BRIDGE_URL`) wires runtime tools `browser_navigate` / `browser_snapshot` / `browser_get_text` / `browser_console_tail` (fail closed with `browser_host_missing` without host). Chat http(s) links open in-app (right-click for system browser); `Ctrl+Shift+B` opens Browser pane.
+
 ### Fixed
 
 - **crates.io packaging (`zagens-cli`):** Embed Gate-as-Code presets from `crates/runtime-server/assets/gates/presets/` instead of repo-root `docs/…` paths so `cargo publish` verify succeeds (other `0.8.6` crates already on crates.io; `zagens-cli` upload was blocked).

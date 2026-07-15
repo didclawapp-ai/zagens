@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod browser;
 mod commands;
 mod custom_providers;
 mod deep_link;
@@ -67,7 +68,9 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
-        .manage(WindowRegistry::new());
+        .manage(WindowRegistry::new())
+        .manage(browser::BrowserHosts::new())
+        .manage(browser::BrowserBridgeUrl::default());
 
     builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
         let app = app.clone();
@@ -95,13 +98,28 @@ fn main() {
                 }
                 WindowEvent::CloseRequested { api, .. } => {
                     let label = window.label().to_string();
+                    if label.starts_with("browser-") {
+                        // Browser pane host window — not an agent workbench window.
+                        return;
+                    }
+                    let browser_hosts = app.state::<browser::BrowserHosts>();
+                    browser::destroy_for_parent(&app, &browser_hosts, &label);
                     if let Some(wv) = app.get_webview_window(&label) {
                         window_registry::handle_close_requested(&wv, api, &registry, &terminal);
                     }
                 }
                 WindowEvent::Destroyed => {
-                    registry.unregister(window.label());
-                    terminal.kill_all_for_window(window.label());
+                    let label = window.label().to_string();
+                    if label.starts_with("browser-") {
+                        // If the windowed BrowserHost was closed by the user, drop the record.
+                        let browser_hosts = app.state::<browser::BrowserHosts>();
+                        browser_hosts.forget_host_label(&label);
+                        return;
+                    }
+                    let browser_hosts = app.state::<browser::BrowserHosts>();
+                    browser::destroy_for_parent(&app, &browser_hosts, &label);
+                    registry.unregister(&label);
+                    terminal.kill_all_for_window(&label);
                 }
                 _ => {}
             }
@@ -131,8 +149,19 @@ fn main() {
             let handle = app.handle().clone();
             let token_for_sidecar = token.clone();
             let shutdown_for_sidecar = shutdown.clone();
-            // Start the sidecar as early as possible so it warms up while the WebView loads.
+            // Start browser bridge then sidecar so ZAGENS_BROWSER_BRIDGE_URL is set before spawn.
             tauri::async_runtime::spawn(async move {
+                match browser::start_browser_bridge(handle.clone(), token_for_sidecar.clone()).await
+                {
+                    Ok(url) => {
+                        if let Some(slot) = handle.try_state::<browser::BrowserBridgeUrl>() {
+                            slot.set(url);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[zagens] browser bridge failed to start: {e}");
+                    }
+                }
                 if let Err(e) = sidecar::start_and_monitor(
                     &handle,
                     7878,
@@ -319,6 +348,13 @@ fn main() {
             deep_link::take_pending_deep_link,
             update::get_update_status,
             update::install_app_update,
+            browser::browser_create,
+            browser::browser_destroy,
+            browser::browser_navigate,
+            browser::browser_get_state,
+            browser::browser_set_bounds,
+            browser::browser_snapshot,
+            browser::browser_focus_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zagens");

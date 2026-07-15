@@ -297,6 +297,12 @@ fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> 
     let mut std_cmd = std::process::Command::new(runtime_bin);
     std_cmd.env("DEEPSEEK_RUNTIME_TOKEN", token);
     std_cmd.env("DEEPSEEK_CLIENT_SURFACE", "zagens");
+    if let Some(bridge) = app
+        .try_state::<crate::browser::BrowserBridgeUrl>()
+        .and_then(|s| s.get())
+    {
+        std_cmd.env("ZAGENS_BROWSER_BRIDGE_URL", bridge);
+    }
     // Desktop UI modes (YOLO / trust) may opt in per request; gate in runtime via
     // `Config::effective_trust_mode` requires deployment-level permission.
     std_cmd.env("DEEPSEEK_TRUST_MODE", "1");

@@ -4,6 +4,9 @@ import 'highlight.js/styles/github.css';
 import WorkspaceLinkContextMenu, {
   type WorkspaceLinkMenuState,
 } from './chat/WorkspaceLinkContextMenu';
+import HttpLinkContextMenu, {
+  type HttpLinkMenuState,
+} from './chat/HttpLinkContextMenu';
 import { useT } from '../i18n';
 import { enhanceChatCodeBlocks } from '../lib/enhanceChatCodeBlocks';
 import { enhanceAssistantParagraphBreaks } from '../lib/chat/formatAssistantContent';
@@ -15,6 +18,8 @@ import {
 } from '../lib/workspacePathLike';
 import { normalizeWorkspaceRelPath } from '../lib/openWorkspaceFile';
 import { workspaceAbsolutePath } from '../lib/workspaceLinkMenu';
+import { openExternalUrl } from '../lib/openExternalUrl';
+import { openInAppBrowser } from '../lib/openInAppBrowser';
 
 function enhanceWorkspacePathTargets(html: string): string {
   if (typeof window === 'undefined' || !html) {
@@ -29,6 +34,11 @@ function enhanceWorkspacePathTargets(html: string): string {
 
     root.querySelectorAll('a[href]').forEach((a) => {
       const href = a.getAttribute('href') ?? '';
+      if (/^https?:\/\//i.test(href)) {
+        a.setAttribute('data-ds-http-url', href);
+        a.classList.add('ds-chat-http-link');
+        return;
+      }
       if (!isSafeRelativeWorkspaceHref(href)) {
         return;
       }
@@ -104,6 +114,7 @@ export function ChatMarkdown({
   const containerRef = useRef<HTMLDivElement>(null);
   const [html, setHtml] = useState('');
   const [wsMenu, setWsMenu] = useState<WorkspaceLinkMenuState | null>(null);
+  const [httpMenu, setHttpMenu] = useState<HttpLinkMenuState | null>(null);
 
   const proseUser =
     variant === 'user'
@@ -207,6 +218,21 @@ export function ChatMarkdown({
       if (!target) {
         return;
       }
+      const httpA = target.closest('a[data-ds-http-url]') as HTMLAnchorElement | null;
+      if (httpA) {
+        const url = httpA.getAttribute('data-ds-http-url')?.trim();
+        if (!url) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        if (desktopHost) {
+          void openInAppBrowser(url);
+        } else {
+          void openExternalUrl(url);
+        }
+        return;
+      }
       const a = target.closest('a[data-ds-workspace-rel]') as HTMLAnchorElement | null;
       if (!a) {
         return;
@@ -219,13 +245,23 @@ export function ChatMarkdown({
       e.stopPropagation();
       void onOpenWorkspacePath(rel);
     },
-    [onOpenWorkspacePath],
+    [desktopHost, onOpenWorkspacePath],
   );
 
   const onContextMenuCapture = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement | null;
       if (!target) {
+        return;
+      }
+      const httpA = target.closest('a[data-ds-http-url]') as HTMLAnchorElement | null;
+      if (httpA) {
+        e.preventDefault();
+        const url = httpA.getAttribute('data-ds-http-url')?.trim();
+        if (!url) {
+          return;
+        }
+        setHttpMenu({ url, x: e.clientX, y: e.clientY });
         return;
       }
       const a = target.closest('a[data-ds-workspace-rel]') as HTMLAnchorElement | null;
@@ -287,6 +323,15 @@ export function ChatMarkdown({
           onOpenPreview={(rel) => void onOpenWorkspacePath(rel)}
           onRevealInFiles={(rel) => onRevealWorkspacePath?.(rel)}
           onOpenSystem={onOpenSystem}
+        />
+      ) : null}
+      {httpMenu ? (
+        <HttpLinkContextMenu
+          menu={httpMenu}
+          desktopHost={desktopHost}
+          onClose={() => setHttpMenu(null)}
+          onOpenInApp={(url) => void openInAppBrowser(url)}
+          onOpenSystem={(url) => void openExternalUrl(url)}
         />
       ) : null}
     </>

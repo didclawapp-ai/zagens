@@ -40,6 +40,7 @@ import AboutPanel from './AboutPanel';
 import AuditScratchpadPanel from './AuditScratchpadPanel';
 import LongHorizonPanel from './LongHorizonPanel';
 import InspectorIconTabs from './chrome/InspectorIconTabs';
+import BrowserPane from './browser/BrowserPane';
 
 export type RightPanelView =
   | 'workspace'
@@ -64,7 +65,8 @@ export type RightPanelView =
   | 'audit'
   | 'long-horizon'
   | 'mermaid'
-  | 'about';
+  | 'about'
+  | 'browser';
 
 export type WorkspaceTabId = 'restore' | 'files' | 'rules' | 'terminal' | 'diff';
 
@@ -184,6 +186,7 @@ const PANEL_TITLE_KEYS: Record<RightPanelView, TranslationKey> = {
   'long-horizon': 'panels.longHorizon',
   mermaid: 'panels.mermaid',
   about: 'panels.about',
+  browser: 'panels.browser',
 };
 
 function formatSnapshotTime(ts: number): string {
@@ -1015,6 +1018,8 @@ export default function RightPanel({
         )}
 
         {view === 'about' && <AboutPanel />}
+
+        {view === 'browser' && <BrowserPane desktopHost={desktopHost} />}
 
         {view === 'index' && !officeSession && (
           <IndexPanel

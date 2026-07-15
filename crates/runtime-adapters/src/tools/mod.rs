@@ -11,7 +11,8 @@ pub mod workspace_walk;
 pub use arg_repair::{ArgRepairError, repair};
 pub use diff_format::make_unified_diff;
 pub use host::{
-    RuntimeToolHostWire, ToolAutomationHost, ToolProgressEmit, ToolShellEnvHost, ToolTaskHost,
+    RuntimeToolHostWire, ToolAutomationHost, ToolBrowserHost, ToolProgressEmit, ToolShellEnvHost,
+    ToolTaskHost,
 };
 pub use network_gate::{
     NetworkGateError, check_host_policy, check_host_with_policy, check_url_policy,

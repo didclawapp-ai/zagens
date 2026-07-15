@@ -4,6 +4,7 @@ pub mod apply_patch;
 pub mod approval_cache;
 pub use zagens_runtime_adapters::tools::arg_repair;
 pub mod automation;
+pub mod browser;
 pub mod describe_image;
 pub mod diagnostics;
 pub use zagens_runtime_adapters::tools::diff_format;

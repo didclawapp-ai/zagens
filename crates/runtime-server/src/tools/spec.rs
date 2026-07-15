@@ -21,7 +21,8 @@ use crate::tools::shell::{SharedShellManager, new_shared_shell_manager};
 use zagens_runtime_adapters::tools::path::normalize_path;
 pub use zagens_runtime_adapters::tools::path::path_has_prefix;
 pub use zagens_runtime_adapters::tools::{
-    RuntimeToolHostWire, ToolAutomationHost, ToolProgressEmit, ToolShellEnvHost, ToolTaskHost,
+    RuntimeToolHostWire, ToolAutomationHost, ToolBrowserHost, ToolProgressEmit, ToolShellEnvHost,
+    ToolTaskHost,
 };
 pub use zagens_tools::{
     ApprovalRequirement, FootprintProvenance, ToolCapability, ToolError, ToolManifest, ToolResult,
@@ -43,6 +44,8 @@ pub struct RuntimeToolServices {
     pub automation_host: Option<std::sync::Arc<dyn ToolAutomationHost>>,
     /// Shell env hook injection (#456); sidecar attaches `HookShellEnvHost`.
     pub shell_env: Option<std::sync::Arc<dyn ToolShellEnvHost>>,
+    /// Desktop Browser pane bridge (P1). `None` on CLI/TUI.
+    pub browser_host: Option<std::sync::Arc<dyn ToolBrowserHost>>,
 }
 
 impl std::fmt::Debug for RuntimeToolServices {
@@ -53,6 +56,7 @@ impl std::fmt::Debug for RuntimeToolServices {
             .field("task_host", &self.task_host.is_some())
             .field("automation_host", &self.automation_host.is_some())
             .field("shell_env", &self.shell_env.is_some())
+            .field("browser_host", &self.browser_host.is_some())
             .finish()
     }
 }

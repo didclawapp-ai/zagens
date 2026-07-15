@@ -6,11 +6,9 @@ import { HtmlPreviewRenderer } from './HtmlPreviewRenderer';
 
 type HtmlViewMode = 'code' | 'preview';
 
-function defaultHtmlViewMode(state: RendererProps['state']): HtmlViewMode {
-  if (state.htmlPreview) return 'preview';
-  const name = state.fileName?.toLowerCase() ?? '';
-  if (name.endsWith('.preview.html')) return 'preview';
-  return 'code';
+/** P0a: workspace HTML defaults to visual preview; users can switch to「代码」. */
+function defaultHtmlViewMode(): HtmlViewMode {
+  return 'preview';
 }
 
 function tabClass(active: boolean): string {
@@ -24,7 +22,7 @@ function tabClass(active: boolean): string {
 
 /** HTML workspace files — toggle between syntax-highlighted source and iframe preview. */
 export function HtmlRenderer({ state }: RendererProps) {
-  const [mode, setMode] = useState<HtmlViewMode>(() => defaultHtmlViewMode(state));
+  const [mode, setMode] = useState<HtmlViewMode>(() => defaultHtmlViewMode());
 
   const codeState =
     state.language?.trim()

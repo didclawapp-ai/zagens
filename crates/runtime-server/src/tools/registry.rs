@@ -707,6 +707,19 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(WebRunTool))
     }
 
+    /// Desktop Browser pane tools (`browser_*`). Safe on CLI: fail with
+    /// `browser_host_missing` when no bridge host is attached.
+    #[must_use]
+    pub fn with_browser_tools(self) -> Self {
+        use super::browser::{
+            BrowserConsoleTailTool, BrowserGetTextTool, BrowserNavigateTool, BrowserSnapshotTool,
+        };
+        self.with_tool(Arc::new(BrowserNavigateTool))
+            .with_tool(Arc::new(BrowserSnapshotTool))
+            .with_tool(Arc::new(BrowserGetTextTool))
+            .with_tool(Arc::new(BrowserConsoleTailTool))
+    }
+
     /// Previously registered the OpenAI-style `multi_tool_use.parallel`
     /// meta-tool. DeepSeek-V4 has native parallel tool calls (multiple
     /// `tool_calls` entries in one assistant turn) and the meta-tool name
@@ -841,6 +854,7 @@ impl ToolRegistryBuilder {
             .with_note_tool()
             .with_search_tools()
             .with_web_tools()
+            .with_browser_tools()
             .with_user_input_tool()
             .with_parallel_tool()
             .with_patch_tools()

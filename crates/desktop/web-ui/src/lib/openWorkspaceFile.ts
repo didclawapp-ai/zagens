@@ -3,7 +3,7 @@ import {
   readThreadWorkspaceFile,
   readComposerWorkspaceFile,
 } from '../api/client';
-import { detectFileType, isBinaryFileType, FileType } from '../components/preview';
+import { detectFileType, isBinaryFileType } from '../components/preview';
 import type { PreviewState } from '../components/preview/types';
 import { isOfficePreviewExternal } from './openWorkspaceSystem';
 import { WorkspaceFileOpenError } from './workspaceFileOpenError';
@@ -24,6 +24,12 @@ export function normalizeWorkspaceRelPath(raw: string): string {
     }
   }
   return s;
+}
+
+/** Office / deliverable UTF-8 HTML sidecars (not ordinary workspace pages). */
+export function isHtmlPreviewSidecar(fileName: string | undefined): boolean {
+  const name = fileName?.toLowerCase() ?? '';
+  return name.endsWith('.preview.html');
 }
 
 /**
@@ -74,6 +80,9 @@ export async function loadWorkspaceFileIntoPreview(opts: {
         size: bin.size,
         mimeType: bin.mime_type,
         truncated: bin.truncated,
+        workspaceRoot: root || undefined,
+        threadId: opts.resumedThreadId,
+        desktopHost: opts.desktopHost,
       };
     }
     const file = await readThreadWorkspaceFile(opts.resumedThreadId, relPath);
@@ -85,7 +94,10 @@ export async function loadWorkspaceFileIntoPreview(opts: {
       content: file.content,
       language: file.language_hint ?? undefined,
       fileType: resolved,
-      htmlPreview: resolved === FileType.Html,
+      htmlPreview: isHtmlPreviewSidecar(fileName) || undefined,
+      workspaceRoot: root || undefined,
+      threadId: opts.resumedThreadId,
+      desktopHost: opts.desktopHost,
     };
   }
 
@@ -115,6 +127,9 @@ export async function loadWorkspaceFileIntoPreview(opts: {
       size: bin.size,
       mimeType: bin.mime_type,
       truncated: bin.truncated,
+      workspaceRoot: root,
+      threadId: null,
+      desktopHost: opts.desktopHost,
     };
   }
 
@@ -127,6 +142,9 @@ export async function loadWorkspaceFileIntoPreview(opts: {
     content: file.content,
     language: file.language_hint ?? undefined,
     fileType: resolved,
-    htmlPreview: resolved === FileType.Html,
+    htmlPreview: isHtmlPreviewSidecar(fileName) || undefined,
+    workspaceRoot: root,
+    threadId: null,
+    desktopHost: opts.desktopHost,
   };
 }

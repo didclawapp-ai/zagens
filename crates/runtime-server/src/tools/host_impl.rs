@@ -6,7 +6,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
-use zagens_runtime_adapters::tools::{ToolAutomationHost, ToolShellEnvHost, ToolTaskHost};
+use zagens_runtime_adapters::tools::{
+    ToolAutomationHost, ToolBrowserHost, ToolShellEnvHost, ToolTaskHost,
+};
 
 use crate::automation_manager::SharedAutomationManager;
 use crate::hooks::HookExecutor;
@@ -166,5 +168,116 @@ impl ToolAutomationHost for AutomationManagerHost {
             .await
             .map_err(|e| e.to_string())?;
         serde_json::to_value(run).map_err(|e| e.to_string())
+    }
+}
+
+/// HTTP client for the desktop Browser loopback bridge (`ZAGENS_BROWSER_BRIDGE_URL`).
+pub struct HttpBrowserHost {
+    base_url: String,
+    token: String,
+    client: reqwest::Client,
+}
+
+impl HttpBrowserHost {
+    pub fn from_env() -> Option<Self> {
+        let base = std::env::var("ZAGENS_BROWSER_BRIDGE_URL")
+            .ok()?
+            .trim()
+            .to_string();
+        if base.is_empty() {
+            return None;
+        }
+        let token = std::env::var("DEEPSEEK_RUNTIME_TOKEN").unwrap_or_default();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .ok()?;
+        Some(Self {
+            base_url: base.trim_end_matches('/').to_string(),
+            token,
+            client,
+        })
+    }
+
+    async fn call_op(
+        &self,
+        op: &str,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        url: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Value, String> {
+        let body = serde_json::json!({
+            "op": op,
+            "threadId": thread_id,
+            "windowLabel": window_label,
+            "url": url,
+            "limit": limit,
+        });
+        let resp = self
+            .client
+            .post(format!("{}/v1/browser/op", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("browser bridge request failed: {e}"))?;
+        let status = resp.status();
+        let payload: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("browser bridge bad json: {e}"))?;
+        if !status.is_success() {
+            return Err(payload.to_string());
+        }
+        let ok = payload.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+        if ok {
+            return Ok(payload.get("result").cloned().unwrap_or(Value::Null));
+        }
+        if let Some(err) = payload.get("error") {
+            return Err(err.to_string());
+        }
+        Err(payload.to_string())
+    }
+}
+
+#[async_trait]
+impl ToolBrowserHost for HttpBrowserHost {
+    async fn navigate(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        url: &str,
+    ) -> Result<Value, String> {
+        self.call_op("navigate", thread_id, window_label, Some(url), None)
+            .await
+    }
+
+    async fn snapshot(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+    ) -> Result<Value, String> {
+        self.call_op("snapshot", thread_id, window_label, None, None)
+            .await
+    }
+
+    async fn get_text(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+    ) -> Result<Value, String> {
+        self.call_op("get_text", thread_id, window_label, None, None)
+            .await
+    }
+
+    async fn console_tail(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        limit: usize,
+    ) -> Result<Value, String> {
+        self.call_op("console_tail", thread_id, window_label, None, Some(limit))
+            .await
     }
 }

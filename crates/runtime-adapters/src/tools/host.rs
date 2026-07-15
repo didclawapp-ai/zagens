@@ -55,6 +55,34 @@ pub trait ToolAutomationHost: Send + Sync {
     async fn run_now(&self, automation_id: &str) -> Result<Value, String>;
 }
 
+/// Desktop Browser pane host (P1). Sidecar calls this over loopback HTTP when
+/// `ZAGENS_BROWSER_BRIDGE_URL` is set; CLI/TUI leave it unset.
+#[async_trait]
+pub trait ToolBrowserHost: Send + Sync {
+    async fn navigate(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        url: &str,
+    ) -> Result<Value, String>;
+    async fn snapshot(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+    ) -> Result<Value, String>;
+    async fn get_text(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+    ) -> Result<Value, String>;
+    async fn console_tail(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        limit: usize,
+    ) -> Result<Value, String>;
+}
+
 /// Durable metadata wired at engine spawn; manager handles stay in sidecar.
 #[derive(Clone)]
 pub struct RuntimeToolHostWire {

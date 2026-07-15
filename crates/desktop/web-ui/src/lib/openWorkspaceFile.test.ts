@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { normalizeWorkspaceRelPath } from './openWorkspaceFile';
+import { isHtmlPreviewSidecar, normalizeWorkspaceRelPath } from './openWorkspaceFile';
 
 test('normalizeWorkspaceRelPath strips leading slashes and backslashes', () => {
   assert.equal(normalizeWorkspaceRelPath('\\doc\\a.md'), 'doc/a.md');
@@ -28,4 +28,11 @@ test('normalizeWorkspaceRelPath leaves already-decoded paths unchanged', () => {
 
 test('normalizeWorkspaceRelPath tolerates malformed percent sequences', () => {
   assert.equal(normalizeWorkspaceRelPath('doc/bad%ZZname.md'), 'doc/bad%ZZname.md');
+});
+
+test('isHtmlPreviewSidecar only matches deliverable sidecar names', () => {
+  assert.equal(isHtmlPreviewSidecar('report.preview.html'), true);
+  assert.equal(isHtmlPreviewSidecar('Report.Preview.HTML'), true);
+  assert.equal(isHtmlPreviewSidecar('index.html'), false);
+  assert.equal(isHtmlPreviewSidecar('preview.html'), false);
 });

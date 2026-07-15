@@ -28,6 +28,7 @@ import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
 import { usePreventBrowserReload } from './hooks/usePreventBrowserReload';
 import { useRuntimeConnection } from './hooks/useRuntimeConnection';
 import { useAgentPanelState } from './hooks/useAgentPanelState';
+import { OPEN_BROWSER_PANE_EVENT } from './lib/openInAppBrowser';
 import { useChatMessageActions } from './hooks/useChatMessageActions';
 import { useTraceExport } from './hooks/useTraceExport';
 import { useDesktopShell } from './hooks/useDesktopShell';
@@ -754,6 +755,17 @@ export default function App() {
     },
     { key: 'n', ctrl: true, description: t('keyboard.workspace'), handler: () => setActiveInspector('workspace') },
     {
+      key: 'b',
+      ctrl: true,
+      shift: true,
+      global: true,
+      description: t('keyboard.browser'),
+      handler: () => {
+        setActiveInspector('browser');
+        setRightPanelCollapsed(false);
+      },
+    },
+    {
       key: '.',
       ctrl: true,
       global: true,
@@ -807,6 +819,15 @@ export default function App() {
     },
     [activeInspector, acknowledgeInspectorView],
   );
+
+  useEffect(() => {
+    const onOpenBrowserPane = () => {
+      setActiveInspector('browser');
+      setRightPanelCollapsed(false);
+    };
+    window.addEventListener(OPEN_BROWSER_PANE_EVENT, onOpenBrowserPane);
+    return () => window.removeEventListener(OPEN_BROWSER_PANE_EVENT, onOpenBrowserPane);
+  }, []);
 
   const handleRequestChecklist = useCallback(() => {
     /* Harness float stack auto-shows via useHarnessGridData when checklist data exists. */

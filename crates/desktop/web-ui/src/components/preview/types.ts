@@ -38,10 +38,22 @@ export interface PreviewState {
   size?: number;
   /** MIME type for binary files (e.g. "image/png"). */
   mimeType?: string;
-  /** When true, `content` is UTF-8 HTML (sidecar preview), not base64. */
+  /**
+   * When true, this is an Office/deliverable UTF-8 HTML sidecar (e.g. `*.preview.html`),
+   * not a base64 binary payload. Ordinary workspace `.html` does not need this flag.
+   */
   htmlPreview?: boolean;
   /** True when binary payload was capped at `PREVIEW_MAX_BINARY_BYTES` on disk. */
   truncated?: boolean;
+  /**
+   * Composer workspace absolute root (when known). Used by HTML preview to load
+   * relative sibling assets under the same root.
+   */
+  workspaceRoot?: string;
+  /** Active thread id when preview was opened from a thread workspace. */
+  threadId?: string | null;
+  /** Whether Tauri IPC is available for binary asset reads. */
+  desktopHost?: boolean;
 }
 
 /** Every renderer receives the full PreviewState and decides what to render. */

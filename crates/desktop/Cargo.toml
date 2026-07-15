@@ -32,7 +32,8 @@ sha2.workspace = true
 tokio = { workspace = true, features = ["process", "time", "sync"] }
 uuid.workspace = true
 # `devtools`: keeps WebView 开发者工具在 release 也可用，并注入 Ctrl+Shift+I 切换脚本（见 Tauri 文档）。
-tauri = { version = "2", features = ["devtools", "tray-icon", "image-ico"] }
+# `unstable`: Window::add_child / Manager::get_window — required for Browser pane scheme B (embedded).
+tauri = { version = "2", features = ["devtools", "tray-icon", "image-ico", "unstable"] }
 reqwest = { workspace = true, features = ["json", "rustls", "stream"] }
 futures-util = "0.3"
 ignore = "0.4"
@@ -47,7 +48,10 @@ tracing.workspace = true
 dirs.workspace = true
 portable-pty = "0.8"
 open = "5.3"
+url = "2"
 tauri-plugin-updater = "2"
+axum = { workspace = true }
+tower-http = { version = "0.6", features = ["cors"] }
 
 [target.'cfg(windows)'.dependencies]
 zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.8.6" }

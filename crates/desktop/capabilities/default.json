@@ -2,7 +2,7 @@
   "identifier": "default",
   "description": "默认权限集：核心功能 + 对话框 + 托盘 + 多窗口",
   "local": true,
-  "windows": ["main", "pick-*"],
+  "windows": ["main", "pick-*", "browser-win-*"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
@@ -16,6 +16,7 @@
     "core:window:allow-create",
     "core:window:allow-set-title",
     "core:webview:allow-create-webview-window",
+    "core:webview:allow-create-webview",
     "core:webview:allow-internal-toggle-devtools",
     "dialog:default",
     "dialog:allow-open",
