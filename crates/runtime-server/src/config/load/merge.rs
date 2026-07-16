@@ -124,8 +124,24 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         windows: override_cfg.windows.or(base.windows),
         tools: merge_tools_config(base.tools, override_cfg.tools),
         kernel: override_cfg.kernel.or(base.kernel),
+        browser: merge_browser_config(base.browser, override_cfg.browser),
         custom_providers: override_cfg.custom_providers.or(base.custom_providers),
         custom_provider_id: override_cfg.custom_provider_id.or(base.custom_provider_id),
+    }
+}
+
+fn merge_browser_config(
+    base: Option<crate::config::BrowserConfigToml>,
+    override_cfg: Option<crate::config::BrowserConfigToml>,
+) -> Option<crate::config::BrowserConfigToml> {
+    match (base, override_cfg) {
+        (None, None) => None,
+        (Some(b), None) => Some(b),
+        (None, Some(o)) => Some(o),
+        (Some(b), Some(o)) => Some(crate::config::BrowserConfigToml {
+            yolo: o.yolo.or(b.yolo),
+            allow_private_lan: o.allow_private_lan.or(b.allow_private_lan),
+        }),
     }
 }
 

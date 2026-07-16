@@ -227,7 +227,7 @@ fn spawn_reader_thread(
 /// `load_profile`: when true, PowerShell loads the user profile (omits `-NoProfile`). Ignored on Unix.
 #[tauri::command]
 pub fn spawn_terminal(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     app: AppHandle,
     manager: State<'_, TerminalManager>,
     workspace: String,
@@ -236,7 +236,7 @@ pub fn spawn_terminal(
     shell: Option<String>,
     load_profile: Option<bool>,
 ) -> Result<String, String> {
-    let window_label = window.label().to_string();
+    let window_label = webview.window().label().to_string();
     let cwd = resolve_terminal_cwd(&workspace)?;
     let id = Uuid::new_v4().to_string();
     let shell_kind = shell.unwrap_or_else(|| "default".to_string());

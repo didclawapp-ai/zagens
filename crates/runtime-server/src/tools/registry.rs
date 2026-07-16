@@ -712,12 +712,17 @@ impl ToolRegistryBuilder {
     #[must_use]
     pub fn with_browser_tools(self) -> Self {
         use super::browser::{
-            BrowserConsoleTailTool, BrowserGetTextTool, BrowserNavigateTool, BrowserSnapshotTool,
+            BrowserClickTool, BrowserConsoleTailTool, BrowserGetTextTool, BrowserNavigateTool,
+            BrowserScrollTool, BrowserSnapshotTool, BrowserStartPreviewTool, BrowserTypeTool,
         };
         self.with_tool(Arc::new(BrowserNavigateTool))
             .with_tool(Arc::new(BrowserSnapshotTool))
             .with_tool(Arc::new(BrowserGetTextTool))
             .with_tool(Arc::new(BrowserConsoleTailTool))
+            .with_tool(Arc::new(BrowserClickTool))
+            .with_tool(Arc::new(BrowserTypeTool))
+            .with_tool(Arc::new(BrowserScrollTool))
+            .with_tool(Arc::new(BrowserStartPreviewTool))
     }
 
     /// Previously registered the OpenAI-style `multi_tool_use.parallel`

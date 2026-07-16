@@ -25,7 +25,7 @@ pub fn tool_marks_lht_checkpoint(tool_name: &str, tool_input: &Value, success: b
 }
 
 fn plan_input_marks_completion(input: &Value) -> bool {
-    let Some(steps) = input.get("steps").and_then(|v| v.as_array()) else {
+    let Some(steps) = input.get("plan").and_then(|v| v.as_array()) else {
         return input
             .get("status")
             .and_then(|v| v.as_str())

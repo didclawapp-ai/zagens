@@ -55,6 +55,8 @@ tower-http = { version = "0.6", features = ["cors"] }
 
 [target.'cfg(windows)'.dependencies]
 zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.8.6" }
+webview2-com = "0.38"
+windows = { version = "0.61", features = ["Win32_Foundation"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

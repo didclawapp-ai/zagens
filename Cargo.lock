@@ -8545,6 +8545,8 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "webview2-com",
+ "windows 0.61.3",
  "zagens-config",
  "zagens-secrets",
  "zagens-windows-sandbox",

@@ -45,10 +45,10 @@ pub fn deep_link_payload(link: &DeepLinkOpen) -> DeepLinkOpenPayload {
 
 #[tauri::command]
 pub fn take_pending_deep_link(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     registry: tauri::State<'_, window_registry::WindowRegistry>,
 ) -> Option<DeepLinkOpenPayload> {
     registry
-        .take_pending_deep_link(window.label())
+        .take_pending_deep_link(webview.window().label())
         .map(|link| deep_link_payload(&link))
 }

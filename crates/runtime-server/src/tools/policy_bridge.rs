@@ -61,6 +61,12 @@ fn build_approval_description(
     if is_mcp_tool_name(tool_name) {
         return mcp_tool_approval_description(tool_name);
     }
+    if matches!(
+        tool_name,
+        "browser_click" | "browser_type" | "browser_scroll" | "browser_start_preview"
+    ) {
+        return browser_write_approval_description(tool_name, tool_input);
+    }
     if let Some(registry) = registry
         && let Some(spec) = registry.get(tool_name)
     {
@@ -77,6 +83,52 @@ fn build_approval_description(
         return "Search tool catalog".to_string();
     }
     String::new()
+}
+
+fn browser_write_approval_description(tool_name: &str, tool_input: &Value) -> String {
+    let r = tool_input
+        .get("ref")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+    match tool_name {
+        "browser_click" => format!("Browser: click element ref={r}"),
+        "browser_type" => {
+            let n = tool_input
+                .get("text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count())
+                .unwrap_or(0);
+            format!("Browser: type into ref={r} ({n} chars)")
+        }
+        "browser_scroll" => {
+            let dir = tool_input
+                .get("direction")
+                .and_then(|v| v.as_str())
+                .unwrap_or("down");
+            format!("Browser: scroll {dir} (ref={r})")
+        }
+        "browser_start_preview" => {
+            "Browser: start `.zagens/preview.json` server and open URL".into()
+        }
+        _ => format!("Browser: {tool_name}"),
+    }
+}
+
+fn browser_yolo_enabled() -> bool {
+    matches!(
+        std::env::var("ZAGENS_BROWSER_YOLO")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1") | Some("true") | Some("TRUE") | Some("yes")
+    )
+}
+
+fn is_browser_write_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "browser_click" | "browser_type" | "browser_scroll" | "browser_start_preview"
+    )
 }
 
 // ── Legacy kill-switch path ───────────────────────────────────────────────────
@@ -102,16 +154,22 @@ fn legacy_tool_plan_approval_meta(
     if let Some(registry) = registry
         && let Some(spec) = registry.get(tool_name)
     {
-        return ToolPlanApprovalMeta {
+        let mut meta = ToolPlanApprovalMeta {
             approval_required: spec.approval_requirement() != SpecApprovalRequirement::Auto,
             approval_description: if tool_name == "edit_file" {
                 build_edit_file_approval_desc(tool_input)
+            } else if is_browser_write_tool(tool_name) {
+                browser_write_approval_description(tool_name, tool_input)
             } else {
                 spec.description().to_string()
             },
             supports_parallel: spec.supports_parallel(),
             read_only: spec.is_read_only(),
         };
+        if is_browser_write_tool(tool_name) && !browser_yolo_enabled() {
+            meta.approval_required = true;
+        }
+        return meta;
     }
     if tool_name == CODE_EXECUTION_TOOL_NAME {
         return ToolPlanApprovalMeta {
@@ -292,7 +350,12 @@ pub fn resolve_tool_plan_approval_meta(
     let session_mode = session_mode_from_turn(turn_mode);
     let engine = engine_plan_meta(tool_name, registry, session_mode, trust_mode);
     let description = build_approval_description(tool_name, tool_input, registry);
-    apply_engine_meta(description, engine)
+    let mut meta = apply_engine_meta(description, engine);
+    // Global YOLO / trust_mode must NOT auto-approve browser writes unless browser_yolo.
+    if is_browser_write_tool(tool_name) && !browser_yolo_enabled() {
+        meta.approval_required = true;
+    }
+    meta
 }
 
 #[cfg(test)]

@@ -303,6 +303,12 @@ fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> 
     {
         std_cmd.env("ZAGENS_BROWSER_BRIDGE_URL", bridge);
     }
+    if app
+        .try_state::<crate::browser::BrowserHosts>()
+        .is_some_and(|h| h.browser_yolo())
+    {
+        std_cmd.env("ZAGENS_BROWSER_YOLO", "1");
+    }
     // Desktop UI modes (YOLO / trust) may opt in per request; gate in runtime via
     // `Config::effective_trust_mode` requires deployment-level permission.
     std_cmd.env("DEEPSEEK_TRUST_MODE", "1");

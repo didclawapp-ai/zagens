@@ -314,16 +314,16 @@ pub async fn create_agent_window_impl(
 }
 
 #[tauri::command]
-pub fn get_window_label(window: tauri::WebviewWindow) -> String {
-    window.label().to_string()
+pub fn get_window_label(webview: tauri::Webview) -> String {
+    webview.window().label().to_string()
 }
 
 #[tauri::command]
 pub fn get_window_workspace(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     registry: State<'_, WindowRegistry>,
 ) -> Result<String, String> {
-    let label = window.label().to_string();
+    let label = webview.window().label().to_string();
     registry
         .primary_workspace(&label)
         .ok_or_else(|| "窗口未注册工作区".to_string())
@@ -353,30 +353,31 @@ pub fn focus_agent_window(app: AppHandle, label: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn register_window_thread(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     registry: State<'_, WindowRegistry>,
     thread_id: String,
 ) -> Result<(), String> {
-    registry.register_thread(window.label(), &thread_id)
+    registry.register_thread(webview.window().label(), &thread_id)
 }
 
 #[tauri::command]
 pub fn thread_owned_by_window(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     registry: State<'_, WindowRegistry>,
     thread_id: String,
 ) -> bool {
     registry
         .thread_owner_label(&thread_id)
-        .is_some_and(|owner| owner == window.label())
+        .is_some_and(|owner| owner == webview.window().label())
 }
 
 #[tauri::command]
 pub fn close_current_window(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     registry: State<'_, WindowRegistry>,
     terminal: State<'_, crate::terminal::TerminalManager>,
 ) -> Result<(), String> {
+    let window = webview.window();
     let label = window.label().to_string();
     let count = registry.window_count();
     if count <= 1 {

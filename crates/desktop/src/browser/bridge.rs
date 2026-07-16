@@ -15,7 +15,8 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 
 use crate::browser::{
-    BrowserError, BrowserHosts, agent_console_tail, agent_get_text, agent_navigate, agent_snapshot,
+    BrowserError, BrowserHosts, PreviewProcess, agent_console_tail, agent_get_text, agent_navigate,
+    agent_snapshot, interact, preview,
 };
 use crate::window_registry::WindowRegistry;
 
@@ -33,6 +34,13 @@ struct BridgeOpRequest {
     window_label: Option<String>,
     url: Option<String>,
     limit: Option<usize>,
+    #[serde(rename = "ref")]
+    element_ref: Option<String>,
+    text: Option<String>,
+    direction: Option<String>,
+    amount: Option<f64>,
+    workspace: Option<String>,
+    include_screenshot: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -134,6 +142,7 @@ async fn handle_op(
     };
 
     let hosts = state.app.state::<BrowserHosts>();
+    let preview_proc = state.app.state::<PreviewProcess>();
     let result = match req.op.as_str() {
         "navigate" => {
             let url = req.url.unwrap_or_default();
@@ -141,9 +150,12 @@ async fn handle_op(
                 .await
                 .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null))
         }
-        "snapshot" => agent_snapshot(&state.app, &hosts, &parent)
-            .await
-            .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null)),
+        "snapshot" => {
+            let shot = req.include_screenshot.unwrap_or(false);
+            agent_snapshot(&state.app, &hosts, &parent, shot)
+                .await
+                .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null))
+        }
         "get_text" => agent_get_text(&state.app, &hosts, &parent)
             .await
             .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null)),
@@ -153,6 +165,41 @@ async fn handle_op(
                 .await
                 .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null))
         }
+        "click" => {
+            let r = req.element_ref.unwrap_or_default();
+            interact::agent_click(&state.app, &hosts, &parent, &r)
+                .await
+                .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null))
+        }
+        "type" => {
+            let r = req.element_ref.unwrap_or_default();
+            let text = req.text.unwrap_or_default();
+            interact::agent_type(&state.app, &hosts, &parent, &r, &text)
+                .await
+                .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null))
+        }
+        "scroll" => {
+            let dir = req.direction.unwrap_or_else(|| "down".into());
+            interact::agent_scroll(
+                &state.app,
+                &hosts,
+                &parent,
+                req.element_ref.as_deref(),
+                &dir,
+                req.amount,
+            )
+            .await
+            .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null))
+        }
+        "start_preview" => preview::agent_start_preview(
+            &state.app,
+            &hosts,
+            &preview_proc,
+            &parent,
+            req.workspace.as_deref(),
+        )
+        .await
+        .map(|s| serde_json::to_value(s).unwrap_or(serde_json::Value::Null)),
         other => Err(BrowserError {
             code: "unknown_op".into(),
             message: format!("unknown browser bridge op: {other}"),

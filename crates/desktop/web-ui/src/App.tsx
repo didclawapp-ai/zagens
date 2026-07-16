@@ -28,7 +28,11 @@ import useKeyboardShortcuts from './hooks/useKeyboardShortcuts';
 import { usePreventBrowserReload } from './hooks/usePreventBrowserReload';
 import { useRuntimeConnection } from './hooks/useRuntimeConnection';
 import { useAgentPanelState } from './hooks/useAgentPanelState';
-import { OPEN_BROWSER_PANE_EVENT } from './lib/openInAppBrowser';
+import { OPEN_BROWSER_PANE_EVENT, requestOpenBrowserPane } from './lib/openInAppBrowser';
+import {
+  isEditToolForPreviewHint,
+  readPostEditPreviewHintPref,
+} from './lib/browser/browserPrefs';
 import { useChatMessageActions } from './hooks/useChatMessageActions';
 import { useTraceExport } from './hooks/useTraceExport';
 import { useDesktopShell } from './hooks/useDesktopShell';
@@ -602,9 +606,26 @@ export default function App() {
     bindThreadSession,
     onNavigateToSession: (sessionId) => handleSelectSessionRef.current(sessionId),
     onToolCompleted: (toolName, success, output) => {
-      if (!officeSession || !success || toolName !== 'write_office') return;
-      const rel = parseWriteOfficeOutputPath(output);
-      if (rel) void handleOfficeDeliverableReady(rel);
+      if (officeSession && success && toolName === 'write_office') {
+        const rel = parseWriteOfficeOutputPath(output);
+        if (rel) void handleOfficeDeliverableReady(rel);
+        return;
+      }
+      if (
+        success &&
+        desktopHost &&
+        readPostEditPreviewHintPref() &&
+        isEditToolForPreviewHint(toolName)
+      ) {
+        toast.info(t('browser.postEditPreviewHint'), {
+          tag: 'post-edit-preview-hint',
+          duration: 6000,
+          action: {
+            label: t('browser.openBrowserPane'),
+            onClick: () => requestOpenBrowserPane(),
+          },
+        });
+      }
     },
   });
 

@@ -335,4 +335,19 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
     }) {
         config.capacity = None;
     }
+
+    if let Ok(value) = std::env::var("ZAGENS_BROWSER_YOLO") {
+        let on = matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "on" | "true" | "yes" | "y" | "enabled"
+        );
+        config.browser.get_or_insert_with(Default::default).yolo = Some(on);
+    }
+    // Policy bridge reads env each approval; mirror config → env so [browser] yolo works.
+    if config.browser.as_ref().and_then(|b| b.yolo) == Some(true) {
+        // SAFETY: config load runs before request workers; syncing env is intentional.
+        unsafe {
+            std::env::set_var("ZAGENS_BROWSER_YOLO", "1");
+        }
+    }
 }

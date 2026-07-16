@@ -58,10 +58,10 @@ fn disarm_sse_cancel(window_label: &str, thread_id: &str) {
 
 #[tauri::command]
 pub async fn runtime_cancel_sse(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     thread_id: Option<String>,
 ) -> Result<(), String> {
-    let label = window.label().to_string();
+    let label = webview.window().label().to_string();
     let mut guard = SSE_CANCEL_FLAGS.lock().map_err(|e| e.to_string())?;
     match thread_id {
         Some(tid) => {
@@ -163,12 +163,12 @@ pub async fn runtime_http(
 
 #[tauri::command]
 pub async fn runtime_post_stream(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     app: AppHandle,
     body: String,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
-    let window_label = window.label().to_string();
+    let window_label = webview.window().label().to_string();
     let url = format!("http://127.0.0.1:{}/v1/stream", ctx.require_port()?);
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3600))
@@ -218,13 +218,13 @@ pub async fn runtime_post_stream(
 
 #[tauri::command]
 pub async fn runtime_get_sse(
-    window: tauri::WebviewWindow,
+    webview: tauri::Webview,
     app: AppHandle,
     path: String,
     thread_id: Option<String>,
     ctx: tauri::State<'_, AppContext>,
 ) -> Result<(), String> {
-    let window_label = window.label().to_string();
+    let window_label = webview.window().label().to_string();
     validate_runtime_path(&path)?;
     // Derive the SSE cancel bucket from `thread_id` when provided so parallel
     // turns in the same window do not clobber each other's consumer. Fall back

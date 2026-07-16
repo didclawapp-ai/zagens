@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::Value;
+use serde_json::{Value, json};
 use zagens_runtime_adapters::tools::{
     ToolAutomationHost, ToolBrowserHost, ToolShellEnvHost, ToolTaskHost,
 };
@@ -199,21 +199,7 @@ impl HttpBrowserHost {
         })
     }
 
-    async fn call_op(
-        &self,
-        op: &str,
-        thread_id: Option<&str>,
-        window_label: Option<&str>,
-        url: Option<&str>,
-        limit: Option<usize>,
-    ) -> Result<Value, String> {
-        let body = serde_json::json!({
-            "op": op,
-            "threadId": thread_id,
-            "windowLabel": window_label,
-            "url": url,
-            "limit": limit,
-        });
+    async fn call_op(&self, body: Value) -> Result<Value, String> {
         let resp = self
             .client
             .post(format!("{}/v1/browser/op", self.base_url))
@@ -239,6 +225,22 @@ impl HttpBrowserHost {
         }
         Err(payload.to_string())
     }
+
+    fn base_body(
+        op: &str,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+    ) -> serde_json::Map<String, Value> {
+        let mut m = serde_json::Map::new();
+        m.insert("op".into(), Value::String(op.into()));
+        if let Some(t) = thread_id {
+            m.insert("threadId".into(), Value::String(t.into()));
+        }
+        if let Some(w) = window_label {
+            m.insert("windowLabel".into(), Value::String(w.into()));
+        }
+        m
+    }
 }
 
 #[async_trait]
@@ -249,17 +251,22 @@ impl ToolBrowserHost for HttpBrowserHost {
         window_label: Option<&str>,
         url: &str,
     ) -> Result<Value, String> {
-        self.call_op("navigate", thread_id, window_label, Some(url), None)
-            .await
+        let mut body = Self::base_body("navigate", thread_id, window_label);
+        body.insert("url".into(), Value::String(url.into()));
+        self.call_op(Value::Object(body)).await
     }
 
     async fn snapshot(
         &self,
         thread_id: Option<&str>,
         window_label: Option<&str>,
+        include_screenshot: bool,
     ) -> Result<Value, String> {
-        self.call_op("snapshot", thread_id, window_label, None, None)
-            .await
+        let mut body = Self::base_body("snapshot", thread_id, window_label);
+        if include_screenshot {
+            body.insert("includeScreenshot".into(), Value::Bool(true));
+        }
+        self.call_op(Value::Object(body)).await
     }
 
     async fn get_text(
@@ -267,8 +274,12 @@ impl ToolBrowserHost for HttpBrowserHost {
         thread_id: Option<&str>,
         window_label: Option<&str>,
     ) -> Result<Value, String> {
-        self.call_op("get_text", thread_id, window_label, None, None)
-            .await
+        self.call_op(Value::Object(Self::base_body(
+            "get_text",
+            thread_id,
+            window_label,
+        )))
+        .await
     }
 
     async fn console_tail(
@@ -277,7 +288,64 @@ impl ToolBrowserHost for HttpBrowserHost {
         window_label: Option<&str>,
         limit: usize,
     ) -> Result<Value, String> {
-        self.call_op("console_tail", thread_id, window_label, None, Some(limit))
-            .await
+        let mut body = Self::base_body("console_tail", thread_id, window_label);
+        body.insert("limit".into(), Value::from(limit as u64));
+        self.call_op(Value::Object(body)).await
+    }
+
+    async fn click(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        element_ref: &str,
+    ) -> Result<Value, String> {
+        let mut body = Self::base_body("click", thread_id, window_label);
+        body.insert("ref".into(), Value::String(element_ref.into()));
+        self.call_op(Value::Object(body)).await
+    }
+
+    async fn type_text(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        element_ref: &str,
+        text: &str,
+    ) -> Result<Value, String> {
+        let mut body = Self::base_body("type", thread_id, window_label);
+        body.insert("ref".into(), Value::String(element_ref.into()));
+        body.insert("text".into(), Value::String(text.into()));
+        self.call_op(Value::Object(body)).await
+    }
+
+    async fn scroll(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        element_ref: Option<&str>,
+        direction: &str,
+        amount: Option<f64>,
+    ) -> Result<Value, String> {
+        let mut body = Self::base_body("scroll", thread_id, window_label);
+        body.insert("direction".into(), Value::String(direction.into()));
+        if let Some(r) = element_ref {
+            body.insert("ref".into(), Value::String(r.into()));
+        }
+        if let Some(a) = amount {
+            body.insert("amount".into(), json!(a));
+        }
+        self.call_op(Value::Object(body)).await
+    }
+
+    async fn start_preview(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        workspace: Option<&str>,
+    ) -> Result<Value, String> {
+        let mut body = Self::base_body("start_preview", thread_id, window_label);
+        if let Some(w) = workspace {
+            body.insert("workspace".into(), Value::String(w.into()));
+        }
+        self.call_op(Value::Object(body)).await
     }
 }

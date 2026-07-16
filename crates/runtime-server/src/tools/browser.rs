@@ -1,4 +1,4 @@
-//! Readonly `browser_*` tools (P1). Desktop-only via `ToolBrowserHost` bridge.
+//! Desktop Browser pane tools (P1 read + P2 write). Via `ToolBrowserHost` bridge.
 
 use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
@@ -28,7 +28,6 @@ fn thread_id(context: &ToolContext) -> Option<&str> {
 }
 
 fn map_host_err(e: String) -> ToolError {
-    // Prefer structured JSON when bridge returns BrowserError JSON-ish payloads.
     if e.contains("browser_host_missing") {
         return ToolError::not_available(e);
     }
@@ -36,6 +35,10 @@ fn map_host_err(e: String) -> ToolError {
         return ToolError::permission_denied(e);
     }
     ToolError::execution_failed(e)
+}
+
+fn optional_f64(input: &Value, key: &str) -> Option<f64> {
+    input.get(key).and_then(|v| v.as_f64())
 }
 
 pub struct BrowserNavigateTool;
@@ -47,7 +50,7 @@ impl ToolSpec for BrowserNavigateTool {
     }
 
     fn description(&self) -> &'static str {
-        "Navigate the Zagens desktop Browser pane to a URL. Loopback http://127.0.0.1|localhost|::1 is allowed. External https requires human approval (do not use for silent browsing)."
+        "Navigate the Zagens desktop Browser pane to a URL. Loopback http://127.0.0.1|localhost|::1 is allowed. External https requires the host to be on the session allowlist (user: Browser pane → Allow host for agent) or human address-bar navigation."
     }
 
     fn input_schema(&self) -> Value {
@@ -67,7 +70,6 @@ impl ToolSpec for BrowserNavigateTool {
     }
 
     fn approval_requirement(&self) -> ApprovalRequirement {
-        // Loopback is free at host policy; external triggers permission_denied / ask path.
         ApprovalRequirement::Auto
     }
 
@@ -99,7 +101,11 @@ impl ToolSpec for BrowserSnapshotTool {
         json!({
             "type": "object",
             "properties": {
-                "window_label": { "type": "string" }
+                "window_label": { "type": "string" },
+                "include_screenshot": {
+                    "type": "boolean",
+                    "description": "When true, attach a compact JPEG data-URL of the visible viewport (Windows WebView2). Prefer text/a11y refs; screenshots are large."
+                }
             },
             "additionalProperties": false
         })
@@ -116,8 +122,12 @@ impl ToolSpec for BrowserSnapshotTool {
     async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
         let host = require_browser_host(context)?;
         let window_label = optional_str(&input, "window_label");
+        let include_screenshot = input
+            .get("include_screenshot")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let value = host
-            .snapshot(thread_id(context), window_label)
+            .snapshot(thread_id(context), window_label, include_screenshot)
             .await
             .map_err(map_host_err)?;
         Ok(ToolResult::success(value.to_string()))
@@ -174,7 +184,7 @@ impl ToolSpec for BrowserConsoleTailTool {
     }
 
     fn description(&self) -> &'static str {
-        "Return recent console messages from the Browser pane when the host supports it (may be empty in early builds)."
+        "Return recent console messages from the Browser pane (captured after page-load hook)."
     }
 
     fn input_schema(&self) -> Value {
@@ -208,6 +218,197 @@ impl ToolSpec for BrowserConsoleTailTool {
     }
 }
 
+pub struct BrowserClickTool;
+
+#[async_trait]
+impl ToolSpec for BrowserClickTool {
+    fn name(&self) -> &'static str {
+        "browser_click"
+    }
+
+    fn description(&self) -> &'static str {
+        "Click a Browser pane element by stable ref from browser_snapshot (data-zagens-ref). Never use screen coordinates. Requires approval unless [browser] yolo / ZAGENS_BROWSER_YOLO is enabled."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "ref": { "type": "string", "description": "Element ref from browser_snapshot (e.g. e3)" },
+                "window_label": { "type": "string" }
+            },
+            "required": ["ref"],
+            "additionalProperties": false
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::RequiresApproval]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Required
+    }
+
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let host = require_browser_host(context)?;
+        let element_ref = required_str(&input, "ref")?;
+        let window_label = optional_str(&input, "window_label");
+        let value = host
+            .click(thread_id(context), window_label, element_ref)
+            .await
+            .map_err(map_host_err)?;
+        Ok(ToolResult::success(value.to_string()))
+    }
+}
+
+pub struct BrowserTypeTool;
+
+#[async_trait]
+impl ToolSpec for BrowserTypeTool {
+    fn name(&self) -> &'static str {
+        "browser_type"
+    }
+
+    fn description(&self) -> &'static str {
+        "Type text into a Browser pane element by snapshot ref. Requires approval unless browser_yolo is enabled."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "ref": { "type": "string" },
+                "text": { "type": "string" },
+                "window_label": { "type": "string" }
+            },
+            "required": ["ref", "text"],
+            "additionalProperties": false
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::RequiresApproval]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Required
+    }
+
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let host = require_browser_host(context)?;
+        let element_ref = required_str(&input, "ref")?;
+        let text = required_str(&input, "text")?;
+        let window_label = optional_str(&input, "window_label");
+        let value = host
+            .type_text(thread_id(context), window_label, element_ref, text)
+            .await
+            .map_err(map_host_err)?;
+        Ok(ToolResult::success(value.to_string()))
+    }
+}
+
+pub struct BrowserScrollTool;
+
+#[async_trait]
+impl ToolSpec for BrowserScrollTool {
+    fn name(&self) -> &'static str {
+        "browser_scroll"
+    }
+
+    fn description(&self) -> &'static str {
+        "Scroll the Browser pane window or a ref container. direction: up|down|left|right. Requires approval unless browser_yolo is enabled."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "direction": { "type": "string", "enum": ["up", "down", "left", "right"] },
+                "ref": { "type": "string", "description": "Optional container ref; omit to scroll the window" },
+                "amount": { "type": "number", "description": "Pixels (default 400)" },
+                "window_label": { "type": "string" }
+            },
+            "required": ["direction"],
+            "additionalProperties": false
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::RequiresApproval]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Required
+    }
+
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let host = require_browser_host(context)?;
+        let direction = required_str(&input, "direction")?;
+        let element_ref = optional_str(&input, "ref");
+        let amount = optional_f64(&input, "amount");
+        let window_label = optional_str(&input, "window_label");
+        let value = host
+            .scroll(
+                thread_id(context),
+                window_label,
+                element_ref,
+                direction,
+                amount,
+            )
+            .await
+            .map_err(map_host_err)?;
+        Ok(ToolResult::success(value.to_string()))
+    }
+}
+
+pub struct BrowserStartPreviewTool;
+
+#[async_trait]
+impl ToolSpec for BrowserStartPreviewTool {
+    fn name(&self) -> &'static str {
+        "browser_start_preview"
+    }
+
+    fn description(&self) -> &'static str {
+        "Start the workspace `.zagens/preview.json` command, wait for ready_pattern (substring), then browser_navigate to its url. Prefer this for one-click local frontend preview."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "workspace": { "type": "string", "description": "Optional absolute workspace path" },
+                "window_label": { "type": "string" }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![
+            ToolCapability::ExecutesCode,
+            ToolCapability::Network,
+            ToolCapability::RequiresApproval,
+        ]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Required
+    }
+
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let host = require_browser_host(context)?;
+        let workspace = optional_str(&input, "workspace");
+        let window_label = optional_str(&input, "window_label");
+        let value = host
+            .start_preview(thread_id(context), window_label, workspace)
+            .await
+            .map_err(map_host_err)?;
+        Ok(ToolResult::success(value.to_string()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,5 +426,15 @@ mod tests {
             msg.contains("browser_host_missing"),
             "expected structured missing host, got {msg}"
         );
+    }
+
+    #[tokio::test]
+    async fn click_without_host_is_structured_missing() {
+        let ctx = ToolContext::new(std::env::temp_dir());
+        let err = BrowserClickTool
+            .execute(json!({ "ref": "e1" }), &ctx)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("browser_host_missing"));
     }
 }

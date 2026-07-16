@@ -761,6 +761,11 @@ pub struct Config {
     #[serde(default)]
     pub kernel: Option<KernelConfigToml>,
 
+    /// Built-in Browser pane (`[browser]` table). Desktop-oriented; `yolo` is
+    /// independent of global YOLO (`ZAGENS_BROWSER_YOLO` / this flag).
+    #[serde(default)]
+    pub browser: Option<BrowserConfigToml>,
+
     /// User-defined OpenAI-compatible providers (`[custom_providers.<id>]`).
     #[serde(default)]
     pub custom_providers:
@@ -769,6 +774,18 @@ pub struct Config {
     /// Active entry in `custom_providers` when `provider = "custom"`.
     #[serde(default)]
     pub custom_provider_id: Option<String>,
+}
+
+/// `[browser]` table — Desktop Browser pane policy.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct BrowserConfigToml {
+    /// When true, auto-approve `browser_click` / `type` / `scroll` / `start_preview`.
+    /// Does **not** follow global YOLO / trust_mode.
+    #[serde(default)]
+    pub yolo: Option<bool>,
+    /// Allow private LAN hosts (default false).
+    #[serde(default)]
+    pub allow_private_lan: Option<bool>,
 }
 
 /// `[tools]` table — kernel-v2 tool plane kill switches.

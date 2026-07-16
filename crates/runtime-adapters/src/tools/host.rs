@@ -55,7 +55,7 @@ pub trait ToolAutomationHost: Send + Sync {
     async fn run_now(&self, automation_id: &str) -> Result<Value, String>;
 }
 
-/// Desktop Browser pane host (P1). Sidecar calls this over loopback HTTP when
+/// Desktop Browser pane host (P1/P2). Sidecar calls this over loopback HTTP when
 /// `ZAGENS_BROWSER_BRIDGE_URL` is set; CLI/TUI leave it unset.
 #[async_trait]
 pub trait ToolBrowserHost: Send + Sync {
@@ -69,6 +69,7 @@ pub trait ToolBrowserHost: Send + Sync {
         &self,
         thread_id: Option<&str>,
         window_label: Option<&str>,
+        include_screenshot: bool,
     ) -> Result<Value, String>;
     async fn get_text(
         &self,
@@ -80,6 +81,33 @@ pub trait ToolBrowserHost: Send + Sync {
         thread_id: Option<&str>,
         window_label: Option<&str>,
         limit: usize,
+    ) -> Result<Value, String>;
+    async fn click(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        element_ref: &str,
+    ) -> Result<Value, String>;
+    async fn type_text(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        element_ref: &str,
+        text: &str,
+    ) -> Result<Value, String>;
+    async fn scroll(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        element_ref: Option<&str>,
+        direction: &str,
+        amount: Option<f64>,
+    ) -> Result<Value, String>;
+    async fn start_preview(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        workspace: Option<&str>,
     ) -> Result<Value, String>;
 }
 

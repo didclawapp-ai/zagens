@@ -70,6 +70,7 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         .manage(WindowRegistry::new())
         .manage(browser::BrowserHosts::new())
+        .manage(browser::PreviewProcess::new())
         .manage(browser::BrowserBridgeUrl::default());
 
     builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
@@ -355,6 +356,18 @@ fn main() {
             browser::browser_set_bounds,
             browser::browser_snapshot,
             browser::browser_focus_content,
+            browser::browser_reload,
+            browser::browser_back,
+            browser::browser_forward,
+            browser::browser_set_persist_profile,
+            browser::browser_allow_host,
+            browser::browser_get_prefs,
+            browser::browser_set_prefs,
+            browser::interact::browser_click,
+            browser::interact::browser_type,
+            browser::interact::browser_scroll,
+            browser::preview::browser_preview_get,
+            browser::preview::browser_preview_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Zagens");
