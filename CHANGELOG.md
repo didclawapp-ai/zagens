@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Desktop 应用图标（2026-07-18）：** 替换原 DS 交织标为 **Zagens Neural Ring**（圆环 + 神经连接线 + 中心 Z）；源文件 `crates/desktop/icons/svg/zagens-neural-ring.svg`，并经 `cargo tauri icon` 再生 `icons/` 全套与 `web-ui/public/app-icon.png`。
 - **Desktop Browser 收尾（2026-07-17）：** 无 `prefs.json` 时从 `~/.zagens/config.toml` `[browser]` 种子化 `allow_private_lan` / `yolo`；click/type/scroll 审批文案展开稳定 ref 的 role/name/nth；`browser_start_preview` 工具描述注明 `ready_regex`。
 - **Desktop Browser embed fix:** Tauri commands that took `WebviewWindow` broke app-wide after opening an embedded Browser child (`is_webview_window` requires every webview label to match the window). IPC now takes `Webview` and resolves the parent via `webview.window()` (runtime SSE/stream, terminal spawn, window registry, deep link, Browser).
 - **Desktop Browser pane (P0–P2 tails):** `browser_snapshot` / tool `include_screenshot` captures a compact JPEG data-URL via WebView2 CDP on Windows (failure surfaces as `screenshot_note`). Human/agent `file://` navigation allowed only when the path canonicalizes under the window workspace. HTML preview iframe can enable `allow-scripts` without `allow-same-origin` (toggle; default on). Soft post-edit toast suggests opening Browser after `edit_file` / `write_file` / `apply_patch` / `batch_edit` (hint pref default on; agent auto-verify still off).

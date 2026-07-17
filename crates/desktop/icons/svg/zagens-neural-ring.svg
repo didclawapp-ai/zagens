@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Zagens">
+  <defs>
+    <linearGradient id="zGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9af7ee"/>
+      <stop offset="45%" stop-color="#3ec9c0"/>
+      <stop offset="100%" stop-color="#2a7f9e"/>
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#7ef0e4"/>
+      <stop offset="50%" stop-color="#4a8fff"/>
+      <stop offset="100%" stop-color="#3ec9c0"/>
+    </linearGradient>
+    <radialGradient id="discN" cx="36%" cy="30%" r="72%">
+      <stop offset="0%" stop-color="#1a2a3d"/>
+      <stop offset="100%" stop-color="#0b1018"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.2" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="#070b12"/>
+  <circle cx="256" cy="256" r="190" fill="url(#discN)"/>
+
+  <circle cx="256" cy="256" r="176" fill="none" stroke="url(#ringGrad)" stroke-width="9" opacity="0.95"/>
+  <circle cx="256" cy="256" r="164" fill="none" stroke="#3ec9c0" stroke-width="1.25" opacity="0.35"/>
+
+  <g transform="translate(256 256)">
+    <g fill="none" stroke="#3ec9c0" stroke-width="1.35" stroke-linecap="round" opacity="0.55">
+      <path d="M0 -148 L42 -118"/>
+      <path d="M42 -118 L98 -86"/>
+      <path d="M98 -86 L128 -28"/>
+      <path d="M128 -28 L138 38"/>
+      <path d="M138 38 L98 96"/>
+      <path d="M98 96 L42 132"/>
+      <path d="M42 132 L-18 148"/>
+      <path d="M-18 148 L-78 118"/>
+      <path d="M-78 118 L-128 62"/>
+      <path d="M-128 62 L-142 0"/>
+      <path d="M-142 0 L-118 -72"/>
+      <path d="M-118 -72 L-52 -132"/>
+      <path d="M-52 -132 L0 -148"/>
+      <path d="M42 -118 Q70 -40 98 96" opacity="0.7"/>
+      <path d="M-118 -72 Q-40 -20 98 -86" opacity="0.65"/>
+      <path d="M-128 62 Q-20 80 42 132" opacity="0.65"/>
+      <path d="M128 -28 Q40 20 -78 118" opacity="0.5"/>
+      <path d="M-52 -132 Q0 -40 138 38" opacity="0.45"/>
+      <path d="M0 -148 L0 -108" opacity="0.4"/>
+      <path d="M128 -28 L96 -20" opacity="0.4"/>
+      <path d="M98 96 L72 72" opacity="0.4"/>
+      <path d="M-128 62 L-96 48" opacity="0.4"/>
+      <path d="M-118 -72 L-88 -54" opacity="0.4"/>
+    </g>
+
+    <g fill="none" stroke="#7ef0e4" stroke-width="1.8" stroke-linecap="round" filter="url(#glow)" opacity="0.85">
+      <path d="M42 -118 Q90 -10 98 96"/>
+      <path d="M-142 0 Q-40 10 42 132"/>
+      <path d="M-52 -132 Q10 -90 128 -28"/>
+    </g>
+
+    <g filter="url(#softGlow)">
+      <circle cx="0" cy="-148" r="5.5" fill="#7ef0e4"/>
+      <circle cx="42" cy="-118" r="4" fill="#3ec9c0"/>
+      <circle cx="98" cy="-86" r="5" fill="#9af7ee"/>
+      <circle cx="128" cy="-28" r="4.5" fill="#4a8fff"/>
+      <circle cx="138" cy="38" r="3.5" fill="#3ec9c0"/>
+      <circle cx="98" cy="96" r="5.5" fill="#7ef0e4"/>
+      <circle cx="42" cy="132" r="3.8" fill="#3ec9c0"/>
+      <circle cx="-18" cy="148" r="4.2" fill="#4a8fff"/>
+      <circle cx="-78" cy="118" r="5" fill="#9af7ee"/>
+      <circle cx="-128" cy="62" r="4" fill="#3ec9c0"/>
+      <circle cx="-142" cy="0" r="5.5" fill="#7ef0e4"/>
+      <circle cx="-118" cy="-72" r="4.5" fill="#4a8fff"/>
+      <circle cx="-52" cy="-132" r="3.8" fill="#3ec9c0"/>
+      <circle cx="72" cy="72" r="3" fill="#7ef0e4" opacity="0.9"/>
+      <circle cx="-88" cy="-54" r="2.8" fill="#4a8fff" opacity="0.9"/>
+      <circle cx="96" cy="-20" r="2.6" fill="#3ec9c0" opacity="0.85"/>
+      <circle cx="-96" cy="48" r="2.6" fill="#7ef0e4" opacity="0.85"/>
+      <circle cx="0" cy="-108" r="2.4" fill="#9af7ee" opacity="0.8"/>
+    </g>
+  </g>
+
+  <circle cx="256" cy="256" r="96" fill="none" stroke="#3ec9c0" stroke-width="1" opacity="0.22" stroke-dasharray="3 5"/>
+
+  <path
+    d="M192 198 H320 L192 314 H320"
+    fill="none"
+    stroke="url(#zGrad)"
+    stroke-width="30"
+    stroke-linecap="square"
+    stroke-linejoin="miter"
+    filter="url(#glow)"
+  />
+  <circle cx="256" cy="256" r="4" fill="#9af7ee" filter="url(#softGlow)"/>
+</svg>
