@@ -109,6 +109,24 @@ pub trait ToolBrowserHost: Send + Sync {
         window_label: Option<&str>,
         workspace: Option<&str>,
     ) -> Result<Value, String>;
+    /// Wait until page condition: kind `text`|`ref`|`selector`|`load`.
+    async fn wait(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        kind: &str,
+        value: Option<&str>,
+        timeout_ms: Option<u64>,
+    ) -> Result<Value, String>;
+    /// Add host to desktop session allowlist (after user approved external navigate).
+    async fn allow_host(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        host: &str,
+    ) -> Result<Value, String>;
+    /// Read live browser prefs (yolo / allowlist / lan) from desktop bridge.
+    async fn prefs(&self) -> Result<Value, String>;
 }
 
 /// Durable metadata wired at engine spawn; manager handles stay in sidecar.

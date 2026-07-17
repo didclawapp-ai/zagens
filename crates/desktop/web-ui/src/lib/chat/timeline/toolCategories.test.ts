@@ -38,6 +38,13 @@ const MUST_COLLAPSE: Array<{ name: string; category: ReturnType<typeof toolCateg
   { name: 'automation_list', category: 'workflow' },
   { name: 'wait', category: 'agent' },
   { name: 'assign_agent', category: 'agent' },
+  { name: 'browser_navigate', category: 'browser' },
+  { name: 'browser_snapshot', category: 'browser' },
+  { name: 'browser_click', category: 'browser' },
+  { name: 'browser_type', category: 'browser' },
+  { name: 'browser_scroll', category: 'browser' },
+  { name: 'browser_wait', category: 'browser' },
+  { name: 'browser_start_preview', category: 'browser' },
 ];
 
 test('registry tools used in streaming map to collapsible categories', () => {

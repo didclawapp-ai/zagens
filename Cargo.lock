@@ -8525,6 +8525,7 @@ dependencies = [
  "libc",
  "open",
  "portable-pty",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",

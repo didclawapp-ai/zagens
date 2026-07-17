@@ -6,6 +6,7 @@ export type ToolCategory =
   | 'office'
   | 'workflow'
   | 'agent'
+  | 'browser'
   | 'other';
 
 /**
@@ -153,6 +154,19 @@ const AGENT_TOOLS = new Set([
   'resume_agent',
 ]);
 
+/** Built-in Browser pane tools — high churn in browse turns; must collapse. */
+const BROWSER_TOOLS = new Set([
+  'browser_navigate',
+  'browser_snapshot',
+  'browser_get_text',
+  'browser_console_tail',
+  'browser_click',
+  'browser_type',
+  'browser_scroll',
+  'browser_wait',
+  'browser_start_preview',
+]);
+
 /**
  * Intentionally left as `other` (stay expanded / rare meta):
  * - `request_user_input` — interactive approval UI
@@ -167,6 +181,7 @@ export function toolCategory(name: string): ToolCategory {
   if (OFFICE_TOOLS.has(name)) return 'office';
   if (WORKFLOW_TOOLS.has(name)) return 'workflow';
   if (AGENT_TOOLS.has(name)) return 'agent';
+  if (BROWSER_TOOLS.has(name)) return 'browser';
   return 'other';
 }
 
@@ -194,6 +209,10 @@ export function isAgentTool(name: string): boolean {
   return toolCategory(name) === 'agent';
 }
 
+export function isBrowserTool(name: string): boolean {
+  return toolCategory(name) === 'browser';
+}
+
 /** Categories that participate in activity bundling / compact rows. */
 export function isCollapsibleToolCategory(category: ToolCategory): boolean {
   return (
@@ -203,6 +222,7 @@ export function isCollapsibleToolCategory(category: ToolCategory): boolean {
     category === 'plan' ||
     category === 'office' ||
     category === 'workflow' ||
-    category === 'agent'
+    category === 'agent' ||
+    category === 'browser'
   );
 }

@@ -373,8 +373,8 @@ const en: TranslationMap = {
     previewStarted: 'Preview started',
     browserYolo: 'browser_yolo',
     yoloHint: 'Auto-approve Browser write tools only; decoupled from global YOLO. Restart runtime to apply.',
-    yoloOn: 'browser_yolo on (restart runtime)',
-    yoloOff: 'browser_yolo off (writes still ask)',
+    yoloOn: 'browser_yolo on (live; writes/external nav auto)',
+    yoloOff: 'browser_yolo off (writes and external nav ask)',
     modeEmbedded: 'Mode: embedded child WebView',
     modeWindowed: 'Mode: separate Browser window (B failed or manual)',
     windowedHint: 'Content is in a separate Browser window. Use Focus or the taskbar to switch back.',
@@ -1606,6 +1606,7 @@ const en: TranslationMap = {
     toolGroupOffice: '{{count}} office docs',
     toolGroupWorkflow: '{{count}} workflow steps',
     toolGroupAgent: '{{count}} sub-agents',
+    toolGroupBrowser: '{{count}} browser steps',
     timelineDegradedOrder:
       'Timeline order may be approximate — reload from thread events for the full sequence.',
     timelineExploredOne: 'Explored {{target}}',
@@ -1613,6 +1614,7 @@ const en: TranslationMap = {
     timelinePlanUpdated: 'Updated plan',
     timelineShellOne: 'Ran {{name}}',
     timelineWorkflowOne: '{{name}}',
+    timelineBrowserOne: '{{name}}',
     timelineThinkingNotPersisted:
       'Reasoning was not persisted — Thought blocks may be missing after reload.',
     timelineStepBadge: 'Step {{index}}/{{total}}',

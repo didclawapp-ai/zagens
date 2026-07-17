@@ -5,6 +5,7 @@ import { useT } from '../../../i18n';
 import type { TurnBlock } from '../../../lib/chat/timeline/turnBlockTypes';
 import {
   isAgentTool,
+  isBrowserTool,
   isExploreTool,
   isOfficeTool,
   isPlanTool,
@@ -35,6 +36,9 @@ function compactToolLabel(
   }
   if (isWorkflowTool(block.name) || isAgentTool(block.name)) {
     return t('message.timelineWorkflowOne', { name: block.name });
+  }
+  if (isBrowserTool(block.name)) {
+    return t('message.timelineBrowserOne', { name: block.name });
   }
   if (toolCategory(block.name) === 'shell') {
     return t('message.timelineShellOne', { name: block.name });

@@ -373,8 +373,8 @@ const ja: TranslationMap = {
     previewStarted: 'preview 起動済み',
     browserYolo: 'browser_yolo',
     yoloHint: 'Browser 書き込みのみ自動承認。グローバル YOLO とは独立。runtime 再起動で反映。',
-    yoloOn: 'browser_yolo オン（runtime 再起動が必要）',
-    yoloOff: 'browser_yolo オフ（書き込みは承認が必要）',
+    yoloOn: 'browser_yolo オン（即時反映・書き込み/外部ナビ自動）',
+    yoloOff: 'browser_yolo オフ（書き込みと外部ナビは承認）',
     modeEmbedded: '形態: 埋込子 WebView',
     modeWindowed: '形態: 独立 Browser 窓（B 失敗または手動）',
     windowedHint: 'コンテンツは別の Browser 窓にあります。「フォーカス」またはタスクバーで切り替えます。',
@@ -1606,6 +1606,7 @@ const ja: TranslationMap = {
     toolGroupOffice: 'Office 文書 {{count}} 件',
     toolGroupWorkflow: 'ワークフロー {{count}} 件',
     toolGroupAgent: 'サブエージェント {{count}} 件',
+    toolGroupBrowser: 'ブラウザ {{count}} 件',
     timelineDegradedOrder:
       'タイムラインの順序が近似表示の場合があります。スレッドイベントから再読み込みしてください。',
     timelineExploredOne: '探索: {{target}}',
@@ -1613,6 +1614,7 @@ const ja: TranslationMap = {
     timelinePlanUpdated: 'プランを更新',
     timelineShellOne: '{{name}} を実行',
     timelineWorkflowOne: '{{name}}',
+    timelineBrowserOne: '{{name}}',
     timelineThinkingNotPersisted:
       '推論は永続化されていません。再読み込み後に Thought が表示されない場合があります。',
     timelineStepBadge: 'ステップ {{index}}/{{total}}',

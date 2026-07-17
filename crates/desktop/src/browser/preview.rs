@@ -1,11 +1,13 @@
 //! `.zagens/preview.json` — start local preview server then open Browser pane.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
@@ -22,6 +24,9 @@ pub struct PreviewConfig {
     pub url: String,
     #[serde(default)]
     pub ready_pattern: Option<String>,
+    /// When true, `ready_pattern` is treated as a Rust regex (C4).
+    #[serde(default)]
+    pub ready_regex: Option<bool>,
     #[serde(default)]
     pub ready_timeout_ms: Option<u64>,
 }
@@ -34,26 +39,38 @@ pub struct PreviewStartResult {
     pub matched_line: Option<String>,
     pub browser: Option<BrowserStateDto>,
     pub note: String,
+    #[serde(default)]
+    pub timed_out: bool,
 }
 
+/// Per-parent preview child processes (C4).
 pub struct PreviewProcess {
-    inner: Mutex<Option<Child>>,
+    inner: Mutex<HashMap<String, Child>>,
 }
 
 impl PreviewProcess {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(None),
+            inner: Mutex::new(HashMap::new()),
         }
     }
 
-    fn replace(&self, child: Child) {
+    fn replace(&self, parent: &str, child: Child) {
         if let Ok(mut g) = self.inner.lock() {
-            if let Some(mut prev) = g.take() {
+            if let Some(mut prev) = g.remove(parent) {
                 let _ = prev.kill();
                 let _ = prev.wait();
             }
-            *g = Some(child);
+            g.insert(parent.to_string(), child);
+        }
+    }
+
+    fn kill_for(&self, parent: &str) {
+        if let Ok(mut g) = self.inner.lock()
+            && let Some(mut prev) = g.remove(parent)
+        {
+            let _ = prev.kill();
+            let _ = prev.wait();
         }
     }
 }
@@ -120,20 +137,30 @@ fn spawn_preview_command(command: &str, cwd: &Path) -> Result<Child, BrowserErro
     }
 }
 
-/// `ready_pattern` is a case-sensitive substring (keeps deps light).
-fn line_matches(pattern: &str, line: &str) -> bool {
-    line.contains(pattern)
+fn line_matches(pattern: &str, line: &str, as_regex: bool) -> bool {
+    if as_regex {
+        Regex::new(pattern)
+            .map(|re| re.is_match(line))
+            .unwrap_or(false)
+    } else {
+        line.contains(pattern)
+    }
 }
 
+/// Wait for ready_pattern. Drain threads keep reading after match to avoid pipe fill.
 fn wait_ready(
     child: &mut Child,
     pattern: Option<&str>,
+    as_regex: bool,
     timeout: Duration,
 ) -> (bool, Option<String>) {
     let Some(pat) = pattern.map(str::trim).filter(|s| !s.is_empty()) else {
         std::thread::sleep(Duration::from_millis(800));
         return (true, None);
     };
+    if as_regex && Regex::new(pat).is_err() {
+        return (false, Some(format!("invalid ready_pattern regex: {pat}")));
+    }
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let (tx, rx) = std::sync::mpsc::channel::<String>();
@@ -157,19 +184,32 @@ fn wait_ready(
     }
     drop(tx);
     let deadline = Instant::now() + timeout;
+    let mut matched: Option<String> = None;
     while Instant::now() < deadline {
         let remain = deadline.saturating_duration_since(Instant::now());
         match rx.recv_timeout(remain.min(Duration::from_millis(200))) {
             Ok(line) => {
-                if line_matches(pat, &line) {
-                    return (true, Some(line));
+                if matched.is_none() && line_matches(pat, &line, as_regex) {
+                    matched = Some(line);
+                    // Keep draining briefly so the pipe does not fill; then return.
+                    let drain_until = Instant::now() + Duration::from_millis(50);
+                    while Instant::now() < drain_until {
+                        match rx.try_recv() {
+                            Ok(_) => {}
+                            Err(_) => break,
+                        }
+                    }
+                    return (true, matched);
                 }
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
-    (false, None)
+    // Detached drain: keep consuming remaining lines in background (tx already dropped;
+    // reader threads exit on EOF when child is killed).
+    let _ = rx;
+    (false, matched)
 }
 
 async fn start_preview_inner(
@@ -189,17 +229,35 @@ async fn start_preview_inner(
     };
     let _url = validate_human_url(&config.url, &opts).map_err(BrowserError::from_policy)?;
 
+    preview_proc.kill_for(parent_label);
     let mut child = spawn_preview_command(&config.command, &cwd)?;
     let timeout = Duration::from_millis(config.ready_timeout_ms.unwrap_or(60_000).max(1_000));
-    let (ready, matched) = wait_ready(&mut child, config.ready_pattern.as_deref(), timeout);
-    preview_proc.replace(child);
+    let as_regex = config.ready_regex.unwrap_or(false);
+    let (ready, matched) = wait_ready(
+        &mut child,
+        config.ready_pattern.as_deref(),
+        as_regex,
+        timeout,
+    );
+
+    let timed_out = !ready;
+    if timed_out {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Ok(PreviewStartResult {
+            config,
+            ready: false,
+            matched_line: matched,
+            browser: None,
+            note: "preview ready_pattern 超时：已终止进程，未导航".into(),
+            timed_out: true,
+        });
+    }
+
+    preview_proc.replace(parent_label, child);
 
     let mut browser = None;
-    let mut note = if ready {
-        "preview ready".into()
-    } else {
-        "preview started but ready_pattern 未匹配（仍尝试打开 URL）".into()
-    };
+    let mut note = "preview ready".to_string();
 
     match agent_navigate(app, hosts, parent_label, &config.url).await {
         Ok(st) => browser = Some(st),
@@ -210,10 +268,11 @@ async fn start_preview_inner(
 
     Ok(PreviewStartResult {
         config,
-        ready,
+        ready: true,
         matched_line: matched,
         browser,
         note,
+        timed_out: false,
     })
 }
 
@@ -278,10 +337,23 @@ mod tests {
           "command": "npm run dev",
           "cwd": ".",
           "url": "http://127.0.0.1:5173/",
-          "ready_pattern": "Local:"
+          "ready_pattern": "Local:",
+          "readyRegex": false
         }"#;
         let cfg: PreviewConfig = serde_json::from_str(raw).unwrap();
         assert_eq!(cfg.command, "npm run dev");
         assert_eq!(cfg.url, "http://127.0.0.1:5173/");
+        assert_eq!(cfg.ready_regex, Some(false));
+    }
+
+    #[test]
+    fn line_matches_regex() {
+        assert!(line_matches(
+            r"Local:\s+http",
+            "Local: http://127.0.0.1:5173/",
+            true
+        ));
+        assert!(!line_matches(r"Local:\s+http", "ready", true));
+        assert!(line_matches("Local:", ">> Local: ok", false));
     }
 }

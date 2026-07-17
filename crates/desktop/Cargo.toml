@@ -49,6 +49,7 @@ dirs.workspace = true
 portable-pty = "0.8"
 open = "5.3"
 url = "2"
+regex = "1.11"
 tauri-plugin-updater = "2"
 axum = { workspace = true }
 tower-http = { version = "0.6", features = ["cors"] }

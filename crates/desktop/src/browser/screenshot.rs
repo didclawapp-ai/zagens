@@ -20,45 +20,24 @@ pub async fn capture_screenshot_data_url(
 ) -> Result<String, BrowserError> {
     #[cfg(windows)]
     {
-        let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
-        let tx = Mutex::new(Some(tx));
-
-        let finish = move |result: Result<String, String>| {
-            if let Ok(mut g) = tx.lock()
-                && let Some(sender) = g.take()
-            {
-                let _ = sender.send(result);
+        // Try quality 45 then 28 if payload exceeds the agent-facing budget (C6).
+        for quality in [45_u8, 28_u8] {
+            let data_url = capture_once(app, mode, host_label, quality).await?;
+            if data_url.len() <= MAX_DATA_URL_CHARS {
+                return Ok(data_url);
             }
-        };
-
-        match mode {
-            BrowserMode::Embedded => {
-                let wv = app
-                    .get_webview(host_label)
-                    .ok_or_else(BrowserError::missing)?;
-                wv.with_webview(move |platform| {
-                    start_cdp_screenshot(&platform, finish);
-                })
-                .map_err(|e| BrowserError::msg("screenshot_webview", e.to_string()))?;
-            }
-            BrowserMode::Windowed => {
-                let w = app
-                    .get_webview_window(host_label)
-                    .ok_or_else(BrowserError::missing)?;
-                w.with_webview(move |platform| {
-                    start_cdp_screenshot(&platform, finish);
-                })
-                .map_err(|e| BrowserError::msg("screenshot_webview", e.to_string()))?;
+            if quality == 28 {
+                return Err(BrowserError::msg(
+                    "screenshot_too_large",
+                    format!(
+                        "截图 data-URL 仍超过 {} 字符（{}）；请关闭 include_screenshot 或缩小视口",
+                        MAX_DATA_URL_CHARS,
+                        data_url.len()
+                    ),
+                ));
             }
         }
-
-        let raw = tokio::time::timeout(std::time::Duration::from_secs(8), rx)
-            .await
-            .map_err(|_| BrowserError::msg("screenshot_timeout", "截图超时"))?
-            .map_err(|_| BrowserError::msg("screenshot_canceled", "截图通道关闭"))?
-            .map_err(|e| BrowserError::msg("screenshot_failed", e))?;
-
-        Ok(truncate_data_url(raw))
+        Err(BrowserError::msg("screenshot_failed", "截图失败"))
     }
 
     #[cfg(not(windows))]
@@ -66,25 +45,61 @@ pub async fn capture_screenshot_data_url(
         let _ = (app, mode, host_label);
         Err(BrowserError::msg(
             "screenshot_unsupported",
-            "本平台尚未接入 Browser 截图（Windows WebView2 CDP 可用）",
+            "本平台尚未接入 Browser 截图（仅 Windows WebView2 CDP）；请用 browser_snapshot 文本/a11y",
         ))
     }
 }
 
-fn truncate_data_url(s: String) -> String {
-    if s.len() <= MAX_DATA_URL_CHARS {
-        return s;
+#[cfg(windows)]
+async fn capture_once(
+    app: &AppHandle,
+    mode: BrowserMode,
+    host_label: &str,
+    quality: u8,
+) -> Result<String, BrowserError> {
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+    let tx = Mutex::new(Some(tx));
+
+    let finish = move |result: Result<String, String>| {
+        if let Ok(mut g) = tx.lock()
+            && let Some(sender) = g.take()
+        {
+            let _ = sender.send(result);
+        }
+    };
+
+    match mode {
+        BrowserMode::Embedded => {
+            let wv = app
+                .get_webview(host_label)
+                .ok_or_else(BrowserError::missing)?;
+            wv.with_webview(move |platform| {
+                start_cdp_screenshot(&platform, quality, finish);
+            })
+            .map_err(|e| BrowserError::msg("screenshot_webview", e.to_string()))?;
+        }
+        BrowserMode::Windowed => {
+            let w = app
+                .get_webview_window(host_label)
+                .ok_or_else(BrowserError::missing)?;
+            w.with_webview(move |platform| {
+                start_cdp_screenshot(&platform, quality, finish);
+            })
+            .map_err(|e| BrowserError::msg("screenshot_webview", e.to_string()))?;
+        }
     }
-    format!(
-        "{}…[truncated {} chars]",
-        &s[..MAX_DATA_URL_CHARS.min(s.len())],
-        s.len().saturating_sub(MAX_DATA_URL_CHARS)
-    )
+
+    tokio::time::timeout(std::time::Duration::from_secs(8), rx)
+        .await
+        .map_err(|_| BrowserError::msg("screenshot_timeout", "截图超时"))?
+        .map_err(|_| BrowserError::msg("screenshot_canceled", "截图通道关闭"))?
+        .map_err(|e| BrowserError::msg("screenshot_failed", e))
 }
 
 #[cfg(windows)]
 fn start_cdp_screenshot(
     platform: &tauri::webview::PlatformWebview,
+    quality: u8,
     finish: impl FnOnce(Result<String, String>) + Send + 'static,
 ) {
     use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
@@ -114,7 +129,9 @@ fn start_cdp_screenshot(
     };
 
     let method: Vec<u16> = "Page.captureScreenshot\0".encode_utf16().collect();
-    let params: Vec<u16> = r#"{"format":"jpeg","quality":45,"fromSurface":true}"#
+    let q = quality.clamp(10, 90);
+    let params_json = format!(r#"{{"format":"jpeg","quality":{q},"fromSurface":true}}"#);
+    let params: Vec<u16> = params_json
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
@@ -126,7 +143,6 @@ fn start_cdp_screenshot(
                 send(&finish_cb, Err(format!("CDP error: {error_code:?}")));
                 return Ok(());
             }
-            // Callback macro converts PCWSTR → String.
             let json: String = result_json;
             match parse_cdp_screenshot_json(&json) {
                 Ok(data_url) => send(&finish_cb, Ok(data_url)),

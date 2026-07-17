@@ -7,6 +7,7 @@
 
 mod bridge;
 pub mod interact;
+mod prefs_store;
 pub mod preview;
 mod screenshot;
 mod scripts;
@@ -31,13 +32,14 @@ use url::Url;
 
 use crate::window_registry::WindowRegistry;
 use scripts::{
-    CONSOLE_HOOK_JS, CONSOLE_TAIL_JS, HISTORY_BACK_JS, HISTORY_FORWARD_JS, SNAPSHOT_JS,
-    parse_snapshot_json,
+    CONSOLE_CLEAR_JS, CONSOLE_HOOK_INIT, CONSOLE_HOOK_JS, CONSOLE_TAIL_JS, HISTORY_BACK_JS,
+    HISTORY_FORWARD_JS, normalize_eval_json, parse_snapshot_json, snapshot_js, wait_check_js,
 };
 use url_policy::{NavOpts, normalize_host, validate_navigation_with};
 
 const BLANK: &str = "about:blank";
 const STATE_EVENT: &str = "browser://state";
+const NAV_BLOCKED_EVENT: &str = "browser://nav_blocked";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +84,8 @@ pub struct BrowserSnapshotDto {
     pub screenshot: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub screenshot_note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iframe_note: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -91,6 +95,9 @@ pub struct BrowserError {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
+    /// Optional structured detail (e.g. window candidates for ambiguous routing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<serde_json::Value>,
 }
 
 impl BrowserError {
@@ -99,6 +106,7 @@ impl BrowserError {
             code: "browser_host_missing".into(),
             message: "当前窗口没有 Browser 宿主".into(),
             hint: Some("请打开 Browser 视图后再试".into()),
+            detail: None,
         }
     }
 
@@ -107,6 +115,7 @@ impl BrowserError {
             code: code.into(),
             message: message.into(),
             hint: None,
+            detail: None,
         }
     }
 
@@ -117,13 +126,14 @@ impl BrowserError {
             code: "browser_creating".into(),
             message: format!("Browser 宿主正在创建中（{parent_label}），请稍后重试"),
             hint: None,
+            detail: None,
         }
     }
 
     pub(crate) fn from_policy(e: url_policy::UrlPolicyError) -> Self {
         let hint = match e.code.as_str() {
             "agent_external_needs_ask" => {
-                Some("在 Browser 面板点「允许当前域名（Agent）」后再试，或由人手地址栏打开".into())
+                Some("审批外站导航，或在 Browser 面板点「允许当前域名（Agent）」后再试".into())
             }
             "file_needs_workspace" => Some("先在 Composer 选择 workspace，再打开 file://".into()),
             "file_escape" => Some("仅允许 workspace 内文件（canonicalize 后须在根目录下）".into()),
@@ -133,6 +143,7 @@ impl BrowserError {
             code: e.code,
             message: e.message,
             hint,
+            detail: None,
         }
     }
 }
@@ -159,6 +170,22 @@ struct HostRecord {
     /// True while browser_create is awaiting the async WebView construction
     /// (between the first lock release and the final lock acquire).
     creating: bool,
+    /// Actor used by `on_navigation` for the next / in-flight page navigation.
+    /// Set to Agent before agent navigate/click; reset to Human on load finished.
+    nav_policy_actor: NavActor,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NavBlockedDto {
+    parent_label: String,
+    url: String,
+    code: String,
+    message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hint: Option<String>,
+    /// `human` | `agent`
+    actor: String,
 }
 
 pub struct BrowserHosts {
@@ -172,13 +199,70 @@ pub struct BrowserHosts {
 
 impl BrowserHosts {
     pub fn new() -> Self {
+        let persisted = prefs_store::load();
+        let allowlist = persisted
+            .allowlist
+            .into_iter()
+            .map(|h| normalize_host(&h))
+            .filter(|h| !h.is_empty())
+            .collect::<HashSet<_>>();
         Self {
             inner: Mutex::new(HashMap::new()),
-            allowlist: Mutex::new(HashSet::new()),
-            allow_private_lan: Mutex::new(false),
+            allowlist: Mutex::new(allowlist),
+            allow_private_lan: Mutex::new(persisted.allow_private_lan),
             default_persist: Mutex::new(true),
-            browser_yolo: Mutex::new(false),
+            browser_yolo: Mutex::new(persisted.yolo),
         }
+    }
+
+    pub(crate) fn persist_prefs_disk(&self) {
+        let allowlist = self
+            .allowlist
+            .lock()
+            .map(|g| {
+                let mut v: Vec<String> = g.iter().cloned().collect();
+                v.sort();
+                v
+            })
+            .unwrap_or_default();
+        let allow_private_lan = self.allow_private_lan.lock().map(|g| *g).unwrap_or(false);
+        let yolo = self.browser_yolo();
+        prefs_store::save(&prefs_store::PersistedBrowserPrefs {
+            allowlist,
+            allow_private_lan,
+            yolo,
+        });
+    }
+
+    /// Parent window labels that currently have a ready BrowserHost.
+    pub(crate) fn ready_host_parents(&self) -> Vec<String> {
+        self.inner
+            .lock()
+            .ok()
+            .map(|g| {
+                g.iter()
+                    .filter(|(_, rec)| !rec.creating && !rec.host_label.is_empty())
+                    .map(|(k, _)| k.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Insert host into session allowlist (normalized) and persist.
+    pub(crate) fn allow_host_name(&self, host: &str) -> Result<String, BrowserError> {
+        let host = normalize_host(host);
+        if host.is_empty() {
+            return Err(BrowserError::msg("no_host", "主机名为空"));
+        }
+        if is_loopback_host(&host) {
+            return Ok(host);
+        }
+        self.allowlist
+            .lock()
+            .map_err(|_| BrowserError::msg("lock_failed", "allowlist 锁失败"))?
+            .insert(host.clone());
+        self.persist_prefs_disk();
+        Ok(host)
     }
 
     pub fn browser_yolo(&self) -> bool {
@@ -214,6 +298,15 @@ impl BrowserHosts {
 
     fn default_persist(&self) -> bool {
         self.default_persist.lock().map(|g| *g).unwrap_or(true)
+    }
+
+    /// Mark the next in-page navigation for policy checks (plan §6.1 actor split).
+    pub(crate) fn set_nav_policy_actor(&self, parent: &str, actor: NavActor) {
+        if let Ok(mut g) = self.inner.lock()
+            && let Some(rec) = g.get_mut(parent)
+        {
+            rec.nav_policy_actor = actor;
+        }
     }
 }
 
@@ -329,6 +422,11 @@ fn attach_page_load(
         let hosts = app.state::<BrowserHosts>();
         let url = payload.url().to_string();
         let finished = matches!(payload.event(), PageLoadEvent::Finished);
+        let started = matches!(payload.event(), PageLoadEvent::Started);
+        if started {
+            let _ = webview.eval(CONSOLE_CLEAR_JS);
+            let _ = webview.eval(CONSOLE_HOOK_JS);
+        }
         if finished {
             let _ = webview.eval(CONSOLE_HOOK_JS);
         }
@@ -339,11 +437,75 @@ fn attach_page_load(
                 return;
             }
             rec.loading = !finished;
-            if finished && !url.is_empty() {
-                push_history(rec, &url);
+            if finished {
+                // Spontaneous link clicks use human policy after agent actions settle.
+                rec.nav_policy_actor = NavActor::Human;
+                if !url.is_empty() {
+                    push_history(rec, &url);
+                }
             }
             let dto = state_from_rec(&app, rec);
             emit_state(&app, &parent_label, &dto);
+        }
+    }
+}
+
+/// Gate every navigation (address bar, agent tools, in-page link / JS redirects)
+/// through `url_policy` (§6.1 / §11 A1–A2). Returning `false` cancels the navigation.
+fn attach_navigation(
+    app: &AppHandle,
+    parent_label: String,
+) -> impl Fn(&Url) -> bool + Send + 'static {
+    let app = app.clone();
+    move |url: &Url| {
+        let url_str = url.as_str();
+        if url_str.eq_ignore_ascii_case(BLANK) {
+            return true;
+        }
+        let hosts = app.state::<BrowserHosts>();
+        let actor = match hosts.inner.lock() {
+            Ok(g) => g
+                .get(&parent_label)
+                .map(|rec| rec.nav_policy_actor)
+                .unwrap_or(NavActor::Human),
+            Err(_) => return false,
+        };
+        let (allow, lan) = match hosts.nav_opts() {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+        let ws = workspace_path_for(&app, &parent_label);
+        let opts = NavOpts {
+            allowlist: &allow,
+            allow_private_lan: lan,
+            workspace_root: ws.as_deref(),
+        };
+        match validate_navigation_with(url_str, actor, &opts) {
+            Ok(_) => true,
+            Err(e) => {
+                let err = BrowserError::from_policy(e);
+                tracing::warn!(
+                    target: "zagens_browser",
+                    parent = %parent_label,
+                    url = %url_str,
+                    code = %err.code,
+                    "browser navigation blocked by url_policy"
+                );
+                let actor_s = match actor {
+                    NavActor::Human => "human",
+                    NavActor::Agent => "agent",
+                };
+                let dto = NavBlockedDto {
+                    parent_label: parent_label.clone(),
+                    url: url_str.to_string(),
+                    code: err.code.clone(),
+                    message: err.message.clone(),
+                    hint: err.hint.clone(),
+                    actor: actor_s.into(),
+                };
+                let _ = app.emit_to(&parent_label, NAV_BLOCKED_EVENT, &dto);
+                false
+            }
         }
     }
 }
@@ -383,6 +545,8 @@ async fn create_embedded(
 
     let builder = WebviewBuilder::new(host_label, WebviewUrl::External(url))
         .data_directory(data_dir)
+        .initialization_script(CONSOLE_HOOK_INIT)
+        .on_navigation(attach_navigation(app, parent_label.clone()))
         .on_page_load(attach_page_load(app, parent_label));
 
     let w = width.max(1.0);
@@ -418,6 +582,8 @@ async fn create_windowed(
         .min_inner_size(480.0, 320.0)
         .center()
         .data_directory(data_dir)
+        .initialization_script(CONSOLE_HOOK_INIT)
+        .on_navigation(attach_navigation(app, parent_label.clone()))
         .on_page_load({
             let app = app.clone();
             let parent_label = parent_label.clone();
@@ -425,6 +591,11 @@ async fn create_windowed(
                 let hosts = app.state::<BrowserHosts>();
                 let url = payload.url().to_string();
                 let finished = matches!(payload.event(), PageLoadEvent::Finished);
+                let started = matches!(payload.event(), PageLoadEvent::Started);
+                if started {
+                    let _ = window.eval(CONSOLE_CLEAR_JS);
+                    let _ = window.eval(CONSOLE_HOOK_JS);
+                }
                 if finished {
                     let _ = window.eval(CONSOLE_HOOK_JS);
                 }
@@ -435,8 +606,11 @@ async fn create_windowed(
                         return;
                     }
                     rec.loading = !finished;
-                    if finished && !url.is_empty() {
-                        push_history(rec, &url);
+                    if finished {
+                        rec.nav_policy_actor = NavActor::Human;
+                        if !url.is_empty() {
+                            push_history(rec, &url);
+                        }
                     }
                     let dto = state_from_rec(&app, rec);
                     emit_state(&app, &parent_label, &dto);
@@ -518,59 +692,74 @@ pub async fn browser_create(
                 history: Vec::new(),
                 history_idx: 0,
                 creating: true,
+                nav_policy_actor: NavActor::Human,
             },
         );
     }
 
-    let (mode, host_label) = match want.as_str() {
-        "windowed" | "window" | "c" => {
-            let label = host_label_for(&parent_label, BrowserMode::Windowed);
-            create_windowed(&app, &window, &label, url.clone(), persist).await?;
-            (BrowserMode::Windowed, label)
-        }
-        "embedded" | "embed" | "b" => {
-            let label = host_label_for(&parent_label, BrowserMode::Embedded);
-            create_embedded(
-                &app,
-                &window,
-                &label,
-                url.clone(),
-                x,
-                y,
-                width,
-                height,
-                persist,
-            )
-            .await?;
-            (BrowserMode::Embedded, label)
-        }
-        _ => {
-            let embed_label = host_label_for(&parent_label, BrowserMode::Embedded);
-            match create_embedded(
-                &app,
-                &window,
-                &embed_label,
-                url.clone(),
-                x,
-                y,
-                width,
-                height,
-                persist,
-            )
-            .await
-            {
-                Ok(()) => (BrowserMode::Embedded, embed_label),
-                Err(embed_err) => {
-                    tracing::warn!(
-                        target: "zagens_browser",
-                        error = %embed_err.message,
-                        "embedded BrowserHost failed; falling back to windowed"
-                    );
-                    let win_label = host_label_for(&parent_label, BrowserMode::Windowed);
-                    create_windowed(&app, &window, &win_label, url, persist).await?;
-                    (BrowserMode::Windowed, win_label)
+    let create_result: Result<(BrowserMode, String), BrowserError> = async {
+        match want.as_str() {
+            "windowed" | "window" | "c" => {
+                let label = host_label_for(&parent_label, BrowserMode::Windowed);
+                create_windowed(&app, &window, &label, url.clone(), persist).await?;
+                Ok((BrowserMode::Windowed, label))
+            }
+            "embedded" | "embed" | "b" => {
+                let label = host_label_for(&parent_label, BrowserMode::Embedded);
+                create_embedded(
+                    &app,
+                    &window,
+                    &label,
+                    url.clone(),
+                    x,
+                    y,
+                    width,
+                    height,
+                    persist,
+                )
+                .await?;
+                Ok((BrowserMode::Embedded, label))
+            }
+            _ => {
+                let embed_label = host_label_for(&parent_label, BrowserMode::Embedded);
+                match create_embedded(
+                    &app,
+                    &window,
+                    &embed_label,
+                    url.clone(),
+                    x,
+                    y,
+                    width,
+                    height,
+                    persist,
+                )
+                .await
+                {
+                    Ok(()) => Ok((BrowserMode::Embedded, embed_label)),
+                    Err(embed_err) => {
+                        tracing::warn!(
+                            target: "zagens_browser",
+                            error = %embed_err.message,
+                            "embedded BrowserHost failed; falling back to windowed"
+                        );
+                        let win_label = host_label_for(&parent_label, BrowserMode::Windowed);
+                        create_windowed(&app, &window, &win_label, url, persist).await?;
+                        Ok((BrowserMode::Windowed, win_label))
+                    }
                 }
             }
+        }
+    }
+    .await;
+
+    let (mode, host_label) = match create_result {
+        Ok(v) => v,
+        Err(e) => {
+            // A3: drop creating placeholder so callers do not see permanent browser_creating.
+            if let Ok(mut g) = hosts.lock() {
+                g.remove(&parent_label);
+            }
+            return Err(e);
         }
     };
 
@@ -585,6 +774,7 @@ pub async fn browser_create(
         history: Vec::new(),
         history_idx: 0,
         creating: false,
+        nav_policy_actor: NavActor::Human,
     };
     if !initial_url.is_empty() {
         push_history(&mut rec, &initial_url);
@@ -691,6 +881,10 @@ pub async fn browser_navigate(
     let (mode, host_label) = {
         let mut g = hosts.lock()?;
         let rec = g.get_mut(&parent).ok_or_else(BrowserError::missing)?;
+        if rec.creating {
+            return Err(BrowserError::busy(&parent));
+        }
+        rec.nav_policy_actor = actor;
         push_history(rec, &url_str);
         rec.loading = true;
         (rec.mode, rec.host_label.clone())
@@ -1015,14 +1209,7 @@ pub async fn browser_allow_host(
             .filter(|h| !h.is_empty())
             .ok_or_else(|| BrowserError::msg("no_host", "当前页没有可允许的主机名"))?
     };
-    if is_loopback_host(&host) {
-        return browser_get_prefs_inner(&hosts);
-    }
-    hosts
-        .allowlist
-        .lock()
-        .map_err(|_| BrowserError::msg("lock_failed", "allowlist 锁失败"))?
-        .insert(host);
+    let _ = hosts.allow_host_name(&host)?;
     browser_get_prefs_inner(&hosts)
 }
 
@@ -1060,6 +1247,9 @@ pub async fn browser_set_prefs(
         && let Ok(mut g) = hosts.browser_yolo.lock()
     {
         *g = yolo;
+    }
+    if args.allow_private_lan.is_some() || args.yolo.is_some() {
+        hosts.persist_prefs_disk();
     }
     browser_get_prefs_inner(&hosts)
 }
@@ -1119,10 +1309,11 @@ pub(crate) async fn eval_js_string(
         }
     }
 
-    tokio::time::timeout(std::time::Duration::from_secs(5), rx)
+    let raw = tokio::time::timeout(std::time::Duration::from_secs(5), rx)
         .await
         .map_err(|_| BrowserError::msg("eval_timeout", "eval 超时"))?
-        .map_err(|_| BrowserError::msg("eval_canceled", "eval 通道关闭"))
+        .map_err(|_| BrowserError::msg("eval_canceled", "eval 通道关闭"))?;
+    Ok(normalize_eval_json(&raw))
 }
 
 async fn eval_snapshot_on_host(
@@ -1130,8 +1321,87 @@ async fn eval_snapshot_on_host(
     mode: BrowserMode,
     host_label: &str,
 ) -> Result<BrowserSnapshotDto, BrowserError> {
-    let raw = eval_js_string(app, mode, host_label, SNAPSHOT_JS).await?;
+    let raw = eval_js_string(app, mode, host_label, &snapshot_js()).await?;
     Ok(parse_snapshot_json(&raw))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserWaitDto {
+    pub ok: bool,
+    pub kind: String,
+    pub waited_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+/// Poll until a page condition is met (B2). kind: `text` | `ref` | `selector` | `load`.
+pub async fn agent_wait(
+    app: &AppHandle,
+    hosts: &BrowserHosts,
+    parent_label: &str,
+    kind: &str,
+    value: Option<&str>,
+    timeout_ms: Option<u64>,
+) -> Result<BrowserWaitDto, BrowserError> {
+    let kind = kind.trim().to_ascii_lowercase();
+    if !matches!(kind.as_str(), "text" | "ref" | "selector" | "load") {
+        return Err(BrowserError::msg(
+            "bad_wait_kind",
+            "wait kind 须为 text|ref|selector|load",
+        ));
+    }
+    let value = value.unwrap_or("").to_string();
+    if matches!(kind.as_str(), "text" | "ref" | "selector") && value.trim().is_empty() {
+        return Err(BrowserError::msg(
+            "missing_wait_value",
+            format!("wait kind={kind} 需要 value（text / ref / selector）"),
+        ));
+    }
+    let timeout_ms = timeout_ms.unwrap_or(8_000).clamp(200, 30_000);
+    let (mode, host_label) = lookup_host(hosts, parent_label)?;
+    let started = std::time::Instant::now();
+    let script = wait_check_js(&kind, &value);
+    loop {
+        let raw = eval_js_string(app, mode, &host_label, &script).await?;
+        #[derive(Deserialize)]
+        struct WaitRaw {
+            ok: Option<bool>,
+            kind: Option<String>,
+            detail: Option<String>,
+        }
+        let parsed: WaitRaw = serde_json::from_str(&raw).unwrap_or(WaitRaw {
+            ok: Some(false),
+            kind: Some(kind.clone()),
+            detail: Some(raw.clone()),
+        });
+        if parsed.ok.unwrap_or(false) {
+            return Ok(BrowserWaitDto {
+                ok: true,
+                kind: parsed.kind.unwrap_or_else(|| kind.clone()),
+                waited_ms: started.elapsed().as_millis() as u64,
+                detail: parsed.detail,
+            });
+        }
+        if matches!(
+            parsed.detail.as_deref(),
+            Some("bad_kind") | Some("bad_selector")
+        ) {
+            return Err(BrowserError::msg(
+                parsed.detail.unwrap_or_else(|| "wait_failed".into()),
+                format!("browser_wait 条件无效: {raw}"),
+            ));
+        }
+        if started.elapsed().as_millis() as u64 >= timeout_ms {
+            return Err(BrowserError {
+                code: "wait_timeout".into(),
+                message: format!("browser_wait 超时（{timeout_ms}ms）kind={kind}"),
+                hint: Some("可加大 timeout_ms，或先 browser_snapshot 确认页面状态".into()),
+                detail: None,
+            });
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    }
 }
 
 /// Agent/bridge navigate (NavActor::Agent). Does not create a host.
@@ -1157,6 +1427,7 @@ pub async fn agent_navigate(
         if rec.creating {
             return Err(BrowserError::busy(parent_label));
         }
+        rec.nav_policy_actor = NavActor::Agent;
         push_history(rec, &url_str);
         rec.loading = true;
         (rec.mode, rec.host_label.clone())
@@ -1271,4 +1542,100 @@ pub async fn agent_console_tail(
         String::new()
     };
     Ok(BrowserConsoleDto { lines, note })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn creating_record(parent: &str) -> HostRecord {
+        HostRecord {
+            parent_label: parent.into(),
+            host_label: String::new(),
+            mode: BrowserMode::Embedded,
+            visible: false,
+            loading: true,
+            persist_profile: false,
+            history: Vec::new(),
+            history_idx: 0,
+            creating: true,
+            nav_policy_actor: NavActor::Human,
+        }
+    }
+
+    fn ready_record(parent: &str, host: &str) -> HostRecord {
+        HostRecord {
+            parent_label: parent.into(),
+            host_label: host.into(),
+            mode: BrowserMode::Embedded,
+            visible: true,
+            loading: false,
+            persist_profile: true,
+            history: vec!["about:blank".into()],
+            history_idx: 0,
+            creating: false,
+            nav_policy_actor: NavActor::Human,
+        }
+    }
+
+    /// T2: creating placeholder → busy, not missing.
+    #[test]
+    fn lookup_host_busy_while_creating() {
+        let hosts = BrowserHosts::new();
+        hosts
+            .lock()
+            .unwrap()
+            .insert("win-a".into(), creating_record("win-a"));
+        let err = lookup_host(&hosts, "win-a").unwrap_err();
+        assert_eq!(err.code, "browser_creating");
+        assert!(err.message.contains("win-a"));
+    }
+
+    /// T2: create-failure cleanup path — remove placeholder → missing.
+    #[test]
+    fn remove_creating_placeholder_yields_missing() {
+        let hosts = BrowserHosts::new();
+        {
+            let mut g = hosts.lock().unwrap();
+            g.insert("win-a".into(), creating_record("win-a"));
+            g.remove("win-a"); // mirrors browser_create Err cleanup
+        }
+        let err = lookup_host(&hosts, "win-a").unwrap_err();
+        assert_eq!(err.code, "browser_host_missing");
+    }
+
+    #[test]
+    fn lookup_host_ok_when_ready() {
+        let hosts = BrowserHosts::new();
+        hosts
+            .lock()
+            .unwrap()
+            .insert("win-a".into(), ready_record("win-a", "browser-embed-win-a"));
+        let (mode, label) = lookup_host(&hosts, "win-a").unwrap();
+        assert_eq!(mode, BrowserMode::Embedded);
+        assert_eq!(label, "browser-embed-win-a");
+        assert!(hosts.ready_host_parents().contains(&"win-a".into()));
+    }
+
+    #[test]
+    fn allow_host_name_skips_loopback_and_normalizes() {
+        let hosts = BrowserHosts::new();
+        assert_eq!(hosts.allow_host_name("LocalHost").unwrap(), "localhost");
+        let allowed = hosts.allow_host_name("Example.COM").unwrap();
+        assert_eq!(allowed, "example.com");
+        let (list, _) = hosts.nav_opts().unwrap();
+        assert!(list.iter().any(|h| h == "example.com"));
+        assert!(!list.iter().any(|h| h == "localhost"));
+    }
+
+    #[test]
+    fn busy_and_missing_error_codes_stable() {
+        assert_eq!(BrowserError::missing().code, "browser_host_missing");
+        assert_eq!(BrowserError::busy("p").code, "browser_creating");
+        let policy = BrowserError::from_policy(url_policy::UrlPolicyError {
+            code: "agent_external_needs_ask".into(),
+            message: "ask".into(),
+        });
+        assert!(policy.hint.is_some());
+    }
 }

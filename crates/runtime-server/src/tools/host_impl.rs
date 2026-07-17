@@ -189,7 +189,8 @@ impl HttpBrowserHost {
         }
         let token = std::env::var("DEEPSEEK_RUNTIME_TOKEN").unwrap_or_default();
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(20))
+            // Allow browser_wait up to 30s plus bridge overhead.
+            .timeout(std::time::Duration::from_secs(45))
             .build()
             .ok()?;
         Some(Self {
@@ -347,5 +348,72 @@ impl ToolBrowserHost for HttpBrowserHost {
             body.insert("workspace".into(), Value::String(w.into()));
         }
         self.call_op(Value::Object(body)).await
+    }
+
+    async fn wait(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        kind: &str,
+        value: Option<&str>,
+        timeout_ms: Option<u64>,
+    ) -> Result<Value, String> {
+        let mut body = Self::base_body("wait", thread_id, window_label);
+        body.insert("kind".into(), Value::String(kind.into()));
+        if let Some(ms) = timeout_ms {
+            body.insert("timeoutMs".into(), json!(ms));
+        }
+        match kind {
+            "ref" => {
+                if let Some(v) = value {
+                    body.insert("ref".into(), Value::String(v.into()));
+                }
+            }
+            "selector" => {
+                if let Some(v) = value {
+                    body.insert("selector".into(), Value::String(v.into()));
+                }
+            }
+            "text" => {
+                if let Some(v) = value {
+                    body.insert("text".into(), Value::String(v.into()));
+                }
+            }
+            _ => {}
+        }
+        self.call_op(Value::Object(body)).await
+    }
+
+    async fn allow_host(
+        &self,
+        thread_id: Option<&str>,
+        window_label: Option<&str>,
+        host: &str,
+    ) -> Result<Value, String> {
+        let mut body = Self::base_body("allow_host", thread_id, window_label);
+        body.insert("host".into(), Value::String(host.into()));
+        self.call_op(Value::Object(body)).await
+    }
+
+    async fn prefs(&self) -> Result<Value, String> {
+        let resp = self
+            .client
+            .get(format!("{}/v1/browser/prefs", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await
+            .map_err(|e| format!("browser prefs request failed: {e}"))?;
+        let status = resp.status();
+        let payload: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("browser prefs bad json: {e}"))?;
+        if !status.is_success() {
+            return Err(payload.to_string());
+        }
+        if payload.get("ok").and_then(|v| v.as_bool()) == Some(false) {
+            return Err(payload.to_string());
+        }
+        Ok(payload)
     }
 }

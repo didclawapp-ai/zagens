@@ -77,12 +77,40 @@ impl ToolSpec for BrowserNavigateTool {
         let host = require_browser_host(context)?;
         let url = required_str(&input, "url")?;
         let window_label = optional_str(&input, "window_label");
+        // After approval (or yolo), seed session allowlist so desktop url_policy accepts the host.
+        if let Some(ext_host) = external_https_host_for_allow(url) {
+            let _ = host
+                .allow_host(thread_id(context), window_label, &ext_host)
+                .await;
+        }
         let value = host
             .navigate(thread_id(context), window_label, url)
             .await
             .map_err(map_host_err)?;
         Ok(ToolResult::success(value.to_string()))
     }
+}
+
+fn external_https_host_for_allow(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("https://") {
+        return None;
+    }
+    let rest = trimmed.get(8..)?;
+    let hostport = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = hostport
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if host.is_empty() || matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1") {
+        return None;
+    }
+    Some(host)
 }
 
 pub struct BrowserSnapshotTool;
@@ -94,7 +122,7 @@ impl ToolSpec for BrowserSnapshotTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read the current Browser pane as visible text plus a simplified a11y tree with stable element refs. Prefer this over screenshots."
+        "Read the current Browser pane as visible text plus a simplified a11y tree with stable element refs (`role:slug:nth`, e.g. button:submit:0). Prefer this over screenshots. Use browser_wait before click when the page is still loading."
     }
 
     fn input_schema(&self) -> Value {
@@ -184,7 +212,7 @@ impl ToolSpec for BrowserConsoleTailTool {
     }
 
     fn description(&self) -> &'static str {
-        "Return recent console messages from the Browser pane (captured after page-load hook)."
+        "Return recent console messages from the Browser pane (hook installed at document start; buffer cleared on navigation)."
     }
 
     fn input_schema(&self) -> Value {
@@ -227,14 +255,14 @@ impl ToolSpec for BrowserClickTool {
     }
 
     fn description(&self) -> &'static str {
-        "Click a Browser pane element by stable ref from browser_snapshot (data-zagens-ref). Never use screen coordinates. Requires approval unless [browser] yolo / ZAGENS_BROWSER_YOLO is enabled."
+        "Click a Browser pane element by stable ref from browser_snapshot (`role:slug:nth`, e.g. button:submit:0). Never use screen coordinates. Requires approval unless [browser] yolo / ZAGENS_BROWSER_YOLO is enabled."
     }
 
     fn input_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "ref": { "type": "string", "description": "Element ref from browser_snapshot (e.g. e3)" },
+                "ref": { "type": "string", "description": "Stable element ref from browser_snapshot (e.g. button:submit:0)" },
                 "window_label": { "type": "string" }
             },
             "required": ["ref"],
@@ -362,6 +390,66 @@ impl ToolSpec for BrowserScrollTool {
     }
 }
 
+pub struct BrowserWaitTool;
+
+#[async_trait]
+impl ToolSpec for BrowserWaitTool {
+    fn name(&self) -> &'static str {
+        "browser_wait"
+    }
+
+    fn description(&self) -> &'static str {
+        "Wait until a Browser pane condition is true: kind=text (substring in visible text), ref (stable snapshot ref present), selector (CSS), or load (document complete). Default timeout 8000ms (max 30000). Prefer before click/type on slow/SPA pages."
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": ["text", "ref", "selector", "load"],
+                    "description": "Wait condition"
+                },
+                "value": {
+                    "type": "string",
+                    "description": "For text/ref/selector: the substring, stable ref, or CSS selector. Omit for load."
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "minimum": 200,
+                    "maximum": 30000,
+                    "description": "Default 8000"
+                },
+                "window_label": { "type": "string" }
+            },
+            "required": ["kind"],
+            "additionalProperties": false
+        })
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::ReadOnly]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
+    }
+
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let host = require_browser_host(context)?;
+        let kind = required_str(&input, "kind")?;
+        let value = optional_str(&input, "value");
+        let timeout_ms = input.get("timeout_ms").and_then(|v| v.as_u64());
+        let window_label = optional_str(&input, "window_label");
+        let value = host
+            .wait(thread_id(context), window_label, kind, value, timeout_ms)
+            .await
+            .map_err(map_host_err)?;
+        Ok(ToolResult::success(value.to_string()))
+    }
+}
+
 pub struct BrowserStartPreviewTool;
 
 #[async_trait]
@@ -432,7 +520,17 @@ mod tests {
     async fn click_without_host_is_structured_missing() {
         let ctx = ToolContext::new(std::env::temp_dir());
         let err = BrowserClickTool
-            .execute(json!({ "ref": "e1" }), &ctx)
+            .execute(json!({ "ref": "button:go:0" }), &ctx)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("browser_host_missing"));
+    }
+
+    #[tokio::test]
+    async fn wait_without_host_is_structured_missing() {
+        let ctx = ToolContext::new(std::env::temp_dir());
+        let err = BrowserWaitTool
+            .execute(json!({ "kind": "load" }), &ctx)
             .await
             .unwrap_err();
         assert!(err.to_string().contains("browser_host_missing"));

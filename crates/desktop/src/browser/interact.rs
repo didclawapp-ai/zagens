@@ -5,7 +5,7 @@ use serde_json::json;
 use tauri::{AppHandle, State};
 
 use super::scripts::{click_js, scroll_js, type_js};
-use super::{BrowserError, BrowserHosts, BrowserMode, eval_js_string, lookup_host};
+use super::{BrowserError, BrowserHosts, BrowserMode, NavActor, eval_js_string, lookup_host};
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,12 +34,13 @@ fn parse_interact(raw: &str) -> BrowserInteractDto {
         #[serde(flatten)]
         rest: serde_json::Value,
     }
-    let parsed: Raw = serde_json::from_str(raw).unwrap_or(Raw {
+    let normalized = super::scripts::normalize_eval_json(raw);
+    let parsed: Raw = serde_json::from_str(&normalized).unwrap_or(Raw {
         ok: Some(false),
         r#ref: None,
         role: None,
         name: None,
-        error: Some(raw.to_string()),
+        error: Some(normalized),
         rest: serde_json::Value::Null,
     });
     BrowserInteractDto {
@@ -70,7 +71,11 @@ fn map_interact_result(dto: BrowserInteractDto) -> Result<BrowserInteractDto, Br
     Err(BrowserError {
         code: code.into(),
         message,
-        hint: Some("先 browser_snapshot 获取稳定 ref，再按 ref 操作".into()),
+        hint: Some(
+            "先 browser_snapshot 获取稳定 ref（role:slug:nth），必要时 browser_wait 后再操作"
+                .into(),
+        ),
+        detail: None,
     })
 }
 
@@ -85,6 +90,8 @@ pub async fn agent_click(
         return Err(BrowserError::msg("missing_ref", "element ref 为空"));
     }
     let (mode, host_label) = lookup_host(hosts, parent_label)?;
+    // Agent-triggered navigations from click follow agent URL policy (§6.1).
+    hosts.set_nav_policy_actor(parent_label, NavActor::Agent);
     let raw = eval_js_string(app, mode, &host_label, &click_js(ref_id)).await?;
     map_interact_result(parse_interact(&raw))
 }
@@ -101,6 +108,7 @@ pub async fn agent_type(
         return Err(BrowserError::msg("missing_ref", "element ref 为空"));
     }
     let (mode, host_label) = lookup_host(hosts, parent_label)?;
+    hosts.set_nav_policy_actor(parent_label, NavActor::Agent);
     let raw = eval_js_string(app, mode, &host_label, &type_js(ref_id, text)).await?;
     map_interact_result(parse_interact(&raw))
 }

@@ -14,6 +14,7 @@ test('summarizeToolCalls', () => {
       'message.toolGroupOffice': `办公文档 ${params?.count ?? ''} 次`,
       'message.toolGroupWorkflow': `工作流 ${params?.count ?? ''} 次`,
       'message.toolGroupAgent': `子代理 ${params?.count ?? ''} 次`,
+      'message.toolGroupBrowser': `浏览器 ${params?.count ?? ''} 次`,
       'message.toolCallsWithName': `${params?.name ?? ''} 等 ${params?.count ?? ''} 项`,
       'message.toolCallsHeadMore': `${params?.head ?? ''} 等 ${params?.count ?? ''} 项`,
     };
@@ -113,6 +114,28 @@ test('summarizeToolCalls', () => {
     ),
     '子代理 2 次 · agent_304e162e',
     'agent_spawn family collapses under toolGroupAgent',
+  );
+
+  assert.equal(
+    summarizeToolCalls(
+      [
+        {
+          id: '1',
+          name: 'browser_navigate',
+          input: JSON.stringify({ url: 'http://127.0.0.1:8080/' }),
+          status: 'done',
+        },
+        {
+          id: '2',
+          name: 'browser_click',
+          input: JSON.stringify({ ref: 'button:add-task:0' }),
+          status: 'done',
+        },
+      ],
+      t,
+    ),
+    '浏览器 2 次 · button:add-task:0',
+    'browser_* tools collapse under toolGroupBrowser',
   );
 
   assert.equal(

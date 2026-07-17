@@ -254,8 +254,14 @@ export default function BrowserPane({ desktopHost }: { desktopHost: boolean }) {
 
   const allowCurrentHost = useCallback(async () => {
     try {
+      let host: string | undefined;
+      try {
+        host = new URL(urlInput.trim()).hostname || undefined;
+      } catch {
+        host = undefined;
+      }
       const prefs = await invoke<{ allowlist: string[] }>('browser_allow_host', {
-        args: {},
+        args: host ? { host } : {},
       });
       setStatus(
         t('browser.allowHostDone', {
@@ -265,7 +271,7 @@ export default function BrowserPane({ desktopHost }: { desktopHost: boolean }) {
     } catch (e) {
       setStatus(errMessage(e));
     }
-  }, [t]);
+  }, [t, urlInput]);
 
   const onPersistToggle = useCallback(
     async (next: boolean) => {
@@ -376,6 +382,45 @@ export default function BrowserPane({ desktopHost }: { desktopHost: boolean }) {
       unlisten?.();
     };
   }, [applyState, desktopHost]);
+
+  useEffect(() => {
+    if (!desktopHost) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    type NavBlocked = {
+      url?: string;
+      code?: string;
+      message?: string;
+      hint?: string;
+      actor?: string;
+    };
+    void listenCurrentWebviewEvent<NavBlocked>(
+      'browser://nav_blocked',
+      (payload) => {
+        if (cancelled) return;
+        const msg = payload.message || payload.code || 'navigation blocked';
+        const hint = payload.hint ? ` — ${payload.hint}` : '';
+        setStatus(`${msg}${hint}`);
+        // Keep blocked host visible so user can click「允许当前域名」after copying, or
+        // approve the next browser_navigate turn (C1 approval card).
+        if (payload.url) {
+          try {
+            const host = new URL(payload.url).hostname;
+            if (host) setUrlInput(`https://${host}/`);
+          } catch {
+            /* ignore */
+          }
+        }
+      },
+      { cancelled: () => cancelled },
+    ).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [desktopHost]);
 
   useEffect(() => {
     if (!state || state.mode !== 'embedded') return;
@@ -517,7 +562,18 @@ export default function BrowserPane({ desktopHost }: { desktopHost: boolean }) {
           <button
             type="button"
             className={btnClass}
-            disabled={busy || !state || security !== 'external'}
+            disabled={
+              busy ||
+              (() => {
+                try {
+                  const h = new URL(urlInput.trim()).hostname.toLowerCase();
+                  if (h && h !== 'localhost' && h !== '127.0.0.1' && h !== '::1') return false;
+                } catch {
+                  /* fall through */
+                }
+                return !state || security !== 'external';
+              })()
+            }
             onClick={() => void allowCurrentHost()}
           >
             {t('browser.allowHost')}

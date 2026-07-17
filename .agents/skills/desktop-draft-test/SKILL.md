@@ -11,6 +11,24 @@ description: 桌面手测
 
 ---
 
+## 内置浏览器（Browser pane）
+
+对照维护者 plan：`doc_Private/docs/desktop/BUILTIN_BROWSER_PLAN.md` §8。  
+**主路径回归：** 2026-07-17 **通过** — 样本 `.zagens/deepseek-thread-thr_829e.json`（`thr_829e426d`）。
+
+| # | 项 | 期望 |
+|---|-----|------|
+| 1 | 先打开 Browser 视图 | 未开时 `browser_*` → `browser_host_missing` + hint（预期，非失败） |
+| 2 | 回环导航 | `browser_navigate` → `http://127.0.0.1:…` 可见页 |
+| 3 | 结构化观测 | `browser_snapshot` 含 a11y + `role:slug:nth` ref；`browser_get_text` 中文可读 |
+| 4 | 写路径 | `browser_type` / `click` / `scroll` 按 ref 返回 `ok:true`（无 JSON.parse SyntaxError） |
+| 5 | 等待 | `browser_wait`（text / ref / load）`ok:true` |
+| 6 | Preview | `.zagens/preview.json` + `browser_start_preview`（或人手起服）后可导航 |
+
+边角（未纳入 thr_829e 通过判据）：聊天「应用内打开」、外站 ask / `nav_blocked`、关 `browser_yolo` 审批、多窗 candidates、B 侧栏 resize/焦点。
+
+---
+
 ## 交错时间线（Streaming Timeline）
 
 对照 `doc_Private/docs/desktop/STREAMING_TIMELINE_UX_PLAN.md`。样本：`.zagens/deepseek-thread-thr_0c02.json`、`thr_2be0`。

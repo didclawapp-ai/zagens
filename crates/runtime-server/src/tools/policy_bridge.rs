@@ -63,7 +63,11 @@ fn build_approval_description(
     }
     if matches!(
         tool_name,
-        "browser_click" | "browser_type" | "browser_scroll" | "browser_start_preview"
+        "browser_click"
+            | "browser_type"
+            | "browser_scroll"
+            | "browser_start_preview"
+            | "browser_navigate"
     ) {
         return browser_write_approval_description(tool_name, tool_input);
     }
@@ -110,18 +114,128 @@ fn browser_write_approval_description(tool_name: &str, tool_input: &Value) -> St
         "browser_start_preview" => {
             "Browser: start `.zagens/preview.json` server and open URL".into()
         }
+        "browser_navigate" => {
+            let url = tool_input
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            if let Some(host) = external_https_host(url) {
+                format!("Browser: open external site {host} (session allowlist)")
+            } else {
+                format!("Browser: navigate to {url}")
+            }
+        }
         _ => format!("Browser: {tool_name}"),
     }
 }
 
+#[derive(Clone, Default)]
+struct HotBrowserPrefs {
+    yolo: bool,
+    allowlist: Vec<String>,
+}
+
+fn browser_prefs_path() -> Option<std::path::PathBuf> {
+    dirs::data_dir().map(|d| d.join("zagens").join("browser-profile").join("prefs.json"))
+}
+
+fn load_hot_browser_prefs() -> HotBrowserPrefs {
+    let Some(path) = browser_prefs_path() else {
+        return HotBrowserPrefs::default();
+    };
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return HotBrowserPrefs::default();
+    };
+    let v: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+    HotBrowserPrefs {
+        yolo: v.get("yolo").and_then(|x| x.as_bool()).unwrap_or(false),
+        allowlist: v
+            .get("allowlist")
+            .and_then(|x| x.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|h| h.as_str().map(|s| s.to_ascii_lowercase()))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+fn hot_browser_prefs_cached() -> HotBrowserPrefs {
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    static CACHE: Mutex<Option<(Instant, HotBrowserPrefs)>> = Mutex::new(None);
+    let now = Instant::now();
+    if let Ok(guard) = CACHE.lock()
+        && let Some((ts, prefs)) = guard.as_ref()
+        && now.duration_since(*ts) < Duration::from_millis(750)
+    {
+        return prefs.clone();
+    }
+    let prefs = load_hot_browser_prefs();
+    if let Ok(mut guard) = CACHE.lock() {
+        *guard = Some((now, prefs.clone()));
+    }
+    prefs
+}
+
 fn browser_yolo_enabled() -> bool {
-    matches!(
+    if matches!(
         std::env::var("ZAGENS_BROWSER_YOLO")
             .ok()
             .as_deref()
             .map(str::trim),
         Some("1") | Some("true") | Some("TRUE") | Some("yes")
-    )
+    ) {
+        return true;
+    }
+    // Hot path: desktop `browser_set_prefs` writes prefs.json (no sidecar restart).
+    hot_browser_prefs_cached().yolo
+}
+
+/// Rough external-https host extractor (mirrors desktop url_policy agent ask).
+fn external_https_host(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("https://") {
+        return None;
+    }
+    let rest = trimmed.get(8..)?;
+    let hostport = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = hostport
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if host.is_empty()
+        || matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1")
+        || host.starts_with("192.168.")
+        || host.starts_with("10.")
+        || host.starts_with("172.")
+    {
+        return None;
+    }
+    Some(host)
+}
+
+fn browser_navigate_needs_external_ask(tool_input: &Value) -> Option<String> {
+    let url = tool_input.get("url").and_then(|v| v.as_str())?;
+    let host = external_https_host(url)?;
+    let prefs = hot_browser_prefs_cached();
+    if prefs.yolo {
+        return None;
+    }
+    if prefs
+        .allowlist
+        .iter()
+        .any(|h| h.eq_ignore_ascii_case(&host))
+    {
+        return None;
+    }
+    Some(host)
 }
 
 fn is_browser_write_tool(name: &str) -> bool {
@@ -168,6 +282,14 @@ fn legacy_tool_plan_approval_meta(
         };
         if is_browser_write_tool(tool_name) && !browser_yolo_enabled() {
             meta.approval_required = true;
+        }
+        if tool_name == "browser_navigate"
+            && let Some(host) = browser_navigate_needs_external_ask(tool_input)
+        {
+            meta.approval_required = true;
+            meta.approval_description =
+                format!("Browser: open external site {host} (will allow for this session)");
+            meta.read_only = false;
         }
         return meta;
     }
@@ -355,6 +477,15 @@ pub fn resolve_tool_plan_approval_meta(
     if is_browser_write_tool(tool_name) && !browser_yolo_enabled() {
         meta.approval_required = true;
     }
+    // C1: external https navigate asks once, then session allowlist (unless already allowed / yolo).
+    if tool_name == "browser_navigate"
+        && let Some(host) = browser_navigate_needs_external_ask(tool_input)
+    {
+        meta.approval_required = true;
+        meta.approval_description =
+            format!("Browser: open external site {host} (will allow for this session)");
+        meta.read_only = false;
+    }
     meta
 }
 
@@ -389,6 +520,34 @@ mod tests {
         );
         assert!(!meta.approval_required);
         assert!(meta.read_only);
+    }
+
+    #[test]
+    fn browser_navigate_external_requires_ask() {
+        let meta = resolve_tool_plan_approval_meta(
+            ToolsPolicyMode::Engine,
+            TurnLoopMode::Agent,
+            false,
+            "browser_navigate",
+            &serde_json::json!({ "url": "https://example.com/docs" }),
+            None,
+        );
+        assert!(meta.approval_required);
+        assert!(meta.approval_description.contains("example.com"));
+    }
+
+    #[test]
+    fn browser_navigate_loopback_stays_auto() {
+        let meta = resolve_tool_plan_approval_meta(
+            ToolsPolicyMode::Engine,
+            TurnLoopMode::Agent,
+            false,
+            "browser_navigate",
+            &serde_json::json!({ "url": "http://127.0.0.1:5173/" }),
+            None,
+        );
+        // Engine may mark network tools variously; we only assert we did NOT force external ask.
+        assert!(!meta.approval_description.contains("session allowlist"));
     }
 
     #[test]

@@ -41,6 +41,8 @@ function groupLabel(
       return t('message.toolGroupWorkflow', { count: n });
     case 'agent':
       return t('message.toolGroupAgent', { count: n });
+    case 'browser':
+      return t('message.toolGroupBrowser', { count: n });
     default:
       return t('message.toolCallsDefault');
   }
@@ -111,6 +113,13 @@ export function lastToolActivityDetail(tools: ToolCardModel[]): string | null {
       if (type) return truncateDetail(type);
       return truncateDetail(tool.name);
     }
+    if (cat === 'browser') {
+      const url = tryParseNamedField(tool.input, 'url');
+      if (url) return truncateDetail(url);
+      const ref = tryParseNamedField(tool.input, 'ref');
+      if (ref) return truncateDetail(ref);
+      return truncateDetail(tool.name);
+    }
     if (cat === 'write' || cat === 'explore' || cat === 'office') {
       const path = parseFileNameFromToolInput(tool.input);
       if (path) return truncateDetail(basenamePath(path));
@@ -138,6 +147,7 @@ export function summarizeActivityByCategory(
     'plan',
     'workflow',
     'agent',
+    'browser',
     'other',
   ];
   const counts = new Map<ToolCategory, number>();

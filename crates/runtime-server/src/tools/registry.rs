@@ -714,11 +714,13 @@ impl ToolRegistryBuilder {
         use super::browser::{
             BrowserClickTool, BrowserConsoleTailTool, BrowserGetTextTool, BrowserNavigateTool,
             BrowserScrollTool, BrowserSnapshotTool, BrowserStartPreviewTool, BrowserTypeTool,
+            BrowserWaitTool,
         };
         self.with_tool(Arc::new(BrowserNavigateTool))
             .with_tool(Arc::new(BrowserSnapshotTool))
             .with_tool(Arc::new(BrowserGetTextTool))
             .with_tool(Arc::new(BrowserConsoleTailTool))
+            .with_tool(Arc::new(BrowserWaitTool))
             .with_tool(Arc::new(BrowserClickTool))
             .with_tool(Arc::new(BrowserTypeTool))
             .with_tool(Arc::new(BrowserScrollTool))

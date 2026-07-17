@@ -47,6 +47,7 @@ export function CollapsedToolRunBlock({
     category === 'office' ||
     category === 'workflow' ||
     category === 'agent' ||
+    category === 'browser' ||
     category === 'mixed';
 
   return (

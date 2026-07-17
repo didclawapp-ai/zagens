@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop Browser 交互与 snapshot 解析（2026-07-17）：** `click`/`type`/`scroll`/`wait` 不再对已 JSON 编码的字符串字面量再 `JSON.parse`（修复 `button:anon:0` 等稳定 ref 触发的 SyntaxError）；`eval_js_string` / `parse_snapshot_json` 解开 WebView2 对字符串返回值的二次编码，避免 snapshot `nodes:[]` 而正文落在 `text`。时间线将 `browser_*` 归入可折叠 `browser` 类别。Windows 回环页回归手测通过（`thr_829e`，checklist 10/10；无宿主时仍返回 `browser_host_missing`）。
+- **Desktop Browser 包 C + T 回归（2026-07-17）：** 外站 `browser_navigate` 走审批卡（通过后写入会话 allowlist）；`browser_yolo` 经 `prefs.json` 热切换无需重启 sidecar；多窗歧义返回 candidates；preview 每窗进程 + `ready_regex` + 超时杀进程；allowlist/LAN 持久化；截图超限降质重试。配套单测：JS 注入防回退、creating/missing 生命周期、bridge 503/unauthorized 契约、稳定 ref 算法。
+- **Desktop Browser 包 B（2026-07-17）：** 稳定 element ref（`role:slug:nth`，DOM 重渲后可按 role/name/nth 回退解析）；snapshot 扩 `option`/`contenteditable`/常见 ARIA，并标注 iframe 不可达；新工具 `browser_wait`（text|ref|selector|load）；console hook 经 `initialization_script` 尽早注入，导航 Started 清空缓冲。
+- **Desktop Browser 包 A（2026-07-17）：** 页内导航 / 二次跳转经 `on_navigation` 统一走 `url_policy`（人手 vs agent actor；拒绝时 emit `browser://nav_blocked`）；`browser_create` 失败清理 `creating` 占位；bridge 对 `browser_creating` 短退避重试（仍忙则 503）。
 - **Desktop 集成终端光标（2026-07-15）：** 根因是 Tauri 给 `style-src` 注入 nonce 后令 `'unsafe-inline'` 失效，xterm 动态样式（含光标）被 CSP 拦截；对 `style-src` 启用 `dangerousDisableAssetCspModification`。配套：终端 `tabpanel` `tabIndex={-1}`；剥离 ConPTY `CSI ?25l`；获焦实心 / 失焦 `outline`（2px）；xterm 5.5 空格键补丁。
 - **Desktop Browser 安全与稳定性修复（2026-07-16）：**
   * `agent_type` JS 注入 — `type_js` 将 agent 提供文本直接拼接 JS 模板，改为 `JSON.parse()` 传参，阻止任意 JS 执行。
