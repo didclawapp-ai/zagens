@@ -136,18 +136,17 @@ struct HotBrowserPrefs {
 }
 
 fn browser_prefs_path() -> Option<std::path::PathBuf> {
+    zagens_config::user_data_path("browser/prefs.json").ok()
+}
+
+fn legacy_browser_prefs_path() -> Option<std::path::PathBuf> {
     dirs::data_dir().map(|d| d.join("zagens").join("browser-profile").join("prefs.json"))
 }
 
-fn load_hot_browser_prefs() -> HotBrowserPrefs {
-    let Some(path) = browser_prefs_path() else {
-        return HotBrowserPrefs::default();
-    };
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return HotBrowserPrefs::default();
-    };
-    let v: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
-    HotBrowserPrefs {
+fn load_hot_browser_prefs_from(path: &std::path::Path) -> Option<HotBrowserPrefs> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let v: Value = serde_json::from_str(&raw).ok()?;
+    Some(HotBrowserPrefs {
         yolo: v.get("yolo").and_then(|x| x.as_bool()).unwrap_or(false),
         allowlist: v
             .get("allowlist")
@@ -158,7 +157,22 @@ fn load_hot_browser_prefs() -> HotBrowserPrefs {
                     .collect()
             })
             .unwrap_or_default(),
+    })
+}
+
+fn load_hot_browser_prefs() -> HotBrowserPrefs {
+    if let Some(path) = browser_prefs_path()
+        && let Some(prefs) = load_hot_browser_prefs_from(&path)
+    {
+        return prefs;
     }
+    // Read-only fallback while desktop migrates AppData → ~/.zagens/browser/.
+    if let Some(legacy) = legacy_browser_prefs_path()
+        && let Some(prefs) = load_hot_browser_prefs_from(&legacy)
+    {
+        return prefs;
+    }
+    HotBrowserPrefs::default()
 }
 
 fn hot_browser_prefs_cached() -> HotBrowserPrefs {
@@ -225,6 +239,7 @@ fn browser_navigate_needs_external_ask(tool_input: &Value) -> Option<String> {
     let url = tool_input.get("url").and_then(|v| v.as_str())?;
     let host = external_https_host(url)?;
     let prefs = hot_browser_prefs_cached();
+    // browser_yolo auto-allows external nav (same as writes). Already-allowlisted hosts skip ask.
     if prefs.yolo {
         return None;
     }
@@ -524,16 +539,20 @@ mod tests {
 
     #[test]
     fn browser_navigate_external_requires_ask() {
+        // Use a host that will not appear in the developer's persisted browser allowlist.
         let meta = resolve_tool_plan_approval_meta(
             ToolsPolicyMode::Engine,
             TurnLoopMode::Agent,
             false,
             "browser_navigate",
-            &serde_json::json!({ "url": "https://example.com/docs" }),
+            &serde_json::json!({ "url": "https://ask-once.example.invalid/docs" }),
             None,
         );
         assert!(meta.approval_required);
-        assert!(meta.approval_description.contains("example.com"));
+        assert!(
+            meta.approval_description
+                .contains("ask-once.example.invalid")
+        );
     }
 
     #[test]

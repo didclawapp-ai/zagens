@@ -123,6 +123,15 @@ pub fn build_approval_key(tool_name: &str, input: &serde_json::Value) -> Approva
             let host = parse_host(input);
             format!("net:{host}")
         }
+        // Per-host: approving loopback navigate must not auto-approve external sites.
+        "browser_navigate" => {
+            let host = parse_host(input).to_ascii_lowercase();
+            if host.is_empty() {
+                "browser_nav:unknown".into()
+            } else {
+                format!("browser_nav:{host}")
+            }
+        }
         "write_file" | "edit_file" | "write_office" => {
             let path = input
                 .get("path")
@@ -267,6 +276,21 @@ mod tests {
         let key_a = build_approval_key("fetch_url", &json!({"url": "https://example.com"}));
         let key_b = build_approval_key("fetch_url", &json!({"url": "https://other.org"}));
         assert_ne!(key_a, key_b);
+    }
+
+    #[test]
+    fn browser_navigate_keys_differ_by_host() {
+        let loopback = build_approval_key(
+            "browser_navigate",
+            &json!({"url": "http://127.0.0.1:8080/"}),
+        );
+        let external = build_approval_key(
+            "browser_navigate",
+            &json!({"url": "https://www.deepseek.com"}),
+        );
+        assert_eq!(loopback.0, "browser_nav:127.0.0.1");
+        assert_eq!(external.0, "browser_nav:www.deepseek.com");
+        assert_ne!(loopback, external);
     }
 
     #[test]

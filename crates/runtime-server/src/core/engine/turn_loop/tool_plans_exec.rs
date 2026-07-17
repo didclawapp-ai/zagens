@@ -597,7 +597,13 @@ async fn execute_tool_plans_batch(
                         V3ApprovalStepOutcome::Error(err) => (Some(Err(err)), None),
                     }
                 } else {
-                    (None, None)
+                    // Fail closed: never execute when approval was required but no outcome was stashed.
+                    (
+                        Some(Err(ToolError::permission_denied(format!(
+                            "Tool '{tool_name}' blocked: approval required but no decision was recorded"
+                        )))),
+                        None,
+                    )
                 }
             } else if plan.approval_required {
                 if engine.approval_cache_hit(&tool_name, &tool_input) {

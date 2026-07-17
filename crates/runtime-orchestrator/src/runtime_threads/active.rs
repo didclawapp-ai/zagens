@@ -52,6 +52,48 @@ pub enum RuntimeApprovalDecision {
     RetryWithFullAccess,
 }
 
+/// Browser tools that must still show an approval card even when the thread has
+/// composer/`auto_approve` on. Policy already sets `approval_required`; without
+/// this gate the monitor silently `approve_tool_call` and the UI never sees
+/// `approval.required`.
+///
+/// When `browser_yolo` is on, policy does not emit `ApprovalRequired` for these
+/// tools — so this helper is only reached for intentional human-ask cases.
+#[must_use]
+pub fn browser_tool_blocks_thread_auto_approve(tool_name: &str, description: &str) -> bool {
+    matches!(
+        tool_name,
+        "browser_click" | "browser_type" | "browser_scroll" | "browser_start_preview"
+    ) || (tool_name == "browser_navigate"
+        && (description.contains("external site")
+            || description.contains("will allow for this session")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_navigate_blocks_auto_approve() {
+        assert!(browser_tool_blocks_thread_auto_approve(
+            "browser_navigate",
+            "Browser: open external site www.deepseek.com (will allow for this session)"
+        ));
+        assert!(!browser_tool_blocks_thread_auto_approve(
+            "browser_navigate",
+            "Browser: navigate to http://127.0.0.1:8080/"
+        ));
+        assert!(browser_tool_blocks_thread_auto_approve(
+            "browser_click",
+            "Browser: click element ref=button:go:0"
+        ));
+        assert!(!browser_tool_blocks_thread_auto_approve(
+            "read_file",
+            "Read a file"
+        ));
+    }
+}
+
 pub fn touch_lru(lru: &mut VecDeque<String>, thread_id: &str) {
     if let Some(idx) = lru.iter().position(|id| id == thread_id) {
         lru.remove(idx);

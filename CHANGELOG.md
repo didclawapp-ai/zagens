@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop Browser 外站审批不被 auto_approve 吞掉（2026-07-17）：** 线程开启「自动批准工具」时，monitor 仍会对 `browser_navigate`（外站）与 click/type/scroll 发出 `approval.required` 审批卡（`browser_yolo` 关闭时）；修复 thr_3a3d 无弹卡。
+- **Desktop Browser prefs 路径（2026-07-17）：** `prefs.json`（allowlist / LAN / yolo）从 `%APPDATA%/zagens/browser-profile/` 迁到 `~/.zagens/browser/prefs.json`；首次读取会从旧路径迁移。WebView 干净 profile 目录仍在 AppData（引擎数据，非用户配置）。
+- **Desktop Browser 外站审批（2026-07-17）：** `browser_navigate` 审批缓存改为按 host（`browser_nav:{host}`），避免回环导航「记住」后外站跳过审批卡；`allow_host` 失败不再静默忽略；工具描述改为「外站弹审批卡」。v3 路径在缺少审批 outcome 时 fail-closed。
 - **Desktop Browser 交互与 snapshot 解析（2026-07-17）：** `click`/`type`/`scroll`/`wait` 不再对已 JSON 编码的字符串字面量再 `JSON.parse`（修复 `button:anon:0` 等稳定 ref 触发的 SyntaxError）；`eval_js_string` / `parse_snapshot_json` 解开 WebView2 对字符串返回值的二次编码，避免 snapshot `nodes:[]` 而正文落在 `text`。时间线将 `browser_*` 归入可折叠 `browser` 类别。Windows 回环页回归手测通过（`thr_829e`，checklist 10/10；无宿主时仍返回 `browser_host_missing`）。
 - **Desktop Browser 包 C + T 回归（2026-07-17）：** 外站 `browser_navigate` 走审批卡（通过后写入会话 allowlist）；`browser_yolo` 经 `prefs.json` 热切换无需重启 sidecar；多窗歧义返回 candidates；preview 每窗进程 + `ready_regex` + 超时杀进程；allowlist/LAN 持久化；截图超限降质重试。配套单测：JS 注入防回退、creating/missing 生命周期、bridge 503/unauthorized 契约、稳定 ref 算法。
 - **Desktop Browser 包 B（2026-07-17）：** 稳定 element ref（`role:slug:nth`，DOM 重渲后可按 role/name/nth 回退解析）；snapshot 扩 `option`/`contenteditable`/常见 ARIA，并标注 iframe 不可达；新工具 `browser_wait`（text|ref|selector|load）；console hook 经 `initialization_script` 尽早注入，导航 Started 清空缓冲。

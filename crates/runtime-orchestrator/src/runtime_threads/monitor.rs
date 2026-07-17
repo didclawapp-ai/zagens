@@ -850,11 +850,16 @@ where
                     .active_turn_flags(&thread_id, &turn_id)
                     .await
                     .unwrap_or((false, false));
-                match RuntimeThreadManager::<P, R>::approval_decision(
-                    auto_approve,
-                    trust_mode,
-                    false,
+                // C1/C2: thread auto_approve must not swallow Browser external-nav / writes.
+                let decision = if super::active::browser_tool_blocks_thread_auto_approve(
+                    &tool_name,
+                    &description,
                 ) {
+                    RuntimeApprovalDecision::DenyTool
+                } else {
+                    RuntimeThreadManager::<P, R>::approval_decision(auto_approve, trust_mode, false)
+                };
+                match decision {
                     RuntimeApprovalDecision::ApproveTool => {
                         let _ = engine.approve_tool_call(id).await;
                     }

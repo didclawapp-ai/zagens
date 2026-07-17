@@ -50,7 +50,7 @@ impl ToolSpec for BrowserNavigateTool {
     }
 
     fn description(&self) -> &'static str {
-        "Navigate the Zagens desktop Browser pane to a URL. Loopback http://127.0.0.1|localhost|::1 is allowed. External https requires the host to be on the session allowlist (user: Browser pane → Allow host for agent) or human address-bar navigation."
+        "Navigate the Zagens desktop Browser pane to a URL. Loopback http://127.0.0.1|localhost|::1 is allowed without ask. External https prompts an approval card (unless browser_yolo or the host is already on the session allowlist); after approve the host is allowlisted for this profile."
     }
 
     fn input_schema(&self) -> Value {
@@ -77,11 +77,11 @@ impl ToolSpec for BrowserNavigateTool {
         let host = require_browser_host(context)?;
         let url = required_str(&input, "url")?;
         let window_label = optional_str(&input, "window_label");
-        // After approval (or yolo), seed session allowlist so desktop url_policy accepts the host.
+        // After approval (or yolo / prior allowlist), seed desktop allowlist so url_policy accepts the host.
         if let Some(ext_host) = external_https_host_for_allow(url) {
-            let _ = host
-                .allow_host(thread_id(context), window_label, &ext_host)
-                .await;
+            host.allow_host(thread_id(context), window_label, &ext_host)
+                .await
+                .map_err(map_host_err)?;
         }
         let value = host
             .navigate(thread_id(context), window_label, url)

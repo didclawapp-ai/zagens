@@ -160,9 +160,7 @@ pub fn validate_navigation_with(
             }
             Err(UrlPolicyError::new(
                 "agent_external_needs_ask",
-                format!(
-                    "Agent 打开外站需审批或加入会话 allowlist: {host}（在 Browser 面板「允许当前域名」）"
-                ),
+                format!("Agent 打开外站需先通过审批卡（通过后写入会话 allowlist）: {host}"),
             ))
         }
     }
