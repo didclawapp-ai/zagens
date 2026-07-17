@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Desktop 集成终端光标（2026-07-15）：** 根因是 Tauri 给 `style-src` 注入 nonce 后令 `'unsafe-inline'` 失效，xterm 动态样式（含光标）被 CSP 拦截；对 `style-src` 启用 `dangerousDisableAssetCspModification`。配套：终端 `tabpanel` `tabIndex={-1}`；剥离 ConPTY `CSI ?25l`；获焦实心 / 失焦 `outline`（2px）；xterm 5.5 空格键补丁。
+- **Desktop Browser 安全与稳定性修复（2026-07-16）：**
+  * `agent_type` JS 注入 — `type_js` 将 agent 提供文本直接拼接 JS 模板，改为 `JSON.parse()` 传参，阻止任意 JS 执行。
+  * `browser_create` 竞态 — 异步 WebView 构建期间释放锁导致的竞态窗口中插入 `creating` 占位 record，避免并发操作收到伪 `browser_host_missing`。
+  * `preview.rs` 无限循环 — `BufReader::lines().flatten()` → `.map_while(Result::ok)`，防止 IO 错误时永不终止。
+  * `bridge.rs` 死分支 — 区分 `browser_host_missing` 返回 `SERVICE_UNAVAILABLE`（503），其他错误仍为 `OK`。
+  * Clippy `-D warnings` 清零 — 22 个 lint 修复（12× `collapsible_if` → `let_chains`、2× `type_complexity`、2× `too_many_arguments`、2× `explicit_auto_deref`、1× `redundant_closure`、2× `needless_borrow`）。
 
 ### Added
 

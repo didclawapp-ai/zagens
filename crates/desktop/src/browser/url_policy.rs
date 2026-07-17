@@ -222,12 +222,11 @@ fn is_private_or_link_local_host(host: &str) -> bool {
     {
         return true;
     }
-    if let Some(rest) = host.strip_prefix("172.") {
-        if let Some((second, _)) = rest.split_once('.') {
-            if let Ok(n) = second.parse::<u8>() {
-                return (16..=31).contains(&n);
-            }
-        }
+    if let Some(rest) = host.strip_prefix("172.")
+        && let Some((second, _)) = rest.split_once('.')
+        && let Ok(n) = second.parse::<u8>()
+    {
+        return (16..=31).contains(&n);
     }
     false
 }

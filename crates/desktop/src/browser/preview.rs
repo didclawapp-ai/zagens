@@ -141,7 +141,7 @@ fn wait_ready(
         let tx = tx.clone();
         std::thread::spawn(move || {
             let reader = BufReader::new(out);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 let _ = tx.send(line);
             }
         });
@@ -150,7 +150,7 @@ fn wait_ready(
         let tx = tx.clone();
         std::thread::spawn(move || {
             let reader = BufReader::new(err);
-            for line in reader.lines().flatten() {
+            for line in reader.lines().map_while(Result::ok) {
                 let _ = tx.send(line);
             }
         });

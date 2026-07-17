@@ -100,7 +100,7 @@ pub fn click_js(ref_id: &str) -> String {
     format!(
         r#"(function(){{
   try {{
-    var ref = {r};
+    var ref = JSON.parse({r});
     var el = document.querySelector('[data-zagens-ref="' + ref + '"]');
     if (!el) return JSON.stringify({{ ok: false, error: 'ref_not_found', ref: ref }});
     try {{ el.scrollIntoView({{ block: 'center', inline: 'nearest' }}); }} catch (e) {{}}
@@ -120,14 +120,15 @@ pub fn click_js(ref_id: &str) -> String {
 }
 
 /// Type into a ref target (input/textarea/contenteditable).
+/// Uses JSON.parse for all string values to prevent JS injection via agent-provided text.
 pub fn type_js(ref_id: &str, text: &str) -> String {
     let r = js_str(ref_id);
     let t = js_str(text);
     format!(
         r#"(function(){{
   try {{
-    var ref = {r};
-    var text = {t};
+    var ref = JSON.parse({r});
+    var text = JSON.parse({t});
     var el = document.querySelector('[data-zagens-ref="' + ref + '"]');
     if (!el) return JSON.stringify({{ ok: false, error: 'ref_not_found', ref: ref }});
     el.focus();
@@ -168,8 +169,8 @@ pub fn scroll_js(ref_id: Option<&str>, direction: &str, amount: f64) -> String {
     format!(
         r#"(function(){{
   try {{
-    var ref = {r};
-    var direction = {d};
+    var ref = JSON.parse({r});
+    var direction = JSON.parse({d});
     var amount = {a};
     var dx = 0, dy = 0;
     if (direction === 'up') dy = -amount;

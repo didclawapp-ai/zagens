@@ -110,6 +110,16 @@ impl BrowserError {
         }
     }
 
+    /// Returned when a HostRecord::creating placeholder is hit by a
+    /// concurrent browser operation — caller should retry shortly.
+    pub fn busy(parent_label: &str) -> Self {
+        Self {
+            code: "browser_creating".into(),
+            message: format!("Browser 宿主正在创建中（{parent_label}），请稍后重试"),
+            hint: None,
+        }
+    }
+
     pub(crate) fn from_policy(e: url_policy::UrlPolicyError) -> Self {
         let hint = match e.code.as_str() {
             "agent_external_needs_ask" => {
@@ -146,6 +156,9 @@ struct HostRecord {
     /// Chrome-driven history for can_go_back / can_go_forward.
     history: Vec<String>,
     history_idx: usize,
+    /// True while browser_create is awaiting the async WebView construction
+    /// (between the first lock release and the final lock acquire).
+    creating: bool,
 }
 
 pub struct BrowserHosts {
@@ -239,7 +252,7 @@ fn workspace_path_for(app: &AppHandle, parent: &str) -> Option<PathBuf> {
     let registry = app.state::<WindowRegistry>();
     registry
         .primary_workspace(parent)
-        .map(|s| PathBuf::from(s))
+        .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
 }
 
@@ -319,22 +332,23 @@ fn attach_page_load(
         if finished {
             let _ = webview.eval(CONSOLE_HOOK_JS);
         }
-        if let Ok(mut g) = hosts.inner.lock() {
-            if let Some(rec) = g.get_mut(&parent_label) {
-                if rec.host_label != webview.label() {
-                    return;
-                }
-                rec.loading = !finished;
-                if finished && !url.is_empty() {
-                    push_history(rec, &url);
-                }
-                let dto = state_from_rec(&app, rec);
-                emit_state(&app, &parent_label, &dto);
+        if let Ok(mut g) = hosts.inner.lock()
+            && let Some(rec) = g.get_mut(&parent_label)
+        {
+            if rec.creating || rec.host_label != webview.label() {
+                return;
             }
+            rec.loading = !finished;
+            if finished && !url.is_empty() {
+                push_history(rec, &url);
+            }
+            let dto = state_from_rec(&app, rec);
+            emit_state(&app, &parent_label, &dto);
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_embedded(
     app: &AppHandle,
     parent: &Window,
@@ -414,18 +428,18 @@ async fn create_windowed(
                 if finished {
                     let _ = window.eval(CONSOLE_HOOK_JS);
                 }
-                if let Ok(mut g) = hosts.inner.lock() {
-                    if let Some(rec) = g.get_mut(&parent_label) {
-                        if rec.host_label != window.label() {
-                            return;
-                        }
-                        rec.loading = !finished;
-                        if finished && !url.is_empty() {
-                            push_history(rec, &url);
-                        }
-                        let dto = state_from_rec(&app, rec);
-                        emit_state(&app, &parent_label, &dto);
+                if let Ok(mut g) = hosts.inner.lock()
+                    && let Some(rec) = g.get_mut(&parent_label)
+                {
+                    if rec.host_label != window.label() {
+                        return;
                     }
+                    rec.loading = !finished;
+                    if finished && !url.is_empty() {
+                        push_history(rec, &url);
+                    }
+                    let dto = state_from_rec(&app, rec);
+                    emit_state(&app, &parent_label, &dto);
                 }
             }
         })
@@ -490,6 +504,22 @@ pub async fn browser_create(
         if let Some(prev) = g.remove(&parent_label) {
             destroy_surface(&app, &prev);
         }
+        // Insert a placeholder so concurrent operations see "busy" instead of
+        // "missing" while we await the async WebView construction below.
+        g.insert(
+            parent_label.clone(),
+            HostRecord {
+                parent_label: parent_label.clone(),
+                host_label: String::new(),
+                mode: BrowserMode::Embedded,
+                visible: false,
+                loading: true,
+                persist_profile: persist,
+                history: Vec::new(),
+                history_idx: 0,
+                creating: true,
+            },
+        );
     }
 
     let (mode, host_label) = match want.as_str() {
@@ -554,6 +584,7 @@ pub async fn browser_create(
         persist_profile: persist,
         history: Vec::new(),
         history_idx: 0,
+        creating: false,
     };
     if !initial_url.is_empty() {
         push_history(&mut rec, &initial_url);
@@ -594,10 +625,10 @@ fn destroy_surface(app: &AppHandle, rec: &HostRecord) {
             }
         }
     }
-    if !rec.persist_profile {
-        if let Ok(dir) = profile_dir(&rec.parent_label, false) {
-            let _ = std::fs::remove_dir_all(dir);
-        }
+    if !rec.persist_profile
+        && let Ok(dir) = profile_dir(&rec.parent_label, false)
+    {
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
 
@@ -618,10 +649,10 @@ pub async fn browser_destroy(
 
 /// Called when an agent window closes — must destroy its BrowserHost.
 pub fn destroy_for_parent(app: &AppHandle, hosts: &BrowserHosts, parent_label: &str) {
-    if let Ok(mut g) = hosts.inner.lock() {
-        if let Some(rec) = g.remove(parent_label) {
-            destroy_surface(app, &rec);
-        }
+    if let Ok(mut g) = hosts.inner.lock()
+        && let Some(rec) = g.remove(parent_label)
+    {
+        destroy_surface(app, &rec);
     }
 }
 
@@ -844,7 +875,7 @@ pub async fn browser_back(
     hosts: State<'_, BrowserHosts>,
 ) -> Result<BrowserStateDto, BrowserError> {
     let window = webview.window();
-    history_step(&app, &window, &*hosts, -1).await
+    history_step(&app, &window, &hosts, -1).await
 }
 
 #[tauri::command]
@@ -854,7 +885,7 @@ pub async fn browser_forward(
     hosts: State<'_, BrowserHosts>,
 ) -> Result<BrowserStateDto, BrowserError> {
     let window = webview.window();
-    history_step(&app, &window, &*hosts, 1).await
+    history_step(&app, &window, &hosts, 1).await
 }
 
 async fn history_step(
@@ -945,10 +976,10 @@ pub async fn browser_set_persist_profile(
         *g = args.persist;
     }
     let parent = window.label().to_string();
-    if let Ok(mut g) = hosts.lock() {
-        if let Some(rec) = g.get_mut(&parent) {
-            rec.persist_profile = args.persist;
-        }
+    if let Ok(mut g) = hosts.lock()
+        && let Some(rec) = g.get_mut(&parent)
+    {
+        rec.persist_profile = args.persist;
     }
     browser_get_prefs_inner(&hosts)
 }
@@ -1015,20 +1046,20 @@ pub async fn browser_set_prefs(
     hosts: State<'_, BrowserHosts>,
     args: BrowserPrefsArgs,
 ) -> Result<BrowserPrefsDto, BrowserError> {
-    if let Some(p) = args.persist_profile {
-        if let Ok(mut g) = hosts.default_persist.lock() {
-            *g = p;
-        }
+    if let Some(p) = args.persist_profile
+        && let Ok(mut g) = hosts.default_persist.lock()
+    {
+        *g = p;
     }
-    if let Some(lan) = args.allow_private_lan {
-        if let Ok(mut g) = hosts.allow_private_lan.lock() {
-            *g = lan;
-        }
+    if let Some(lan) = args.allow_private_lan
+        && let Ok(mut g) = hosts.allow_private_lan.lock()
+    {
+        *g = lan;
     }
-    if let Some(yolo) = args.yolo {
-        if let Ok(mut g) = hosts.browser_yolo.lock() {
-            *g = yolo;
-        }
+    if let Some(yolo) = args.yolo
+        && let Ok(mut g) = hosts.browser_yolo.lock()
+    {
+        *g = yolo;
     }
     browser_get_prefs_inner(&hosts)
 }
@@ -1049,6 +1080,9 @@ pub(crate) fn lookup_host(
 ) -> Result<(BrowserMode, String), BrowserError> {
     let g = hosts.lock()?;
     let rec = g.get(parent).ok_or_else(BrowserError::missing)?;
+    if rec.creating {
+        return Err(BrowserError::busy(parent));
+    }
     Ok((rec.mode, rec.host_label.clone()))
 }
 
@@ -1061,10 +1095,10 @@ pub(crate) async fn eval_js_string(
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     let tx = std::sync::Mutex::new(Some(tx));
     let callback = move |result: String| {
-        if let Ok(mut guard) = tx.lock() {
-            if let Some(sender) = guard.take() {
-                let _ = sender.send(result);
-            }
+        if let Ok(mut guard) = tx.lock()
+            && let Some(sender) = guard.take()
+        {
+            let _ = sender.send(result);
         }
     };
 
@@ -1120,6 +1154,9 @@ pub async fn agent_navigate(
     let (mode, host_label) = {
         let mut g = hosts.lock()?;
         let rec = g.get_mut(parent_label).ok_or_else(BrowserError::missing)?;
+        if rec.creating {
+            return Err(BrowserError::busy(parent_label));
+        }
         push_history(rec, &url_str);
         rec.loading = true;
         (rec.mode, rec.host_label.clone())

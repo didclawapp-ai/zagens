@@ -218,7 +218,7 @@ async fn handle_op(
         ),
         Err(e) => {
             let status = if e.code == "browser_host_missing" {
-                StatusCode::OK
+                StatusCode::SERVICE_UNAVAILABLE
             } else {
                 StatusCode::OK
             };

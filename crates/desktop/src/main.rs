@@ -104,7 +104,7 @@ fn main() {
                         return;
                     }
                     let browser_hosts = app.state::<browser::BrowserHosts>();
-                    browser::destroy_for_parent(&app, &browser_hosts, &label);
+                    browser::destroy_for_parent(app, &browser_hosts, &label);
                     if let Some(wv) = app.get_webview_window(&label) {
                         window_registry::handle_close_requested(&wv, api, &registry, &terminal);
                     }
@@ -118,7 +118,7 @@ fn main() {
                         return;
                     }
                     let browser_hosts = app.state::<browser::BrowserHosts>();
-                    browser::destroy_for_parent(&app, &browser_hosts, &label);
+                    browser::destroy_for_parent(app, &browser_hosts, &label);
                     registry.unregister(&label);
                     terminal.kill_all_for_window(&label);
                 }

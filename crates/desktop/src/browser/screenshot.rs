@@ -24,10 +24,10 @@ pub async fn capture_screenshot_data_url(
         let tx = Mutex::new(Some(tx));
 
         let finish = move |result: Result<String, String>| {
-            if let Ok(mut g) = tx.lock() {
-                if let Some(sender) = g.take() {
-                    let _ = sender.send(result);
-                }
+            if let Ok(mut g) = tx.lock()
+                && let Some(sender) = g.take()
+            {
+                let _ = sender.send(result);
             }
         };
 
@@ -90,15 +90,17 @@ fn start_cdp_screenshot(
     use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
     use windows::core::PCWSTR;
 
+    #[allow(clippy::type_complexity)]
     let finish: Arc<Mutex<Option<Box<dyn FnOnce(Result<String, String>) + Send>>>> =
         Arc::new(Mutex::new(Some(Box::new(finish))));
 
+    #[allow(clippy::type_complexity)]
     let send = |finish: &Arc<Mutex<Option<Box<dyn FnOnce(Result<String, String>) + Send>>>>,
                 r: Result<String, String>| {
-        if let Ok(mut g) = finish.lock() {
-            if let Some(f) = g.take() {
-                f(r);
-            }
+        if let Ok(mut g) = finish.lock()
+            && let Some(f) = g.take()
+        {
+            f(r);
         }
     };
 

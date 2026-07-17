@@ -226,6 +226,7 @@ fn spawn_reader_thread(
 /// `shell`: `default` | `pwsh` | `powershell` | `cmd` (Windows) / `bash` | `zsh` | `sh` (Unix).
 /// `load_profile`: when true, PowerShell loads the user profile (omits `-NoProfile`). Ignored on Unix.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_terminal(
     webview: tauri::Webview,
     app: AppHandle,
