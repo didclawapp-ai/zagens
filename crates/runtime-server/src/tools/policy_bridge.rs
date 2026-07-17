@@ -89,27 +89,45 @@ fn build_approval_description(
     String::new()
 }
 
+/// Parse stable snapshot ref `role:slug:nth` into human-readable role / name bits.
+fn describe_stable_browser_ref(r: &str) -> String {
+    let mut parts = r.splitn(3, ':');
+    let (Some(role), Some(slug), Some(nth)) = (parts.next(), parts.next(), parts.next()) else {
+        return format!("ref={r}");
+    };
+    if role.is_empty() || slug.is_empty() || nth.parse::<u32>().is_err() {
+        return format!("ref={r}");
+    }
+    let name = if slug == "anon" {
+        "(unnamed)".to_string()
+    } else {
+        format!("\"{slug}\"")
+    };
+    format!("{role} {name} (#{nth}, ref={r})")
+}
+
 fn browser_write_approval_description(tool_name: &str, tool_input: &Value) -> String {
     let r = tool_input
         .get("ref")
         .and_then(|v| v.as_str())
         .unwrap_or("?");
+    let target = describe_stable_browser_ref(r);
     match tool_name {
-        "browser_click" => format!("Browser: click element ref={r}"),
+        "browser_click" => format!("Browser: click {target}"),
         "browser_type" => {
             let n = tool_input
                 .get("text")
                 .and_then(|v| v.as_str())
                 .map(|s| s.chars().count())
                 .unwrap_or(0);
-            format!("Browser: type into ref={r} ({n} chars)")
+            format!("Browser: type into {target} ({n} chars)")
         }
         "browser_scroll" => {
             let dir = tool_input
                 .get("direction")
                 .and_then(|v| v.as_str())
                 .unwrap_or("down");
-            format!("Browser: scroll {dir} (ref={r})")
+            format!("Browser: scroll {dir} ({target})")
         }
         "browser_start_preview" => {
             "Browser: start `.zagens/preview.json` server and open URL".into()
@@ -615,5 +633,23 @@ mod tests {
         // Smoke test: description helper does not panic for MCP names.
         let desc = build_approval_description("mcp_some_server", &serde_json::json!({}), None);
         let _ = desc; // content is mcp_tool_approval_description(name)
+    }
+
+    #[test]
+    fn browser_click_approval_describes_role_and_name() {
+        let desc = browser_write_approval_description(
+            "browser_click",
+            &serde_json::json!({ "ref": "button:submit:0" }),
+        );
+        assert!(desc.contains("button"));
+        assert!(desc.contains("\"submit\""));
+        assert!(desc.contains("#0"));
+        assert!(desc.contains("ref=button:submit:0"));
+    }
+
+    #[test]
+    fn describe_stable_browser_ref_handles_anon_and_legacy() {
+        assert!(describe_stable_browser_ref("link:anon:2").contains("(unnamed)"));
+        assert_eq!(describe_stable_browser_ref("e12"), "ref=e12");
     }
 }

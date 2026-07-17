@@ -85,7 +85,7 @@ mod tests {
         ));
         assert!(browser_tool_blocks_thread_auto_approve(
             "browser_click",
-            "Browser: click element ref=button:go:0"
+            "Browser: click button \"go\" (#0, ref=button:go:0)"
         ));
         assert!(!browser_tool_blocks_thread_auto_approve(
             "read_file",

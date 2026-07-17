@@ -777,13 +777,17 @@ pub struct Config {
 }
 
 /// `[browser]` table — Desktop Browser pane policy.
+///
+/// Desktop seeds `~/.zagens/browser/prefs.json` from these keys when prefs are
+/// absent; after the first UI/allowlist write, prefs.json wins for LAN / yolo.
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct BrowserConfigToml {
     /// When true, auto-approve `browser_click` / `type` / `scroll` / `start_preview`.
-    /// Does **not** follow global YOLO / trust_mode.
+    /// Does **not** follow global YOLO / trust_mode. Mirrored to `ZAGENS_BROWSER_YOLO`.
     #[serde(default)]
     pub yolo: Option<bool>,
-    /// Allow private LAN hosts (default false).
+    /// Allow private LAN hosts (default false). Desktop URL policy reads this via
+    /// prefs seed from `config.toml` when `prefs.json` does not exist yet.
     #[serde(default)]
     pub allow_private_lan: Option<bool>,
 }

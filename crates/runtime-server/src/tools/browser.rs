@@ -459,7 +459,7 @@ impl ToolSpec for BrowserStartPreviewTool {
     }
 
     fn description(&self) -> &'static str {
-        "Start the workspace `.zagens/preview.json` command, wait for ready_pattern (substring), then browser_navigate to its url. Prefer this for one-click local frontend preview."
+        "Start the workspace `.zagens/preview.json` command, wait for ready_pattern (substring by default; set ready_regex=true for Rust regex), then browser_navigate to its url. Prefer this for one-click local frontend preview."
     }
 
     fn input_schema(&self) -> Value {
