@@ -9,8 +9,9 @@ use zagens_runtime_api::{compose_router, require_runtime_token};
 use super::stream;
 use super::{
     RuntimeApiState, add_mcp_server, browse_thread_workspace, browse_workspace_by_root,
-    cancel_task, clear_tasks, compact_thread, create_automation, create_night_queue_task,
-    create_skill, create_task, create_thread, delete_automation, delete_mcp_server, delete_session,
+    cancel_night_queue_task, cancel_task, clear_night_queue_finished, clear_tasks, compact_thread,
+    create_automation, create_night_queue_task, create_skill, create_task, create_thread,
+    delete_automation, delete_mcp_server, delete_night_queue_task, delete_session,
     delete_thread_config_field, discover_mcp, edit_last_thread_turn, fork_thread,
     fork_thread_at_user_message, get_agent_health, get_automation, get_blackboard,
     get_kernel_thread_replay, get_kernel_turn_replay, get_mcp_server, get_night_queue,
@@ -26,10 +27,10 @@ use super::{
     post_thread_channel_event, put_thread_config, read_thread_workspace_file,
     read_workspace_file_by_root, rebuild_symbol_index, reload_mcp_config, resolve_approval,
     restore_thread_snapshot, resume_automation, resume_session_thread, resume_thread,
-    revert_thread_workspace_turn, run_automation, run_night_queue, search_symbol_index,
-    set_routing_rules, start_thread_turn, steer_thread_turn, update_automation, update_mcp_server,
-    update_thread, workspace_changes, workspace_file_diff, workspace_pulls, workspace_snapshot,
-    workspace_status,
+    retry_night_queue_task, revert_thread_workspace_turn, run_automation, run_night_queue,
+    search_symbol_index, set_routing_rules, start_thread_turn, steer_thread_turn, stop_night_queue,
+    update_automation, update_mcp_server, update_thread, workspace_changes, workspace_file_diff,
+    workspace_pulls, workspace_snapshot, workspace_status,
 };
 
 pub fn build_router(state: RuntimeApiState) -> Router {
@@ -197,8 +198,25 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             get(get_night_queue).post(create_night_queue_task),
         )
         .route("/v1/night-queue/run", post(run_night_queue))
+        .route("/v1/night-queue/stop", post(stop_night_queue))
+        .route(
+            "/v1/night-queue/clear-finished",
+            post(clear_night_queue_finished),
+        )
         .route("/v1/night-queue/briefing", post(post_night_queue_briefing))
         .route("/v1/night-queue/gate-presets", get(list_gate_presets))
+        .route(
+            "/v1/night-queue/tasks/{id}",
+            delete(delete_night_queue_task),
+        )
+        .route(
+            "/v1/night-queue/tasks/{id}/cancel",
+            post(cancel_night_queue_task),
+        )
+        .route(
+            "/v1/night-queue/tasks/{id}/retry",
+            post(retry_night_queue_task),
+        )
         .route(
             "/v1/apps/routing/rules",
             get(get_routing_rules).put(set_routing_rules),

@@ -15,6 +15,7 @@ pub enum QueueTaskStatus {
     Passed,
     Failed,
     RolledBack,
+    Canceled,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -98,6 +99,27 @@ pub struct RunNightQueueResponse {
     pub ran: usize,
     pub passed: usize,
     pub failed: usize,
+    #[serde(default)]
+    pub canceled: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NightQueueMutateResponse {
+    pub task: QueueTaskWire,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NightQueueClearFinishedResponse {
+    pub removed: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct NightQueueStopResponse {
+    /// True when an in-process batch run was signaled to stop.
+    pub stopped: bool,
+    /// How many stuck `running` tasks were reclaimed when no batch was active.
+    #[serde(default)]
+    pub reclaimed: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

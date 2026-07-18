@@ -3,12 +3,13 @@
 use std::path::PathBuf;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
 use zagens_runtime_api::night_queue::{
     GatePresetWire, GatePresetsResponse, NewNightQueueTaskRequest, NightQueueBriefingRequest,
-    NightQueueBriefingResponse, NightQueueResponse, QueueTaskStatus as WireQueueTaskStatus,
+    NightQueueBriefingResponse, NightQueueClearFinishedResponse, NightQueueMutateResponse,
+    NightQueueResponse, NightQueueStopResponse, QueueTaskStatus as WireQueueTaskStatus,
     QueueTaskWire, RunNightQueueRequest, RunNightQueueResponse,
 };
 
@@ -70,7 +71,70 @@ pub(crate) async fn run_night_queue(
         ran: report.ran,
         passed: report.passed,
         failed: report.failed,
+        canceled: report.canceled,
     }))
+}
+
+pub(crate) async fn stop_night_queue(
+    State(state): State<RuntimeApiState>,
+) -> Result<Json<NightQueueStopResponse>, ApiError> {
+    let stopped = night_queue::request_stop(&state.workspace);
+    let reclaimed = if stopped {
+        0
+    } else {
+        night_queue::reclaim_stale_running(&state.workspace)
+            .map_err(map_queue_err)?
+            .len()
+    };
+    Ok(Json(NightQueueStopResponse { stopped, reclaimed }))
+}
+
+pub(crate) async fn cancel_night_queue_task(
+    State(state): State<RuntimeApiState>,
+    Path(id): Path<String>,
+) -> Result<Json<NightQueueMutateResponse>, ApiError> {
+    let doc = night_queue::load(&state.workspace).map_err(map_queue_err)?;
+    let task = doc
+        .tasks
+        .iter()
+        .find(|t| t.id == id)
+        .ok_or_else(|| ApiError::bad_request(format!("queue task not found: {id}")))?;
+    if task.status == QueueTaskStatus::Running {
+        let _ = night_queue::request_stop(&state.workspace);
+    }
+    let task = night_queue::cancel_task(&state.workspace, &id).map_err(map_queue_err)?;
+    Ok(Json(NightQueueMutateResponse {
+        task: to_task_wire(&task),
+    }))
+}
+
+pub(crate) async fn delete_night_queue_task(
+    State(state): State<RuntimeApiState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    night_queue::remove_task(&state.workspace, &id).map_err(map_queue_err)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(crate) async fn retry_night_queue_task(
+    State(state): State<RuntimeApiState>,
+    Path(id): Path<String>,
+) -> Result<(StatusCode, Json<NightQueueMutateResponse>), ApiError> {
+    let task = night_queue::retry_task(&state.workspace, &id).map_err(map_queue_err)?;
+    crate::night_queue::dispatch_enqueue(&state.config, &state.workspace, &task.id, &task.prompt);
+    Ok((
+        StatusCode::CREATED,
+        Json(NightQueueMutateResponse {
+            task: to_task_wire(&task),
+        }),
+    ))
+}
+
+pub(crate) async fn clear_night_queue_finished(
+    State(state): State<RuntimeApiState>,
+) -> Result<Json<NightQueueClearFinishedResponse>, ApiError> {
+    let removed = night_queue::clear_finished(&state.workspace).map_err(map_queue_err)?;
+    Ok(Json(NightQueueClearFinishedResponse { removed }))
 }
 
 pub(crate) async fn post_night_queue_briefing(
@@ -147,6 +211,7 @@ fn to_task_wire(task: &QueueTask) -> QueueTaskWire {
             QueueTaskStatus::Passed => WireQueueTaskStatus::Passed,
             QueueTaskStatus::Failed => WireQueueTaskStatus::Failed,
             QueueTaskStatus::RolledBack => WireQueueTaskStatus::RolledBack,
+            QueueTaskStatus::Canceled => WireQueueTaskStatus::Canceled,
         },
         worktree_path: task.worktree_path.clone(),
         gate: task

@@ -34,14 +34,24 @@ pub fn render_briefing(doc: &NightQueueDocument) -> String {
             )
         })
         .count();
+    let canceled = doc
+        .tasks
+        .iter()
+        .filter(|t| t.status == QueueTaskStatus::Canceled)
+        .count();
     let pending = doc
         .tasks
         .iter()
         .filter(|t| t.status == QueueTaskStatus::Pending)
         .count();
+    let running = doc
+        .tasks
+        .iter()
+        .filter(|t| t.status == QueueTaskStatus::Running)
+        .count();
 
     out.push_str(&format!(
-        "- **Summary:** {passed} passed · {failed} failed/rolled back · {pending} pending\n\n"
+        "- **Summary:** {passed} passed · {failed} failed/rolled back · {canceled} canceled · {running} running · {pending} pending\n\n"
     ));
 
     if doc.tasks.is_empty() {

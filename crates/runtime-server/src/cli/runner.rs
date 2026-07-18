@@ -52,6 +52,7 @@ pub async fn run_exec(ctx: &CliContext, opts: ExecOptions) -> Result<()> {
                 trust_mode: true,
                 json_output: opts.json_output,
                 llm_client_override: None,
+                cancel: None,
             },
         )
         .await
@@ -153,6 +154,7 @@ struct ExecAgentRunOptions {
     trust_mode: bool,
     json_output: bool,
     llm_client_override: Option<std::sync::Arc<dyn LlmClient>>,
+    cancel: Option<tokio_util::sync::CancellationToken>,
 }
 
 /// Agentic one-shot run for night queue (auto-approve, trust workspace).
@@ -162,6 +164,7 @@ pub async fn run_queue_exec_agent(
     prompt: &str,
     workspace: PathBuf,
     max_subagents: usize,
+    cancel: Option<tokio_util::sync::CancellationToken>,
 ) -> Result<()> {
     run_exec_agent(
         config,
@@ -174,6 +177,7 @@ pub async fn run_queue_exec_agent(
             trust_mode: true,
             json_output: false,
             llm_client_override: None,
+            cancel,
         },
     )
     .await
@@ -192,6 +196,7 @@ async fn run_exec_agent(
         trust_mode,
         json_output,
         llm_client_override,
+        cancel,
     } = run;
     let route = resolve_cli_auto_route(config, model, prompt).await;
     let auto_model = route.auto_model;
@@ -329,9 +334,31 @@ async fn run_exec_agent(
     let mut stdout = io::stdout();
     let mut ends_with_newline = false;
     let mut failed = false;
+    let mut canceled = false;
 
     loop {
-        let event = {
+        if cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
+            canceled = true;
+            let _ = engine_handle.send(Op::CancelRequest).await;
+            let _ = engine_handle.send(Op::Shutdown).await;
+            break;
+        }
+
+        let event = if let Some(ref token) = cancel {
+            tokio::select! {
+                biased;
+                () = token.cancelled() => {
+                    canceled = true;
+                    let _ = engine_handle.send(Op::CancelRequest).await;
+                    let _ = engine_handle.send(Op::Shutdown).await;
+                    None
+                }
+                event = async {
+                    let mut rx = engine_handle.rx_event.write().await;
+                    rx.recv().await
+                } => event,
+            }
+        } else {
             let mut rx = engine_handle.rx_event.write().await;
             rx.recv().await
         };
@@ -437,6 +464,9 @@ async fn run_exec_agent(
         println!("{}", serde_json::to_string_pretty(&summary)?);
     }
 
+    if canceled {
+        bail!("queue task canceled");
+    }
     if failed {
         bail!("exec finished with errors");
     }
@@ -508,6 +538,7 @@ mod tests {
                 trust_mode: true,
                 json_output: true,
                 llm_client_override: Some(mock.clone()),
+                cancel: None,
             },
         )
         .await

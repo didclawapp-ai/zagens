@@ -125,6 +125,7 @@ fn format_status(status: QueueTaskStatus) -> &'static str {
         QueueTaskStatus::Passed => "passed",
         QueueTaskStatus::Failed => "failed",
         QueueTaskStatus::RolledBack => "rolled_back",
+        QueueTaskStatus::Canceled => "canceled",
     }
 }
 

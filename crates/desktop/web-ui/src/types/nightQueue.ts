@@ -5,7 +5,8 @@ export type NightQueueTaskStatus =
   | 'running'
   | 'passed'
   | 'failed'
-  | 'rolled_back';
+  | 'rolled_back'
+  | 'canceled';
 
 export interface GatePredicateWire {
   predicate: string;
@@ -60,6 +61,7 @@ export interface RunNightQueueResponse {
   ran: number;
   passed: number;
   failed: number;
+  canceled?: number;
 }
 
 export interface NightQueueBriefingResponse {
@@ -67,6 +69,55 @@ export interface NightQueueBriefingResponse {
   handoff_path?: string | null;
 }
 
+export interface NightQueueMutateResponse {
+  task: NightQueueTask;
+}
+
+export interface NightQueueClearFinishedResponse {
+  removed: number;
+}
+
+export interface NightQueueStopResponse {
+  stopped: boolean;
+  reclaimed?: number;
+}
+
 export function isActiveNightQueueStatus(status: NightQueueTaskStatus): boolean {
   return status === 'pending' || status === 'running';
+}
+
+export function isTerminalNightQueueStatus(status: NightQueueTaskStatus): boolean {
+  return (
+    status === 'passed' ||
+    status === 'failed' ||
+    status === 'rolled_back' ||
+    status === 'canceled'
+  );
+}
+
+export function shortNightQueueId(id: string): string {
+  if (id.length <= 12) return id;
+  return `${id.slice(0, 8)}…`;
+}
+
+export function formatNightQueueDuration(
+  startedAt?: string | null,
+  finishedAt?: string | null,
+  nowMs: number = Date.now(),
+  /** When true, omit duration unless finished_at is known (avoids "286h" on stale running). */
+  requireFinished = false,
+): string | null {
+  if (!startedAt) return null;
+  const start = Date.parse(startedAt);
+  if (Number.isNaN(start)) return null;
+  if (requireFinished && !finishedAt) return null;
+  const end = finishedAt ? Date.parse(finishedAt) : nowMs;
+  if (Number.isNaN(end) || end < start) return null;
+  const sec = Math.max(0, Math.round((end - start) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const rem = sec % 60;
+  if (min < 60) return `${min}m ${rem}s`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h ${min % 60}m`;
 }

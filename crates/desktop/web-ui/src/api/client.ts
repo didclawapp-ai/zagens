@@ -139,7 +139,10 @@ async function runtimeRequest(path: string, init: RequestInit = {}): Promise<Res
       body,
     },
   });
-  return new Response(res.body, {
+  // 204/205/304 must use a null body — `new Response("", { status: 204 })` throws in WebView
+  // (night-queue DELETE succeeded server-side then looked like a client failure).
+  const nullBodyStatus = res.status === 204 || res.status === 205 || res.status === 304;
+  return new Response(nullBodyStatus ? null : res.body, {
     status: res.status,
     headers: { 'Content-Type': 'application/json' },
   });
@@ -615,12 +618,11 @@ export async function deleteJson(path: string): Promise<void> {
     () => runtimeRequest(path, { method: 'DELETE' }),
     `DELETE ${path}`,
   );
-  if (!res.ok) {
-    const text = await res.text();
-    const err = new Error(`HTTP ${res.status}: ${text}`);
-    (err as Error & { status?: number }).status = res.status;
-    throw err;
+  if (res.ok || res.status === 204) {
+    return;
   }
+  const text = await res.text();
+  throw runtimeHttpError(res.status, text);
 }
 
 export async function postResolveApproval(
@@ -1214,6 +1216,40 @@ export async function postNightQueueBriefing(
   writeHandoff = true,
 ): Promise<import('../types/nightQueue').NightQueueBriefingResponse> {
   return postJson('/v1/night-queue/briefing', { write_handoff: writeHandoff });
+}
+
+export async function stopNightQueue(): Promise<
+  import('../types/nightQueue').NightQueueStopResponse
+> {
+  return postJson('/v1/night-queue/stop', {});
+}
+
+export async function cancelNightQueueTask(
+  taskId: string,
+): Promise<import('../types/nightQueue').NightQueueMutateResponse> {
+  return postJson(
+    `/v1/night-queue/tasks/${encodeURIComponent(taskId)}/cancel`,
+    {},
+  );
+}
+
+export async function deleteNightQueueTask(taskId: string): Promise<void> {
+  await deleteJson(`/v1/night-queue/tasks/${encodeURIComponent(taskId)}`);
+}
+
+export async function retryNightQueueTask(
+  taskId: string,
+): Promise<import('../types/nightQueue').NightQueueMutateResponse> {
+  return postJson(
+    `/v1/night-queue/tasks/${encodeURIComponent(taskId)}/retry`,
+    {},
+  );
+}
+
+export async function clearNightQueueFinished(): Promise<
+  import('../types/nightQueue').NightQueueClearFinishedResponse
+> {
+  return postJson('/v1/night-queue/clear-finished', {});
 }
 
 // ========== Tasks / Automations / Skills ==========

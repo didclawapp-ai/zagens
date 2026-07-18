@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Desktop 夜间队列任务管理（2026-07-18）：** 面板支持停止批次、取消/删除/重试任务、清除已完成；摘要计数、耗时、briefing 预览与打开 handoff/worktree。API：`POST /v1/night-queue/stop`、`…/clear-finished`、`…/tasks/{id}/cancel|retry`、`DELETE …/tasks/{id}`；新增 `canceled` 状态与跑批取消令牌。
+- **Desktop runtime 代理 204 空体（2026-07-18）：** Tauri `runtime_http` 对 204/205/304 用 `null` body 构造 `Response`，修复夜间队列 DELETE 服务端已删但前端报错、卡片幽灵残留。
 - **Desktop Diff 薄层 Git（P4.5 Phase A–C，2026-07-18）：** Diff 未提交状态 + 双源列表 + 只读 PR；`GET /v1/workspace/status|changes|file-diff|pulls`；Composer 分支/脏文件徽标点进 Diff；`git push --force` 审批卡加醒目横幅（仍为审批非硬拦；修正 `--follow-tags` 误判为 `-f`）。不做 stage/commit/push/merge UI。
 - **Desktop Diff 薄层 Git 性能/卡死修复（2026-07-18）：** 非 git 工作区不再误标双源/空转 file-diff；有会话 diff 时立即渲染（不挡在「正在加载」）；PR 列表改为展开时才调 `gh`（12s 超时）；Composer git 徽标延迟探测且非 git 停轮询。
 - **Desktop 集成终端会话生命周期（2026-07-15）：** Workspace 切走终端 tab 不再卸载 `TerminalPanel`（隐藏保活）；面板级订阅 `terminal-data`/`terminal-exit`；拖拽改面板尺寸时同步 `resize_terminal`。

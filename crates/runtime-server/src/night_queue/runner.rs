@@ -17,6 +17,7 @@ use crate::config::Config;
 use super::briefing;
 use super::gate;
 use super::model::{QueueEventRecord, QueueTask, QueueTaskStatus};
+use super::run_control;
 use super::store;
 
 pub struct RunOptions {
@@ -39,16 +40,26 @@ pub struct RunReport {
     pub ran: usize,
     pub passed: usize,
     pub failed: usize,
+    pub canceled: usize,
 }
 
 pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) -> Result<RunReport> {
-    let claimed = store::claim_pending_tasks(&ctx.workspace, opts.max_parallel)?;
+    let cancel = run_control::begin_run(&ctx.workspace);
+    let claimed = match store::claim_pending_tasks(&ctx.workspace, opts.max_parallel) {
+        Ok(tasks) => tasks,
+        Err(err) => {
+            run_control::end_run(&ctx.workspace);
+            return Err(err);
+        }
+    };
 
     if claimed.is_empty() {
+        run_control::end_run(&ctx.workspace);
         return Ok(RunReport {
             ran: 0,
             passed: 0,
             failed: 0,
+            canceled: 0,
         });
     }
 
@@ -61,9 +72,17 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
             ran: 0,
             passed: 0,
             failed: 0,
+            canceled: 0,
         };
+        let mut skip_rest = false;
+        let mut restore_ids = Vec::new();
 
         for mut task in claimed {
+            if skip_rest || cancel.is_cancelled() {
+                restore_ids.push(task.id.clone());
+                continue;
+            }
+
             let (run_workspace, worktree_cleanup) =
                 allocate_workspace(&ctx.workspace, &task, opts.use_worktree, &wt_config)?;
             task.worktree_path = Some(run_workspace.clone());
@@ -78,8 +97,24 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
                 &task.prompt,
                 run_workspace.clone(),
                 config.max_subagents(),
+                Some(cancel.clone()),
             )
             .await;
+
+            if cancel.is_cancelled()
+                || exec_result
+                    .as_ref()
+                    .err()
+                    .is_some_and(|e| e.to_string().contains("canceled"))
+            {
+                let _ =
+                    store::mark_canceled(&ctx.workspace, &task.id, "canceled by user during run");
+                report.ran += 1;
+                report.canceled += 1;
+                skip_rest = true;
+                cleanup_worktree(worktree_cleanup);
+                continue;
+            }
 
             if let Err(err) = exec_result {
                 task.status = QueueTaskStatus::Failed;
@@ -92,7 +127,27 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
                 continue;
             }
 
+            if cancel.is_cancelled() {
+                let _ =
+                    store::mark_canceled(&ctx.workspace, &task.id, "canceled by user during run");
+                report.ran += 1;
+                report.canceled += 1;
+                skip_rest = true;
+                cleanup_worktree(worktree_cleanup);
+                continue;
+            }
+
             let gate_result = gate::run_gate(&run_workspace, &task.gate, None).await?;
+            if cancel.is_cancelled() {
+                let _ =
+                    store::mark_canceled(&ctx.workspace, &task.id, "canceled by user during run");
+                report.ran += 1;
+                report.canceled += 1;
+                skip_rest = true;
+                cleanup_worktree(worktree_cleanup);
+                continue;
+            }
+
             task.gate_summary = Some(gate_result.summary.clone());
             task.finished_at = Some(Utc::now());
 
@@ -171,6 +226,10 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
             cleanup_worktree(worktree_cleanup);
         }
 
+        if !restore_ids.is_empty() {
+            store::restore_pending(&ctx.workspace, &restore_ids)?;
+        }
+
         let doc = store::finalize_run(&ctx.workspace, Utc::now())?;
 
         if opts.write_briefing {
@@ -181,6 +240,8 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
     }
     .await;
 
+    run_control::end_run(&ctx.workspace);
+
     match &run_result {
         Ok(rep) => super::hooks::dispatch_run_end(config, &ctx.workspace, rep, None),
         Err(err) => super::hooks::dispatch_run_end(
@@ -190,6 +251,7 @@ pub async fn run_pending(ctx: &CliContext, config: &Config, opts: RunOptions) ->
                 ran: 0,
                 passed: 0,
                 failed: 0,
+                canceled: 0,
             },
             Some(&err.to_string()),
         ),

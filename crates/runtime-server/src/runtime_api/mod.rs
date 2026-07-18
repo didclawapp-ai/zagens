@@ -48,8 +48,9 @@ pub(crate) use mcp::{
     list_mcp_servers, list_mcp_tools, merge_mcp_config_json, reload_mcp_config, update_mcp_server,
 };
 pub(crate) use night_queue::{
-    create_night_queue_task, get_night_queue, list_gate_presets, post_night_queue_briefing,
-    run_night_queue,
+    cancel_night_queue_task, clear_night_queue_finished, create_night_queue_task,
+    delete_night_queue_task, get_night_queue, list_gate_presets, post_night_queue_briefing,
+    retry_night_queue_task, run_night_queue, stop_night_queue,
 };
 pub(crate) use office::get_office_environment;
 pub(crate) use sessions::{

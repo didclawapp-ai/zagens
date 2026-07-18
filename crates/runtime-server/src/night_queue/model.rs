@@ -18,6 +18,7 @@ pub enum QueueTaskStatus {
     Passed,
     Failed,
     RolledBack,
+    Canceled,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
