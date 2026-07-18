@@ -2619,7 +2619,99 @@
     "/v1/workspace/status": {
       "get": {
         "operationId": "workspaceStatus",
-        "summary": "Workspace status",
+        "summary": "Workspace git status (counts; optional ?workspace=)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspace/changes": {
+      "get": {
+        "operationId": "workspaceChanges",
+        "summary": "Workspace uncommitted file list (porcelain; optional ?workspace=)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspace/snapshot": {
+      "get": {
+        "operationId": "workspaceSnapshot",
+        "summary": "Workspace git status + changes in one response (optional ?workspace=)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspace/file-diff": {
+      "get": {
+        "operationId": "workspaceFileDiff",
+        "summary": "Unified diff for one workspace path (optional ?workspace=&staged=)",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/workspace/pulls": {
+      "get": {
+        "operationId": "workspacePulls",
+        "summary": "Read-only open PR list via gh (optional ?workspace=&state=; soft error codes)",
         "responses": {
           "200": {
             "description": "OK",
