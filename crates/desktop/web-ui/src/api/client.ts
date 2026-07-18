@@ -973,6 +973,108 @@ export async function browseComposerWorkspace(
   return fetchJson(`/v1/workspace/browse?workspace=${encodeURIComponent(root)}${pathQ}`);
 }
 
+/** Git status counts for Diff panel (optional workspace = thread / worktree root). */
+export interface WorkspaceStatusResponse {
+  workspace: string;
+  git_repo: boolean;
+  branch?: string | null;
+  staged: number;
+  unstaged: number;
+  untracked: number;
+  ahead?: number | null;
+  behind?: number | null;
+}
+
+export interface WorkspaceChangeEntry {
+  path: string;
+  index_status: string;
+  worktree_status: string;
+  kind: string;
+  old_path?: string | null;
+}
+
+export interface WorkspaceChangesResponse {
+  workspace: string;
+  git_repo: boolean;
+  truncated: boolean;
+  changes: WorkspaceChangeEntry[];
+}
+
+export interface WorkspaceFileDiffResponse {
+  workspace: string;
+  path: string;
+  staged: boolean;
+  diff_text: string;
+  truncated: boolean;
+  binary: boolean;
+  untracked: boolean;
+}
+
+function workspaceRootQuery(workspaceRoot?: string): string {
+  const root = normalizeWorkspaceForApi(workspaceRoot?.trim() ?? '');
+  return root.length > 0 ? `?workspace=${encodeURIComponent(root)}` : '';
+}
+
+export async function getWorkspaceStatus(
+  workspaceRoot?: string,
+): Promise<WorkspaceStatusResponse> {
+  return fetchJsonPoll(`/v1/workspace/status${workspaceRootQuery(workspaceRoot)}`);
+}
+
+export async function getWorkspaceChanges(
+  workspaceRoot?: string,
+): Promise<WorkspaceChangesResponse> {
+  return fetchJson(`/v1/workspace/changes${workspaceRootQuery(workspaceRoot)}`);
+}
+
+export async function getWorkspaceFileDiff(
+  workspaceRoot: string,
+  relativePath: string,
+  staged = false,
+): Promise<WorkspaceFileDiffResponse> {
+  const root = normalizeWorkspaceForApi(workspaceRoot);
+  if (!root) {
+    throw new Error('workspace root required');
+  }
+  const params = new URLSearchParams({
+    workspace: root,
+    path: relativePath,
+    staged: staged ? 'true' : 'false',
+  });
+  return fetchJson(`/v1/workspace/file-diff?${params.toString()}`);
+}
+
+export interface WorkspacePullEntry {
+  number: number;
+  title: string;
+  url: string;
+  head_ref_name: string;
+  base_ref_name: string;
+  is_draft: boolean;
+  updated_at?: string | null;
+  checks: string;
+}
+
+export interface WorkspacePullsResponse {
+  workspace: string;
+  state: string;
+  pulls: WorkspacePullEntry[];
+  error?: string | null;
+  error_message?: string | null;
+}
+
+/** Read-only PR list (soft error codes when gh missing / unauthenticated). */
+export async function getWorkspacePulls(
+  workspaceRoot?: string,
+  state: 'open' | 'closed' | 'merged' | 'all' = 'open',
+): Promise<WorkspacePullsResponse> {
+  const rootQ = workspaceRootQuery(workspaceRoot);
+  const join = rootQ.includes('?') ? '&' : '?';
+  return fetchJson(
+    `/v1/workspace/pulls${rootQ}${join}state=${encodeURIComponent(state)}`,
+  );
+}
+
 export interface WorkspaceFileResponse {
   path: string;
   content: string;

@@ -31,22 +31,38 @@ export default function ApprovalDialog({
     return null;
   }
 
+  const forcePush =
+    /FORCE PUSH/i.test(description) ||
+    /git\s+push\b[\s\S]*(\s-f\b|--force(?:-with-lease)?|\s\+[^\s:]+:)/i.test(description);
+
   return (
     <div className="fixed inset-0 z-[10100] flex items-center justify-center px-4" style={{ background: 'var(--color-overlay)' }}>
       <div
-        className="w-full max-w-lg rounded-xl border border-amber/30 bg-card shadow-md p-6"
+        className={`w-full max-w-lg rounded-xl border bg-card shadow-md p-6 ${
+          forcePush ? 'border-red-500/50' : 'border-amber/30'
+        }`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="approval-title"
       >
         <div className="flex items-center gap-2 mb-1">
           <span className="text-xl">⚠️</span>
-          <h2 id="approval-title" className="text-lg font-semibold text-amber-text">
-            {t('approval.title')}
+          <h2
+            id="approval-title"
+            className={`text-lg font-semibold ${forcePush ? 'text-red-400' : 'text-amber-text'}`}
+          >
+            {forcePush ? t('approval.forcePushTitle') : t('approval.title')}
           </h2>
         </div>
         <p className="mt-1 text-sm text-t-text-secondary">{t('approval.toolLabel', { toolName })}</p>
-        <div className="mt-4 rounded-lg bg-canvas-alt border border-card-border p-3 text-sm text-t-text max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+        {forcePush ? (
+          <p className="mt-2 text-xs text-red-300/90 leading-relaxed">{t('approval.forcePushHint')}</p>
+        ) : null}
+        <div
+          className={`mt-4 rounded-lg bg-canvas-alt p-3 text-sm text-t-text max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed border ${
+            forcePush ? 'border-red-500/40' : 'border-card-border'
+          }`}
+        >
           {description || t('approval.noDescription')}
         </div>
         <label className="mt-4 flex items-start gap-2 text-sm text-t-text-secondary cursor-pointer select-none">

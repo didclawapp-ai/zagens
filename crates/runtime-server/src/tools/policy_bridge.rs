@@ -71,6 +71,9 @@ fn build_approval_description(
     ) {
         return browser_write_approval_description(tool_name, tool_input);
     }
+    if tool_name == "exec_shell" {
+        return exec_shell_approval_description(tool_input);
+    }
     if let Some(registry) = registry
         && let Some(spec) = registry.get(tool_name)
     {
@@ -87,6 +90,24 @@ fn build_approval_description(
         return "Search tool catalog".to_string();
     }
     String::new()
+}
+
+fn exec_shell_approval_description(tool_input: &Value) -> String {
+    let command = tool_input
+        .get("command")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    if command.is_empty() {
+        return "Execute a shell command in the workspace".into();
+    }
+    let mut out = String::new();
+    if let Some(banner) = crate::command_safety::git_push_approval_banner(command) {
+        out.push_str(banner);
+        out.push_str("\n\n");
+    }
+    out.push_str(command);
+    out
 }
 
 /// Parse stable snapshot ref `role:slug:nth` into human-readable role / name bits.
@@ -633,6 +654,19 @@ mod tests {
         // Smoke test: description helper does not panic for MCP names.
         let desc = build_approval_description("mcp_some_server", &serde_json::json!({}), None);
         let _ = desc; // content is mcp_tool_approval_description(name)
+    }
+
+    #[test]
+    fn exec_shell_force_push_banner_in_description() {
+        let desc = exec_shell_approval_description(&serde_json::json!({
+            "command": "git push --force origin main"
+        }));
+        assert!(desc.contains("FORCE PUSH"), "{desc}");
+        assert!(desc.contains("git push --force origin main"), "{desc}");
+        let safe = exec_shell_approval_description(&serde_json::json!({
+            "command": "git push --follow-tags origin main"
+        }));
+        assert!(!safe.contains("FORCE PUSH"), "{safe}");
     }
 
     #[test]

@@ -39,13 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Desktop Diff 薄层 Git（P4.5 Phase A–C，2026-07-18）：** Diff 未提交状态 + 双源列表 + 只读 PR；`GET /v1/workspace/status|changes|file-diff|pulls`；Composer 分支/脏文件徽标点进 Diff；`git push --force` 审批卡加醒目横幅（仍为审批非硬拦；修正 `--follow-tags` 误判为 `-f`）。不做 stage/commit/push/merge UI。
+- **Desktop Diff 薄层 Git 性能/卡死修复（2026-07-18）：** 非 git 工作区不再误标双源/空转 file-diff；有会话 diff 时立即渲染（不挡在「正在加载」）；PR 列表改为展开时才调 `gh`（12s 超时）；Composer git 徽标延迟探测且非 git 停轮询。
 - **Desktop 集成终端会话生命周期（2026-07-15）：** Workspace 切走终端 tab 不再卸载 `TerminalPanel`（隐藏保活）；面板级订阅 `terminal-data`/`terminal-exit`；拖拽改面板尺寸时同步 `resize_terminal`。
 - **Desktop 集成终端 Shell / UX（2026-07-15）：** Shell 选择器与可选 PowerShell Profile；主题/字号/选中即复制；工作区变更横幅与「在此重开」；清屏与 `@xterm/addon-search`；退出态角标；Files 右键「在终端中打开」。
 - **Desktop 集成终端快捷键（2026-07-15）：** `Ctrl/Cmd+\`` 打开并聚焦 Workspace 终端；`Ctrl/Cmd+Shift+\`` 新建终端会话（物理键 `Backquote`）。
 
 ### Changed
 
-- **Desktop 应用图标（2026-07-18）：** 替换原 DS 交织标为 **Zagens Neural Ring**（圆环 + 神经连接线 + 中心 Z）；源文件 `crates/desktop/icons/svg/zagens-neural-ring.svg`，并经 `cargo tauri icon` 再生 `icons/` 全套与 `web-ui/public/app-icon.png`。
+- **Desktop Diff 薄层 Git 抛光（2026-07-18）：** 双源条目可切换「工作区 / 本会话」diff；staged+unstaged 同文件可切换查看；rename 显示 `old → new`；changes 截断 / binary / 冲突 / file-diff 截断有 UI 提示；Composer git 徽标 turn 结束与 visibility 同步刷新。 替换原 DS 交织标为 **Zagens Neural Ring**（圆环 + 神经连接线 + 中心 Z）；源文件 `crates/desktop/icons/svg/zagens-neural-ring.svg`，并经 `cargo tauri icon` 再生 `icons/` 全套与 `web-ui/public/app-icon.png`。
 - **Desktop Browser 收尾（2026-07-17）：** 无 `prefs.json` 时从 `~/.zagens/config.toml` `[browser]` 种子化 `allow_private_lan` / `yolo`；click/type/scroll 审批文案展开稳定 ref 的 role/name/nth；`browser_start_preview` 工具描述注明 `ready_regex`。
 - **Desktop Browser embed fix:** Tauri commands that took `WebviewWindow` broke app-wide after opening an embedded Browser child (`is_webview_window` requires every webview label to match the window). IPC now takes `Webview` and resolves the parent via `webview.window()` (runtime SSE/stream, terminal spawn, window registry, deep link, Browser).
 - **Desktop Browser pane (P0–P2 tails):** `browser_snapshot` / tool `include_screenshot` captures a compact JPEG data-URL via WebView2 CDP on Windows (failure surfaces as `screenshot_note`). Human/agent `file://` navigation allowed only when the path canonicalizes under the window workspace. HTML preview iframe can enable `allow-scripts` without `allow-same-origin` (toggle; default on). Soft post-edit toast suggests opening Browser after `edit_file` / `write_file` / `apply_patch` / `batch_edit` (hint pref default on; agent auto-verify still off).

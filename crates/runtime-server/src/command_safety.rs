@@ -702,17 +702,22 @@ pub fn analyze_command(command: &str) -> SafetyAnalysis {
         return SafetyAnalysis::requires_approval(command, reasons);
     }
 
-    // Check for git push/force operations
+    // Check for git push / force operations (keep RequiresApproval — Dangerous would hard-block).
     if command_lower.contains("git push") {
-        if command_lower.contains("--force") || command_lower.contains("-f") {
+        if is_git_force_push(command) {
             return SafetyAnalysis::requires_approval(
                 command,
-                vec!["Force push can overwrite remote history".to_string()],
+                vec![
+                    "FORCE PUSH: can overwrite remote history and discard others' commits"
+                        .to_string(),
+                    "Prefer `git push --force-with-lease` if you must rewrite; review the branch first"
+                        .to_string(),
+                ],
             );
         }
         return SafetyAnalysis::requires_approval(
             command,
-            vec!["Push will modify remote repository".to_string()],
+            vec!["Push will modify the remote repository".to_string()],
         );
     }
 
@@ -721,6 +726,42 @@ pub fn analyze_command(command: &str) -> SafetyAnalysis {
         command,
         vec!["Unknown command - review before execution".to_string()],
     )
+}
+
+/// True when argv looks like a force push (`--force`, `--force-with-lease`, bare `-f`, or `+refspec`).
+/// Does **not** match substrings inside longer flags (e.g. `--follow-tags`).
+pub fn is_git_force_push(command: &str) -> bool {
+    let lower = command.to_lowercase();
+    if !lower.contains("git push") {
+        return false;
+    }
+    if lower.contains("--force-with-lease") || lower.contains("--force") {
+        return true;
+    }
+    for tok in command.split_whitespace() {
+        if tok == "-f" {
+            return true;
+        }
+        // Force refspec: `+refs/heads/foo:refs/heads/foo` or `+main:main`
+        if tok.starts_with('+') && tok.contains(':') {
+            return true;
+        }
+    }
+    false
+}
+
+/// Extra lines to prepend on approval cards for high-risk git pushes.
+pub fn git_push_approval_banner(command: &str) -> Option<&'static str> {
+    if is_git_force_push(command) {
+        Some(
+            "⚠️ FORCE PUSH — can overwrite remote history and discard others' commits.\n\
+             Prefer `git push --force-with-lease` if you must rewrite; deny unless intentional.",
+        )
+    } else if command.to_lowercase().contains("git push") {
+        Some("Push will update the remote repository.")
+    } else {
+        None
+    }
 }
 
 /// Check if a command is known to be safe
@@ -1090,6 +1131,14 @@ mod tests {
             analyze_command("git push --force").level,
             SafetyLevel::RequiresApproval
         );
+        assert!(is_git_force_push("git push --force origin main"));
+        assert!(is_git_force_push("git push -f origin main"));
+        assert!(is_git_force_push("git push --force-with-lease"));
+        assert!(is_git_force_push("git push origin +main:main"));
+        // Must not treat `--follow-tags` as `-f`
+        assert!(!is_git_force_push("git push --follow-tags origin main"));
+        let force = analyze_command("git push --force origin main");
+        assert!(force.reasons.iter().any(|r| r.contains("FORCE PUSH")));
     }
 
     #[test]

@@ -179,7 +179,40 @@ pub fn build_paths() -> Map<String, Value> {
         vec![json_op(
             "get",
             "workspaceStatus",
-            "Workspace status",
+            "Workspace git status (counts; optional ?workspace=)",
+            None,
+            "ErrorBody",
+            u,
+        )],
+    );
+    add(
+        "/v1/workspace/changes",
+        vec![json_op(
+            "get",
+            "workspaceChanges",
+            "Workspace uncommitted file list (porcelain; optional ?workspace=)",
+            None,
+            "ErrorBody",
+            u,
+        )],
+    );
+    add(
+        "/v1/workspace/file-diff",
+        vec![json_op(
+            "get",
+            "workspaceFileDiff",
+            "Unified diff for one workspace path (optional ?workspace=&staged=)",
+            None,
+            "ErrorBody",
+            u,
+        )],
+    );
+    add(
+        "/v1/workspace/pulls",
+        vec![json_op(
+            "get",
+            "workspacePulls",
+            "Read-only open PR list via gh (optional ?workspace=&state=; soft error codes)",
             None,
             "ErrorBody",
             u,

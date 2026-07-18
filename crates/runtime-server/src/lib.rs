@@ -30,6 +30,8 @@ mod cycle_manager;
 mod error_taxonomy;
 mod execpolicy;
 mod features;
+mod gh_read;
+mod git_read;
 pub mod harness;
 mod harness_report;
 mod hooks;

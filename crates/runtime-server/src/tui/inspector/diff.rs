@@ -76,37 +76,7 @@ pub fn git_diff_patch(
     rel_path: &str,
     max_lines: usize,
 ) -> Vec<String> {
-    let mut args = vec!["diff", "--no-color", "--"];
-    if staged {
-        args.insert(1, "--cached");
-    }
-    args.push(rel_path);
-    let output = Command::new("git")
-        .args(&args)
-        .current_dir(workspace)
-        .output();
-    match output {
-        Ok(out) if out.status.success() => {
-            let text = String::from_utf8_lossy(&out.stdout);
-            let mut lines: Vec<String> = text
-                .lines()
-                .take(max_lines)
-                .map(ToString::to_string)
-                .collect();
-            if text.lines().count() > max_lines {
-                lines.push(format!("… (truncated at {max_lines} lines)"));
-            }
-            if lines.is_empty() {
-                lines.push("(no diff hunks)".to_string());
-            }
-            lines
-        }
-        Ok(out) => vec![format!(
-            "git diff failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        )],
-        Err(e) => vec![format!("git not available: {e}")],
-    }
+    crate::git_read::git_diff_patch_lines(workspace, staged, rel_path, max_lines)
 }
 
 fn parse_numstat(text: &str) -> Vec<DiffEntry> {

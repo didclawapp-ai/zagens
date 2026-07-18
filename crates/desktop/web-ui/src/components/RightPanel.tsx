@@ -260,6 +260,15 @@ export default function RightPanel({
     () => (officeSession ? extractDiffRelPaths(messages) : []),
     [officeSession, messages],
   );
+  const [diffRefreshNonce, setDiffRefreshNonce] = useState(0);
+  const wasStreamingRef = useRef(streaming);
+  useEffect(() => {
+    if (wasStreamingRef.current && !streaming) {
+      setDiffRefreshNonce((n) => n + 1);
+    }
+    wasStreamingRef.current = streaming;
+  }, [streaming]);
+
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId>(() => {
     try {
       const s = sessionStorage.getItem(WORKSPACE_TAB_KEY);
@@ -840,6 +849,8 @@ export default function RightPanel({
                   {workspaceTab === 'diff' && (
                     <DiffPanel
                       messages={messages}
+                      workspaceRoot={workspaceRoot}
+                      refreshNonce={diffRefreshNonce}
                       onRevealInFiles={revealWorkspaceFile}
                       active={view === 'workspace' && workspaceTab === 'diff'}
                       onDetected={
