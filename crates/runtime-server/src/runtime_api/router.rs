@@ -28,7 +28,8 @@ use super::{
     restore_thread_snapshot, resume_automation, resume_session_thread, resume_thread,
     revert_thread_workspace_turn, run_automation, run_night_queue, search_symbol_index,
     set_routing_rules, start_thread_turn, steer_thread_turn, update_automation, update_mcp_server,
-    update_thread, workspace_changes, workspace_file_diff, workspace_pulls, workspace_status,
+    update_thread, workspace_changes, workspace_file_diff, workspace_pulls, workspace_snapshot,
+    workspace_status,
 };
 
 pub fn build_router(state: RuntimeApiState) -> Router {
@@ -43,6 +44,7 @@ pub fn build_router(state: RuntimeApiState) -> Router {
         .route("/v1/resume-tasks/{thread_id}", get(get_resume_task))
         .route("/v1/workspace/status", get(workspace_status))
         .route("/v1/workspace/changes", get(workspace_changes))
+        .route("/v1/workspace/snapshot", get(workspace_snapshot))
         .route("/v1/workspace/file-diff", get(workspace_file_diff))
         .route("/v1/workspace/pulls", get(workspace_pulls))
         .route("/v1/runtime/active-turns", get(get_runtime_active_turns))

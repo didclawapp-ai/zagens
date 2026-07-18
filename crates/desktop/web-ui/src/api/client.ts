@@ -1024,7 +1024,20 @@ export async function getWorkspaceStatus(
 export async function getWorkspaceChanges(
   workspaceRoot?: string,
 ): Promise<WorkspaceChangesResponse> {
-  return fetchJson(`/v1/workspace/changes${workspaceRootQuery(workspaceRoot)}`);
+  // Coalesce with concurrent Diff/badge polls (same path key as status siblings).
+  return fetchJsonPoll(`/v1/workspace/changes${workspaceRootQuery(workspaceRoot)}`);
+}
+
+/** Status + changes in one round-trip (Diff panel). */
+export interface WorkspaceSnapshotResponse extends WorkspaceStatusResponse {
+  truncated: boolean;
+  changes: WorkspaceChangeEntry[];
+}
+
+export async function getWorkspaceSnapshot(
+  workspaceRoot?: string,
+): Promise<WorkspaceSnapshotResponse> {
+  return fetchJsonPoll(`/v1/workspace/snapshot${workspaceRootQuery(workspaceRoot)}`);
 }
 
 export async function getWorkspaceFileDiff(

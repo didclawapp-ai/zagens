@@ -9,6 +9,7 @@ const COVERAGE_GATE_DOCS =
 interface Props {
   workspaceRoot: string;
   active: boolean;
+  /** Retained for API compat; turn-end must not re-run gh. */
   refreshNonce?: number;
 }
 
@@ -16,7 +17,6 @@ interface Props {
 export default function DiffPullsSection({
   workspaceRoot,
   active,
-  refreshNonce = 0,
 }: Props) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
@@ -27,8 +27,8 @@ export default function DiffPullsSection({
   const [loading, setLoading] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
 
+  // Fetch only when the user expands PRs. Collapse/expand to refresh.
   useEffect(() => {
-    // Lazy: do not call gh until the user expands PRs.
     if (!active || !open || !workspaceRoot.trim()) return;
     let cancelled = false;
     setLoading(true);
@@ -57,7 +57,7 @@ export default function DiffPullsSection({
     return () => {
       cancelled = true;
     };
-  }, [active, open, workspaceRoot, refreshNonce]);
+  }, [active, open, workspaceRoot]);
 
   const count = pulls.length;
   const label = !loadedOnce

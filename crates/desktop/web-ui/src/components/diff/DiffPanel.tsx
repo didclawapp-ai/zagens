@@ -24,9 +24,8 @@ import { normalizeWorkspaceRelPath } from '../../lib/openWorkspaceFile';
 import { IconFolder } from '../icons/FlatIcons';
 import type { ToolCardModel } from '../ToolCard';
 import {
-  getWorkspaceChanges,
   getWorkspaceFileDiff,
-  getWorkspaceStatus,
+  getWorkspaceSnapshot,
   type WorkspaceStatusResponse,
 } from '../../api/client';
 import DiffPullsSection from './DiffPullsSection';
@@ -51,7 +50,11 @@ interface Props {
 
 type OutputFormat = 'side-by-side' | 'line-by-line';
 
-const STATUS_POLL_MS = 12_000;
+const STATUS_POLL_MS = 25_000;
+/** Debounce visibility-triggered refresh so Alt-Tab doesn't stack with badge. */
+const VISIBILITY_DEBOUNCE_MS = 1_000;
+/** Stay off the cold-start path when Diff tab was restored from sessionStorage. */
+const FIRST_LOAD_IDLE_MS = 400;
 
 export default function DiffPanel({
   messages,
@@ -68,7 +71,7 @@ export default function DiffPanel({
   const [filter, setFilter] = useState<DiffFilter>('all');
   const [gitStatus, setGitStatus] = useState<WorkspaceStatusResponse | null>(null);
   const [gitChanges, setGitChanges] = useState<
-    Awaited<ReturnType<typeof getWorkspaceChanges>>['changes']
+    Awaited<ReturnType<typeof getWorkspaceSnapshot>>['changes']
   >([]);
   const [changesTruncated, setChangesTruncated] = useState(false);
   const [changesLoadError, setChangesLoadError] = useState<string | null>(null);
@@ -165,67 +168,134 @@ export default function DiffPanel({
     );
   }, [workspaceRoot]);
 
-  // Light status poll + on-demand changes when counts change.
+  // One snapshot round-trip (status + changes). refreshNonce does not rebuild the interval.
   useEffect(() => {
     if (!active || !workspaceRoot.trim()) {
       return;
     }
     let cancelled = false;
+    let visTimer: number | undefined;
+    let firstTimer: number | undefined;
+    let idleId: number | undefined;
 
-    const refreshStatus = async () => {
+    const applySnapshot = (
+      snap: Awaited<ReturnType<typeof getWorkspaceSnapshot>>,
+      forceList: boolean,
+    ) => {
+      const status: WorkspaceStatusResponse = {
+        workspace: snap.workspace,
+        git_repo: snap.git_repo,
+        branch: snap.branch,
+        staged: snap.staged,
+        unstaged: snap.unstaged,
+        untracked: snap.untracked,
+        ahead: snap.ahead,
+        behind: snap.behind,
+      };
+      setGitStatus(status);
+      const dirty = snap.staged + snap.unstaged + snap.untracked;
+      if (!snap.git_repo) {
+        setGitChanges([]);
+        setChangesTruncated(false);
+        setChangesLoadError(null);
+        changesDirtyRef.current = dirty;
+        fetchedGitPathsRef.current.clear();
+        return;
+      }
+      if (dirty !== changesDirtyRef.current || forceList) {
+        changesDirtyRef.current = dirty;
+        setGitChanges(snap.changes ?? []);
+        setChangesTruncated(Boolean(snap.truncated));
+        setChangesLoadError(null);
+      }
+    };
+
+    const refresh = async (forceList: boolean) => {
       try {
-        const status = await getWorkspaceStatus(workspaceRoot);
+        const snap = await getWorkspaceSnapshot(workspaceRoot);
         if (cancelled) return;
-        setGitStatus(status);
-        const dirty = status.staged + status.unstaged + status.untracked;
-        const force = refreshNonce !== lastRefreshNonceRef.current;
-        if (force) lastRefreshNonceRef.current = refreshNonce;
-        if (dirty !== changesDirtyRef.current || force) {
-          changesDirtyRef.current = dirty;
-          if (status.git_repo) {
-            try {
-              const changes = await getWorkspaceChanges(workspaceRoot);
-              if (!cancelled) {
-                setGitChanges(changes.changes ?? []);
-                setChangesTruncated(Boolean(changes.truncated));
-                setChangesLoadError(null);
-              }
-            } catch (err: unknown) {
-              if (!cancelled) {
-                setGitChanges([]);
-                setChangesTruncated(false);
-                setChangesLoadError(err instanceof Error ? err.message : String(err));
-              }
-            }
-          } else {
-            setGitChanges([]);
-            setChangesTruncated(false);
-            setChangesLoadError(null);
-            fetchedGitPathsRef.current.clear();
-          }
-        }
-      } catch {
+        applySnapshot(snap, forceList);
+      } catch (err: unknown) {
         if (!cancelled) {
           setGitStatus(null);
           setGitChanges([]);
+          setChangesLoadError(err instanceof Error ? err.message : String(err));
         }
       }
     };
 
-    void refreshStatus();
-    const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refreshStatus();
-    }, STATUS_POLL_MS);
+    const startPolling = () => {
+      if (cancelled) return;
+      void refresh(true);
+      const id = window.setInterval(() => {
+        if (document.visibilityState === 'visible') void refresh(false);
+      }, STATUS_POLL_MS);
+      return id;
+    };
+
+    let intervalId: number | undefined;
+    const begin = () => {
+      intervalId = startPolling();
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(begin, { timeout: FIRST_LOAD_IDLE_MS });
+    } else {
+      firstTimer = window.setTimeout(begin, FIRST_LOAD_IDLE_MS);
+    }
 
     const onVis = () => {
-      if (document.visibilityState === 'visible') void refreshStatus();
+      if (document.visibilityState !== 'visible') return;
+      if (visTimer != null) window.clearTimeout(visTimer);
+      visTimer = window.setTimeout(() => {
+        if (!cancelled) void refresh(false);
+      }, VISIBILITY_DEBOUNCE_MS);
     };
     document.addEventListener('visibilitychange', onVis);
 
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      if (intervalId != null) window.clearInterval(intervalId);
+      if (visTimer != null) window.clearTimeout(visTimer);
+      if (firstTimer != null) window.clearTimeout(firstTimer);
+      if (idleId != null && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
       document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [active, workspaceRoot]);
+
+  // Turn-end bump: one forced snapshot without rebuilding the poller.
+  useEffect(() => {
+    if (!active || !workspaceRoot.trim()) return;
+    if (refreshNonce === lastRefreshNonceRef.current) return;
+    lastRefreshNonceRef.current = refreshNonce;
+    if (refreshNonce === 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const snap = await getWorkspaceSnapshot(workspaceRoot);
+        if (cancelled) return;
+        setGitStatus({
+          workspace: snap.workspace,
+          git_repo: snap.git_repo,
+          branch: snap.branch,
+          staged: snap.staged,
+          unstaged: snap.unstaged,
+          untracked: snap.untracked,
+          ahead: snap.ahead,
+          behind: snap.behind,
+        });
+        changesDirtyRef.current = snap.staged + snap.unstaged + snap.untracked;
+        setGitChanges(snap.git_repo ? (snap.changes ?? []) : []);
+        setChangesTruncated(Boolean(snap.truncated));
+        setChangesLoadError(null);
+        fetchedGitPathsRef.current.clear();
+      } catch {
+        /* keep last good state */
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
   }, [active, workspaceRoot, refreshNonce]);
 

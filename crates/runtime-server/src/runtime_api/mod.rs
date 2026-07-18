@@ -74,7 +74,7 @@ pub(crate) use trace_compare::get_trace_compare;
 pub(crate) use trace_report::get_thread_trace_report;
 pub(crate) use usage::{get_routing_rules, get_usage, rebuild_symbol_index, set_routing_rules};
 pub(crate) use workspace::{
-    workspace_changes, workspace_file_diff, workspace_pulls, workspace_status,
+    workspace_changes, workspace_file_diff, workspace_pulls, workspace_snapshot, workspace_status,
 };
 
 pub use router::build_router;

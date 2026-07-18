@@ -1,11 +1,13 @@
 //! Read-only `gh` helpers for Diff thin-layer PR list (P4.5 Phase B).
 //! Soft-fail oriented: callers get structured error codes instead of panics.
+//! Uses `tokio::process` so slow `gh` does not occupy the blocking thread pool.
 
 use std::path::Path;
-use std::process::Command;
+use std::process::Stdio;
 
 use serde::Deserialize;
 use serde_json::Value;
+use tokio::process::Command;
 
 const DEFAULT_GH: &str = "gh";
 const MAX_PULLS: usize = 50;
@@ -55,62 +57,55 @@ fn gh_bin() -> String {
     std::env::var("DEEPSEEK_GH_BIN").unwrap_or_else(|_| DEFAULT_GH.to_string())
 }
 
-fn run_gh(workspace: &Path, args: &[&str]) -> Result<String, GhListError> {
-    let output = Command::new(gh_bin())
-        .args(args)
+fn classify_gh_failure(args: &[&str], stderr: &str) -> GhListError {
+    let lower = stderr.to_lowercase();
+    if lower.contains("not logged into")
+        || lower.contains("auth login")
+        || lower.contains("authentication required")
+        || lower.contains("http 401")
+    {
+        return GhListError::Auth;
+    }
+    if lower.contains("not a git repository") {
+        return GhListError::NotGitRepo;
+    }
+    GhListError::Failed(if stderr.is_empty() {
+        format!("gh {} failed", args.join(" "))
+    } else {
+        stderr.to_string()
+    })
+}
+
+async fn run_gh_async(workspace: &Path, args: &[&str]) -> Result<String, GhListError> {
+    let mut cmd = Command::new(gh_bin());
+    cmd.args(args)
         .current_dir(workspace)
-        .output()
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                GhListError::Missing
-            } else {
-                GhListError::Failed(format!("failed to run gh: {e}"))
-            }
-        })?;
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let output = cmd.output().await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            GhListError::Missing
+        } else {
+            GhListError::Failed(format!("failed to run gh: {e}"))
+        }
+    })?;
 
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     if !output.status.success() {
-        let lower = stderr.to_lowercase();
-        if lower.contains("not logged into")
-            || lower.contains("auth login")
-            || lower.contains("authentication required")
-            || lower.contains("http 401")
-        {
-            return Err(GhListError::Auth);
-        }
-        if lower.contains("not a git repository") {
-            return Err(GhListError::NotGitRepo);
-        }
-        return Err(GhListError::Failed(if stderr.is_empty() {
-            format!("gh {} failed", args.join(" "))
-        } else {
-            stderr
-        }));
+        return Err(classify_gh_failure(args, &stderr));
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-fn ensure_git_repo(workspace: &Path) -> Result<(), GhListError> {
-    let out = Command::new("git")
-        .args(["rev-parse", "--is-inside-work-tree"])
-        .current_dir(workspace)
-        .output()
-        .map_err(|e| GhListError::Failed(format!("git: {e}")))?;
-    if out.status.success() && String::from_utf8_lossy(&out.stdout).trim() == "true" {
-        Ok(())
-    } else {
-        Err(GhListError::NotGitRepo)
-    }
-}
-
-/// List pull requests via `gh pr list --json …` (read-only).
-pub fn list_pulls(workspace: &Path, state: &str) -> Result<Vec<PullSummary>, GhListError> {
-    ensure_git_repo(workspace)?;
+/// List pull requests via `gh pr list --json …` (async, read-only).
+pub async fn list_pulls(workspace: &Path, state: &str) -> Result<Vec<PullSummary>, GhListError> {
     let state = match state {
         "closed" | "merged" | "all" => state,
         _ => "open",
     };
-    let text = run_gh(
+    let limit = MAX_PULLS.to_string();
+    let text = run_gh_async(
         workspace,
         &[
             "pr",
@@ -118,11 +113,12 @@ pub fn list_pulls(workspace: &Path, state: &str) -> Result<Vec<PullSummary>, GhL
             "--state",
             state,
             "--limit",
-            &MAX_PULLS.to_string(),
+            &limit,
             "--json",
             "number,title,url,headRefName,baseRefName,isDraft,statusCheckRollup,updatedAt",
         ],
-    )?;
+    )
+    .await?;
     parse_pr_list_json(&text)
 }
 
@@ -171,7 +167,6 @@ pub fn summarize_checks(rollup: Option<&Value>) -> String {
         Value::Array(a) => a.as_slice(),
         Value::Null => return "neutral".into(),
         other => {
-            // Sometimes a single object
             if let Some(s) = other.get("state").and_then(|x| x.as_str()) {
                 return normalize_check_state(s);
             }

@@ -3,8 +3,10 @@ import { getWorkspaceStatus, type WorkspaceStatusResponse } from '../../api/clie
 import { useT } from '../../i18n';
 
 /** Idle poll after first successful probe; skip entirely for non-git workspaces. */
-const POLL_MS = 20_000;
-const FIRST_PROBE_DELAY_MS = 2_500;
+const POLL_MS = 45_000;
+/** Stay out of cold-start / sidecar handshake. */
+const FIRST_PROBE_DELAY_MS = 12_000;
+const VISIBILITY_DEBOUNCE_MS = 1_200;
 
 interface Props {
   workspaceRoot: string;
@@ -25,6 +27,7 @@ export default function ComposerGitBadge({
   const { t } = useT();
   const [status, setStatus] = useState<WorkspaceStatusResponse | null>(null);
   const wasStreamingRef = useRef(streaming);
+  const tickInFlightRef = useRef(false);
 
   useEffect(() => {
     const root = workspaceRoot.trim();
@@ -34,8 +37,11 @@ export default function ComposerGitBadge({
     }
     let cancelled = false;
     let intervalId: number | undefined;
+    let visTimer: number | undefined;
 
     const tick = async () => {
+      if (tickInFlightRef.current) return;
+      tickInFlightRef.current = true;
       try {
         const s = await getWorkspaceStatus(root);
         if (cancelled) return;
@@ -46,25 +52,43 @@ export default function ComposerGitBadge({
         }
       } catch {
         if (!cancelled) setStatus(null);
+      } finally {
+        tickInFlightRef.current = false;
       }
     };
 
-    const delayId = window.setTimeout(() => {
-      void tick();
-      intervalId = window.setInterval(() => {
-        if (document.visibilityState === 'visible') void tick();
-      }, POLL_MS);
-    }, FIRST_PROBE_DELAY_MS);
+    const scheduleIdleFirst = () => {
+      const start = () => {
+        if (cancelled) return;
+        void tick();
+        intervalId = window.setInterval(() => {
+          if (document.visibilityState === 'visible') void tick();
+        }, POLL_MS);
+      };
+      if (typeof window.requestIdleCallback === 'function') {
+        const idleId = window.requestIdleCallback(start, { timeout: FIRST_PROBE_DELAY_MS });
+        return () => window.cancelIdleCallback(idleId);
+      }
+      const delayId = window.setTimeout(start, FIRST_PROBE_DELAY_MS);
+      return () => window.clearTimeout(delayId);
+    };
+
+    const cancelFirst = scheduleIdleFirst();
 
     const onVis = () => {
-      if (document.visibilityState === 'visible') void tick();
+      if (document.visibilityState !== 'visible') return;
+      if (visTimer != null) window.clearTimeout(visTimer);
+      visTimer = window.setTimeout(() => {
+        if (!cancelled) void tick();
+      }, VISIBILITY_DEBOUNCE_MS);
     };
     document.addEventListener('visibilitychange', onVis);
 
     return () => {
       cancelled = true;
-      window.clearTimeout(delayId);
+      cancelFirst();
       if (intervalId != null) window.clearInterval(intervalId);
+      if (visTimer != null) window.clearTimeout(visTimer);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [workspaceRoot]);

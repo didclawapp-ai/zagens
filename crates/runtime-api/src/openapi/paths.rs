@@ -197,6 +197,17 @@ pub fn build_paths() -> Map<String, Value> {
         )],
     );
     add(
+        "/v1/workspace/snapshot",
+        vec![json_op(
+            "get",
+            "workspaceSnapshot",
+            "Workspace git status + changes in one response (optional ?workspace=)",
+            None,
+            "ErrorBody",
+            u,
+        )],
+    );
+    add(
         "/v1/workspace/file-diff",
         vec![json_op(
             "get",

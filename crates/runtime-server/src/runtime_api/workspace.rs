@@ -7,9 +7,8 @@ use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
 use crate::gh_read::list_pulls;
-use crate::git_read::{
-    GitChangeKind, MAX_CHANGES, collect_changes, collect_status, file_diff, validate_rel_path,
-};
+use crate::git_read::{GitChangeKind, collect_status, file_diff, validate_rel_path};
+use crate::git_snapshot_cache::load_snapshot;
 
 /// Re-export for LHT / other callers that historically imported from this module.
 pub(crate) use crate::git_read::run_git;
@@ -71,6 +70,21 @@ pub(crate) struct WorkspaceChangesResponse {
     changes: Vec<WorkspaceChangeEntry>,
 }
 
+/// Status + changes in one response (Diff panel single round-trip).
+#[derive(Debug, Serialize)]
+pub(crate) struct WorkspaceSnapshotResponse {
+    workspace: PathBuf,
+    git_repo: bool,
+    branch: Option<String>,
+    staged: usize,
+    unstaged: usize,
+    untracked: usize,
+    ahead: Option<u32>,
+    behind: Option<u32>,
+    truncated: bool,
+    changes: Vec<WorkspaceChangeEntry>,
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct WorkspaceFileDiffResponse {
     workspace: PathBuf,
@@ -113,14 +127,14 @@ pub(crate) async fn workspace_status(
     Query(q): Query<WorkspaceRootQuery>,
 ) -> Result<Json<WorkspaceStatusResponse>, ApiError> {
     let root = resolve_workspace_root(&state, q.workspace.as_deref())?;
-    let root_clone = root.clone();
-    let status = tokio::task::spawn_blocking(move || collect_status(&root_clone))
+    let snap = load_snapshot(root.clone())
         .await
-        .map_err(|e| ApiError::internal(e.to_string()))?;
+        .map_err(ApiError::internal)?;
+    let status = &snap.status;
     Ok(Json(WorkspaceStatusResponse {
         workspace: root,
         git_repo: status.git_repo,
-        branch: status.branch,
+        branch: status.branch.clone(),
         staged: status.staged,
         unstaged: status.unstaged,
         untracked: status.untracked,
@@ -134,36 +148,52 @@ pub(crate) async fn workspace_changes(
     Query(q): Query<WorkspaceRootQuery>,
 ) -> Result<Json<WorkspaceChangesResponse>, ApiError> {
     let root = resolve_workspace_root(&state, q.workspace.as_deref())?;
-    let root_clone = root.clone();
-    let (git_repo, changes) = tokio::task::spawn_blocking(move || {
-        let status = collect_status(&root_clone);
-        if !status.git_repo {
-            return (false, Vec::new());
-        }
-        (true, collect_changes(&root_clone, MAX_CHANGES + 1))
-    })
-    .await
-    .map_err(|e| ApiError::internal(e.to_string()))?;
-
-    let truncated = changes.len() > MAX_CHANGES;
-    let changes: Vec<WorkspaceChangeEntry> = changes
-        .into_iter()
-        .take(MAX_CHANGES)
-        .map(|c| WorkspaceChangeEntry {
-            path: c.path,
-            index_status: c.index_status.to_string(),
-            worktree_status: c.worktree_status.to_string(),
-            kind: c.kind.as_str().to_string(),
-            old_path: c.old_path,
-        })
-        .collect();
+    let snap = load_snapshot(root.clone())
+        .await
+        .map_err(ApiError::internal)?;
 
     Ok(Json(WorkspaceChangesResponse {
         workspace: root,
-        git_repo,
-        truncated,
-        changes,
+        git_repo: snap.status.git_repo,
+        truncated: snap.truncated,
+        changes: map_changes(&snap.changes),
     }))
+}
+
+pub(crate) async fn workspace_snapshot(
+    State(state): State<RuntimeApiState>,
+    Query(q): Query<WorkspaceRootQuery>,
+) -> Result<Json<WorkspaceSnapshotResponse>, ApiError> {
+    let root = resolve_workspace_root(&state, q.workspace.as_deref())?;
+    let snap = load_snapshot(root.clone())
+        .await
+        .map_err(ApiError::internal)?;
+    let status = &snap.status;
+    Ok(Json(WorkspaceSnapshotResponse {
+        workspace: root,
+        git_repo: status.git_repo,
+        branch: status.branch.clone(),
+        staged: status.staged,
+        unstaged: status.unstaged,
+        untracked: status.untracked,
+        ahead: status.ahead,
+        behind: status.behind,
+        truncated: snap.truncated,
+        changes: map_changes(&snap.changes),
+    }))
+}
+
+fn map_changes(changes: &[crate::git_read::GitChangeEntry]) -> Vec<WorkspaceChangeEntry> {
+    changes
+        .iter()
+        .map(|c| WorkspaceChangeEntry {
+            path: c.path.clone(),
+            index_status: c.index_status.to_string(),
+            worktree_status: c.worktree_status.to_string(),
+            kind: c.kind.as_str().to_string(),
+            old_path: c.old_path.clone(),
+        })
+        .collect()
 }
 
 pub(crate) async fn workspace_file_diff(
@@ -191,7 +221,7 @@ pub(crate) async fn workspace_file_diff(
     }))
 }
 
-/// Read-only PR list via `gh`. Soft-fails (HTTP 200 + error code) so Diff Phase A stays usable.
+/// Read-only PR list via async `gh` (does not occupy spawn_blocking). Soft-fails HTTP 200.
 pub(crate) async fn workspace_pulls(
     State(state): State<RuntimeApiState>,
     Query(q): Query<WorkspacePullsQuery>,
@@ -206,22 +236,21 @@ pub(crate) async fn workspace_pulls(
         .to_string();
     let root_clone = root.clone();
     let state_clone = state_s.clone();
-    // Cap wait: `gh` network auth can stall the sidecar thread pool if unbounded.
+    // Async process + kill_on_drop: timeout cancels without blocking the thread pool.
     let result = match tokio::time::timeout(
-        std::time::Duration::from_secs(12),
-        tokio::task::spawn_blocking(move || list_pulls(&root_clone, &state_clone)),
+        std::time::Duration::from_secs(10),
+        list_pulls(&root_clone, &state_clone),
     )
     .await
     {
-        Ok(Ok(inner)) => inner,
-        Ok(Err(e)) => return Err(ApiError::internal(e.to_string())),
+        Ok(inner) => inner,
         Err(_) => {
             return Ok(Json(WorkspacePullsResponse {
                 workspace: root,
                 state: state_s,
                 pulls: Vec::new(),
                 error: Some("gh_failed".into()),
-                error_message: Some("gh pr list timed out (12s)".into()),
+                error_message: Some("gh pr list timed out (10s)".into()),
             }));
         }
     };

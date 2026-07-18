@@ -68,8 +68,16 @@ pub fn run_git(workspace: &Path, args: &[&str]) -> Option<String> {
     String::from_utf8(output.stdout).ok()
 }
 
-pub fn collect_status(workspace: &Path) -> GitStatusCounts {
-    let mut status = GitStatusCounts {
+/// One `git status -sb --porcelain=v1` → counts + change list (avoids 3–4 subprocesses).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitSnapshot {
+    pub status: GitStatusCounts,
+    pub changes: Vec<GitChangeEntry>,
+    pub truncated: bool,
+}
+
+fn empty_status() -> GitStatusCounts {
+    GitStatusCounts {
         git_repo: false,
         branch: None,
         staged: 0,
@@ -77,57 +85,116 @@ pub fn collect_status(workspace: &Path) -> GitStatusCounts {
         untracked: 0,
         ahead: None,
         behind: None,
+    }
+}
+
+/// Parse `## branch...upstream [ahead N, behind M]` short-status header.
+pub fn parse_branch_header(header: &str, status: &mut GitStatusCounts) {
+    let header = header.trim();
+    let (branch_part, bracket) = match header.find(" [") {
+        Some(i) if header.ends_with(']') => (&header[..i], Some(&header[i + 2..header.len() - 1])),
+        _ => (header, None),
     };
 
-    let Some(repo_check) = run_git(workspace, &["rev-parse", "--is-inside-work-tree"]) else {
-        return status;
-    };
-    if repo_check.trim() != "true" {
-        return status;
+    let branch_name = branch_part
+        .split("...")
+        .next()
+        .unwrap_or(branch_part)
+        .trim();
+    if branch_name == "HEAD (no branch)" || branch_name == "No commits yet on HEAD" {
+        status.branch = Some("HEAD".into());
+    } else if !branch_name.is_empty() {
+        status.branch = Some(branch_name.to_string());
     }
+
+    if let Some(b) = bracket {
+        if b.contains("gone") {
+            // upstream deleted — leave ahead/behind unset
+        } else {
+            for part in b.split(',') {
+                let p = part.trim();
+                if let Some(n) = p.strip_prefix("ahead ") {
+                    status.ahead = n.trim().parse().ok();
+                } else if let Some(n) = p.strip_prefix("behind ") {
+                    status.behind = n.trim().parse().ok();
+                }
+            }
+        }
+    } else if branch_part.contains("...") {
+        // Tracking set and in sync (no bracket means 0/0).
+        status.ahead = Some(0);
+        status.behind = Some(0);
+    }
+}
+
+fn count_from_porcelain(porcelain: &str, status: &mut GitStatusCounts) {
+    for line in porcelain.lines() {
+        if line.starts_with("??") {
+            status.untracked += 1;
+            continue;
+        }
+        let chars: Vec<char> = line.chars().collect();
+        if chars.len() >= 2 {
+            if chars[0] != ' ' {
+                status.staged += 1;
+            }
+            if chars[1] != ' ' {
+                status.unstaged += 1;
+            }
+        }
+    }
+}
+
+/// Single subprocess snapshot used by status + changes APIs.
+pub fn collect_snapshot(workspace: &Path, change_limit: usize) -> GitSnapshot {
+    let mut status = empty_status();
+    // `-sb` embeds branch + ahead/behind; porcelain body is the file list.
+    let Some(out) = run_git(workspace, &["status", "-sb", "--porcelain=v1"]) else {
+        return GitSnapshot {
+            status,
+            changes: Vec::new(),
+            truncated: false,
+        };
+    };
 
     status.git_repo = true;
-    status.branch = run_git(workspace, &["rev-parse", "--abbrev-ref", "HEAD"])
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    if let Some(porcelain) = run_git(workspace, &["status", "--porcelain=v1"]) {
-        for line in porcelain.lines() {
-            if line.starts_with("??") {
-                status.untracked += 1;
-                continue;
+    let mut lines = out.lines();
+    let mut porcelain = String::new();
+    if let Some(first) = lines.next() {
+        if let Some(header) = first.strip_prefix("## ") {
+            parse_branch_header(header, &mut status);
+            for line in lines {
+                porcelain.push_str(line);
+                porcelain.push('\n');
             }
-            let chars: Vec<char> = line.chars().collect();
-            if chars.len() >= 2 {
-                if chars[0] != ' ' {
-                    status.staged += 1;
-                }
-                if chars[1] != ' ' {
-                    status.unstaged += 1;
-                }
+        } else {
+            porcelain.push_str(first);
+            porcelain.push('\n');
+            for line in lines {
+                porcelain.push_str(line);
+                porcelain.push('\n');
             }
         }
     }
 
-    if let Some(counts) = run_git(
-        workspace,
-        &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
-    ) {
-        let mut parts = counts.split_whitespace();
-        if let (Some(behind), Some(ahead)) = (parts.next(), parts.next()) {
-            status.behind = behind.parse::<u32>().ok();
-            status.ahead = ahead.parse::<u32>().ok();
-        }
+    count_from_porcelain(&porcelain, &mut status);
+    let limit_plus = change_limit.saturating_add(1);
+    let changes = parse_porcelain(&porcelain, limit_plus);
+    let truncated = changes.len() > change_limit;
+    let changes = changes.into_iter().take(change_limit).collect();
+    GitSnapshot {
+        status,
+        changes,
+        truncated,
     }
+}
 
-    status
+pub fn collect_status(workspace: &Path) -> GitStatusCounts {
+    collect_snapshot(workspace, 0).status
 }
 
 pub fn collect_changes(workspace: &Path, limit: usize) -> Vec<GitChangeEntry> {
-    let Some(porcelain) = run_git(workspace, &["status", "--porcelain=v1"]) else {
-        return Vec::new();
-    };
-    parse_porcelain(&porcelain, limit)
+    collect_snapshot(workspace, limit).changes
 }
 
 /// Parse `git status --porcelain=v1` lines into change entries.
@@ -508,6 +575,27 @@ mod tests {
             .args(["config", "user.name", "Test"])
             .current_dir(dir)
             .status();
+    }
+
+    #[test]
+    fn parse_branch_header_ahead_behind() {
+        let mut s = empty_status();
+        parse_branch_header("main...origin/main [ahead 2, behind 1]", &mut s);
+        assert_eq!(s.branch.as_deref(), Some("main"));
+        assert_eq!(s.ahead, Some(2));
+        assert_eq!(s.behind, Some(1));
+
+        let mut synced = empty_status();
+        parse_branch_header("master...origin/master", &mut synced);
+        assert_eq!(synced.branch.as_deref(), Some("master"));
+        assert_eq!(synced.ahead, Some(0));
+        assert_eq!(synced.behind, Some(0));
+
+        let mut local = empty_status();
+        parse_branch_header("feature/x", &mut local);
+        assert_eq!(local.branch.as_deref(), Some("feature/x"));
+        assert_eq!(local.ahead, None);
+        assert_eq!(local.behind, None);
     }
 
     #[test]
