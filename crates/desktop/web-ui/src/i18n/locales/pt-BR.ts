@@ -547,9 +547,6 @@ const ptBr: TranslationMap = {
     useWorktreeToggledOff: 'Isolamento desligado — novos chats usam o workspace atual',
     worktreeFailed: 'Falha ao criar sessão Worktree: {{message}}',
     worktreeActive: 'Isolado · {{name}}',
-    gitBadgeClean: '{{branch}}',
-    gitBadgeDirty: '{{branch}} · {{n}}',
-    gitBadgeTitle: 'Abrir Diff — branch e alterações não commitadas',
     removeAttachment: 'Remover',
     onlyReference: 'Só ref.',
     invalid: 'Inválido',
@@ -658,6 +655,8 @@ const ptBr: TranslationMap = {
   },
   diff: {
     tab: 'Diff',
+    tabGitClean: 'Diff · {{branch}}',
+    tabGitDirty: 'Diff · {{branch}} · {{n}} não commitados',
     empty: 'Ainda não há diffs de arquivo nesta sessão',
     emptyHint:
       'Diffs unificados de resultados das ferramentas edit_file, apply_patch ou write_file aparecerão aqui.',

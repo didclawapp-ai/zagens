@@ -545,9 +545,6 @@ const en: TranslationMap = {
     useWorktreeToggledOff: 'Session isolation off — new chats use the current workspace',
     worktreeFailed: 'Worktree session failed: {{message}}',
     worktreeActive: 'Isolated · {{name}}',
-    gitBadgeClean: '{{branch}}',
-    gitBadgeDirty: '{{branch}} · {{n}}',
-    gitBadgeTitle: 'Open Diff — branch and uncommitted count',
     removeAttachment: 'Remove',
     onlyReference: 'Ref only',
     invalid: 'Invalid',
@@ -656,6 +653,8 @@ const en: TranslationMap = {
   },
   diff: {
     tab: 'Diff',
+    tabGitClean: 'Diff · {{branch}}',
+    tabGitDirty: 'Diff · {{branch}} · {{n}} uncommitted',
     empty: 'No file diffs in this session yet',
     emptyHint:
       'Unified diffs from edit_file, apply_patch, or write_file tool results will show here.',

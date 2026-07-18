@@ -1,30 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { getWorkspaceStatus, type WorkspaceStatusResponse } from '../../api/client';
-import { useT } from '../../i18n';
+import { getWorkspaceStatus, type WorkspaceStatusResponse } from '../api/client';
 
-/** Idle poll after first successful probe; skip entirely for non-git workspaces. */
+/** Idle poll after first probe; skip entirely for non-git workspaces. */
 const POLL_MS = 45_000;
-/** Stay out of cold-start / sidecar handshake. */
 const FIRST_PROBE_DELAY_MS = 12_000;
 const VISIBILITY_DEBOUNCE_MS = 1_200;
 
-interface Props {
-  workspaceRoot: string;
-  /** Open Diff workspace tab. */
-  onOpenDiff?: () => void;
-  disabled?: boolean;
-  /** When turn ends (streaming false), refresh counts immediately. */
-  streaming?: boolean;
-}
+export type WorkspaceGitBadgeInfo = {
+  branch: string;
+  dirty: number;
+};
 
-/** Light branch + dirty-count chip; click focuses Diff (not a SCM panel). */
-export default function ComposerGitBadge({
-  workspaceRoot,
-  onOpenDiff,
-  disabled = false,
+/**
+ * Lazy workspace git status for the Diff inspector tab badge.
+ * Kept out of Composer — git belongs with the Diff surface.
+ */
+export function useWorkspaceGitStatus(
+  workspaceRoot: string,
   streaming = false,
-}: Props) {
-  const { t } = useT();
+): WorkspaceGitBadgeInfo | null {
   const [status, setStatus] = useState<WorkspaceStatusResponse | null>(null);
   const wasStreamingRef = useRef(streaming);
   const tickInFlightRef = useRef(false);
@@ -103,35 +97,8 @@ export default function ComposerGitBadge({
   }, [streaming, workspaceRoot]);
 
   if (!status?.git_repo) return null;
-
-  const dirty = status.staged + status.unstaged + status.untracked;
-  const branch = status.branch?.trim() || 'HEAD';
-  const label =
-    dirty > 0
-      ? t('composer.gitBadgeDirty', { branch, n: String(dirty) })
-      : t('composer.gitBadgeClean', { branch });
-
-  return (
-    <button
-      type="button"
-      className="composer-chip shrink-0 max-w-[12rem]"
-      disabled={disabled || !onOpenDiff}
-      title={t('composer.gitBadgeTitle')}
-      onClick={() => onOpenDiff?.()}
-    >
-      <GitBranchIcon />
-      <span className="truncate font-mono text-[11px]">{label}</span>
-    </button>
-  );
-}
-
-function GitBranchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M6 3v12" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="18" cy="6" r="3" />
-      <path d="M18 9a9 9 0 01-9 9" />
-    </svg>
-  );
+  return {
+    branch: status.branch?.trim() || 'HEAD',
+    dirty: status.staged + status.unstaged + status.untracked,
+  };
 }

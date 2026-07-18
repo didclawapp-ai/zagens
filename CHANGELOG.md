@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Desktop Diff 薄层 Git UX（2026-07-18）：** 分支/脏文件计数从 Composer 工具条移到工作台 **Diff 图标标签**（角标 + tooltip）；Composer 不再展示 git 芯片。
 - **Desktop Diff 薄层 Git 性能（2026-07-18）：** `git status -sb --porcelain=v1` 单次快照替代多次子进程；status/changes/snapshot 共享 2s TTL + single-flight；`GET /v1/workspace/snapshot` 供 Diff 一次拉取；`gh pr list` 改异步 `tokio::process`（kill_on_drop，不占 blocking 池）；Composer 徽标 idle/~12s 后探、45s 轮询；Diff 首载 idle 延后、轮询 25s、与 turn-end 解耦；PR 仅展开时拉 `gh`。
 - **Desktop Diff 薄层 Git 抛光（2026-07-18）：** 双源条目可切换「工作区 / 本会话」diff；staged+unstaged 同文件可切换查看；rename 显示 `old → new`；changes 截断 / binary / 冲突 / file-diff 截断有 UI 提示；Composer git 徽标 turn 结束与 visibility 同步刷新。 替换原 DS 交织标为 **Zagens Neural Ring**（圆环 + 神经连接线 + 中心 Z）；源文件 `crates/desktop/icons/svg/zagens-neural-ring.svg`，并经 `cargo tauri icon` 再生 `icons/` 全套与 `web-ui/public/app-icon.png`。
 - **Desktop Browser 收尾（2026-07-17）：** 无 `prefs.json` 时从 `~/.zagens/config.toml` `[browser]` 种子化 `allow_private_lan` / `yolo`；click/type/scroll 审批文案展开稳定 ref 的 role/name/nth；`browser_start_preview` 工具描述注明 `ready_regex`。

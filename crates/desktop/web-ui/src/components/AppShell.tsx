@@ -526,8 +526,6 @@ export default function AppShell({
               useWorktree={useWorktree}
               onUseWorktreeChange={onUseWorktreeChange}
               activeWorktreeName={activeWorktreeName}
-              onOpenDiff={onOpenDiffInPanel}
-              streaming={streaming}
               resumedThreadActive={resumedThreadId != null && resumedThreadId.length > 0}
               threadId={resumedThreadId}
               contextUsagePct={contextUsagePct}

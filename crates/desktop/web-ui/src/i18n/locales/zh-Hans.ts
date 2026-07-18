@@ -535,9 +535,6 @@ const zhHans = {
     useWorktreeToggledOff: '已关闭会话隔离：新对话将直接使用当前工作区',
     worktreeFailed: 'Worktree 会话创建失败：{{message}}',
     worktreeActive: '隔离中 · {{name}}',
-    gitBadgeClean: '{{branch}}',
-    gitBadgeDirty: '{{branch}} · {{n}}',
-    gitBadgeTitle: '打开 Diff — 分支与未提交计数',
     removeAttachment: '移除',
     onlyReference: '仅引用',
     invalid: '无效',
@@ -645,6 +642,8 @@ const zhHans = {
   },
   diff: {
     tab: 'Diff',
+    tabGitClean: 'Diff · {{branch}}',
+    tabGitDirty: 'Diff · {{branch}} · {{n}} 个未提交',
     empty: '当前会话尚无文件 diff',
     emptyHint: '当 Agent 调用 edit_file、apply_patch 或 write_file 并返回 unified diff 时会出现在此。',
     emptySessionHasGit: '本会话尚无工具 diff，但工作区有未提交变更',

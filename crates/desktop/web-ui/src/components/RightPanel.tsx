@@ -41,6 +41,7 @@ import AuditScratchpadPanel from './AuditScratchpadPanel';
 import LongHorizonPanel from './LongHorizonPanel';
 import InspectorIconTabs from './chrome/InspectorIconTabs';
 import BrowserPane from './browser/BrowserPane';
+import { useWorkspaceGitStatus } from '../hooks/useWorkspaceGitStatus';
 
 export type RightPanelView =
   | 'workspace'
@@ -262,6 +263,7 @@ export default function RightPanel({
   );
   const [diffRefreshNonce, setDiffRefreshNonce] = useState(0);
   const wasStreamingRef = useRef(streaming);
+  const diffGit = useWorkspaceGitStatus(workspaceRoot, Boolean(streaming));
   useEffect(() => {
     if (wasStreamingRef.current && !streaming) {
       setDiffRefreshNonce((n) => n + 1);
@@ -655,6 +657,7 @@ export default function RightPanel({
                   tabIdFor={workbenchTabId}
                   tabPanelId={workbenchTabPanelId}
                   ariaLabel={t('workbench.tablistAria')}
+                  diffGit={diffGit}
                 />
 
                 <div

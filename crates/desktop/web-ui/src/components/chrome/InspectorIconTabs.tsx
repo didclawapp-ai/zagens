@@ -2,6 +2,7 @@ import type { KeyboardEvent } from 'react';
 import { useT } from '../../i18n';
 import type { TranslationKey } from '../../i18n/keys';
 import { handleTabListKeyDown } from '../../lib/a11y/rovingTabList';
+import type { WorkspaceGitBadgeInfo } from '../../hooks/useWorkspaceGitStatus';
 import type { WorkspaceTabId } from '../RightPanel';
 
 const TAB_LABEL_KEYS: Record<WorkspaceTabId, TranslationKey> = {
@@ -65,6 +66,8 @@ export type InspectorIconTabsProps = {
   tabIdFor: (tab: WorkspaceTabId) => string;
   tabPanelId: string;
   ariaLabel: string;
+  /** Git status for Diff tab tip + dirty count badge (not shown in Composer). */
+  diffGit?: WorkspaceGitBadgeInfo | null;
 };
 
 /** 44px vertical icon tabs for the workspace Inspector region. */
@@ -75,6 +78,7 @@ export default function InspectorIconTabs({
   tabIdFor,
   tabPanelId,
   ariaLabel,
+  diffGit = null,
 }: InspectorIconTabsProps) {
   const { t } = useT();
 
@@ -92,7 +96,17 @@ export default function InspectorIconTabs({
     >
       {tabs.map((tabId) => {
         const selected = activeTab === tabId;
-        const label = t(TAB_LABEL_KEYS[tabId]);
+        let label = t(TAB_LABEL_KEYS[tabId]);
+        let badge: string | null = null;
+        if (tabId === 'diff' && diffGit) {
+          label =
+            diffGit.dirty > 0
+              ? t('diff.tabGitDirty', { branch: diffGit.branch, n: String(diffGit.dirty) })
+              : t('diff.tabGitClean', { branch: diffGit.branch });
+          if (diffGit.dirty > 0) {
+            badge = diffGit.dirty > 99 ? '99+' : String(diffGit.dirty);
+          }
+        }
         return (
           <button
             key={tabId}
@@ -111,6 +125,11 @@ export default function InspectorIconTabs({
             <svg viewBox="0 0 24 24" className="inspector-icon-tab__svg" aria-hidden>
               <WorkspaceTabIcon tab={tabId} />
             </svg>
+            {badge ? (
+              <span className="inspector-icon-tab__badge" aria-hidden>
+                {badge}
+              </span>
+            ) : null}
           </button>
         );
       })}

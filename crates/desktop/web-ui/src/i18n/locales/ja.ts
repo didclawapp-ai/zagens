@@ -545,9 +545,6 @@ const ja: TranslationMap = {
     useWorktreeToggledOff: 'セッション隔離オフ — 新規チャットは現在のワークスペースを使用',
     worktreeFailed: 'Worktree セッションの作成に失敗しました: {{message}}',
     worktreeActive: '隔離中 · {{name}}',
-    gitBadgeClean: '{{branch}}',
-    gitBadgeDirty: '{{branch}} · {{n}}',
-    gitBadgeTitle: 'Diff を開く — ブランチと未コミット数',
     removeAttachment: '削除',
     onlyReference: '参照のみ',
     invalid: '無効',
@@ -656,6 +653,8 @@ const ja: TranslationMap = {
   },
   diff: {
     tab: 'Diff',
+    tabGitClean: 'Diff · {{branch}}',
+    tabGitDirty: 'Diff · {{branch}} · 未コミット {{n}}',
     empty: 'このセッションにはまだファイル差分がありません',
     emptyHint:
       'edit_file、apply_patch、write_file ツール結果の unified diff がここに表示されます。',

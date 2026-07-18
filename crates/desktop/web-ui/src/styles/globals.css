@@ -1438,6 +1438,24 @@ body {
     stroke-width: 1.6;
   }
 
+  .inspector-icon-tab__badge {
+    position: absolute;
+    top: 2px;
+    right: 1px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: var(--color-accent);
+    color: var(--color-canvas, #0b0f14);
+    font-size: 9px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 14px;
+    text-align: center;
+    pointer-events: none;
+  }
+
   .inspector-icon-tab::after {
     content: attr(data-tip);
     position: absolute;

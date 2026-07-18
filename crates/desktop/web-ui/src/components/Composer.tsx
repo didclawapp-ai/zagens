@@ -29,7 +29,6 @@ import type { ContextUsageBreakdown } from '../lib/contextUsage';
 import { ComposerContextMeter } from './composer/ComposerContextMeter';
 import ComposerOverflowMenu from './composer/ComposerOverflowMenu';
 import WorktreeBranchIcon from './composer/WorktreeBranchIcon';
-import ComposerGitBadge from './composer/ComposerGitBadge';
 import { IconArrowUp } from './icons/FlatIcons';
 import { clipboardHtmlToPlainText } from '../lib/sanitizeHtml';
 import {
@@ -439,10 +438,6 @@ interface Props {
   onUseWorktreeChange?: (next: boolean) => void;
   /** Active thread worktree name (when bound to a restored thread). */
   activeWorktreeName?: string | null;
-  /** Open Diff workspace tab (git badge). */
-  onOpenDiff?: () => void;
-  /** Active turn streaming — git badge refreshes when a turn ends. */
-  streaming?: boolean;
   /** Session is bound to a restored runtime thread; workspace commits via PATCH when changed */
   resumedThreadActive?: boolean;
   /** Runtime thread id for session-scoped composer controls (LHT toggle). */
@@ -502,8 +497,6 @@ export default function Composer({
   useWorktree = false,
   onUseWorktreeChange,
   activeWorktreeName = null,
-  onOpenDiff,
-  streaming = false,
   resumedThreadActive = false,
   threadId = null,
   contextUsagePct,
@@ -1161,12 +1154,6 @@ export default function Composer({
                 {t('composer.worktreeActive', { name: activeWorktreeName })}
               </span>
             ) : null}
-            <ComposerGitBadge
-              workspaceRoot={workspace}
-              onOpenDiff={onOpenDiff}
-              disabled={disabled}
-              streaming={streaming}
-            />
             <ComposerOverflowMenu
               open={overflowOpen}
               onOpenChange={setOverflowOpen}
