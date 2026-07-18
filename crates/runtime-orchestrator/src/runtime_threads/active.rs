@@ -69,31 +69,6 @@ pub fn browser_tool_blocks_thread_auto_approve(tool_name: &str, description: &st
             || description.contains("will allow for this session")))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn external_navigate_blocks_auto_approve() {
-        assert!(browser_tool_blocks_thread_auto_approve(
-            "browser_navigate",
-            "Browser: open external site www.deepseek.com (will allow for this session)"
-        ));
-        assert!(!browser_tool_blocks_thread_auto_approve(
-            "browser_navigate",
-            "Browser: navigate to http://127.0.0.1:8080/"
-        ));
-        assert!(browser_tool_blocks_thread_auto_approve(
-            "browser_click",
-            "Browser: click button \"go\" (#0, ref=button:go:0)"
-        ));
-        assert!(!browser_tool_blocks_thread_auto_approve(
-            "read_file",
-            "Read a file"
-        ));
-    }
-}
-
 pub fn touch_lru(lru: &mut VecDeque<String>, thread_id: &str) {
     if let Some(idx) = lru.iter().position(|id| id == thread_id) {
         lru.remove(idx);
@@ -140,4 +115,29 @@ where
         break;
     }
     evicted
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn external_navigate_blocks_auto_approve() {
+        assert!(browser_tool_blocks_thread_auto_approve(
+            "browser_navigate",
+            "Browser: open external site www.deepseek.com (will allow for this session)"
+        ));
+        assert!(!browser_tool_blocks_thread_auto_approve(
+            "browser_navigate",
+            "Browser: navigate to http://127.0.0.1:8080/"
+        ));
+        assert!(browser_tool_blocks_thread_auto_approve(
+            "browser_click",
+            "Browser: click button \"go\" (#0, ref=button:go:0)"
+        ));
+        assert!(!browser_tool_blocks_thread_auto_approve(
+            "read_file",
+            "Read a file"
+        ));
+    }
 }

@@ -96,8 +96,9 @@ pub struct BrowserError {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
     /// Optional structured detail (e.g. window candidates for ambiguous routing).
+    /// Boxed so `Result<_, BrowserError>` stays under clippy's `result_large_err` limit.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<serde_json::Value>,
+    pub detail: Option<Box<serde_json::Value>>,
 }
 
 impl BrowserError {

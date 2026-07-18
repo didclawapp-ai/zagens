@@ -107,6 +107,7 @@ fn unauthorized(msg: &str) -> (StatusCode, Json<BridgeOpResponse>) {
     )
 }
 
+#[allow(clippy::result_large_err)] // axum handler Err carries (StatusCode, Json<…>)
 fn require_auth(
     state: &BridgeState,
     headers: &HeaderMap,
@@ -150,10 +151,10 @@ fn ambiguous_error(message: String, app: &AppHandle) -> BrowserError {
         code: "browser_window_ambiguous".into(),
         message,
         hint,
-        detail: Some(serde_json::json!({
+        detail: Some(Box::new(serde_json::json!({
             "candidates": candidates,
             "lastFocused": focused,
-        })),
+        }))),
     }
 }
 
