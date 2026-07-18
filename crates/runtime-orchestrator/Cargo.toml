@@ -18,10 +18,10 @@ path = "src/lib.rs"
 async-trait.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
-zagens-core = { path = "../core", version = "0.8.6" }
-zagens-protocol = { path = "../protocol", version = "0.8.6" }
-zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.8.6" }
-zagens-tools = { path = "../tools", version = "0.8.6" }
+zagens-core = { path = "../core", version = "0.8.7" }
+zagens-protocol = { path = "../protocol", version = "0.8.7" }
+zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.8.7" }
+zagens-tools = { path = "../tools", version = "0.8.7" }
 futures-util = "0.3.31"
 rusqlite.workspace = true
 schemars = { version = "1.2.1", features = ["derive", "preserve_order", "chrono04"] }

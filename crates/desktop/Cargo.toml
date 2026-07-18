@@ -1,7 +1,7 @@
 [package]
 name = "zagens-desktop"
 # Aligned with workspace runtime line at 0.7.4 — see CHANGELOG.md.
-version = "0.8.6"
+version = "0.8.7"
 edition.workspace = true
 description = "Zagens — Open-source agent harness for DeepSeek V4 (Tauri desktop + embedded runtime sidecar)"
 license.workspace = true
@@ -20,8 +20,8 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-zagens-config = { path = "../config", version = "0.8.6" }
-zagens-secrets = { path = "../secrets", version = "0.8.6" }
+zagens-config = { path = "../config", version = "0.8.7" }
+zagens-secrets = { path = "../secrets", version = "0.8.7" }
 toml.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
@@ -55,7 +55,7 @@ axum = { workspace = true }
 tower-http = { version = "0.6", features = ["cors"] }
 
 [target.'cfg(windows)'.dependencies]
-zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.8.6" }
+zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.8.7" }
 webview2-com = "0.38"
 windows = { version = "0.61", features = ["Win32_Foundation"] }
 

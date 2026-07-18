@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.6`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.6**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.7`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.7**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > Prefer updating `[Unreleased]` incrementally going forward.
 
 ## [Unreleased]
+
+## [0.8.7] - 2026-07-18
+
+**Release highlights**
+
+- **Desktop Browser pane (P0–P2):** Embedded WebView host, agent tools (`navigate` / `snapshot` / click-type-scroll / wait / preview), URL policy + session allowlist, YOLO decoupled from global auto-approve.
+- **Desktop Diff thin-layer Git:** Workspace status / changes / file-diff / read-only PR list; Diff-tab badge; force-push approval banner.
+- **Night queue task controls** + integrated terminal lifecycle/UX; **Zagens Neural Ring** app icon.
 
 ### Fixed
 
@@ -51,7 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Desktop Diff 薄层 Git UX（2026-07-18）：** 分支/脏文件计数从 Composer 工具条移到工作台 **Diff 图标标签**（角标 + tooltip）；Composer 不再展示 git 芯片。
 - **Desktop Diff 薄层 Git 性能（2026-07-18）：** `git status -sb --porcelain=v1` 单次快照替代多次子进程；status/changes/snapshot 共享 2s TTL + single-flight；`GET /v1/workspace/snapshot` 供 Diff 一次拉取；`gh pr list` 改异步 `tokio::process`（kill_on_drop，不占 blocking 池）；Composer 徽标 idle/~12s 后探、45s 轮询；Diff 首载 idle 延后、轮询 25s、与 turn-end 解耦；PR 仅展开时拉 `gh`。
-- **Desktop Diff 薄层 Git 抛光（2026-07-18）：** 双源条目可切换「工作区 / 本会话」diff；staged+unstaged 同文件可切换查看；rename 显示 `old → new`；changes 截断 / binary / 冲突 / file-diff 截断有 UI 提示；Composer git 徽标 turn 结束与 visibility 同步刷新。 替换原 DS 交织标为 **Zagens Neural Ring**（圆环 + 神经连接线 + 中心 Z）；源文件 `crates/desktop/icons/svg/zagens-neural-ring.svg`，并经 `cargo tauri icon` 再生 `icons/` 全套与 `web-ui/public/app-icon.png`。
+- **Desktop Diff 薄层 Git 抛光（2026-07-18）：** 双源条目可切换「工作区 / 本会话」diff；staged+unstaged 同文件可切换查看；rename 显示 `old → new`；changes 截断 / binary / 冲突 / file-diff 截断有 UI 提示；Composer git 徽标 turn 结束与 visibility 同步刷新。
+- **Desktop 应用图标（2026-07-18）：** 替换原 DS 交织标为 **Zagens Neural Ring**（圆环 + 神经连接线 + 中心 Z）；源文件 `crates/desktop/icons/svg/zagens-neural-ring.svg`，并经 `cargo tauri icon` 再生 `icons/` 全套与 `web-ui/public/app-icon.png`。
 - **Desktop Browser 收尾（2026-07-17）：** 无 `prefs.json` 时从 `~/.zagens/config.toml` `[browser]` 种子化 `allow_private_lan` / `yolo`；click/type/scroll 审批文案展开稳定 ref 的 role/name/nth；`browser_start_preview` 工具描述注明 `ready_regex`。
 - **Desktop Browser embed fix:** Tauri commands that took `WebviewWindow` broke app-wide after opening an embedded Browser child (`is_webview_window` requires every webview label to match the window). IPC now takes `Webview` and resolves the parent via `webview.window()` (runtime SSE/stream, terminal spawn, window registry, deep link, Browser).
 - **Desktop Browser pane (P0–P2 tails):** `browser_snapshot` / tool `include_screenshot` captures a compact JPEG data-URL via WebView2 CDP on Windows (failure surfaces as `screenshot_note`). Human/agent `file://` navigation allowed only when the path canonicalizes under the window workspace. HTML preview iframe can enable `allow-scripts` without `allow-same-origin` (toggle; default on). Soft post-edit toast suggests opening Browser after `edit_file` / `write_file` / `apply_patch` / `batch_edit` (hint pref default on; agent auto-verify still off).

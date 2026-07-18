@@ -11,5 +11,5 @@ readme.workspace = true
 description = "Model/provider registry and fallback strategy for Zagens agent runtime"
 
 [dependencies]
-zagens-config = { path = "../config", version = "0.8.6" }
+zagens-config = { path = "../config", version = "0.8.7" }
 serde.workspace = true

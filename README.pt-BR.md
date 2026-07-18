@@ -12,12 +12,12 @@ Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo
 
 > **Nota dos autores:** Não acredite que um Agent de IA pode fazer qualquer coisa — ele tem limites. O que podemos fazer é ampliar esses limites.
 
-> **Licença:** [MIT](LICENSE). Linhagem do runtime: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). Capacidades abaixo refletem **Zagens v0.8.6** — veja [CHANGELOG.md](CHANGELOG.md).
+> **Licença:** [MIT](LICENSE). Linhagem do runtime: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/). Capacidades abaixo refletem **Zagens v0.8.7** — veja [CHANGELOG.md](CHANGELOG.md).
 
 | Recurso | Link |
 |---------|------|
 | Guias do usuário | [zagens.com/docs](https://zagens.com/docs) |
-| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (último **`zagens-v0.8.6`**) · [zagens.com/download](https://zagens.com/download) |
+| Downloads | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases) (último **`zagens-v0.8.7`**) · [zagens.com/download](https://zagens.com/download) |
 | Especificações | [`docs/README.md`](docs/README.md) |
 | Contribuição | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | Segurança | [`SECURITY.md`](SECURITY.md) |
@@ -60,15 +60,17 @@ Também: **CRAFT multi-agent** (sub-agents, vereditos fix-loop, blackboard P1 �
 
 ---
 
-## Disponível hoje (v0.8.6)
+## Disponível hoje (v0.8.7)
+
+**Painel Browser no desktop:** WebView embutido (com fallback em janela); ferramentas de agente `browser_navigate` / `snapshot` / click·type·scroll / `wait` / preview; política de URL + allowlist de sessão; YOLO separado do auto-approve global. **Diff Git em camada fina:** status / changes / file-diff / PRs somente leitura; badge na aba Diff; banner de aprovação para force-push. Controles da **night queue** (parar/cancelar/retentar/limpar). Terminal integrado (ciclo de vida + UX). Ícone **Zagens Neural Ring**.
 
 **Harness 2026 H2 (Phase 0–4):** biblioteca de predicados + **`HarnessVerifyLoop`**; **night queue** (`zagens queue` + painel desktop + schedule/hooks); **stage gates** de skill; **Gate-as-Code** (`zagens gate`); **`draft_skill`** + promote; T5 **`explore_codebase`** / **`edit_and_check`**; Agent health (`GET /v1/agent-health`); replay pack + **`zagens trace benchmark`**. Specs: [`docs/harness/`](docs/harness/README.md).
 
-**Timeline de streaming no desktop:** blocos intercalados thinking / tool / text com activity bundles, auto-colapso ao finalizar o turn e legibilidade em turns longos (office / workflow / sub-agente). **Journals de passos de sub-agente**. Higiene de verify LHT + status ao vivo do completion gate.
+**Timeline de streaming no desktop:** blocos intercalados thinking / tool / text com activity bundles, auto-colapso ao finalizar o turn e legibilidade em turns longos (office / workflow / sub-agente / browser). **Journals de passos de sub-agente**. Higiene de verify LHT + status ao vivo do completion gate.
 
 **Motor Kernel V3:** loop de turn event-sourced — log `KernelEvent` em `sessions.db`, planejamento `LiveTurnMachine`, IO `EffectInterpreter`, fixtures golden de replay. Spec: [AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md).
 
-**Desktop (Tauri):** painéis night queue + Agent health; streaming timeline; tema **Dusk**; sessões **git worktree**; **checkpoint/rewind** e **channels**; painel de provedores; overlay por sessão; PTY integrado; export **Kernel Trace Report**. UI em zh-Hans / en / ja / pt-BR.
+**Desktop (Tauri):** Browser + Diff + controles da night queue; painéis Agent health; streaming timeline; tema **Dusk**; sessões **git worktree**; **checkpoint/rewind** e **channels**; painel de provedores; overlay por sessão; PTY integrado; export **Kernel Trace Report**. UI em zh-Hans / en / ja / pt-BR.
 
 **TUI terminal (`zagens-tui`):** shell 3 colunas — rail de sessões, transcript com streaming, composer com `/model` e `/lht`, modal de aprovação, inspector (arquivos / diff / checklist / **context** / agents / MCP), painel LHT inferior recolhível, temas, restauração de sessão (`--fresh` para nova). Mesmas threads runtime e caminho Kernel V3 do desktop.
 
@@ -119,7 +121,7 @@ Specs públicas em [`docs/`](docs/README.md). Direção:
 | **`zagens`** (CLI headless) | ✅ | ✅ | ✅ |
 | **App desktop** | — (use TUI) | — (use TUI) | ✅ instalador |
 
-Instale via **binários pré-compilados** ([Releases `zagens-v0.8.6`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.6)), **`cargo install`** (crates.io) ou **da fonte** (abaixo).
+Instale via **binários pré-compilados** ([Releases `zagens-v0.8.7`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7)), **`cargo install`** (crates.io) ou **da fonte** (abaixo).
 
 **Pré-requisito Rust** (só `cargo install` / fonte): [rustup](https://rustup.rs/) (Rust **1.88+**; CI usa 1.96). Linux/macOS: `source "$HOME/.cargo/env"`; Windows: abra um terminal novo.
 
@@ -132,13 +134,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
 # TUI (primeira compilação: 10–30 min)
-cargo install zagens-cli --version 0.8.6 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
 
 # CLI headless (opcional)
-cargo install zagens-cli --version 0.8.6 --bin zagens --locked
+cargo install zagens-cli --version 0.8.7 --bin zagens --locked
 ```
 
-**Pré-compilado** (sem Rust): baixe `zagens-tui-x86_64-unknown-linux-gnu` e/ou `zagens-x86_64-unknown-linux-gnu` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.6), verifique o `.sha256`, `chmod +x` e coloque no `PATH`.
+**Pré-compilado** (sem Rust): baixe `zagens-tui-x86_64-unknown-linux-gnu` e/ou `zagens-x86_64-unknown-linux-gnu` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7), verifique o `.sha256`, `chmod +x` e coloque no `PATH`.
 
 ```bash
 zagens-tui              # restaura última sessão
@@ -152,29 +154,29 @@ xcode-select --install    # se faltar toolchain C
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
-cargo install zagens-cli --version 0.8.6 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.6 --bin zagens --locked   # opcional
+cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.7 --bin zagens --locked   # opcional
 ```
 
-**Pré-compilado:** `zagens-tui-x86_64-apple-darwin` ou `zagens-tui-aarch64-apple-darwin` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.6).
+**Pré-compilado:** `zagens-tui-x86_64-apple-darwin` ou `zagens-tui-aarch64-apple-darwin` em [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7).
 
 #### Windows
 
-**Pré-compilado (mais rápido):** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.6) — `zagens-tui-x86_64-pc-windows-msvc.exe`, `zagens-x86_64-pc-windows-msvc.exe` (+ `.sha256`). Adicione a pasta ao `PATH` ou copie os `.exe` para uma pasta no `PATH`.
+**Pré-compilado (mais rápido):** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7) — `zagens-tui-x86_64-pc-windows-msvc.exe`, `zagens-x86_64-pc-windows-msvc.exe` (+ `.sha256`). Adicione a pasta ao `PATH` ou copie os `.exe` para uma pasta no `PATH`.
 
 **crates.io** (instale [Rust for Windows](https://rustup.rs/) antes):
 
 ```powershell
-cargo install zagens-cli --version 0.8.6 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.6 --bin zagens --locked
+cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.7 --bin zagens --locked
 ```
 
 ### crates.io (todas as plataformas)
 
 ```bash
-cargo install zagens-cli --version 0.8.6 --bin zagens-tui --features tui --locked   # TUI
-cargo install zagens-cli --version 0.8.6 --bin zagens --locked                   # CLI
-cargo install zagens-cli --version 0.8.6 --bin zagens-runtime --locked           # sidecar HTTP (opcional)
+cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.7 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.7 --bin zagens-runtime --locked           # sidecar HTTP (opcional)
 ```
 
 ### Da fonte — desktop
