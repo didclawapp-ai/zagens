@@ -161,7 +161,7 @@ def main() -> None:
         h.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # ── Blocks ──
-    blocks = payload.get("blocks", [])
+    blocks = payload.get("blocks") or []
     for block in blocks:
         typ = block.get("type", "paragraph")
 

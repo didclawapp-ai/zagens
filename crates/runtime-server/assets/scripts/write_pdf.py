@@ -265,7 +265,7 @@ def main() -> None:
 
     output_dir = os.path.dirname(os.path.abspath(args.output))
 
-    for block in payload.get("blocks", []):
+    for block in payload.get("blocks") or []:
         typ = block.get("type", "paragraph")
 
         if typ == "heading":

@@ -248,7 +248,8 @@ pub fn format_reviewed_gate_block_reason(
 ) -> String {
     format!(
         "reviewed_ratio {:.0}% is below hard threshold {:.0}% ({} of {} areas actually examined with finding/cleared; deferred-only does not count). \
-         Continue P1 on more areas, or append `_global` meta with `partial_closeout` / `部分收口` if the user explicitly approved a partial report.",
+         Completion over cost: continue P1 (more done+finding/cleared) — do not stop for token/time/budget. \
+         Only append `_global` meta `partial_closeout` / `部分收口` if the user explicitly approved a partial report.",
         stats.reviewed_ratio * 100.0,
         config.coverage_reviewed_hard_ratio * 100.0,
         stats.areas_reviewed,
@@ -322,12 +323,14 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Deferred,
                 notes: String::new(),
+                high_complexity: false,
             },
             InventoryArea {
                 id: "a2".into(),
                 path: "p".into(),
                 status: AreaStatus::Done,
                 notes: String::new(),
+                high_complexity: false,
             },
         ]);
         let notes = vec![parse_note_line(
@@ -347,12 +350,14 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Pending,
                 notes: String::new(),
+                high_complexity: false,
             },
             InventoryArea {
                 id: "a2".into(),
                 path: "p".into(),
                 status: AreaStatus::Pending,
                 notes: String::new(),
+                high_complexity: false,
             },
         ]);
         let cfg = ScratchpadConfig {
@@ -371,6 +376,7 @@ mod tests {
             path: "p".into(),
             status: AreaStatus::Deferred,
             notes: String::new(),
+            high_complexity: false,
         }]);
         let notes = vec![parse_note_line(
             &json!({"id":"n1","area_id":"a1","kind":"meta","claim":"out of scope for this sprint"}),
@@ -388,6 +394,7 @@ mod tests {
             path: "frontend/src/types".into(),
             status: AreaStatus::Done,
             notes: String::new(),
+            high_complexity: false,
         }]);
         let notes = vec![parse_note_line(
             &json!({"id":"n1","area_id":"area-types","kind":"meta","claim":"audit complete summary"}),
@@ -417,6 +424,7 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Done,
                 notes: String::new(),
+                high_complexity: false,
             });
         }
         for i in 0..28 {
@@ -425,6 +433,7 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Deferred,
                 notes: String::new(),
+                high_complexity: false,
             });
         }
         let inv = inv_with_areas(areas);
@@ -457,12 +466,14 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Done,
                 notes: String::new(),
+                high_complexity: false,
             },
             InventoryArea {
                 id: "def-0".into(),
                 path: "p".into(),
                 status: AreaStatus::Deferred,
                 notes: String::new(),
+                high_complexity: false,
             },
         ]);
         let notes = vec![

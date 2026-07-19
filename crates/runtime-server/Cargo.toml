@@ -130,3 +130,16 @@ windows-sys = { version = "0.52", features = ["Win32_Foundation"] }
 [lints.rust]
 # Runtime lib retains tools/MCP/config helpers not all reachable from the sidecar binary alone.
 dead_code = "allow"
+
+# Declared areas for `scratchpad_init(template=workspace_audit)` — paths relative to this crate root.
+[package.metadata.zagens.audit]
+must_hit = true
+areas = [
+  { id = "area-runtime-server-core", path = "src/core", label = "Engine core" },
+  { id = "area-runtime-server-tools", path = "src/tools", label = "Tool implementations" },
+  { id = "area-runtime-server-runtime-api", path = "src/runtime_api", label = "HTTP runtime API" },
+  { id = "area-runtime-server-sandbox", path = "src/sandbox", label = "Sandbox backends" },
+  { id = "area-runtime-server-config", path = "src/config", label = "Config loading" },
+  { id = "area-runtime-server-runtime-threads", path = "src/runtime_threads", label = "Thread orchestration" },
+  { id = "area-runtime-server-cli", path = "src/cli", label = "CLI entrypoints" },
+]

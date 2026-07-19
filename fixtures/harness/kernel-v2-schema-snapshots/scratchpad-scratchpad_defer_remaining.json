@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "Scratchpad run directory name. Defaults to active thread_id or task_id when that directory exists."
+    },
+    "reason_prefix": {
+      "type": "string",
+      "description": "Shared defer reason prefix (time/scope/budget). Applied to each pending area as kind=meta; must not be security-risk-only stub."
+    },
+    "area_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional explicit area ids. When omitted, all inventory areas with status=pending are deferred."
+    }
+  },
+  "required": [
+    "reason_prefix"
+  ],
+  "additionalProperties": false
+}

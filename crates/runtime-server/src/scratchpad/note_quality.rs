@@ -1,6 +1,19 @@
 //! Cleared / deferred note claim quality gates (multi-dimension audit balance).
 
+use std::collections::{HashMap, HashSet};
+
+use serde_json::{Value, json};
+
 use crate::scratchpad::schema::{AreaStatus, Inventory, NoteLine};
+
+const DIMENSION_LABELS: &[(u8, &str)] = &[
+    (1, "D1_security"),
+    (2, "D2_correctness"),
+    (3, "D3_tests"),
+    (4, "D4_release"),
+    (5, "D5_docs"),
+    (6, "D6_maintainability"),
+];
 
 const MIN_CLEARED_CLAIM_CHARS: usize = 20;
 
@@ -160,6 +173,73 @@ pub fn extract_dimension_ids(claim: &str) -> Vec<u8> {
         .collect()
 }
 
+/// Aggregate `[D#]` coverage from finding/cleared notes for `scratchpad_status`.
+#[must_use]
+pub fn build_dimension_coverage(notes: &[NoteLine]) -> (Value, Vec<String>) {
+    let mut findings: HashMap<u8, usize> = HashMap::new();
+    let mut cleared: HashMap<u8, usize> = HashMap::new();
+    let mut areas: HashMap<u8, HashSet<String>> = HashMap::new();
+
+    for note in notes {
+        if note.kind != "finding" && note.kind != "cleared" {
+            continue;
+        }
+        let Some(claim) = note.claim.as_deref() else {
+            continue;
+        };
+        for d in extract_dimension_ids(claim) {
+            if note.kind == "finding" {
+                *findings.entry(d).or_insert(0) += 1;
+            } else {
+                *cleared.entry(d).or_insert(0) += 1;
+            }
+            areas.entry(d).or_default().insert(note.area_id.clone());
+        }
+    }
+
+    let mut coverage = serde_json::Map::new();
+    let mut gaps = Vec::new();
+    for &(id, label) in DIMENSION_LABELS {
+        let f = findings.get(&id).copied().unwrap_or(0);
+        let c = cleared.get(&id).copied().unwrap_or(0);
+        let a = areas.get(&id).map(HashSet::len).unwrap_or(0);
+        coverage.insert(
+            label.to_string(),
+            json!({ "findings": f, "cleared": c, "areas": a }),
+        );
+        if f + c == 0 {
+            gaps.push(label.to_string());
+        }
+    }
+    (Value::Object(coverage), gaps)
+}
+
+/// Hint when tracked dimensions are still zero after notes exist.
+#[must_use]
+pub fn build_dimension_gaps_hint(gaps: &[String], notes_total: usize) -> Option<String> {
+    if notes_total == 0 || gaps.is_empty() {
+        return None;
+    }
+    // Only nudge when some review happened but several primary dims are empty.
+    let primary_empty: Vec<&str> = gaps
+        .iter()
+        .filter(|g| {
+            matches!(
+                g.as_str(),
+                "D2_correctness" | "D3_tests" | "D4_release" | "D5_docs" | "D6_maintainability"
+            )
+        })
+        .map(String::as_str)
+        .collect();
+    if primary_empty.len() < 2 {
+        return None;
+    }
+    Some(format!(
+        "dimension gaps: {} coverage is 0 — prioritize non-D1 cleared/findings before P2",
+        primary_empty.join(", ")
+    ))
+}
+
 fn is_security_only_defer_reason(claim: &str) -> bool {
     let t = claim.trim().to_lowercase();
     if t.is_empty() {
@@ -250,5 +330,36 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn dimension_coverage_gaps_when_only_d1() {
+        use crate::scratchpad::schema::parse_note_line;
+        use serde_json::json;
+        let notes = vec![
+            parse_note_line(
+                &json!({
+                    "id": "n1",
+                    "area_id": "a",
+                    "kind": "cleared",
+                    "claim": "[D1] grep secrets — no hardcoded keys in sampled crates/secrets paths"
+                }),
+                1,
+            ),
+            parse_note_line(
+                &json!({
+                    "id": "n2",
+                    "area_id": "b",
+                    "kind": "finding",
+                    "claim": "[D1] trust_mode client field is validated server-side"
+                }),
+                2,
+            ),
+        ];
+        let (_cov, gaps) = build_dimension_coverage(&notes);
+        assert!(gaps.iter().any(|g| g == "D2_correctness"));
+        assert!(gaps.iter().any(|g| g == "D3_tests"));
+        let hint = build_dimension_gaps_hint(&gaps, notes.len()).expect("hint");
+        assert!(hint.contains("dimension gaps"), "{hint}");
     }
 }

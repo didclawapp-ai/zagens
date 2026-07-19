@@ -18,6 +18,7 @@ pub fn default_init_areas() -> Vec<InventoryArea> {
         path: ".".to_string(),
         status: AreaStatus::Pending,
         notes: String::new(),
+        high_complexity: false,
     }]
 }
 
@@ -70,6 +71,7 @@ pub fn parse_init_areas(raw: &[Value]) -> Result<Vec<InventoryArea>, ToolError> 
             path: path.to_string(),
             status: AreaStatus::Pending,
             notes,
+            high_complexity: false,
         });
     }
     Ok(areas)

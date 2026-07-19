@@ -65,3 +65,16 @@ libc = "0.2"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+# Declared areas for `scratchpad_init(template=workspace_audit)` — paths relative to this crate root.
+[package.metadata.zagens.audit]
+must_hit = true
+areas = [
+  { id = "area-desktop", path = "src", label = "Tauri desktop shell (Rust)" },
+  { id = "area-webui-api", path = "web-ui/src/api", label = "Web UI API layer" },
+  { id = "area-webui-types", path = "web-ui/src/types", label = "Web UI TypeScript types" },
+  { id = "area-webui-components", path = "web-ui/src/components", label = "React components" },
+  { id = "area-webui-hooks", path = "web-ui/src/hooks", label = "React hooks" },
+  { id = "area-webui-lib", path = "web-ui/src/lib", label = "Web UI utilities" },
+  { id = "area-webui-i18n", path = "web-ui/src/i18n", label = "Internationalization" },
+]

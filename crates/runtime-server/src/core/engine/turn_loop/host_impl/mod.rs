@@ -1032,6 +1032,25 @@ impl zagens_core::engine::turn_loop::TurnLoopOuterHost for Engine {
         true
     }
     async fn maybe_continue_after_loop_guard_halt(&mut self, turn: &TurnContext) -> bool {
+        // Audit scratchpad recovery is independent of LHT / code-tool surface.
+        if let Some((text, pending)) =
+            crate::core::engine::scratchpad_flow::maybe_continue_after_loop_guard_halt_audit(
+                &self.session.workspace,
+                self.scratchpad_run_id.as_deref(),
+                &self.config.scratchpad,
+            )
+        {
+            self.inject_loop_guard_continuation_steer(turn, text, pending)
+                .await;
+            let _ = self
+                .tx_event
+                .send(Event::status(
+                    "Audit scratchpad: loop-guard Halt recovered — continue P2 via scratchpad_defer_remaining",
+                ))
+                .await;
+            return true;
+        }
+
         if !self.config.long_horizon.enabled || !self.config.task_type.uses_code_tool_surface() {
             return false;
         }

@@ -188,6 +188,7 @@ mod tests {
                 path: "src/".into(),
                 status: AreaStatus::Done,
                 notes: String::new(),
+                high_complexity: false,
             }],
         };
         let notes = vec![parse_note_line(

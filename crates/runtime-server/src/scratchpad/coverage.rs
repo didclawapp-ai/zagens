@@ -181,10 +181,9 @@ pub fn format_p2_defer_workflow_hint(pending_ids: &[String], max_list: usize) ->
         String::new()
     };
     format!(
-        "P2 defer workflow (ONE area per model step — never batch scratchpad_set_area(deferred)): \
-         (1) scratchpad_append {{area_id, kind:meta, claim:<defer reason>}}, \
-         (2) scratchpad_set_area {{area_id, status:deferred}}. \
-         Pending ({}) e.g. [{listed}{suffix}]",
+        "P2 defer: prefer scratchpad_defer_remaining({{reason_prefix}}) to close all pending in one call; \
+         or ONE area per step — scratchpad_append(meta) then scratchpad_set_area(deferred) \
+         (never batch set_area(deferred)). Pending ({}) e.g. [{listed}{suffix}]",
         pending_ids.len()
     )
 }
@@ -286,7 +285,8 @@ pub fn format_reviewed_gate_block_reason(
 ) -> String {
     format!(
         "reviewed_ratio {:.0}% is below hard threshold {:.0}% ({} of {} areas actually examined with finding/cleared; deferred-only does not count). \
-         Continue P1 on more areas, or append `_global` meta with `partial_closeout` / `部分收口` if the user explicitly approved a partial report.",
+         Completion over cost: continue P1 (more done+finding/cleared) — do not stop for token/time/budget. \
+         Only append `_global` meta `partial_closeout` / `部分收口` if the user explicitly approved a partial report.",
         stats.reviewed_ratio * 100.0,
         config.coverage_reviewed_hard_ratio * 100.0,
         stats.areas_reviewed,
@@ -375,18 +375,21 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Done,
                 notes: String::new(),
+                high_complexity: false,
             },
             InventoryArea {
                 id: "pend-b".into(),
                 path: "p".into(),
                 status: AreaStatus::Pending,
                 notes: String::new(),
+                high_complexity: false,
             },
             InventoryArea {
                 id: "pend-c".into(),
                 path: "p".into(),
                 status: AreaStatus::Pending,
                 notes: String::new(),
+                high_complexity: false,
             },
         ]);
         assert_eq!(
@@ -398,7 +401,8 @@ mod tests {
     #[test]
     fn format_p2_defer_workflow_hint_lists_pending() {
         let hint = format_p2_defer_workflow_hint(&["area-x".into(), "area-y".into()], 6);
-        assert!(hint.contains("ONE area per model step"));
+        assert!(hint.contains("scratchpad_defer_remaining"), "{hint}");
+        assert!(hint.contains("ONE area per step"), "{hint}");
         assert!(hint.contains("area-x"));
         assert!(hint.contains("area-y"));
     }
@@ -411,12 +415,14 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Deferred,
                 notes: String::new(),
+                high_complexity: false,
             },
             InventoryArea {
                 id: "a2".into(),
                 path: "p".into(),
                 status: AreaStatus::Done,
                 notes: String::new(),
+                high_complexity: false,
             },
         ]);
         let notes = vec![parse_note_line(
@@ -436,12 +442,14 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Pending,
                 notes: String::new(),
+                high_complexity: false,
             },
             InventoryArea {
                 id: "a2".into(),
                 path: "p".into(),
                 status: AreaStatus::Pending,
                 notes: String::new(),
+                high_complexity: false,
             },
         ]);
         let mut cfg = ScratchpadConfig::default();
@@ -458,6 +466,7 @@ mod tests {
             path: "p".into(),
             status: AreaStatus::Deferred,
             notes: String::new(),
+            high_complexity: false,
         }]);
         let notes = vec![parse_note_line(
             &json!({"id":"n1","area_id":"a1","kind":"meta","claim":"out of scope for this sprint"}),
@@ -475,6 +484,7 @@ mod tests {
             path: "frontend/src/types".into(),
             status: AreaStatus::Done,
             notes: String::new(),
+            high_complexity: false,
         }]);
         let notes = vec![parse_note_line(
             &json!({"id":"n1","area_id":"area-types","kind":"meta","claim":"audit complete summary"}),
@@ -504,6 +514,7 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Done,
                 notes: String::new(),
+                high_complexity: false,
             });
         }
         for i in 0..28 {
@@ -512,6 +523,7 @@ mod tests {
                 path: "p".into(),
                 status: AreaStatus::Deferred,
                 notes: String::new(),
+                high_complexity: false,
             });
         }
         let inv = inv_with_areas(areas);

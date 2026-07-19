@@ -19,7 +19,9 @@ function computeMetrics(status: ScratchpadStatus) {
   const done = status.areas_done ?? 0;
   const deferred = status.areas_deferred ?? 0;
   const inProgress = status.areas_in_progress ?? 0;
-  const accounted = done + deferred + inProgress;
+  const pending = status.areas_pending ?? Math.max(0, total - done - deferred - inProgress);
+  // Inventory closeout = done + deferred only (in_progress does not count as complete).
+  const accounted = done + deferred;
   const pct = total > 0 ? Math.round((accounted / total) * 100) : 0;
   const notesTotal = status.notes_total ?? 0;
   const checklistCompleted = status.checklist_completed ?? 0;
@@ -34,6 +36,7 @@ function computeMetrics(status: ScratchpadStatus) {
     done,
     deferred,
     inProgress,
+    pending,
     accounted,
     pct,
     notesTotal,
@@ -152,15 +155,22 @@ export default function AuditScratchpadRunCard({
             </p>
           ) : null}
 
-          {resume ? (
+          {resume || metrics.pending > 0 || metrics.inProgress > 0 ? (
             <p className="text-t-text-secondary">
               {t('auditScratchpad.resumeArea')}{' '}
               <code className="rounded bg-hover px-1 py-0.5 font-mono text-[11px] text-t-text">
-                {resume}
+                {resume ?? (metrics.pending > 0 ? `pending:${metrics.pending}` : 'in_progress')}
               </code>
             </p>
           ) : metrics.accounted >= metrics.total && metrics.total > 0 ? (
             <p className="font-medium text-success">{t('auditScratchpad.inventoryComplete')}</p>
+          ) : null}
+
+          {isLatest && (status.dimension_gaps?.length ?? 0) > 0 ? (
+            <p className="text-t-text-muted">
+              dimension gaps: {status.dimension_gaps!.slice(0, 6).join(', ')}
+              {(status.dimension_gaps!.length ?? 0) > 6 ? ' …' : ''}
+            </p>
           ) : null}
 
           <p className="text-t-text-muted">

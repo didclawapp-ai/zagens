@@ -45,6 +45,14 @@ use serde_json::{Value, json};
 
 use crate::tools::spec::{ToolContext, ToolError};
 
+/// Result of [`ScratchpadStore::defer_remaining`].
+#[derive(Debug, Clone)]
+pub struct DeferRemainingOutcome {
+    pub deferred_area_ids: Vec<String>,
+    pub skipped_already_closed: usize,
+    pub areas_pending: usize,
+}
+
 static RUN_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 
 fn run_lock(run_id: &str) -> Arc<Mutex<()>> {
@@ -388,6 +396,15 @@ impl ScratchpadStore {
         require_min_notes: usize,
         config: &ScratchpadConfig,
     ) -> Result<Inventory, ToolError> {
+        // Validate membership first so unknown ids never surface as "0 notes" / deferred-meta.
+        let inventory = self.read_inventory()?;
+        if !inventory.areas.iter().any(|a| a.id == area_id) {
+            let valid_ids: Vec<String> = inventory.areas.iter().map(|a| a.id.clone()).collect();
+            return Err(ToolError::invalid_input(format!(
+                "unknown area_id '{area_id}'; valid_area_ids: {valid_ids:?}"
+            )));
+        }
+
         if status == AreaStatus::Done {
             let open_high = open_high_finding_ids(self, area_id)?;
             if !open_high.is_empty() {
@@ -425,7 +442,6 @@ impl ScratchpadStore {
         if status == AreaStatus::Deferred && config.require_deferred_meta {
             let notes = self.read_notes()?;
             if !area_meets_deferred_quality(area_id, &notes) {
-                let inventory = self.read_inventory()?;
                 let pending = pending_area_ids(&inventory);
                 let workflow = format_p2_defer_workflow_hint(&pending, 6);
                 return Err(ToolError::invalid_input(format!(
@@ -449,6 +465,7 @@ impl ScratchpadStore {
             }
         }
         if !found {
+            // Inventory changed under us; still prefer unknown-area messaging.
             let valid_ids: Vec<String> = inventory.areas.iter().map(|a| a.id.clone()).collect();
             return Err(ToolError::invalid_input(format!(
                 "unknown area_id '{area_id}'; valid_area_ids: {valid_ids:?}"
@@ -456,6 +473,94 @@ impl ScratchpadStore {
         }
         self.write_inventory_unlocked(&inventory)?;
         Ok(inventory)
+    }
+
+    /// Atomically defer many pending areas in one tool call (P2 mass closeout).
+    ///
+    /// For each target: append `kind=meta` defer reason (if needed) then
+    /// `set_area(deferred)`. Bypasses the per-step `scratchpad_set_area(deferred)`
+    /// batch reject because it is a different tool name.
+    pub fn defer_remaining(
+        &self,
+        reason_prefix: &str,
+        area_ids: Option<&[String]>,
+        config: &ScratchpadConfig,
+    ) -> Result<DeferRemainingOutcome, ToolError> {
+        let prefix = reason_prefix.trim();
+        if let Err(msg) = coverage::validate_deferred_meta_claim(prefix) {
+            return Err(ToolError::invalid_input(format!(
+                "scratchpad_defer_remaining reason_prefix invalid: {msg}"
+            )));
+        }
+
+        let inventory = self.read_inventory()?;
+        let valid_ids: Vec<String> = inventory.areas.iter().map(|a| a.id.clone()).collect();
+
+        let mut skipped_already_closed = 0usize;
+        let targets: Vec<String> = match area_ids {
+            Some(ids) if !ids.is_empty() => {
+                let mut out = Vec::new();
+                for id in ids {
+                    let Some(area) = inventory.areas.iter().find(|a| a.id == *id) else {
+                        return Err(ToolError::invalid_input(format!(
+                            "unknown area_id '{id}'; valid_area_ids: {valid_ids:?}"
+                        )));
+                    };
+                    if matches!(area.status, AreaStatus::Done | AreaStatus::Deferred) {
+                        skipped_already_closed += 1;
+                        continue;
+                    }
+                    out.push(id.clone());
+                }
+                out
+            }
+            _ => inventory
+                .areas
+                .iter()
+                .filter(|a| a.status == AreaStatus::Pending)
+                .map(|a| a.id.clone())
+                .collect(),
+        };
+
+        if targets.is_empty() {
+            return Ok(DeferRemainingOutcome {
+                deferred_area_ids: Vec::new(),
+                skipped_already_closed,
+                areas_pending: inventory
+                    .areas
+                    .iter()
+                    .filter(|a| a.status == AreaStatus::Pending)
+                    .count(),
+            });
+        }
+
+        let mut deferred_area_ids = Vec::with_capacity(targets.len());
+        for area_id in &targets {
+            let notes = self.read_notes()?;
+            if !coverage::area_meets_deferred_quality(area_id, &notes) {
+                let claim = format!(
+                    "{prefix} — area `{area_id}` deferred via scratchpad_defer_remaining (unreviewed remainder)"
+                );
+                self.append_note(json!({
+                    "area_id": area_id,
+                    "kind": "meta",
+                    "claim": claim,
+                }))?;
+            }
+            self.set_area_status(area_id, AreaStatus::Deferred, None, 0, config)?;
+            deferred_area_ids.push(area_id.clone());
+        }
+
+        let inventory = self.read_inventory()?;
+        Ok(DeferRemainingOutcome {
+            deferred_area_ids,
+            skipped_already_closed,
+            areas_pending: inventory
+                .areas
+                .iter()
+                .filter(|a| a.status == AreaStatus::Pending)
+                .count(),
+        })
     }
 
     pub fn build_status(&self) -> Result<Value, ToolError> {
@@ -541,6 +646,7 @@ impl ScratchpadStore {
                     "path": area.path,
                     "status": area.status.as_str(),
                     "notes_count": notes_count,
+                    "high_complexity": area.high_complexity,
                 })
             })
             .collect();
@@ -549,6 +655,8 @@ impl ScratchpadStore {
         let coverage = compute_coverage_stats(&inventory, &notes, &coverage_cfg);
         let quality_gaps = coverage::areas_failing_quality_gate(&inventory, &notes, &coverage_cfg);
         let quality_gap_ids: Vec<&str> = quality_gaps.iter().map(|g| g.id.as_str()).collect();
+        let (dimension_coverage, dimension_gaps) =
+            crate::scratchpad::note_quality::build_dimension_coverage(&notes);
 
         Ok(json!({
             "run_id": self.run_id,
@@ -571,6 +679,8 @@ impl ScratchpadStore {
             "findings_open_low": findings_open_low,
             "notes_per_area": notes_per_area,
             "areas": areas,
+            "dimension_coverage": dimension_coverage,
+            "dimension_gaps": dimension_gaps,
             "contract_hints": build_contract_hints(
                 areas_pending,
                 areas_done,
@@ -599,10 +709,26 @@ fn build_contract_hints(
     let mut hints = Vec::new();
     if areas_pending > 0 && notes_total > 0 {
         hints.push(
-            "P2 blocked: every pending area needs scratchpad_set_area(done|deferred) before write_file audit report".into(),
+            "completion-over-cost: keep reviewing until the user's audit request is met — do not stop for token/time/budget; \
+             do not self-author partial_closeout without explicit user approval".into(),
         );
         hints.push(
-            "defer rule: ONE area per step — scratchpad_append(meta) then scratchpad_set_area(deferred); never batch multiple deferred calls".into(),
+            "P2 blocked: every pending area needs scratchpad_set_area(done|deferred) before write_file audit report".into(),
+        );
+        if coverage.reviewed_ratio < config.coverage_reviewed_hard_ratio {
+            hints.push(format!(
+                "reviewed_ratio {:.0}% < {:.0}% — continue P1 (more done+finding/cleared) before scratchpad_defer_remaining; \
+                 mass-defer now would shrink a full-audit request",
+                coverage.reviewed_ratio * 100.0,
+                config.coverage_reviewed_hard_ratio * 100.0,
+            ));
+        } else {
+            hints.push(
+                "mass defer OK now: call scratchpad_defer_remaining({reason_prefix}) once — do not batch scratchpad_set_area(deferred)".into(),
+            );
+        }
+        hints.push(
+            "single-area defer: scratchpad_append(meta) then scratchpad_set_area(deferred); ONE area per model step".into(),
         );
     }
     if areas_pending > 0 && notes_total > 0 && areas_done + areas_deferred == 0 {
@@ -612,6 +738,24 @@ fn build_contract_hints(
     }
     if let Some(dim_hint) = coverage::build_dimension_balance_hint(inventory, notes) {
         hints.push(dim_hint);
+    }
+    let (_, dim_gaps) = crate::scratchpad::note_quality::build_dimension_coverage(notes);
+    if let Some(gap_hint) =
+        crate::scratchpad::note_quality::build_dimension_gaps_hint(&dim_gaps, notes_total)
+    {
+        hints.push(gap_hint);
+    }
+    let high_complexity: Vec<&str> = inventory
+        .areas
+        .iter()
+        .filter(|a| a.high_complexity)
+        .map(|a| a.id.as_str())
+        .collect();
+    if !high_complexity.is_empty() {
+        hints.push(format!(
+            "high_complexity areas need deeper P1 review: {}",
+            high_complexity.join(", ")
+        ));
     }
     if areas_pending == 0 && areas_done + areas_deferred > 0 && notes_total > 0 {
         if coverage.accounted_ratio < config.coverage_hard_ratio
@@ -624,7 +768,8 @@ fn build_contract_hints(
             && coverage.reviewed_ratio < config.coverage_reviewed_hard_ratio
         {
             hints.push(
-                "P2 blocked: reviewed_ratio below 40% — deferred areas do not count; continue P1 or append _global meta partial_closeout if user approved partial report".into(),
+                "P2 blocked: reviewed_ratio below 40% — deferred areas do not count; completion-over-cost: continue P1 \
+                 (do not invent partial_closeout without explicit user approval)".into(),
             );
         } else {
             hints.push(
@@ -714,6 +859,96 @@ mod tests {
             .append_note(json!({"area_id": "area-a", "kind": "cleared", "claim": "无"}))
             .expect_err("trivial cleared");
         assert!(err.to_string().contains("cleared claim"));
+    }
+
+    #[test]
+    fn defer_remaining_closes_all_pending_with_meta() {
+        let (_dir, ctx) = temp_workspace();
+        let run_id = "test-defer-remaining";
+        let base = workspace_meta_dir(&ctx.workspace)
+            .join("scratchpad")
+            .join(run_id);
+        std::fs::create_dir_all(&base).expect("mkdir");
+        let inv = json!({
+            "run_id": run_id,
+            "areas": [
+                {"id": "area-a", "path": "src/a", "status": "done", "notes": ""},
+                {"id": "area-b", "path": "src/b", "status": "pending", "notes": ""},
+                {"id": "area-c", "path": "src/c", "status": "pending", "notes": ""},
+                {"id": "area-d", "path": "src/d", "status": "pending", "notes": ""}
+            ]
+        });
+        std::fs::write(
+            base.join("inventory.json"),
+            serde_json::to_string_pretty(&inv).unwrap(),
+        )
+        .expect("write inv");
+        std::fs::write(base.join("notes.jsonl"), "").expect("notes");
+
+        let store = ScratchpadStore::open(&ctx, run_id).expect("open");
+        store
+            .append_note(json!({
+                "area_id": "area-a",
+                "kind": "cleared",
+                "claim": "[D2] sampled area-a — no correctness issues in examined files"
+            }))
+            .expect("seed done area note");
+        let cfg = ScratchpadConfig::default();
+        let outcome = store
+            .defer_remaining(
+                "time/scope: P2 closeout after reviewed core paths",
+                None,
+                &cfg,
+            )
+            .expect("defer remaining");
+        assert_eq!(outcome.deferred_area_ids.len(), 3);
+        assert_eq!(outcome.areas_pending, 0);
+        let inventory = store.read_inventory().expect("inv");
+        assert!(
+            inventory
+                .areas
+                .iter()
+                .all(|a| { matches!(a.status, AreaStatus::Done | AreaStatus::Deferred) })
+        );
+        let notes = store.read_notes().expect("notes");
+        for id in ["area-b", "area-c", "area-d"] {
+            assert!(
+                notes.iter().any(|n| n.area_id == id && n.kind == "meta"),
+                "missing meta for {id}"
+            );
+        }
+    }
+
+    #[test]
+    fn set_area_unknown_id_before_require_min_notes() {
+        let (_dir, ctx) = temp_workspace();
+        write_fixture(&ctx, "test-run-unknown-done");
+        let store = ScratchpadStore::open(&ctx, "test-run-unknown-done").expect("open");
+        let cfg = ScratchpadConfig::default();
+        let err = store
+            .set_area_status("area-desktop", AreaStatus::Done, None, 1, &cfg)
+            .expect_err("unknown");
+        let msg = err.to_string();
+        assert!(msg.contains("valid_area_ids"), "{msg}");
+        assert!(msg.contains("unknown area_id"), "{msg}");
+        assert!(
+            !msg.contains("require_min_notes") && !msg.contains("has 0 note"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn set_area_unknown_id_before_deferred_meta() {
+        let (_dir, ctx) = temp_workspace();
+        write_fixture(&ctx, "test-run-unknown-deferred");
+        let store = ScratchpadStore::open(&ctx, "test-run-unknown-deferred").expect("open");
+        let cfg = ScratchpadConfig::default();
+        let err = store
+            .set_area_status("area-desktop", AreaStatus::Deferred, None, 0, &cfg)
+            .expect_err("unknown");
+        let msg = err.to_string();
+        assert!(msg.contains("valid_area_ids"), "{msg}");
+        assert!(!msg.contains("kind=meta"), "{msg}");
     }
 
     #[test]

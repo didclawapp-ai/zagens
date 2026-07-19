@@ -71,6 +71,33 @@ impl ToolSpec for WriteOfficeTool {
         let format = required_str(&input, "format")?;
         let output_path = resolve_write_office_path(&input, context, format)?;
 
+        if matches!(format, "docx" | "pdf" | "pptx") {
+            match input.get("blocks") {
+                None => {
+                    return Err(ToolError::invalid_input(
+                        "write_office: `blocks` is required for docx/pdf/pptx (non-empty array of content blocks); \
+                         audit reports should prefer write_file markdown as SSOT",
+                    ));
+                }
+                Some(v) if v.is_null() => {
+                    return Err(ToolError::invalid_input(
+                        "write_office: `blocks` must be an array, not null",
+                    ));
+                }
+                Some(v) if !v.is_array() => {
+                    return Err(ToolError::invalid_input(
+                        "write_office: `blocks` must be a JSON array",
+                    ));
+                }
+                Some(v) if v.as_array().is_some_and(|a| a.is_empty()) => {
+                    return Err(ToolError::invalid_input(
+                        "write_office: `blocks` must be non-empty",
+                    ));
+                }
+                _ => {}
+            }
+        }
+
         if let Some(parent) = output_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
                 ToolError::execution_failed(format!("无法创建目录 {}: {}", parent.display(), e))

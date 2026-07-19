@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Audit scratchpad inventory / report gates (S0–S3):** Desktop/runtime-server inventory areas are declared via `[package.metadata.zagens.audit]` (paths relative to crate root; must-hit contract fails loud). Active audit runs gate `deliverables/**` docs (CJK「审核」; `_exempt/` / `non-audit/` escape). `set_area` validates `area_id` first. `write_office` rejects null/empty `blocks` for docx/pdf/pptx. AuditScratchpadPanel no longer shows inventory complete while pending/in_progress remain. Public pointer restored at `docs/desktop/audit-scratchpad-design.md`.
+
+### Added
+
+- **Audit scratchpad P2 closeout (S1):** `scratchpad_defer_remaining`; loop-guard Halt audit recovery; optional staged intermediate reports (`deliverables/audit/staged/*` + `_global` meta `staged_report` when `reviewed_ratio` ≥ 40%).
+- **Audit quality signals (S2):** `scratchpad_status` exposes `dimension_coverage` / `dimension_gaps`; inventory may mark `high_complexity` from on-disk symbol index (no init rebuild); import fails hard on missing `<!-- audit-findings -->` even if craft-verdict exists; `MAX_FILES_PER_AREA` raised to 40.
+- **Audit completion-over-cost prompt:** `base.md` full-repo mode + `audit-repo` skill + scratchpad `contract_hints` / continue steers mandate finishing the user's audit request (no self-budget early stop / unapproved `partial_closeout`); defer_remaining only nudged after `reviewed_ratio` gate.
+- **Audit force `scratchpad_import_agent`:** final audit `write_file` blocked while bound explore/review agents are still running or lack import receipt; import appends `_global` meta `imported_agent:…`. Bundled system skills marker **10→11** (refreshes `audit-repo` on next launch).
+
 ## [0.8.7] - 2026-07-18
 
 **Release highlights**

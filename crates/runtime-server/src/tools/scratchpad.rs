@@ -1,9 +1,10 @@
 //! Audit scratchpad tools (`scratchpad_status`, `scratchpad_append`, …).
 
 use crate::tools::scratchpad_inputs::{
-    scratchpad_append_input_schema, scratchpad_init_input_schema,
-    scratchpad_list_notes_input_schema, scratchpad_set_area_input_schema,
-    scratchpad_status_input_schema, scratchpad_verify_note_input_schema,
+    scratchpad_append_input_schema, scratchpad_defer_remaining_input_schema,
+    scratchpad_init_input_schema, scratchpad_list_notes_input_schema,
+    scratchpad_set_area_input_schema, scratchpad_status_input_schema,
+    scratchpad_verify_note_input_schema,
 };
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -263,6 +264,66 @@ impl ToolSpec for ScratchpadSetAreaTool {
                 "area_id": area_id,
                 "status": status.as_str(),
                 "areas_done": areas_done,
+            }))
+            .unwrap_or_default(),
+        ))
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct ScratchpadDeferRemainingTool;
+
+#[async_trait]
+impl ToolSpec for ScratchpadDeferRemainingTool {
+    fn name(&self) -> &'static str {
+        "scratchpad_defer_remaining"
+    }
+
+    fn description(&self) -> &'static str {
+        "P2 mass closeout: append kind=meta defer reason and set status=deferred for all pending \
+         inventory areas (or an explicit area_ids list) in one call. Prefer this over batching \
+         multiple scratchpad_set_area(deferred) which the runtime rejects."
+    }
+
+    fn input_schema(&self) -> Value {
+        scratchpad_defer_remaining_input_schema()
+    }
+
+    fn capabilities(&self) -> Vec<ToolCapability> {
+        vec![ToolCapability::WritesFiles]
+    }
+
+    fn approval_requirement(&self) -> ApprovalRequirement {
+        ApprovalRequirement::Auto
+    }
+
+    async fn execute(&self, input: Value, context: &ToolContext) -> Result<ToolResult, ToolError> {
+        let run_id = resolve_run_id(context, optional_str(&input, "run_id"))?;
+        let reason_prefix = required_str(&input, "reason_prefix")?;
+        let area_ids: Option<Vec<String>> =
+            input.get("area_ids").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect()
+            });
+        let store = ScratchpadStore::open(context, &run_id)?;
+        let scratchpad_cfg = context
+            .runtime
+            .wire
+            .scratchpad_config
+            .clone()
+            .unwrap_or_default();
+        let outcome = store.defer_remaining(reason_prefix, area_ids.as_deref(), &scratchpad_cfg)?;
+        persist_scratchpad_run(context, &run_id);
+        let status = store.build_status()?;
+        Ok(ToolResult::success(
+            serde_json::to_string_pretty(&json!({
+                "run_id": run_id,
+                "deferred_count": outcome.deferred_area_ids.len(),
+                "deferred_area_ids": outcome.deferred_area_ids,
+                "skipped_already_closed": outcome.skipped_already_closed,
+                "areas_pending": outcome.areas_pending,
+                "status": status,
             }))
             .unwrap_or_default(),
         ))

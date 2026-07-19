@@ -1,6 +1,6 @@
 ---
 name: audit-repo
-description: Full-repo audit (scratchpad + verified findings, finding-first report). Security, correctness, tests, release, and maintainability — not security alone. Runtime requires reviewed_ratio ≥ 40% before write_file unless partial_closeout approved.
+description: Full-repo audit (scratchpad + verified findings, finding-first report). Completion over cost — finish the user's request; no budget early-stop. Security, correctness, tests, release, and maintainability — not security alone. Runtime requires reviewed_ratio ≥ 40% before write_file unless user-approved partial_closeout.
 metadata:
   short-description: Full-repo audit scratchpad workflow
 ---
@@ -10,6 +10,19 @@ metadata:
 Use this skill for **repo-wide code audit**. Pair with `base.md` § Full-repository code review mode (verification, Auditor, caller-trace).
 
 **Do not use** for one module, a single PR, or a quick skim.
+
+## Completion over cost (mandatory — anti-early-stop)
+
+**Goal:** finish what the user actually asked for (full-repo / named scope + deliverable report), with inventory honesty.
+
+| Do | Do not |
+|----|--------|
+| Keep examining until `reviewed_ratio` ≥ 40% (finding/cleared `done` areas) **before** mass-deferring the rest | Stop because of perceived token/time/cost/complexity budget |
+| Use more explore agents, longer `step_timeout_ms`, or continue the parent turn | Self-write `_global` `partial_closeout` unless the user **explicitly** approved a partial audit |
+| Defer only unread remainder **after** real review depth, with concrete unreviewed-dimension reasons | Treat “time/scope closeout” as a default exit when the user asked for a full audit |
+| **Must** `scratchpad_import_agent` every completed explore/review before final `write_file` (runtime blocks otherwise) | Hand-copy sub-agent prose into notes / invent early-stop narratives that shrink the user's request |
+
+Internal model instincts to economize are **wrong** for this task. Runtime cost is the product's concern; **your** job is completion and evidence.
 
 **Priority:** **verified findings first**, then **multi-dimension coverage honesty** (security is one dimension, not the whole audit). Tag `claim` with `[D1]`–`[D10]` on `cleared` notes and substantive defer reasons. Security findings should stay **≤ ~60%** of report entries when other dimensions were in scope.
 
@@ -76,7 +89,7 @@ If `write_file` to audit deliverables is blocked, call `scratchpad_status` — d
 
 `.deepseek/scratchpad/{run_id}/` — `inventory.json` + `notes.jsonl`
 
-**Phase B tools:** `scratchpad_init`, `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`, `scratchpad_import_agent`, `scratchpad_verify_note`.
+**Scratchpad tools:** `scratchpad_init`, `scratchpad_status`, `scratchpad_append`, `scratchpad_list_notes`, `scratchpad_set_area`, `scratchpad_defer_remaining`, `scratchpad_import_agent`, `scratchpad_verify_note`.
 
 **Sidebar:** `checklist_write` / `checklist_update` — one row per inventory area (`{area_id}: {path}`).
 
@@ -88,10 +101,12 @@ If `write_file` to audit deliverables is blocked, call `scratchpad_status` — d
 scratchpad_init({ "template": "workspace_audit", "scope": "…" })
 ```
 
-- **10–40 areas**, ≤ ~20 source files per row — **do not over-split** (avoid 35+ rows that force mass defer).
+- **10–40 areas** — runtime may mark `high_complexity` on heavy dirs; review those deeper in P1.
+- After init: `scratchpad_status` must show must-hit coverage (`area-desktop` / runtime-server / secrets / windows-sandbox paths). If init failed the must-hit contract, fix workspace membership — do not invent `area-desktop`.
 - Run **Regression probes** + 3 baseline bullets (above).
 - `scratchpad_append` `{"kind":"meta","area_id":"_global","claim":"inventory_version 1, N areas"}`.
-- **`checklist_write`** one todo per area (same turn).
+- **`checklist_write`** one todo per area (same turn). Checklist is **not** inventory SSOT — never mark checklist complete while inventory rows stay `pending`.
+- Do **not** invent `_global` `partial_closeout` without explicit user approval. Staged drafts (optional): path under `deliverables/audit/staged/` + `_global` meta `staged_report`; final report still needs inventory closed.
 
 ## P1 — Examine (sub-agent pipeline)
 
@@ -106,7 +121,8 @@ scratchpad_init({ "template": "workspace_audit", "scope": "…" })
 | >40 or `runtime-server/src/tools` | 1800000 |
 
 - Assignment: exact **`area_id`**, **`path`**, **≥2 non-D1 dimensions** to stress (e.g. D2 correctness + D3 tests), plus D1/D6 when paths match. Include `file`+`line` + caller-trace for security claims only.
-- Join: `agent_wait` → import → verify HIGH/BLOCKER → `scratchpad_set_area(done|deferred)`.
+- Join: `agent_wait` → **`scratchpad_import_agent` (mandatory)** → verify HIGH/BLOCKER → `scratchpad_set_area(done|deferred)`.
+- **Runtime gate:** final audit `write_file` is blocked while bound explore/review agents are still running or lack an import receipt (`source: agent:…` / `_global` meta `imported_agent:…`). Missing `<!-- audit-findings -->` → re-spawn, then import — do not hand-copy.
 - **Outlier rule:** cancel + defer agents stuck past `2× median` duration.
 - **`StepLimitReached` ≠ done** — re-spawn narrower scope.
 - **Prefer `done` over `deferred`** until `reviewed_ratio` would pass 40% gate.
@@ -130,13 +146,13 @@ scratchpad_init({ "template": "workspace_audit", "scope": "…" })
 
 `done` without findings → `kind=cleared` **with `[D#]` tag and concrete check evidence (≥20 chars)** before `scratchpad_set_area(done)`. **Forbidden:** `claim: "无"`, `"ok"`, `"no issues"`.
 
-**Defer many pending areas:** never batch `scratchpad_set_area(deferred)` in one step. Per area, in **separate** model steps: `scratchpad_append` (`kind=meta`, defer `claim` naming **unreviewed dimensions / time / scope** — not「低安全风险」alone) → `scratchpad_set_area(deferred)` for that `area_id` only.
+**Defer many pending areas:** only after **`reviewed_ratio` ≥ 40%** (or the user explicitly approved partial). Then call **`scratchpad_defer_remaining`** once with a non-empty `reason_prefix` (unreviewed dimensions / true out-of-scope — not「低安全风险」alone, and **not** “save cost”). Optional `area_ids` limits the set; omit to defer all `pending`. **Never** batch multiple `scratchpad_set_area(deferred)` in one model step (runtime rejects → loop-guard Halt). Single-area path remains: `scratchpad_append(kind=meta)` → `scratchpad_set_area(deferred)` for that `area_id` only.
 
 ## P2 — Synthesize (finding-first report)
 
-**Pre-flight:** inventory closed; `reviewed_ratio` ≥ 40% OR `_global` `partial_closeout`; Auditor for HIGH/BLOCKER per `base.md`.
+**Pre-flight:** inventory closed; `reviewed_ratio` ≥ 40% OR user-approved `_global` `partial_closeout`; all completed explore/review agents imported; Auditor for HIGH/BLOCKER per `base.md`. **Do not** invent `partial_closeout` to exit early.
 
-**Paths:** `deliverables/*audit*`, `doc/*audit*`, `CODE_AUDIT*.md`
+**Paths:** prefer `deliverables/audit/*audit*.md` (ASCII `audit` in filename). Also recognized: `deliverables/*审核*`, `doc/*audit*`, `CODE_AUDIT*.md`. While an audit run is active, other `deliverables/**` docs are gated too (`deliverables/_exempt/` / `non-audit/` escape).
 
 ### Report template
 
@@ -304,4 +320,4 @@ Title: `# Zagens 全库代码审核报告` — add **`（部分审核）`** when
 
 ## Reference
 
-Design doc: `docs/desktop/audit-scratchpad-design.md`
+Design pointer: `docs/desktop/audit-scratchpad-design.md` (links harness docs + skill; private iteration notes are maintainer-only).

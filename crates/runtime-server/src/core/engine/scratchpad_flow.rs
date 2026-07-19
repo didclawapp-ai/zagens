@@ -50,6 +50,7 @@ pub fn is_scratchpad_write_tool(name: &str) -> bool {
         "scratchpad_init"
             | "scratchpad_append"
             | "scratchpad_set_area"
+            | "scratchpad_defer_remaining"
             | "scratchpad_verify_note"
             | "scratchpad_import_agent"
     )
@@ -324,11 +325,16 @@ pub fn maybe_continue_incomplete_audit(
         "Audit scratchpad P2 incomplete — do **not** end this turn with prose-only output.\n\
          [{l0}]\n\
          Pending areas ({pending}): [{pending_list}{pending_suffix}]\n\
+         **Completion over cost:** keep going until the user's audit request is met — ignore internal \
+         token/time/budget instincts; do **not** invent `partial_closeout` without explicit user approval.\n\
          {defer_workflow}\n\
-         Required before the report: (1) `scratchpad_import_agent` for completed explore agents, \
-         (2) close each pending area with `done` (finding/cleared notes) OR the defer workflow above — **max one defer per model step**, \
+         Required before the report: (1) `scratchpad_import_agent` for completed explore agents \
+         (do not hand-copy prose), \
+         (2) raise `reviewed_ratio` with more `done`+finding/cleared **before** mass defer; only then \
+         `scratchpad_defer_remaining` — never batch `scratchpad_set_area(deferred)`, \
          (3) sync `checklist_update` with inventory, \
-         (4) `write_file` the audit report (verified findings only), OR `_global` meta `partial_closeout` if user approved partial report. \
+         (4) `write_file` the audit report (verified findings only), OR `_global` meta `partial_closeout` \
+         **only if the user approved** a partial report. \
          Call `scratchpad_status` now and continue with tools."
     );
     Some(Message {
@@ -340,6 +346,61 @@ pub fn maybe_continue_incomplete_audit(
     })
 }
 
+/// Loop-guard Halt recovery for active incomplete audit (independent of LHT).
+///
+/// Returns `(steer_text, pending_count)` when the turn should continue.
+pub fn maybe_continue_after_loop_guard_halt_audit(
+    workspace: &Path,
+    run_id: Option<&str>,
+    config: &ScratchpadConfig,
+) -> Option<(String, u32)> {
+    if !config.enabled {
+        return None;
+    }
+    let store = open_store(workspace, run_id, None, None)?;
+    if inventory_complete(&store) {
+        return None;
+    }
+
+    let inventory = store.read_inventory().ok()?;
+    let notes = store.read_notes().ok()?;
+    let stats = compute_coverage_stats(&inventory, &notes, config);
+    let run = store.run_id();
+    let l0 = build_l0_status_line(run, &stats, &resume_area_id_from_inventory(&inventory));
+    let pending_ids: Vec<String> = inventory
+        .areas
+        .iter()
+        .filter(|a| a.status == AreaStatus::Pending)
+        .map(|a| a.id.clone())
+        .collect();
+    let pending = pending_ids.len() as u32;
+    let pending_list = pending_ids
+        .iter()
+        .take(8)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    let pending_suffix = if pending_ids.len() > 8 {
+        format!(" … +{} more", pending_ids.len() - 8)
+    } else {
+        String::new()
+    };
+
+    let text = format!(
+        "Loop-guard Halt during audit scratchpad — do **not** end the turn.\n\
+         [{l0}]\n\
+         Pending areas ({pending}): [{pending_list}{pending_suffix}]\n\
+         Batching `scratchpad_set_area(deferred)` is rejected and can trip the failure Halt.\n\
+         **Completion over cost:** do not abandon the user's audit request for budget reasons.\n\
+         **Recovery:** if `reviewed_ratio` is still below the hard gate, continue P1 (more done areas); \
+         otherwise call `scratchpad_defer_remaining` with a non-empty `reason_prefix` \
+         (unreviewed dimensions — not cost) to close pending in one tool call, then `scratchpad_status`, \
+         then write the audit report only after inventory is fully done|deferred.\n\
+         Continue with tools now."
+    );
+    Some((text, pending.max(1)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,6 +410,40 @@ mod tests {
         assert!(is_readonly_tool("read_file"));
         assert!(!is_readonly_tool("write_file"));
         assert!(is_scratchpad_write_tool("scratchpad_append"));
+        assert!(is_scratchpad_write_tool("scratchpad_defer_remaining"));
+    }
+
+    #[test]
+    fn loop_guard_halt_audit_nudge_when_incomplete() {
+        use serde_json::json;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ws = dir.path().join("ws");
+        std::fs::create_dir_all(&ws).expect("mkdir");
+        let run_id = "halt-audit";
+        let base = zagens_config::workspace_meta_dir(&ws)
+            .join("scratchpad")
+            .join(run_id);
+        std::fs::create_dir_all(&base).expect("mkdir run");
+        let inv = json!({
+            "run_id": run_id,
+            "areas": [
+                {"id": "a1", "path": "p", "status": "pending", "notes": ""},
+                {"id": "a2", "path": "p", "status": "pending", "notes": ""}
+            ]
+        });
+        std::fs::write(
+            base.join("inventory.json"),
+            serde_json::to_string_pretty(&inv).unwrap(),
+        )
+        .expect("write inv");
+        std::fs::write(base.join("notes.jsonl"), "").expect("notes");
+
+        let cfg = ScratchpadConfig::default();
+        let (text, pending) =
+            maybe_continue_after_loop_guard_halt_audit(&ws, Some(run_id), &cfg).expect("nudge");
+        assert!(text.contains("scratchpad_defer_remaining"), "{text}");
+        assert_eq!(pending, 2);
     }
 
     #[test]

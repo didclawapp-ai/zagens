@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::Path;
 
-const BUNDLED_SKILL_VERSION: &str = "10";
+const BUNDLED_SKILL_VERSION: &str = "11";
 
 struct BundledFile {
     path: &'static str,

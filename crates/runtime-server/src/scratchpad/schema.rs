@@ -46,6 +46,9 @@ pub struct InventoryArea {
     pub status: AreaStatus,
     #[serde(default)]
     pub notes: String,
+    /// Directory has many `fn`/`impl_fn` symbols (best-effort; omitted when index missing).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub high_complexity: bool,
 }
 
 /// `inventory.json` root.

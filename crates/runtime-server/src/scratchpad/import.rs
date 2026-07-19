@@ -99,6 +99,21 @@ pub fn import_agent_findings(
     result: &SubAgentResult,
     area_id_override: Option<&str>,
 ) -> Result<Vec<NoteLine>, ToolError> {
+    // S2.4 — missing <!-- audit-findings --> must fail (craft-verdict alone is not enough).
+    if result.structured_findings.is_none()
+        && matches!(
+            result.structured_findings_parse_failure,
+            Some(ParseFailureReason::NoMarker)
+        )
+    {
+        return Err(ToolError::invalid_input(format!(
+            "agent '{}' final output missing <!-- audit-findings --> JSON fence; \
+             re-run explorer/review (craft-verdict alone is not enough for scratchpad_import_agent){}",
+            result.agent_id,
+            structured_import_hint(result)
+        )));
+    }
+
     if !matches!(
         result.status,
         zagens_core::subagent::SubAgentStatus::Completed
@@ -129,6 +144,7 @@ pub fn import_agent_findings(
         let mut remapped = findings.clone();
         remapped.area_id = area_id;
         imported.extend(import_structured_findings(store, &remapped, &source)?);
+        imported.push(append_import_receipt(store, &result.agent_id, &source)?);
         return Ok(imported);
     }
 
@@ -140,6 +156,7 @@ pub fn import_agent_findings(
         imported.extend(import_verdict_as_findings(
             store, &area_id, None, verdict, &source,
         )?);
+        imported.push(append_import_receipt(store, &result.agent_id, &source)?);
         return Ok(imported);
     }
 
@@ -148,6 +165,20 @@ pub fn import_agent_findings(
         result.agent_id,
         structured_import_hint(result)
     )))
+}
+
+fn append_import_receipt(
+    store: &ScratchpadStore,
+    agent_id: &str,
+    source: &str,
+) -> Result<NoteLine, ToolError> {
+    store.append_note(json!({
+        "area_id": "_global",
+        "kind": "meta",
+        "claim": format!("imported_agent:{agent_id}"),
+        "status": "open",
+        "source": source,
+    }))
 }
 
 fn structured_import_hint(result: &SubAgentResult) -> String {
@@ -434,7 +465,13 @@ mod import_gate_tests {
         let (_dir, store) = temp_store();
         let result = completed_result(Some(CompletionReason::NaturalBreak));
         let notes = import_agent_findings(&store, &result, None).expect("import ok");
-        assert_eq!(notes.len(), 1);
+        // cleared (empty items) + _global imported_agent receipt
+        assert_eq!(notes.len(), 2);
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.claim.as_deref() == Some("imported_agent:agent_gate"))
+        );
     }
 
     #[test]
@@ -466,8 +503,9 @@ mod import_gate_tests {
         }
         let notes =
             import_agent_findings(&store, &result, Some("workspace")).expect("override import");
-        assert_eq!(notes.len(), 1);
+        assert_eq!(notes.len(), 2);
         assert_eq!(notes[0].area_id, "workspace");
+        assert_eq!(notes[1].area_id, "_global");
     }
 
     #[test]
@@ -479,7 +517,12 @@ mod import_gate_tests {
             findings.area_path = Some(".".into());
         }
         let notes = import_agent_findings(&store, &result, None).expect("path remap");
-        assert_eq!(notes.len(), 1);
+        assert_eq!(notes.len(), 2);
         assert_eq!(notes[0].area_id, "workspace");
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.claim.as_deref() == Some("imported_agent:agent_gate"))
+        );
     }
 }

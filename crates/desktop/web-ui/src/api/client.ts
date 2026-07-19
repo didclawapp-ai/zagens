@@ -768,6 +768,7 @@ export interface ScratchpadInventoryArea {
   path: string;
   status: 'pending' | 'in_progress' | 'done' | 'deferred' | string;
   notes_count?: number;
+  high_complexity?: boolean;
 }
 
 /** `GET /v1/threads/{id}/scratchpad/status` (audit progress, read-only). */
@@ -789,6 +790,11 @@ export interface ScratchpadStatus {
   findings_open_low?: number;
   notes_per_area?: Record<string, number>;
   areas?: ScratchpadInventoryArea[];
+  dimension_coverage?: Record<
+    string,
+    { findings?: number; cleared?: number; areas?: number }
+  >;
+  dimension_gaps?: string[];
   checklist_completed?: number;
   checklist_total?: number;
   contract_warnings?: string[];

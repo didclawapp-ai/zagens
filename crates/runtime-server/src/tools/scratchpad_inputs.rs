@@ -155,6 +155,24 @@ struct ScratchpadVerifyNoteInput {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(inline)]
 #[serde(deny_unknown_fields)]
+struct ScratchpadDeferRemainingInput {
+    #[schemars(
+        description = "Scratchpad run directory name. Defaults to active thread_id or task_id when that directory exists."
+    )]
+    pub run_id: Option<String>,
+    #[schemars(
+        description = "Shared defer reason prefix (time/scope/budget). Applied to each pending area as kind=meta; must not be security-risk-only stub."
+    )]
+    pub reason_prefix: String,
+    #[schemars(
+        description = "Optional explicit area ids. When omitted, all inventory areas with status=pending are deferred."
+    )]
+    pub area_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(inline)]
+#[serde(deny_unknown_fields)]
 struct ScratchpadImportAgentInput {
     #[schemars(description = "Scratchpad run id (defaults to active thread/task scratchpad)")]
     pub run_id: Option<String>,
@@ -201,6 +219,11 @@ pub fn scratchpad_verify_note_input_schema() -> Value {
 }
 
 #[must_use]
+pub fn scratchpad_defer_remaining_input_schema() -> Value {
+    derived_input_schema::<ScratchpadDeferRemainingInput>()
+}
+
+#[must_use]
 pub fn scratchpad_import_agent_input_schema() -> Value {
     derived_input_schema::<ScratchpadImportAgentInput>()
 }
@@ -210,8 +233,9 @@ mod tests {
     use super::*;
     use crate::tools::schema_sanitize;
     use crate::tools::scratchpad::{
-        ScratchpadAppendTool, ScratchpadInitTool, ScratchpadListNotesTool, ScratchpadSetAreaTool,
-        ScratchpadStatusTool, ScratchpadVerifyNoteTool,
+        ScratchpadAppendTool, ScratchpadDeferRemainingTool, ScratchpadInitTool,
+        ScratchpadListNotesTool, ScratchpadSetAreaTool, ScratchpadStatusTool,
+        ScratchpadVerifyNoteTool,
     };
     use crate::tools::scratchpad_agent::ScratchpadImportAgentTool;
     use crate::tools::spec::ToolSpec;
@@ -236,12 +260,16 @@ mod tests {
     #[test]
     #[ignore = "bootstrap kernel-v2 scratchpad-tool schema snapshot fixtures"]
     fn dump_scratchpad_tool_schemas_for_snapshot_bootstrap() {
-        let tools: [(&str, Box<dyn ToolSpec>); 7] = [
+        let tools: [(&str, Box<dyn ToolSpec>); 8] = [
             ("scratchpad_init", Box::new(ScratchpadInitTool)),
             ("scratchpad_status", Box::new(ScratchpadStatusTool)),
             ("scratchpad_append", Box::new(ScratchpadAppendTool)),
             ("scratchpad_list_notes", Box::new(ScratchpadListNotesTool)),
             ("scratchpad_set_area", Box::new(ScratchpadSetAreaTool)),
+            (
+                "scratchpad_defer_remaining",
+                Box::new(ScratchpadDeferRemainingTool),
+            ),
             ("scratchpad_verify_note", Box::new(ScratchpadVerifyNoteTool)),
             (
                 "scratchpad_import_agent",
@@ -257,12 +285,16 @@ mod tests {
 
     #[test]
     fn scratchpad_tool_model_visible_schemas_match_snapshots() {
-        let tools: [(&str, Box<dyn ToolSpec>); 7] = [
+        let tools: [(&str, Box<dyn ToolSpec>); 8] = [
             ("scratchpad_init", Box::new(ScratchpadInitTool)),
             ("scratchpad_status", Box::new(ScratchpadStatusTool)),
             ("scratchpad_append", Box::new(ScratchpadAppendTool)),
             ("scratchpad_list_notes", Box::new(ScratchpadListNotesTool)),
             ("scratchpad_set_area", Box::new(ScratchpadSetAreaTool)),
+            (
+                "scratchpad_defer_remaining",
+                Box::new(ScratchpadDeferRemainingTool),
+            ),
             ("scratchpad_verify_note", Box::new(ScratchpadVerifyNoteTool)),
             (
                 "scratchpad_import_agent",
