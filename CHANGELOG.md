@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Shared model capability catalog:** `crates/shared-defs/model-catalog.json` is the Rust↔TS SSOT for context/max_output/omit_sampling/thinking flags and per-family `effort_map` (Kimi K3 `off`→`max`); web-ui regenerates via `just model-catalog`. Fixes Agnes/SenseNova `provider_capability` fake 8192 window (now uses catalog, e.g. Agnes chat 256K).
+- **Shared providers.toml:** `crates/shared-defs/providers.toml` generates `ProviderKind` / `ApiProvider`, `ProvidersToml` / `ProvidersConfig`, DEFAULT_* constants, keyring slots, and `PROVIDER_ENV_REGISTRY` for base_url/model env overrides (`just providers`); Ollama default aligned to `qwen2.5-coder:7b` across facade and runtime.
+- **Model catalog TS constants:** web-ui family/default token constants are generated from `model-catalog.json` (no parallel hand-written Kimi/Agnes/V4 numbers).
 - **Moonshot / Kimi K3 provider:** first-class `moonshot` provider (`MOONSHOT_API_KEY`, default `https://api.moonshot.cn/v1`, model `kimi-k3`) with always-on thinking (`reasoning_content` stream + replay), `reasoning_effort` `low`/`high`/`max` (off maps to max), omitted fixed sampling params, 1M context / up to 1M max output.
 - **Audit scratchpad P2 closeout (S1):** `scratchpad_defer_remaining`; loop-guard Halt audit recovery; optional staged intermediate reports (`deliverables/audit/staged/*` + `_global` meta `staged_report` when `reviewed_ratio` ≥ 40%).
 - **Audit quality signals (S2):** `scratchpad_status` exposes `dimension_coverage` / `dimension_gaps`; inventory may mark `high_complexity` from on-disk symbol index (no init rebuild); import fails hard on missing `<!-- audit-findings -->` even if craft-verdict exists; `MAX_FILES_PER_AREA` raised to 40.

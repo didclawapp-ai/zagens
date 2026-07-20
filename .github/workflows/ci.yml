@@ -156,6 +156,16 @@ jobs:
           npm ci --include=dev
           npm run generate:api-types
           git diff --exit-code -- src/api/generated/runtime-api.ts
+      - name: Model catalog TS drift (shared-defs)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          node scripts/generate-model-catalog-ts.mjs
+          git diff --exit-code -- crates/desktop/web-ui/src/lib/generated/modelCatalog.ts
+      - name: Providers.toml generated Rust drift (shared-defs)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python3 scripts/generate-providers.py
+          git diff --exit-code -- crates/config/src/generated crates/runtime-server/src/config/generated crates/secrets/src/generated crates/shared-defs/generated
 
   # Check documentation builds without warnings
   docs:

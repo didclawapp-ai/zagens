@@ -136,6 +136,8 @@ L4 覆盖 CI 中**不在** L1–L3 日常门禁里的专项检查。按场景选
 | | `just openapi` | OpenAPI JSON + `runtime-api.ts` 漂移检查 |
 | | `just openapi-export` / `openapi-sync` | 改 runtime API 后重新导出 / 同步 TS 类型 |
 | | `just api-types` | 仅从已检入 OpenAPI 重新生成 TS |
+| | `just model-catalog` / `model-catalog-check` | 从 `shared-defs/model-catalog.json` 再生 web-ui TS / 漂移门禁 |
+| | `just providers` / `providers-check` | 从 `shared-defs/providers.toml` 再生 enum/defaults/env/keyring / 漂移门禁 |
 | **Runtime 契约** | `just runtime-contracts` | sidecar + CLI + mock E2E 四项（CI ubuntu 额外步骤） |
 | | `just sidecar-contract` / `sidecar-binary` / `cli-contract` / `exec-mock-e2e` | 单项排查 |
 | **版本 / 锁文件** | `just versions` | workspace + desktop 版本一致性（CI Lint） |

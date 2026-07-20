@@ -142,6 +142,22 @@ openapi-export:
 api-types:
     cd {{web-dir}} && npm run generate:api-types
 
+# Regenerate web-ui model catalog from shared-defs/model-catalog.json.
+model-catalog:
+    node scripts/generate-model-catalog-ts.mjs
+
+# Fail if generated modelCatalog.ts drifts from shared-defs JSON.
+model-catalog-check: model-catalog
+    git diff --exit-code -- crates/desktop/web-ui/src/lib/generated/modelCatalog.ts
+
+# Regenerate provider defaults / keyring from shared-defs/providers.toml.
+providers:
+    python scripts/generate-providers.py
+
+# Fail if generated provider Rust/fragments drift from providers.toml.
+providers-check: providers
+    git diff --exit-code -- crates/config/src/generated crates/runtime-server/src/config/generated crates/secrets/src/generated crates/shared-defs/generated
+
 # Export OpenAPI + regenerate TS types (after runtime API edits).
 openapi-sync: openapi-export api-types
 

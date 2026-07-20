@@ -1,7 +1,29 @@
 use super::super::MAX_SUBAGENTS;
+use super::super::generated::{PROVIDER_ENV_REGISTRY, first_nonempty_env};
 use super::super::providers::ApiProvider;
-use super::super::types::{CapacityConfig, Config, MemoryConfig, ProvidersConfig};
+use super::super::types::{CapacityConfig, Config, MemoryConfig, ProviderConfig, ProvidersConfig};
 use super::model::parse_http_headers;
+
+fn provider_entry_mut(config: &mut Config, provider: ApiProvider) -> &mut ProviderConfig {
+    let providers = config
+        .providers
+        .get_or_insert_with(ProvidersConfig::default);
+    match provider {
+        ApiProvider::Deepseek => &mut providers.deepseek,
+        ApiProvider::DeepseekCN => &mut providers.deepseek_cn,
+        ApiProvider::NvidiaNim => &mut providers.nvidia_nim,
+        ApiProvider::Openai => &mut providers.openai,
+        ApiProvider::Openrouter => &mut providers.openrouter,
+        ApiProvider::Novita => &mut providers.novita,
+        ApiProvider::Fireworks => &mut providers.fireworks,
+        ApiProvider::Sglang => &mut providers.sglang,
+        ApiProvider::Vllm => &mut providers.vllm,
+        ApiProvider::Ollama => &mut providers.ollama,
+        ApiProvider::Agnes => &mut providers.agnes,
+        ApiProvider::SenseNova => &mut providers.sensenova,
+        ApiProvider::Moonshot => &mut providers.moonshot,
+    }
+}
 
 // === Environment Overrides ===
 
@@ -9,80 +31,47 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
     if let Ok(value) = std::env::var("DEEPSEEK_PROVIDER") {
         config.provider = Some(value);
     }
-    if let Ok(value) = std::env::var("DEEPSEEK_BASE_URL") {
-        if matches!(config.api_provider(), ApiProvider::NvidiaNim) {
-            config
-                .providers
-                .get_or_insert_with(ProvidersConfig::default)
-                .nvidia_nim
-                .base_url = Some(value);
-        } else {
-            config.base_url = Some(value);
+
+    let active = config.api_provider();
+
+    // Legacy: when Nvidia is active, DEEPSEEK_BASE_URL writes providers.nvidia_nim
+    // (not root). Table-driven deepseek root write is skipped in that case below.
+    if matches!(active, ApiProvider::NvidiaNim)
+        && let Some(url) = first_nonempty_env(&["DEEPSEEK_BASE_URL"])
+    {
+        provider_entry_mut(config, ApiProvider::NvidiaNim).base_url = Some(url);
+    }
+
+    // Provider base_url / model from shared-defs/providers.toml.
+    let mut global_model: Option<String> = None;
+    for def in PROVIDER_ENV_REGISTRY {
+        let Some(api) = ApiProvider::parse(def.id) else {
+            continue;
+        };
+
+        if let Some(url) = first_nonempty_env(def.env_base_url) {
+            if def.base_url_writes_root {
+                if !(matches!(active, ApiProvider::NvidiaNim) && def.id == "deepseek") {
+                    config.base_url = Some(url);
+                }
+            } else if api == active {
+                provider_entry_mut(config, api).base_url = Some(url);
+            }
+        }
+
+        if let Some(model) = first_nonempty_env(def.env_model) {
+            if def.model_env_global {
+                global_model = Some(model);
+            } else if api == active {
+                config.default_text_model = Some(model);
+            }
         }
     }
-    if matches!(config.api_provider(), ApiProvider::NvidiaNim)
-        && let Ok(value) = std::env::var("NVIDIA_NIM_BASE_URL")
-            .or_else(|_| std::env::var("NIM_BASE_URL"))
-            .or_else(|_| std::env::var("NVIDIA_BASE_URL"))
-    {
-        config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default)
-            .nvidia_nim
-            .base_url = Some(value);
+    // Global DEEPSEEK_MODEL* applied last so it wins over provider-scoped *_MODEL.
+    if let Some(model) = global_model {
+        config.default_text_model = Some(model);
     }
-    // OpenRouter / Novita are scoped only on their own provider entry — the
-    // legacy root `base_url` keeps DeepSeek-only semantics.
-    if matches!(config.api_provider(), ApiProvider::Openrouter)
-        && let Ok(value) = std::env::var("OPENROUTER_BASE_URL")
-        && !value.trim().is_empty()
-    {
-        config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default)
-            .openrouter
-            .base_url = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Novita)
-        && let Ok(value) = std::env::var("NOVITA_BASE_URL")
-        && !value.trim().is_empty()
-    {
-        config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default)
-            .novita
-            .base_url = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Fireworks)
-        && let Ok(value) = std::env::var("FIREWORKS_BASE_URL")
-        && !value.trim().is_empty()
-    {
-        config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default)
-            .fireworks
-            .base_url = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Sglang)
-        && let Ok(value) = std::env::var("SGLANG_BASE_URL")
-        && !value.trim().is_empty()
-    {
-        config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default)
-            .sglang
-            .base_url = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Vllm)
-        && let Ok(value) = std::env::var("VLLM_BASE_URL")
-        && !value.trim().is_empty()
-    {
-        config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default)
-            .vllm
-            .base_url = Some(value);
-    }
+
     if let Ok(value) = std::env::var("DEEPSEEK_HTTP_HEADERS")
         && let Ok(headers) = parse_http_headers(&value)
         && !headers.is_empty()
@@ -91,78 +80,10 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
         root_headers.extend(headers.clone());
         config.http_headers = Some(root_headers);
 
-        let provider = config.api_provider();
-        let providers = config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default);
-        let entry = match provider {
-            ApiProvider::Deepseek => &mut providers.deepseek,
-            ApiProvider::DeepseekCN => &mut providers.deepseek_cn,
-            ApiProvider::NvidiaNim => &mut providers.nvidia_nim,
-            ApiProvider::Openai => &mut providers.openai,
-            ApiProvider::Openrouter => &mut providers.openrouter,
-            ApiProvider::Novita => &mut providers.novita,
-            ApiProvider::Fireworks => &mut providers.fireworks,
-            ApiProvider::Sglang => &mut providers.sglang,
-            ApiProvider::Vllm => &mut providers.vllm,
-            ApiProvider::Ollama => &mut providers.ollama,
-            ApiProvider::Agnes => &mut providers.agnes,
-            ApiProvider::SenseNova => &mut providers.sensenova,
-            ApiProvider::Moonshot => &mut providers.moonshot,
-        };
+        let entry = provider_entry_mut(config, config.api_provider());
         let mut provider_headers = entry.http_headers.clone().unwrap_or_default();
         provider_headers.extend(headers);
         entry.http_headers = Some(provider_headers);
-    }
-    if matches!(config.api_provider(), ApiProvider::Ollama)
-        && let Ok(value) = std::env::var("OLLAMA_BASE_URL")
-        && !value.trim().is_empty()
-    {
-        config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default)
-            .ollama
-            .base_url = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Openai)
-        && let Ok(value) = std::env::var("OPENAI_BASE_URL")
-        && !value.trim().is_empty()
-    {
-        config
-            .providers
-            .get_or_insert_with(ProvidersConfig::default)
-            .openai
-            .base_url = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Sglang)
-        && let Ok(value) = std::env::var("SGLANG_MODEL")
-    {
-        config.default_text_model = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Vllm)
-        && let Ok(value) = std::env::var("VLLM_MODEL")
-    {
-        config.default_text_model = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Ollama)
-        && let Ok(value) = std::env::var("OLLAMA_MODEL")
-    {
-        config.default_text_model = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::Openai)
-        && let Ok(value) = std::env::var("OPENAI_MODEL")
-    {
-        config.default_text_model = Some(value);
-    }
-    if let Ok(value) =
-        std::env::var("DEEPSEEK_MODEL").or_else(|_| std::env::var("DEEPSEEK_DEFAULT_TEXT_MODEL"))
-    {
-        config.default_text_model = Some(value);
-    }
-    if matches!(config.api_provider(), ApiProvider::NvidiaNim)
-        && let Ok(value) = std::env::var("NVIDIA_NIM_MODEL")
-    {
-        config.default_text_model = Some(value);
     }
     if let Ok(value) = std::env::var("DEEPSEEK_SKILLS_DIR") {
         config.skills_dir = Some(value);

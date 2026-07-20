@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use zagens_core::chat::is_deepseek_v4_model;
+use zagens_core::chat::{is_deepseek_v4_model, map_model_reasoning_effort};
 
 use crate::config::ApiProvider;
 use crate::models::{ServerToolUsage, SystemPrompt, Usage};
@@ -71,17 +71,10 @@ pub(super) fn apply_reasoning_effort(
     let v4_hosted = is_deepseek_v4_model(model);
     let normalized = effort.trim().to_ascii_lowercase();
 
-    // Kimi K3: thinking is always on; pass low/high/max as-is (do not fold low→high).
-    // `off` cannot disable thinking — map to max.
-    if provider == ApiProvider::Moonshot {
-        let moonshot_effort = match normalized.as_str() {
-            "low" | "minimal" => "low",
-            "high" => "high",
-            "medium" | "mid" | "" => "high",
-            "xhigh" | "max" | "highest" | "off" | "disabled" | "none" | "false" => "max",
-            _ => "max",
-        };
-        body["reasoning_effort"] = json!(moonshot_effort);
+    // Catalog `effort_map` (e.g. kimi_k3): wire `reasoning_effort` only — no
+    // `thinking: disabled` object (always-on thinking families).
+    if let Some(mapped) = map_model_reasoning_effort(model, &normalized) {
+        body["reasoning_effort"] = json!(mapped);
         return;
     }
 
@@ -99,8 +92,7 @@ pub(super) fn apply_reasoning_effort(
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova
-            | ApiProvider::Moonshot => {
+            | ApiProvider::SenseNova => {
                 if v4_hosted {
                     body["thinking"] = json!({ "type": "disabled" });
                 }
@@ -110,6 +102,8 @@ pub(super) fn apply_reasoning_effort(
                     "thinking": false,
                 });
             }
+            // Moonshot / effort_map families handled above via catalog.
+            ApiProvider::Moonshot => {}
         },
         "low" | "minimal" | "medium" | "mid" | "high" | "" => match provider {
             ApiProvider::Deepseek
@@ -125,8 +119,7 @@ pub(super) fn apply_reasoning_effort(
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova
-            | ApiProvider::Moonshot => {
+            | ApiProvider::SenseNova => {
                 if v4_hosted {
                     body["reasoning_effort"] = json!("high");
                     body["thinking"] = json!({ "type": "enabled" });
@@ -138,6 +131,7 @@ pub(super) fn apply_reasoning_effort(
                     "reasoning_effort": "high",
                 });
             }
+            ApiProvider::Moonshot => {}
         },
         "xhigh" | "max" | "highest" => match provider {
             ApiProvider::Deepseek
@@ -153,8 +147,7 @@ pub(super) fn apply_reasoning_effort(
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova
-            | ApiProvider::Moonshot => {
+            | ApiProvider::SenseNova => {
                 if v4_hosted {
                     body["reasoning_effort"] = json!("max");
                     body["thinking"] = json!({ "type": "enabled" });
@@ -166,6 +159,7 @@ pub(super) fn apply_reasoning_effort(
                     "reasoning_effort": "max",
                 });
             }
+            ApiProvider::Moonshot => {}
         },
         _ => {}
     }

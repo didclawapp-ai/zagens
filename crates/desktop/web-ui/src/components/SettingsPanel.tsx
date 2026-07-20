@@ -21,7 +21,7 @@ import {
   systemSettingsToOverlay,
   type ThreadConfigResponse,
 } from '../lib/threadConfigOverlay';
-import { isKimiK3Model } from '../lib/modelParams';
+import { hidesEffortOff, mapReasoningEffort } from '../lib/modelParams';
 
 type WriteScope = 'session' | 'global';
 
@@ -312,8 +312,8 @@ export default function SettingsPanel({
                 className={selectCls}
                 disabled={globalDisabled}
                 value={
-                  isKimiK3Model(settings.default_model) && settings.reasoning_effort === 'off'
-                    ? 'max'
+                  hidesEffortOff(settings.default_model) && settings.reasoning_effort === 'off'
+                    ? (mapReasoningEffort(settings.default_model, 'off') ?? 'max')
                     : settings.reasoning_effort
                 }
                 onChange={(e) => update('reasoning_effort', e.target.value)}
@@ -322,7 +322,7 @@ export default function SettingsPanel({
                 <option value="high">{t('settings.reasoningHigh')}</option>
                 <option value="low">{t('settings.reasoningLow')}</option>
                 <option value="auto">{t('settings.reasoningAuto')}</option>
-                {!isKimiK3Model(settings.default_model) && (
+                {!hidesEffortOff(settings.default_model) && (
                   <option value="off">{t('settings.reasoningOff')}</option>
                 )}
               </select>

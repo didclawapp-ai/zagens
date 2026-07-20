@@ -1065,35 +1065,7 @@ pub struct VisionConfig {
     pub model: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct ProvidersConfig {
-    #[serde(default)]
-    pub deepseek: ProviderConfig,
-    #[serde(default)]
-    pub deepseek_cn: ProviderConfig,
-    #[serde(default)]
-    pub nvidia_nim: ProviderConfig,
-    #[serde(default)]
-    pub openai: ProviderConfig,
-    #[serde(default)]
-    pub openrouter: ProviderConfig,
-    #[serde(default)]
-    pub novita: ProviderConfig,
-    #[serde(default)]
-    pub fireworks: ProviderConfig,
-    #[serde(default)]
-    pub sglang: ProviderConfig,
-    #[serde(default)]
-    pub vllm: ProviderConfig,
-    #[serde(default)]
-    pub ollama: ProviderConfig,
-    #[serde(default)]
-    pub agnes: ProviderConfig,
-    #[serde(default)]
-    pub sensenova: ProviderConfig,
-    #[serde(default)]
-    pub moonshot: ProviderConfig,
-}
+include!("generated/providers_config.rs");
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub(crate) struct ConfigFile {

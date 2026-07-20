@@ -16,6 +16,8 @@ pub const DEEPSEEK_V4_MAX_OUTPUT_TOKENS: u32 = 384 * 1024;
 pub const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 65_536;
 /// NVIDIA NIM hosted chat endpoints cap **completion** tokens (not context length).
 pub const NVIDIA_NIM_MAX_COMPLETION_TOKENS: u32 = 262_144;
+// Kimi K3 numeric constants mirror `shared-defs/model-catalog.json` (`kimi_k3`).
+// Keep in sync via `model_catalog` / `chat` tests — do not change one side alone.
 /// Kimi K3 context window (1M tokens).
 pub const KIMI_K3_CONTEXT_WINDOW_TOKENS: u32 = 1_000_000;
 /// Kimi K3 default `max_completion_tokens` / request default.
@@ -297,37 +299,15 @@ pub trait LlmClient: Send + Sync {
 
 // ── Context window helpers ────────────────────────────────────────────
 
-/// Whether the model id refers to a DeepSeek V4-class model (1M context / high output cap).
-#[must_use]
-pub fn is_deepseek_v4_model(model: &str) -> bool {
-    let lower = model.to_ascii_lowercase();
-    if !lower.contains("deepseek") {
-        return false;
-    }
-    lower.contains("v4-pro")
-        || lower.contains("v4-flash")
-        || lower.contains("v4pro")
-        || lower.contains("v4flash")
-        || (lower.contains("v4") && !lower.contains("v3"))
-}
-
-/// Whether the model id refers to Moonshot Kimi K3 (always-on thinking, 1M context).
-#[must_use]
-pub fn is_kimi_k3_model(model: &str) -> bool {
-    let lower = model.to_ascii_lowercase();
-    lower.contains("kimi-k3") || lower.starts_with("kimi-k")
-}
+pub use crate::model_catalog::{
+    ModelCaps, is_deepseek_v4_model, is_kimi_k3_model, map_model_reasoning_effort,
+    resolve_model_caps,
+};
 
 /// Provider-aware `max_tokens` ceiling for outbound API requests.
 #[must_use]
 pub fn max_output_token_cap_for_model(model: &str) -> u32 {
-    if is_deepseek_v4_model(model) {
-        DEEPSEEK_V4_MAX_OUTPUT_TOKENS
-    } else if is_kimi_k3_model(model) {
-        KIMI_K3_MAX_OUTPUT_TOKENS
-    } else {
-        DEFAULT_MAX_OUTPUT_TOKENS
-    }
+    resolve_model_caps(model).max_output
 }
 
 /// Clamp a client-requested `max_tokens` to the model's provider cap.
@@ -371,69 +351,19 @@ pub fn clamp_max_output_tokens_for_nvidia_nim(wired: u32) -> u32 {
 #[must_use]
 pub fn context_window_for_model(model: &str) -> Option<u32> {
     let lower = model.to_lowercase();
-    if lower.contains("deepseek") {
-        if let Some(explicit_window) = deepseek_context_window_hint(&lower) {
-            return Some(explicit_window);
-        }
-        if lower.contains("v4") {
-            return Some(DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS);
-        }
-        return Some(LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS);
-    }
-    if lower.contains("claude") {
-        return Some(200_000);
-    }
-    if is_kimi_k3_model(&lower) {
-        return Some(KIMI_K3_CONTEXT_WINDOW_TOKENS);
-    }
-    // Agnes AI chat models (agnes-2.0-flash, agnes-1.5-*): 256K context per official docs.
-    if lower.contains("agnes")
-        && !lower.contains("image")
-        && !lower.contains("video")
-        && !lower.contains("embed")
+    // DeepSeek `*k` token-window hints in the model id (e.g. `…-128k`) win over
+    // the static family table when present.
+    if lower.contains("deepseek")
+        && let Some(explicit_window) = deepseek_context_window_hint(&lower)
     {
-        return Some(256_000);
+        return Some(explicit_window);
     }
-    // Qwen / QwQ family — Qwen2.5+ generally support 128K context
-    if lower.contains("qwen") || lower.contains("qwq") {
-        return Some(128_000);
+    let caps = resolve_model_caps(model);
+    if caps.family_id.is_some() {
+        Some(caps.context_window)
+    } else {
+        None
     }
-    // Llama 3.x and later: 128K context
-    if lower.contains("llama-3") || lower.contains("llama3") || lower.contains("llama_3") {
-        return Some(128_000);
-    }
-    // Older Llama / Llama-2: 4K–8K, use conservative 4K
-    if lower.contains("llama") {
-        return Some(4_096);
-    }
-    // Mistral / Mixtral: 32K for older variants, many newer models support 128K
-    if lower.contains("mixtral") {
-        return Some(32_000);
-    }
-    if lower.contains("mistral") {
-        return Some(32_000);
-    }
-    // Gemma 2 / Gemma 3: up to 128K context depending on variant; use 8K as safe lower bound
-    if lower.contains("gemma") {
-        return Some(8_192);
-    }
-    // Phi-3 / Phi-4: Microsoft Phi models generally have 128K context
-    if lower.contains("phi-3")
-        || lower.contains("phi3")
-        || lower.contains("phi-4")
-        || lower.contains("phi4")
-    {
-        return Some(128_000);
-    }
-    // GPT-4 series via OpenAI-compatible endpoints (e.g. OpenRouter)
-    if lower.contains("gpt-4") || lower.contains("gpt4") {
-        return Some(128_000);
-    }
-    // Yi family models from 01-ai
-    if lower.contains("/yi-") || lower.starts_with("yi-") {
-        return Some(200_000);
-    }
-    None
 }
 
 fn deepseek_context_window_hint(model_lower: &str) -> Option<u32> {

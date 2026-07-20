@@ -65,7 +65,7 @@ use crate::models::{
 use crate::config::ApiProvider;
 use zagens_core::chat::{
     clamp_max_output_tokens_for_nvidia_nim, clamp_max_output_tokens_with_catalog_limit,
-    is_kimi_k3_model,
+    resolve_model_caps,
 };
 
 use super::api_parse::{apply_reasoning_effort, parse_usage, system_to_instructions};
@@ -875,20 +875,20 @@ fn log_thinking_mode_violations(body: &Value) {
 }
 
 fn requires_reasoning_content(model: &str) -> bool {
-    if is_kimi_k3_model(model) {
+    let caps = resolve_model_caps(model);
+    if caps.always_thinking || caps.family_id == Some("deepseek_v4") {
         return true;
     }
     let lower = model.to_lowercase();
-    lower.contains("deepseek-v4")
-        || lower.contains("reasoner")
+    lower.contains("reasoner")
         || lower.contains("-reasoning")
         || lower.contains("-thinking")
         || has_deepseek_r_series_marker(&lower)
 }
 
 fn should_replay_reasoning_content(model: &str, effort: Option<&str>) -> bool {
-    // Kimi K3 always thinks; replay even if the UI sent `off` (mapped to max on wire).
-    if is_kimi_k3_model(model) {
+    // Always-on thinking families (e.g. Kimi K3) replay even if UI sent `off`.
+    if resolve_model_caps(model).always_thinking {
         return true;
     }
     if effort
@@ -906,9 +906,9 @@ fn should_replay_reasoning_content(model: &str, effort: Option<&str>) -> bool {
     requires_reasoning_content(model)
 }
 
-/// Kimi K3 fixes temperature/top_p server-side; omit them from the request body.
+/// Omit temperature/top_p when the model catalog marks fixed sampling.
 fn apply_sampling_params(body: &mut Value, request: &MessageRequest) {
-    if is_kimi_k3_model(&request.model) {
+    if resolve_model_caps(&request.model).omit_sampling {
         return;
     }
     if let Some(temperature) = request.temperature {

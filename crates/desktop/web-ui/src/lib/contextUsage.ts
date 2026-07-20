@@ -14,14 +14,12 @@ export interface ThreadDetailWithTurns {
 }
 
 import {
-  AGNES_CHAT_CONTEXT_TOKENS,
-  KIMI_K3_CONTEXT_TOKENS,
-  isDeepSeekV4Model,
-  isKimiK3Model,
-} from './modelParams';
+  DEFAULT_CONTEXT_WINDOW_TOKENS,
+  DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS,
+  resolveModelCaps,
+} from './generated/modelCatalog';
 
-export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
-export const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS = 1_000_000;
+export { DEFAULT_CONTEXT_WINDOW_TOKENS, DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS };
 
 /** Conservative system + tools prompt overhead when the UI cannot read runtime system blocks. */
 export const DEFAULT_SYSTEM_PROMPT_OVERHEAD = 12_000;
@@ -137,30 +135,12 @@ export function contextMeterRingSegments(
 }
 
 export function contextWindowTokensForModel(model: string | undefined): number {
-  if (isDeepSeekV4Model(model ?? '')) {
-    return DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS;
+  if (!model?.trim()) {
+    return DEFAULT_CONTEXT_WINDOW_TOKENS;
   }
-  if (isKimiK3Model(model ?? '')) {
-    return KIMI_K3_CONTEXT_TOKENS;
-  }
-  const lower = (model ?? '').toLowerCase();
-  if (lower.includes('claude')) {
-    return 200_000;
-  }
-  if (lower.includes('deepseek')) {
-    return 128_000;
-  }
-  if (
-    lower.includes('ollama') ||
-    lower.includes('sensenova')
-  ) {
-    return 8192;
-  }
-  if (lower.includes('agnes')) {
-    if (lower.includes('image') || lower.includes('video')) {
-      return DEFAULT_CONTEXT_WINDOW_TOKENS;
-    }
-    return AGNES_CHAT_CONTEXT_TOKENS;
+  const caps = resolveModelCaps(model);
+  if (caps.familyId != null) {
+    return caps.contextWindow;
   }
   return DEFAULT_CONTEXT_WINDOW_TOKENS;
 }

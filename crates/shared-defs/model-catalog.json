@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "defaults": {
+    "context_window": 128000,
+    "max_output": 65536,
+    "omit_sampling": false,
+    "always_thinking": false,
+    "thinking_supported": false
+  },
+  "families": [
+    {
+      "id": "deepseek_v4",
+      "match": {
+        "all": [
+          { "contains": "deepseek" },
+          {
+            "any": [
+              { "contains": "v4-pro" },
+              { "contains": "v4-flash" },
+              { "contains": "v4pro" },
+              { "contains": "v4flash" },
+              {
+                "all": [
+                  { "contains": "v4" },
+                  { "not_contains": "v3" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "context_window": 1000000,
+      "max_output": 393216,
+      "thinking_supported": true
+    },
+    {
+      "id": "kimi_k3",
+      "match": {
+        "any": [
+          { "contains": "kimi-k3" },
+          { "starts_with": "kimi-k" }
+        ]
+      },
+      "context_window": 1000000,
+      "max_output": 1048576,
+      "default_max_output": 131072,
+      "omit_sampling": true,
+      "always_thinking": true,
+      "thinking_supported": true,
+      "effort_map": {
+        "low": "low",
+        "minimal": "low",
+        "high": "high",
+        "medium": "high",
+        "mid": "high",
+        "default": "high",
+        "xhigh": "max",
+        "max": "max",
+        "highest": "max",
+        "off": "max",
+        "disabled": "max",
+        "none": "max",
+        "false": "max"
+      }
+    },
+    {
+      "id": "agnes_chat",
+      "match": {
+        "all": [
+          { "contains": "agnes" },
+          { "not_contains": "image" },
+          { "not_contains": "video" },
+          { "not_contains": "embed" }
+        ]
+      },
+      "context_window": 256000,
+      "max_output": 65536
+    },
+    {
+      "id": "deepseek_legacy",
+      "match": { "contains": "deepseek" },
+      "context_window": 128000,
+      "max_output": 65536
+    },
+    {
+      "id": "claude",
+      "match": { "contains": "claude" },
+      "context_window": 200000,
+      "max_output": 65536
+    },
+    {
+      "id": "qwen",
+      "match": {
+        "any": [{ "contains": "qwen" }, { "contains": "qwq" }]
+      },
+      "context_window": 128000,
+      "max_output": 65536
+    },
+    {
+      "id": "llama3",
+      "match": {
+        "any": [
+          { "contains": "llama-3" },
+          { "contains": "llama3" },
+          { "contains": "llama_3" }
+        ]
+      },
+      "context_window": 128000,
+      "max_output": 65536
+    },
+    {
+      "id": "llama_legacy",
+      "match": { "contains": "llama" },
+      "context_window": 4096,
+      "max_output": 65536
+    },
+    {
+      "id": "mistral",
+      "match": {
+        "any": [{ "contains": "mixtral" }, { "contains": "mistral" }]
+      },
+      "context_window": 32000,
+      "max_output": 65536
+    },
+    {
+      "id": "gemma",
+      "match": { "contains": "gemma" },
+      "context_window": 8192,
+      "max_output": 65536
+    },
+    {
+      "id": "phi",
+      "match": {
+        "any": [
+          { "contains": "phi-3" },
+          { "contains": "phi3" },
+          { "contains": "phi-4" },
+          { "contains": "phi4" }
+        ]
+      },
+      "context_window": 128000,
+      "max_output": 65536
+    },
+    {
+      "id": "gpt4",
+      "match": {
+        "any": [{ "contains": "gpt-4" }, { "contains": "gpt4" }]
+      },
+      "context_window": 128000,
+      "max_output": 65536
+    },
+    {
+      "id": "yi",
+      "match": {
+        "any": [{ "contains": "/yi-" }, { "starts_with": "yi-" }]
+      },
+      "context_window": 200000,
+      "max_output": 65536
+    }
+  ]
+}

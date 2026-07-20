@@ -1,0 +1,239 @@
+# schema_version = 1
+# Single source for provider identity / defaults / keyring / env overrides.
+# Regenerate: `just providers` → checked-in Rust modules + example fragment.
+# Custom providers stay dynamic (not listed). vision is keyring-only (not a chat provider).
+
+[[provider]]
+id = "deepseek"
+rust_variant = "Deepseek"
+aliases = ["deep-seek"]
+display_name = "DeepSeek"
+default_base_url = "https://api.deepseek.com/beta"
+default_model = "deepseek-v4-pro"
+keyring_slot = "deepseek"
+env_api_key = ["DEEPSEEK_API_KEY"]
+env_base_url = ["DEEPSEEK_BASE_URL"]
+env_model = ["DEEPSEEK_MODEL", "DEEPSEEK_DEFAULT_TEXT_MODEL"]
+# Write DEEPSEEK_BASE_URL to root `base_url` (not providers.deepseek).
+base_url_writes_root = true
+# DEEPSEEK_MODEL applies globally (any active provider), matching historical runtime.
+model_env_global = true
+toml_field = "deepseek"
+show_in_desktop_presets = true
+desktop_section = "primary"
+catalog_picker = false
+docs_url = "https://platform.deepseek.com/api_keys"
+
+[[provider]]
+id = "deepseek-cn"
+rust_variant = "DeepseekCN"
+aliases = ["deepseek_china", "deepseekcn", "deepseek-china"]
+display_name = "DeepSeek (中国)"
+default_base_url = "https://api.deepseeki.com"
+default_model = "deepseek-v4-pro"
+keyring_slot = "deepseek"
+env_api_key = ["DEEPSEEK_API_KEY"]
+# Shares DeepSeek root env overrides (no separate CN_* vars).
+toml_field = "deepseek_cn"
+runtime_only = true
+show_in_desktop_presets = false
+catalog_picker = false
+
+[[provider]]
+id = "nvidia-nim"
+rust_variant = "NvidiaNim"
+aliases = ["nvidia", "nvidia_nim", "nim"]
+display_name = "NVIDIA NIM"
+default_base_url = "https://integrate.api.nvidia.com/v1"
+default_model = "deepseek-ai/deepseek-v4-pro"
+default_flash_model = "deepseek-ai/deepseek-v4-flash"
+keyring_slot = "nvidia-nim"
+env_api_key = ["NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY", "DEEPSEEK_API_KEY"]
+env_base_url = ["NVIDIA_NIM_BASE_URL", "NIM_BASE_URL", "NVIDIA_BASE_URL"]
+env_model = ["NVIDIA_NIM_MODEL"]
+keyring_aliases = ["nvidia", "nvidia_nim", "nim"]
+toml_field = "nvidia_nim"
+show_in_desktop_presets = true
+desktop_section = "free"
+catalog_picker = true
+docs_url = "https://build.nvidia.com/settings/api-key"
+
+[[provider]]
+id = "openai"
+rust_variant = "Openai"
+aliases = ["open-ai"]
+# ApiProvider historically also accepts this alias; facade ProviderKind does not.
+runtime_extra_aliases = ["openai-compatible"]
+display_name = "OpenAI"
+default_base_url = "https://api.openai.com/v1"
+default_model = "gpt-4.1"
+keyring_slot = "openai"
+env_api_key = ["OPENAI_API_KEY"]
+env_base_url = ["OPENAI_BASE_URL"]
+env_model = ["OPENAI_MODEL"]
+toml_field = "openai"
+show_in_desktop_presets = false
+catalog_picker = false
+
+[[provider]]
+id = "openrouter"
+rust_variant = "Openrouter"
+aliases = ["open_router"]
+display_name = "OpenRouter"
+default_base_url = "https://openrouter.ai/api/v1"
+default_model = "deepseek/deepseek-v4-pro"
+default_flash_model = "deepseek/deepseek-v4-flash"
+keyring_slot = "openrouter"
+env_api_key = ["OPENROUTER_API_KEY"]
+env_base_url = ["OPENROUTER_BASE_URL"]
+env_model = ["OPENROUTER_MODEL"]
+toml_field = "openrouter"
+show_in_desktop_presets = true
+desktop_section = "free"
+catalog_picker = true
+docs_url = "https://openrouter.ai/docs"
+
+[[provider]]
+id = "novita"
+rust_variant = "Novita"
+aliases = []
+display_name = "Novita AI"
+default_base_url = "https://api.novita.ai/v1"
+default_model = "deepseek/deepseek-v4-pro"
+default_flash_model = "deepseek/deepseek-v4-flash"
+keyring_slot = "novita"
+env_api_key = ["NOVITA_API_KEY"]
+env_base_url = ["NOVITA_BASE_URL"]
+env_model = ["NOVITA_MODEL"]
+toml_field = "novita"
+show_in_desktop_presets = false
+catalog_picker = true
+docs_url = "https://novita.ai/docs"
+
+[[provider]]
+id = "fireworks"
+rust_variant = "Fireworks"
+aliases = ["fireworks-ai"]
+display_name = "Fireworks AI"
+default_base_url = "https://api.fireworks.ai/inference/v1"
+default_model = "accounts/fireworks/models/deepseek-v4-pro"
+keyring_slot = "fireworks"
+env_api_key = ["FIREWORKS_API_KEY"]
+env_base_url = ["FIREWORKS_BASE_URL"]
+env_model = ["FIREWORKS_MODEL"]
+keyring_aliases = ["fireworks-ai"]
+toml_field = "fireworks"
+show_in_desktop_presets = false
+catalog_picker = false
+
+[[provider]]
+id = "sglang"
+rust_variant = "Sglang"
+aliases = ["sg-lang"]
+display_name = "SGLang"
+default_base_url = "http://localhost:30000/v1"
+default_model = "deepseek-ai/DeepSeek-V4-Pro"
+default_flash_model = "deepseek-ai/DeepSeek-V4-Flash"
+keyring_slot = "sglang"
+env_api_key = ["SGLANG_API_KEY"]
+env_base_url = ["SGLANG_BASE_URL"]
+env_model = ["SGLANG_MODEL"]
+keyring_aliases = ["sg-lang"]
+toml_field = "sglang"
+show_in_desktop_presets = false
+catalog_picker = false
+
+[[provider]]
+id = "vllm"
+rust_variant = "Vllm"
+aliases = ["v-llm"]
+display_name = "vLLM"
+default_base_url = "http://localhost:8000/v1"
+default_model = "deepseek-ai/DeepSeek-V4-Pro"
+default_flash_model = "deepseek-ai/DeepSeek-V4-Flash"
+keyring_slot = "vllm"
+env_api_key = ["VLLM_API_KEY"]
+env_base_url = ["VLLM_BASE_URL"]
+env_model = ["VLLM_MODEL"]
+keyring_aliases = ["v-llm"]
+toml_field = "vllm"
+show_in_desktop_presets = false
+catalog_picker = false
+
+[[provider]]
+id = "ollama"
+rust_variant = "Ollama"
+aliases = ["ollama-local"]
+display_name = "Ollama"
+default_base_url = "http://localhost:11434/v1"
+default_model = "qwen2.5-coder:7b"
+keyring_slot = "ollama"
+env_api_key = ["OLLAMA_API_KEY"]
+env_base_url = ["OLLAMA_BASE_URL"]
+env_model = ["OLLAMA_MODEL"]
+keyring_aliases = ["ollama-local"]
+toml_field = "ollama"
+show_in_desktop_presets = true
+desktop_section = "free"
+catalog_picker = false
+docs_url = "https://ollama.com"
+
+[[provider]]
+id = "agnes"
+rust_variant = "Agnes"
+aliases = ["agnes-ai"]
+display_name = "Agnes AI"
+default_base_url = "https://apihub.agnes-ai.com/v1"
+default_model = "agnes-2.0-flash"
+keyring_slot = "agnes"
+env_api_key = ["AGNES_API_KEY", "AGNES_API_TOKEN", "APIHUB_AGNES_API_KEY"]
+env_base_url = ["AGNES_BASE_URL"]
+env_model = ["AGNES_MODEL"]
+keyring_aliases = ["agnes-ai"]
+toml_field = "agnes"
+show_in_desktop_presets = true
+desktop_section = "free"
+catalog_picker = true
+docs_url = "https://agnes-ai.com/doc"
+
+[[provider]]
+id = "sensenova"
+rust_variant = "SenseNova"
+aliases = ["sense-nova", "sense_nova"]
+display_name = "SenseNova"
+default_base_url = "https://token.sensenova.cn/v1"
+default_model = "sensenova-6.7-flash-lite"
+keyring_slot = "sensenova"
+env_api_key = ["SENSENOVA_API_KEY", "SENSENOVA_API_TOKEN"]
+env_base_url = ["SENSENOVA_BASE_URL"]
+env_model = ["SENSENOVA_MODEL"]
+keyring_aliases = ["sense-nova", "sense_nova"]
+toml_field = "sensenova"
+serde_rename = "sensenova"
+show_in_desktop_presets = true
+desktop_section = "free"
+catalog_picker = true
+docs_url = "https://platform.sensenova.cn/docs"
+
+[[provider]]
+id = "moonshot"
+rust_variant = "Moonshot"
+aliases = ["kimi", "moonshot-ai"]
+display_name = "Moonshot (Kimi)"
+default_base_url = "https://api.moonshot.cn/v1"
+default_model = "kimi-k3"
+keyring_slot = "moonshot"
+env_api_key = ["MOONSHOT_API_KEY", "KIMI_API_KEY"]
+env_base_url = ["MOONSHOT_BASE_URL"]
+env_model = ["MOONSHOT_MODEL"]
+keyring_aliases = ["kimi", "moonshot-ai"]
+toml_field = "moonshot"
+show_in_desktop_presets = true
+desktop_section = "free"
+catalog_picker = true
+docs_url = "https://platform.kimi.com/docs/guide/kimi-k3-quickstart"
+
+# Keyring-only slot (not a chat ApiProvider / ProviderKind).
+[[keyring_only]]
+slot = "vision"
+env_api_key = ["VISION_API_KEY", "SILICONFLOW_API_KEY"]

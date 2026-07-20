@@ -1,0 +1,12 @@
+deepseek
+nvidia-nim
+openai
+openrouter
+novita
+fireworks
+sglang
+vllm
+ollama
+agnes
+sensenova
+moonshot

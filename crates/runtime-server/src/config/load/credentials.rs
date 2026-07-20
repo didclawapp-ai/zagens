@@ -227,36 +227,7 @@ pub fn active_provider_has_config_api_key(config: &Config) -> bool {
 
 #[must_use]
 pub fn active_provider_has_env_api_key(config: &Config) -> bool {
-    match config.api_provider() {
-        ApiProvider::Deepseek | ApiProvider::DeepseekCN => {
-            std::env::var("DEEPSEEK_API_KEY").is_ok_and(|k| !k.trim().is_empty())
-        }
-        ApiProvider::NvidiaNim => {
-            std::env::var("NVIDIA_API_KEY").is_ok_and(|k| !k.trim().is_empty())
-                || std::env::var("NVIDIA_NIM_API_KEY").is_ok_and(|k| !k.trim().is_empty())
-        }
-        ApiProvider::Openai => std::env::var("OPENAI_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
-        ApiProvider::Openrouter => {
-            std::env::var("OPENROUTER_API_KEY").is_ok_and(|k| !k.trim().is_empty())
-        }
-        ApiProvider::Novita => std::env::var("NOVITA_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
-        ApiProvider::Fireworks => {
-            std::env::var("FIREWORKS_API_KEY").is_ok_and(|k| !k.trim().is_empty())
-        }
-        ApiProvider::Sglang => std::env::var("SGLANG_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
-        ApiProvider::Vllm => std::env::var("VLLM_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
-        ApiProvider::Ollama => std::env::var("OLLAMA_API_KEY").is_ok_and(|k| !k.trim().is_empty()),
-        ApiProvider::Agnes => std::env::var("AGNES_API_KEY")
-            .or_else(|_| std::env::var("AGNES_API_TOKEN"))
-            .or_else(|_| std::env::var("APIHUB_AGNES_API_KEY"))
-            .is_ok_and(|k| !k.trim().is_empty()),
-        ApiProvider::SenseNova => std::env::var("SENSENOVA_API_KEY")
-            .or_else(|_| std::env::var("SENSENOVA_API_TOKEN"))
-            .is_ok_and(|k| !k.trim().is_empty()),
-        ApiProvider::Moonshot => std::env::var("MOONSHOT_API_KEY")
-            .or_else(|_| std::env::var("KIMI_API_KEY"))
-            .is_ok_and(|k| !k.trim().is_empty()),
-    }
+    zagens_secrets::env_for(config.api_provider().keyring_slot()).is_some()
 }
 
 #[must_use]
@@ -269,31 +240,7 @@ pub fn active_provider_uses_env_only_api_key(config: &Config) -> bool {
 /// prompt for a key inline.
 #[must_use]
 pub fn has_api_key_for(config: &Config, provider: ApiProvider) -> bool {
-    let env_var = match provider {
-        ApiProvider::Deepseek | ApiProvider::DeepseekCN => "DEEPSEEK_API_KEY",
-        ApiProvider::NvidiaNim => "NVIDIA_API_KEY",
-        ApiProvider::Openai => "OPENAI_API_KEY",
-        ApiProvider::Openrouter => "OPENROUTER_API_KEY",
-        ApiProvider::Novita => "NOVITA_API_KEY",
-        ApiProvider::Fireworks => "FIREWORKS_API_KEY",
-        ApiProvider::Sglang => "SGLANG_API_KEY",
-        ApiProvider::Vllm => "VLLM_API_KEY",
-        ApiProvider::Ollama => "OLLAMA_API_KEY",
-        ApiProvider::Agnes => "AGNES_API_KEY",
-        ApiProvider::SenseNova => "SENSENOVA_API_KEY",
-        ApiProvider::Moonshot => "MOONSHOT_API_KEY",
-    };
-    if std::env::var(env_var).is_ok_and(|k| !k.trim().is_empty()) {
-        return true;
-    }
-    if matches!(provider, ApiProvider::Moonshot)
-        && std::env::var("KIMI_API_KEY").is_ok_and(|k| !k.trim().is_empty())
-    {
-        return true;
-    }
-    if matches!(provider, ApiProvider::NvidiaNim)
-        && std::env::var("NVIDIA_NIM_API_KEY").is_ok_and(|k| !k.trim().is_empty())
-    {
+    if zagens_secrets::env_for(provider.keyring_slot()).is_some() {
         return true;
     }
 

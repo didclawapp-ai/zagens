@@ -1,105 +1,4 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ApiProvider {
-    Deepseek,
-    DeepseekCN,
-    NvidiaNim,
-    Openai,
-    Openrouter,
-    Novita,
-    Fireworks,
-    Sglang,
-    Vllm,
-    Ollama,
-    Agnes,
-    SenseNova,
-    Moonshot,
-}
-
-impl ApiProvider {
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "deepseek" | "deep-seek" => Some(Self::Deepseek),
-            "deepseek-cn" | "deepseek_china" | "deepseekcn" | "deepseek-china" => {
-                Some(Self::DeepseekCN)
-            }
-            "nvidia" | "nvidia-nim" | "nvidia_nim" | "nim" => Some(Self::NvidiaNim),
-            "openai" | "open-ai" | "openai-compatible" => Some(Self::Openai),
-            "openrouter" | "open_router" => Some(Self::Openrouter),
-            "novita" => Some(Self::Novita),
-            "fireworks" | "fireworks-ai" => Some(Self::Fireworks),
-            "sglang" | "sg-lang" => Some(Self::Sglang),
-            "vllm" | "v-llm" => Some(Self::Vllm),
-            "ollama" | "ollama-local" => Some(Self::Ollama),
-            "agnes" | "agnes-ai" => Some(Self::Agnes),
-            "sensenova" | "sense-nova" | "sense_nova" => Some(Self::SenseNova),
-            "moonshot" | "kimi" | "moonshot-ai" => Some(Self::Moonshot),
-            _ => None,
-        }
-    }
-
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Deepseek => "deepseek",
-            Self::DeepseekCN => "deepseek-cn",
-            Self::NvidiaNim => "nvidia-nim",
-            Self::Openai => "openai",
-            Self::Openrouter => "openrouter",
-            Self::Novita => "novita",
-            Self::Fireworks => "fireworks",
-            Self::Sglang => "sglang",
-            Self::Vllm => "vllm",
-            Self::Ollama => "ollama",
-            Self::Agnes => "agnes",
-            Self::SenseNova => "sensenova",
-            Self::Moonshot => "moonshot",
-        }
-    }
-
-    /// Human-friendly label for picker UIs / status chips.
-    #[must_use]
-    pub fn display_name(self) -> &'static str {
-        match self {
-            Self::Deepseek => "DeepSeek",
-            Self::DeepseekCN => "DeepSeek (中国)",
-            Self::NvidiaNim => "NVIDIA NIM",
-            Self::Openai => "OpenAI",
-            Self::Openrouter => "OpenRouter",
-            Self::Novita => "Novita AI",
-            Self::Fireworks => "Fireworks AI",
-            Self::Sglang => "SGLang",
-            Self::Vllm => "vLLM",
-            Self::Ollama => "Ollama",
-            Self::Agnes => "Agnes AI",
-            Self::SenseNova => "SenseNova",
-            Self::Moonshot => "Moonshot (Kimi)",
-        }
-    }
-
-    /// All providers, in the order shown in the picker.
-    #[must_use]
-    pub fn all() -> &'static [Self] {
-        &[
-            Self::Deepseek,
-            Self::DeepseekCN,
-            Self::NvidiaNim,
-            Self::Openai,
-            Self::Openrouter,
-            Self::Novita,
-            Self::Fireworks,
-            Self::Sglang,
-            Self::Vllm,
-            Self::Ollama,
-            Self::Agnes,
-            Self::SenseNova,
-            Self::Moonshot,
-        ]
-    }
-}
+pub use super::generated::ApiProvider;
 
 // ============================================================================
 // Provider Capability Matrix
@@ -145,80 +44,18 @@ pub enum RequestPayloadMode {
 /// in the API payload (after normalization / provider-specific mapping).
 #[must_use]
 pub fn provider_capability(provider: ApiProvider, resolved_model: &str) -> ProviderCapability {
-    if matches!(
-        provider,
-        ApiProvider::Ollama | ApiProvider::Openai | ApiProvider::Agnes | ApiProvider::SenseNova
-    ) {
-        return ProviderCapability {
-            provider,
-            resolved_model: resolved_model.to_string(),
-            context_window: 8192,
-            max_output: 4096,
-            thinking_supported: false,
-            cache_telemetry_supported: false,
-            request_payload_mode: RequestPayloadMode::ChatCompletions,
-        };
-    }
+    use zagens_core::chat::resolve_model_caps;
 
-    if provider == ApiProvider::Moonshot {
-        let model_lower = resolved_model.to_ascii_lowercase();
-        let is_kimi_k3 = model_lower.contains("kimi-k3") || model_lower.starts_with("kimi-k");
-        return ProviderCapability {
-            provider,
-            resolved_model: resolved_model.to_string(),
-            context_window: if is_kimi_k3 {
-                crate::models::KIMI_K3_CONTEXT_WINDOW_TOKENS
-            } else {
-                crate::models::context_window_for_model(resolved_model)
-                    .unwrap_or(crate::models::LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS)
-            },
-            max_output: if is_kimi_k3 {
-                crate::models::KIMI_K3_MAX_OUTPUT_TOKENS
-            } else {
-                crate::models::DEFAULT_MAX_OUTPUT_TOKENS
-            },
-            thinking_supported: is_kimi_k3,
-            // Moonshot auto-caches long prefixes; no special request fields.
-            cache_telemetry_supported: false,
-            request_payload_mode: RequestPayloadMode::ChatCompletions,
-        };
-    }
+    let caps = resolve_model_caps(resolved_model);
+    let context_window =
+        crate::models::context_window_for_model(resolved_model).unwrap_or(caps.context_window);
+    let max_output = caps.max_output;
+    let thinking_supported = caps.thinking_supported || caps.always_thinking;
 
-    let model_lower = resolved_model.to_ascii_lowercase();
-    let is_v4_pro = model_lower.contains("v4-pro") || model_lower == "deepseek-v4pro";
-    let is_v4_flash = model_lower.contains("v4-flash")
-        || model_lower == "deepseek-v4flash"
-        || model_lower == "deepseek-v4";
-
-    // Context window: V4-class models get 1M, everything else falls through
-    // to the model's own lookup or a default.
-    let context_window = if is_v4_pro || is_v4_flash {
-        crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
-    } else {
-        crate::models::context_window_for_model(resolved_model)
-            .unwrap_or(crate::models::LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS)
-    };
-
-    // Max output tokens: official DeepSeek V4 API metadata lists 384K;
-    // runtime request caps remain separate and more conservative.
-    let max_output = if is_v4_pro || is_v4_flash {
-        384_000
-    } else {
-        4096
-    };
-
-    // Thinking support: V4 models support thinking on all providers, but
-    // only when the model name matches the V4 family.
-    let thinking_supported = is_v4_pro || is_v4_flash;
-
-    // Cache telemetry: returned only by DeepSeek-native and NVIDIA NIM endpoints.
     let cache_telemetry_supported = matches!(
         provider,
         ApiProvider::Deepseek | ApiProvider::DeepseekCN | ApiProvider::NvidiaNim
     );
-
-    // Request payload mode: all current providers use chat completions.
-    let request_payload_mode = RequestPayloadMode::ChatCompletions;
 
     ProviderCapability {
         provider,
@@ -227,7 +64,7 @@ pub fn provider_capability(provider: ApiProvider, resolved_model: &str) -> Provi
         max_output,
         thinking_supported,
         cache_telemetry_supported,
-        request_payload_mode,
+        request_payload_mode: RequestPayloadMode::ChatCompletions,
     }
 }
 
@@ -331,5 +168,27 @@ mod provider_drift_tests {
         for api in ApiProvider::all() {
             assert_eq!(ApiProvider::parse(api.as_str()), Some(*api));
         }
+    }
+
+    /// Facade provider ids (excluding Custom) must match shared-defs/providers.toml.
+    #[test]
+    fn facade_provider_ids_match_shared_defs_toml() {
+        let raw = include_str!("../../../shared-defs/generated/provider_ids.txt");
+        let mut from_toml: Vec<&str> = raw
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        from_toml.sort_unstable();
+        let mut from_enum: Vec<&str> = ProviderKind::ALL
+            .iter()
+            .filter(|k| **k != ProviderKind::Custom)
+            .map(|k| k.as_str())
+            .collect();
+        from_enum.sort_unstable();
+        assert_eq!(
+            from_enum, from_toml,
+            "ProviderKind facade ids drifted from crates/shared-defs/providers.toml — run `just providers`"
+        );
     }
 }

@@ -12,6 +12,20 @@ use serde::{Deserialize, Serialize};
 use zagens_secrets::SecretSource;
 pub use zagens_secrets::Secrets;
 
+mod generated;
+pub use generated::{
+    DEFAULT_AGNES_BASE_URL, DEFAULT_AGNES_MODEL, DEFAULT_DEEPSEEK_BASE_URL, DEFAULT_DEEPSEEK_MODEL,
+    DEFAULT_FIREWORKS_BASE_URL, DEFAULT_FIREWORKS_MODEL, DEFAULT_MOONSHOT_BASE_URL,
+    DEFAULT_MOONSHOT_MODEL, DEFAULT_NOVITA_BASE_URL, DEFAULT_NOVITA_FLASH_MODEL,
+    DEFAULT_NOVITA_MODEL, DEFAULT_NVIDIA_NIM_BASE_URL, DEFAULT_NVIDIA_NIM_FLASH_MODEL,
+    DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL, DEFAULT_OPENROUTER_BASE_URL,
+    DEFAULT_OPENROUTER_FLASH_MODEL, DEFAULT_OPENROUTER_MODEL, DEFAULT_SENSENOVA_BASE_URL,
+    DEFAULT_SENSENOVA_MODEL, DEFAULT_SGLANG_BASE_URL, DEFAULT_SGLANG_FLASH_MODEL,
+    DEFAULT_SGLANG_MODEL, DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_FLASH_MODEL, DEFAULT_VLLM_MODEL,
+    PROVIDER_ENV_REGISTRY, ProviderKind, ProvidersToml, first_nonempty_env,
+};
+
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
@@ -66,121 +80,6 @@ pub const ADVANCED_CONFIG_EXAMPLE_FILE_NAME: &str = "config.advanced.example.tom
 #[must_use]
 pub fn advanced_config_example_content() -> &'static str {
     include_str!("../assets/config.advanced.example.toml")
-}
-const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-v4-pro";
-const DEFAULT_NVIDIA_NIM_MODEL: &str = "deepseek-ai/deepseek-v4-pro";
-const DEFAULT_NVIDIA_NIM_FLASH_MODEL: &str = "deepseek-ai/deepseek-v4-flash";
-const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1";
-const DEFAULT_DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/beta";
-const DEFAULT_NVIDIA_NIM_BASE_URL: &str = "https://integrate.api.nvidia.com/v1";
-const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
-const DEFAULT_OPENROUTER_MODEL: &str = "deepseek/deepseek-v4-pro";
-const DEFAULT_OPENROUTER_FLASH_MODEL: &str = "deepseek/deepseek-v4-flash";
-const DEFAULT_NOVITA_MODEL: &str = "deepseek/deepseek-v4-pro";
-const DEFAULT_NOVITA_FLASH_MODEL: &str = "deepseek/deepseek-v4-flash";
-const DEFAULT_FIREWORKS_MODEL: &str = "accounts/fireworks/models/deepseek-v4-pro";
-const DEFAULT_SGLANG_MODEL: &str = "deepseek-ai/DeepSeek-V4-Pro";
-const DEFAULT_SGLANG_FLASH_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
-const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
-const DEFAULT_NOVITA_BASE_URL: &str = "https://api.novita.ai/v1";
-const DEFAULT_FIREWORKS_BASE_URL: &str = "https://api.fireworks.ai/inference/v1";
-const DEFAULT_SGLANG_BASE_URL: &str = "http://localhost:30000/v1";
-const DEFAULT_VLLM_MODEL: &str = "deepseek-ai/DeepSeek-V4-Pro";
-const DEFAULT_VLLM_FLASH_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
-const DEFAULT_VLLM_BASE_URL: &str = "http://localhost:8000/v1";
-const DEFAULT_OLLAMA_MODEL: &str = "qwen2.5-coder:7b";
-const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434/v1";
-const DEFAULT_AGNES_MODEL: &str = "agnes-2.0-flash";
-const DEFAULT_AGNES_BASE_URL: &str = "https://apihub.agnes-ai.com/v1";
-const DEFAULT_SENSENOVA_MODEL: &str = "sensenova-6.7-flash-lite";
-const DEFAULT_SENSENOVA_BASE_URL: &str = "https://token.sensenova.cn/v1";
-const DEFAULT_MOONSHOT_MODEL: &str = "kimi-k3";
-const DEFAULT_MOONSHOT_BASE_URL: &str = "https://api.moonshot.cn/v1";
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "kebab-case")]
-pub enum ProviderKind {
-    #[default]
-    Deepseek,
-    NvidiaNim,
-    Openai,
-    Openrouter,
-    Novita,
-    Fireworks,
-    Sglang,
-    Vllm,
-    Ollama,
-    Agnes,
-    #[serde(rename = "sensenova")]
-    SenseNova,
-    Moonshot,
-    /// User-defined OpenAI-compatible provider (see `[custom_providers]`).
-    Custom,
-}
-
-impl ProviderKind {
-    /// All facade provider kinds. Kept in sync with the runtime's
-    /// `ApiProvider` enum by the kernel-v2 M0.5 drift tests
-    /// (`crates/runtime-server/src/config/providers.rs`).
-    pub const ALL: &'static [Self] = &[
-        Self::Deepseek,
-        Self::NvidiaNim,
-        Self::Openai,
-        Self::Openrouter,
-        Self::Novita,
-        Self::Fireworks,
-        Self::Sglang,
-        Self::Vllm,
-        Self::Ollama,
-        Self::Agnes,
-        Self::SenseNova,
-        Self::Moonshot,
-        Self::Custom,
-    ];
-
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Deepseek => "deepseek",
-            Self::NvidiaNim => "nvidia-nim",
-            Self::Openai => "openai",
-            Self::Openrouter => "openrouter",
-            Self::Novita => "novita",
-            Self::Fireworks => "fireworks",
-            Self::Sglang => "sglang",
-            Self::Vllm => "vllm",
-            Self::Ollama => "ollama",
-            Self::Agnes => "agnes",
-            Self::SenseNova => "sensenova",
-            Self::Moonshot => "moonshot",
-            Self::Custom => "custom",
-        }
-    }
-
-    #[must_use]
-    pub fn is_custom(self) -> bool {
-        matches!(self, Self::Custom)
-    }
-
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "custom" => Some(Self::Custom),
-            "deepseek" | "deep-seek" => Some(Self::Deepseek),
-            "nvidia" | "nvidia-nim" | "nvidia_nim" | "nim" => Some(Self::NvidiaNim),
-            "openai" | "open-ai" => Some(Self::Openai),
-            "openrouter" | "open_router" => Some(Self::Openrouter),
-            "novita" => Some(Self::Novita),
-            "fireworks" | "fireworks-ai" => Some(Self::Fireworks),
-            "sglang" | "sg-lang" => Some(Self::Sglang),
-            "vllm" | "v-llm" => Some(Self::Vllm),
-            "ollama" | "ollama-local" => Some(Self::Ollama),
-            "agnes" | "agnes-ai" => Some(Self::Agnes),
-            "sensenova" | "sense-nova" | "sense_nova" => Some(Self::SenseNova),
-            "moonshot" | "kimi" | "moonshot-ai" => Some(Self::Moonshot),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -266,74 +165,6 @@ pub fn vision_user_prompt_for_model(model_id: &str) -> &'static str {
 #[must_use]
 pub fn vision_should_check_degenerate_ocr_template(model_id: &str) -> bool {
     model_id.to_ascii_lowercase().contains("deepseek-ocr")
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ProvidersToml {
-    #[serde(default)]
-    pub deepseek: ProviderConfigToml,
-    #[serde(default)]
-    pub nvidia_nim: ProviderConfigToml,
-    #[serde(default)]
-    pub openai: ProviderConfigToml,
-    #[serde(default)]
-    pub openrouter: ProviderConfigToml,
-    #[serde(default)]
-    pub novita: ProviderConfigToml,
-    #[serde(default)]
-    pub fireworks: ProviderConfigToml,
-    #[serde(default)]
-    pub sglang: ProviderConfigToml,
-    #[serde(default)]
-    pub vllm: ProviderConfigToml,
-    #[serde(default)]
-    pub ollama: ProviderConfigToml,
-    #[serde(default)]
-    pub agnes: ProviderConfigToml,
-    #[serde(default)]
-    pub sensenova: ProviderConfigToml,
-    #[serde(default)]
-    pub moonshot: ProviderConfigToml,
-}
-
-impl ProvidersToml {
-    #[must_use]
-    pub fn for_provider(&self, provider: ProviderKind) -> &ProviderConfigToml {
-        match provider {
-            ProviderKind::Deepseek => &self.deepseek,
-            ProviderKind::NvidiaNim => &self.nvidia_nim,
-            ProviderKind::Openai => &self.openai,
-            ProviderKind::Openrouter => &self.openrouter,
-            ProviderKind::Novita => &self.novita,
-            ProviderKind::Fireworks => &self.fireworks,
-            ProviderKind::Sglang => &self.sglang,
-            ProviderKind::Vllm => &self.vllm,
-            ProviderKind::Ollama => &self.ollama,
-            ProviderKind::Agnes => &self.agnes,
-            ProviderKind::SenseNova => &self.sensenova,
-            ProviderKind::Moonshot => &self.moonshot,
-            // Custom entries live in `ConfigToml.custom_providers`, not `[providers.*]`.
-            ProviderKind::Custom => &self.openai,
-        }
-    }
-
-    pub fn for_provider_mut(&mut self, provider: ProviderKind) -> &mut ProviderConfigToml {
-        match provider {
-            ProviderKind::Deepseek => &mut self.deepseek,
-            ProviderKind::NvidiaNim => &mut self.nvidia_nim,
-            ProviderKind::Openai => &mut self.openai,
-            ProviderKind::Openrouter => &mut self.openrouter,
-            ProviderKind::Novita => &mut self.novita,
-            ProviderKind::Fireworks => &mut self.fireworks,
-            ProviderKind::Sglang => &mut self.sglang,
-            ProviderKind::Vllm => &mut self.vllm,
-            ProviderKind::Ollama => &mut self.ollama,
-            ProviderKind::Agnes => &mut self.agnes,
-            ProviderKind::SenseNova => &mut self.sensenova,
-            ProviderKind::Moonshot => &mut self.moonshot,
-            ProviderKind::Custom => &mut self.openai,
-        }
-    }
 }
 
 /// UI / Tauri command id prefix for user-defined providers (`custom:{slug}`).
@@ -2298,23 +2129,26 @@ struct EnvRuntimeOverrides {
     approval_policy: Option<String>,
     sandbox_mode: Option<String>,
     http_headers: Option<BTreeMap<String, String>>,
-    deepseek_base_url: Option<String>,
-    nvidia_base_url: Option<String>,
-    openai_base_url: Option<String>,
-    openrouter_base_url: Option<String>,
-    novita_base_url: Option<String>,
-    fireworks_base_url: Option<String>,
-    sglang_base_url: Option<String>,
-    vllm_base_url: Option<String>,
-    ollama_base_url: Option<String>,
+    /// Provider id → base_url from env (`PROVIDER_ENV_REGISTRY`).
+    base_urls: BTreeMap<String, String>,
 }
 
 impl EnvRuntimeOverrides {
     fn load() -> Self {
+        let mut base_urls = BTreeMap::new();
+        for def in PROVIDER_ENV_REGISTRY {
+            if def.runtime_only || def.env_base_url.is_empty() {
+                continue;
+            }
+            if let Some(url) = first_nonempty_env(def.env_base_url) {
+                base_urls.insert(def.id.to_string(), url);
+            }
+        }
         Self {
             provider: std::env::var("DEEPSEEK_PROVIDER")
                 .ok()
                 .and_then(|v| ProviderKind::parse(&v)),
+            // Facade historically only reads DEEPSEEK_MODEL (not DEEPSEEK_DEFAULT_TEXT_MODEL).
             model: std::env::var("DEEPSEEK_MODEL").ok(),
             output_mode: std::env::var("DEEPSEEK_OUTPUT_MODE").ok(),
             auth_mode: std::env::var("DEEPSEEK_AUTH_MODE").ok(),
@@ -2328,56 +2162,17 @@ impl EnvRuntimeOverrides {
                 .ok()
                 .and_then(|value| parse_http_headers(&value).ok())
                 .filter(|headers| !headers.is_empty()),
-            deepseek_base_url: std::env::var("DEEPSEEK_BASE_URL")
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
-            nvidia_base_url: std::env::var("NVIDIA_NIM_BASE_URL")
-                .or_else(|_| std::env::var("NIM_BASE_URL"))
-                .or_else(|_| std::env::var("NVIDIA_BASE_URL"))
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
-            openai_base_url: std::env::var("OPENAI_BASE_URL")
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
-            openrouter_base_url: std::env::var("OPENROUTER_BASE_URL")
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
-            novita_base_url: std::env::var("NOVITA_BASE_URL")
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
-            fireworks_base_url: std::env::var("FIREWORKS_BASE_URL")
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
-            sglang_base_url: std::env::var("SGLANG_BASE_URL")
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
-            vllm_base_url: std::env::var("VLLM_BASE_URL")
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
-            ollama_base_url: std::env::var("OLLAMA_BASE_URL")
-                .ok()
-                .filter(|v| !v.trim().is_empty()),
+            base_urls,
         }
     }
 
     fn base_url_for(&self, provider: ProviderKind) -> Option<String> {
         // Defaults belong in the resolver's final fallback so config-file
         // values (`providers.<name>.base_url`) still win when env is unset.
-        match provider {
-            ProviderKind::Deepseek => self.deepseek_base_url.clone(),
-            ProviderKind::NvidiaNim => self.nvidia_base_url.clone(),
-            ProviderKind::Openai => self.openai_base_url.clone(),
-            ProviderKind::Openrouter => self.openrouter_base_url.clone(),
-            ProviderKind::Novita => self.novita_base_url.clone(),
-            ProviderKind::Fireworks => self.fireworks_base_url.clone(),
-            ProviderKind::Sglang => self.sglang_base_url.clone(),
-            ProviderKind::Vllm => self.vllm_base_url.clone(),
-            ProviderKind::Ollama => self.ollama_base_url.clone(),
-            ProviderKind::Agnes => None,
-            ProviderKind::SenseNova => None,
-            ProviderKind::Moonshot => None,
-            ProviderKind::Custom => None,
+        if provider.is_custom() {
+            return None;
         }
+        self.base_urls.get(provider.as_str()).cloned()
     }
 }
 

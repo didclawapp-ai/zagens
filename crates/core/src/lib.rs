@@ -16,6 +16,7 @@ pub mod events;
 pub mod features;
 pub mod long_horizon;
 pub mod lsp;
+pub mod model_catalog;
 pub mod models;
 pub mod project_context;
 pub mod sandbox;

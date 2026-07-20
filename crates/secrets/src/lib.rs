@@ -435,75 +435,12 @@ pub struct KeyringSlotDef {
     pub env_candidates: &'static [&'static str],
 }
 
-/// Canonical keyring slots mirrored into the sidecar process environment on spawn.
-pub static KEYRING_SLOT_REGISTRY: &[KeyringSlotDef] = &[
-    KeyringSlotDef {
-        slot: "deepseek",
-        env_candidates: &["DEEPSEEK_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "openrouter",
-        env_candidates: &["OPENROUTER_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "novita",
-        env_candidates: &["NOVITA_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "nvidia-nim",
-        env_candidates: &["NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY", "DEEPSEEK_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "fireworks",
-        env_candidates: &["FIREWORKS_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "sglang",
-        env_candidates: &["SGLANG_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "vllm",
-        env_candidates: &["VLLM_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "ollama",
-        env_candidates: &["OLLAMA_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "openai",
-        env_candidates: &["OPENAI_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "agnes",
-        env_candidates: &["AGNES_API_KEY", "AGNES_API_TOKEN", "APIHUB_AGNES_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "sensenova",
-        env_candidates: &["SENSENOVA_API_KEY", "SENSENOVA_API_TOKEN"],
-    },
-    KeyringSlotDef {
-        slot: "moonshot",
-        env_candidates: &["MOONSHOT_API_KEY", "KIMI_API_KEY"],
-    },
-    KeyringSlotDef {
-        slot: "vision",
-        env_candidates: &["VISION_API_KEY", "SILICONFLOW_API_KEY"],
-    },
-];
+mod generated;
+pub use generated::KEYRING_SLOT_REGISTRY;
 
 fn registry_def_for_slot(slot: &str) -> Option<&'static KeyringSlotDef> {
     let lowered = slot.to_ascii_lowercase();
-    let canonical = match lowered.as_str() {
-        "nvidia" | "nvidia_nim" | "nim" => "nvidia-nim",
-        "fireworks-ai" => "fireworks",
-        "sg-lang" => "sglang",
-        "v-llm" => "vllm",
-        "ollama-local" => "ollama",
-        "agnes-ai" => "agnes",
-        "sense-nova" | "sense_nova" => "sensenova",
-        "kimi" | "moonshot-ai" => "moonshot",
-        other => other,
-    };
+    let canonical = generated::canonicalize_keyring_slot(lowered.as_str());
     KEYRING_SLOT_REGISTRY
         .iter()
         .find(|def| def.slot == canonical)

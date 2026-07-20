@@ -17,6 +17,10 @@
 #
 # Env vars override file values (see each provider). Keys can also go in OS env
 # instead of this file — never commit real secrets.
+#
+# Machine-readable default stubs (base_url / model / env names) are generated at:
+#   crates/shared-defs/generated/providers.example.toml.fragment
+# (`just providers`). This file keeps richer commentary and popular model lists.
 
 # provider = "openrouter"   # openrouter | openai | ollama | vllm | sglang | novita | fireworks | nvidia-nim
 

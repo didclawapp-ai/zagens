@@ -2022,7 +2022,7 @@ fn provider_capability_deepseek_v4_pro_has_1m_window_and_thinking() {
         cap.context_window,
         crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 384_000);
+    assert_eq!(cap.max_output, zagens_core::chat::DEEPSEEK_V4_MAX_OUTPUT_TOKENS);
     assert!(cap.thinking_supported);
     assert!(cap.cache_telemetry_supported);
     assert_eq!(
@@ -2038,7 +2038,7 @@ fn provider_capability_deepseek_v4_flash_has_1m_window_and_thinking() {
         cap.context_window,
         crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 384_000);
+    assert_eq!(cap.max_output, zagens_core::chat::DEEPSEEK_V4_MAX_OUTPUT_TOKENS);
     assert!(cap.thinking_supported);
     assert!(cap.cache_telemetry_supported);
 }
@@ -2050,7 +2050,7 @@ fn provider_capability_nvidia_nim_v4_pro_maps_correctly() {
         cap.context_window,
         crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 384_000);
+    assert_eq!(cap.max_output, zagens_core::chat::DEEPSEEK_V4_MAX_OUTPUT_TOKENS);
     assert!(cap.thinking_supported);
     assert!(cap.cache_telemetry_supported);
     assert_eq!(
@@ -2066,7 +2066,7 @@ fn provider_capability_nvidia_nim_v4_flash_maps_correctly() {
         cap.context_window,
         crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 384_000);
+    assert_eq!(cap.max_output, zagens_core::chat::DEEPSEEK_V4_MAX_OUTPUT_TOKENS);
     assert!(cap.thinking_supported);
     assert!(cap.cache_telemetry_supported);
 }
@@ -2078,7 +2078,7 @@ fn provider_capability_openrouter_v4_pro_has_thinking_no_cache() {
         cap.context_window,
         crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 384_000);
+    assert_eq!(cap.max_output, zagens_core::chat::DEEPSEEK_V4_MAX_OUTPUT_TOKENS);
     assert!(cap.thinking_supported);
     // OpenRouter does not return DeepSeek prompt-cache telemetry.
     assert!(!cap.cache_telemetry_supported);
@@ -2095,7 +2095,7 @@ fn provider_capability_novita_v4_pro_has_thinking_no_cache() {
         cap.context_window,
         crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 384_000);
+    assert_eq!(cap.max_output, zagens_core::chat::DEEPSEEK_V4_MAX_OUTPUT_TOKENS);
     assert!(cap.thinking_supported);
     assert!(!cap.cache_telemetry_supported);
 }
@@ -2107,7 +2107,7 @@ fn provider_capability_fireworks_v4_pro_has_thinking_no_cache() {
         cap.context_window,
         crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 384_000);
+    assert_eq!(cap.max_output, zagens_core::chat::DEEPSEEK_V4_MAX_OUTPUT_TOKENS);
     assert!(cap.thinking_supported);
     assert!(!cap.cache_telemetry_supported);
 }
@@ -2119,16 +2119,20 @@ fn provider_capability_sglang_v4_pro_has_thinking_no_cache() {
         cap.context_window,
         crate::models::DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 384_000);
+    assert_eq!(cap.max_output, zagens_core::chat::DEEPSEEK_V4_MAX_OUTPUT_TOKENS);
     assert!(cap.thinking_supported);
     assert!(!cap.cache_telemetry_supported);
 }
 
 #[test]
 fn provider_capability_ollama_is_openai_compatible_without_thinking() {
+    // Local Ollama tag with DeepSeek v3 — legacy family, no thinking.
     let cap = provider_capability(ApiProvider::Ollama, "deepseek-v3.1:671b");
-    assert_eq!(cap.context_window, 8192);
-    assert_eq!(cap.max_output, 4096);
+    assert_eq!(
+        cap.context_window,
+        crate::models::LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS
+    );
+    assert_eq!(cap.max_output, crate::models::DEFAULT_MAX_OUTPUT_TOKENS);
     assert!(!cap.thinking_supported);
     assert!(!cap.cache_telemetry_supported);
     assert_eq!(
@@ -2144,8 +2148,24 @@ fn provider_capability_non_v4_model_has_smaller_window() {
         cap.context_window,
         crate::models::LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS
     );
-    assert_eq!(cap.max_output, 4096);
+    assert_eq!(cap.max_output, crate::models::DEFAULT_MAX_OUTPUT_TOKENS);
     assert!(!cap.thinking_supported);
+}
+
+#[test]
+fn provider_capability_agnes_chat_uses_catalog_256k() {
+    let cap = provider_capability(ApiProvider::Agnes, "agnes-2.0-flash");
+    assert_eq!(cap.context_window, 256_000);
+    assert_eq!(cap.max_output, crate::models::DEFAULT_MAX_OUTPUT_TOKENS);
+    assert!(!cap.thinking_supported);
+}
+
+#[test]
+fn provider_capability_kimi_k3_always_thinking() {
+    let cap = provider_capability(ApiProvider::Moonshot, "kimi-k3");
+    assert_eq!(cap.context_window, crate::models::KIMI_K3_CONTEXT_WINDOW_TOKENS);
+    assert_eq!(cap.max_output, crate::models::KIMI_K3_MAX_OUTPUT_TOKENS);
+    assert!(cap.thinking_supported);
 }
 
 #[test]

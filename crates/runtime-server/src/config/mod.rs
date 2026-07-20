@@ -2,38 +2,27 @@
 
 pub const DEFAULT_MAX_SUBAGENTS: usize = 10;
 pub const MAX_SUBAGENTS: usize = 20;
-pub const DEFAULT_TEXT_MODEL: &str = "deepseek-v4-pro";
-pub const DEFAULT_DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/beta";
-pub const DEFAULT_NVIDIA_NIM_MODEL: &str = "deepseek-ai/deepseek-v4-pro";
-pub const DEFAULT_NVIDIA_NIM_FLASH_MODEL: &str = "deepseek-ai/deepseek-v4-flash";
-pub const DEFAULT_NVIDIA_NIM_BASE_URL: &str = "https://integrate.api.nvidia.com/v1";
-pub const DEFAULT_OPENROUTER_MODEL: &str = "deepseek/deepseek-v4-pro";
-pub const DEFAULT_OPENROUTER_FLASH_MODEL: &str = "deepseek/deepseek-v4-flash";
-pub const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
-pub const DEFAULT_NOVITA_MODEL: &str = "deepseek/deepseek-v4-pro";
-pub const DEFAULT_NOVITA_FLASH_MODEL: &str = "deepseek/deepseek-v4-flash";
-pub const DEFAULT_NOVITA_BASE_URL: &str = "https://api.novita.ai/v1";
-pub const DEFAULT_FIREWORKS_MODEL: &str = "accounts/fireworks/models/deepseek-v4-pro";
-pub const DEFAULT_FIREWORKS_BASE_URL: &str = "https://api.fireworks.ai/inference/v1";
-pub const DEFAULT_SGLANG_MODEL: &str = "deepseek-ai/DeepSeek-V4-Pro";
-pub const DEFAULT_SGLANG_FLASH_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
-pub const DEFAULT_SGLANG_BASE_URL: &str = "http://localhost:30000/v1";
-pub const DEFAULT_VLLM_MODEL: &str = "deepseek-ai/DeepSeek-V4-Pro";
-pub const DEFAULT_VLLM_FLASH_MODEL: &str = "deepseek-ai/DeepSeek-V4-Flash";
-pub const DEFAULT_VLLM_BASE_URL: &str = "http://localhost:8000/v1";
-pub const DEFAULT_OLLAMA_MODEL: &str = "deepseek-coder:1.3b";
-pub const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434/v1";
-pub const DEFAULT_AGNES_MODEL: &str = "agnes-2.0-flash";
-pub const DEFAULT_AGNES_BASE_URL: &str = "https://apihub.agnes-ai.com/v1";
-pub const DEFAULT_SENSENOVA_MODEL: &str = "sensenova-6.7-flash-lite";
-pub const DEFAULT_SENSENOVA_BASE_URL: &str = "https://token.sensenova.cn/v1";
-pub const DEFAULT_MOONSHOT_MODEL: &str = "kimi-k3";
-pub const DEFAULT_MOONSHOT_BASE_URL: &str = "https://api.moonshot.cn/v1";
-// OpenAI-compatible endpoint (M0.5). Defaults mirror the facade
-// (`zagens_config::DEFAULT_OPENAI_*`); drift is caught by tests in providers.rs.
-pub const DEFAULT_OPENAI_MODEL: &str = "gpt-4.1";
-pub const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
-pub const DEFAULT_DEEPSEEKCN_BASE_URL: &str = "https://api.deepseeki.com";
+
+mod generated;
+pub use generated::{
+    DEFAULT_AGNES_BASE_URL, DEFAULT_AGNES_MODEL, DEFAULT_DEEPSEEK_BASE_URL,
+    DEFAULT_DEEPSEEK_CN_BASE_URL, DEFAULT_DEEPSEEK_CN_MODEL, DEFAULT_DEEPSEEK_MODEL,
+    DEFAULT_FIREWORKS_BASE_URL, DEFAULT_FIREWORKS_MODEL, DEFAULT_MOONSHOT_BASE_URL,
+    DEFAULT_MOONSHOT_MODEL, DEFAULT_NOVITA_BASE_URL, DEFAULT_NOVITA_FLASH_MODEL,
+    DEFAULT_NOVITA_MODEL, DEFAULT_NVIDIA_NIM_BASE_URL, DEFAULT_NVIDIA_NIM_FLASH_MODEL,
+    DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL, DEFAULT_OPENROUTER_BASE_URL,
+    DEFAULT_OPENROUTER_FLASH_MODEL, DEFAULT_OPENROUTER_MODEL, DEFAULT_SENSENOVA_BASE_URL,
+    DEFAULT_SENSENOVA_MODEL, DEFAULT_SGLANG_BASE_URL, DEFAULT_SGLANG_FLASH_MODEL,
+    DEFAULT_SGLANG_MODEL, DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_FLASH_MODEL, DEFAULT_VLLM_MODEL,
+};
+
+/// Default text model — same SSOT as `DEFAULT_DEEPSEEK_MODEL` from providers.toml.
+pub const DEFAULT_TEXT_MODEL: &str = DEFAULT_DEEPSEEK_MODEL;
+
+/// Legacy spelling retained for call sites (`DeepseekCN` base URL).
+pub const DEFAULT_DEEPSEEKCN_BASE_URL: &str = DEFAULT_DEEPSEEK_CN_BASE_URL;
+
 pub const COMMON_DEEPSEEK_MODELS: &[&str] = &[
     "deepseek-v4-pro",
     "deepseek-v4-flash",

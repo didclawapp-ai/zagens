@@ -5,6 +5,7 @@
 
 // ── Re-exports from zagens-core ─────────────────────────────────────
 
+#[allow(unused_imports)] // public re-exports for downstream crates / tests
 pub use zagens_core::chat::{
     CacheControl, ContentBlock, ContentBlockStart, DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS,
     DEFAULT_MAX_OUTPUT_TOKENS, Delta, KIMI_K3_CONTEXT_WINDOW_TOKENS, KIMI_K3_MAX_OUTPUT_TOKENS,
