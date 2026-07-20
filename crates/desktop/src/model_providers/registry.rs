@@ -84,6 +84,21 @@ pub static CATALOG_PROVIDERS: &[CatalogProvider] = &[
         section: ModelProviderSection::Free,
         docs_url: Some("https://novita.ai/docs"),
     }),
+    CatalogProvider::Spec(CatalogSpec {
+        id: "moonshot",
+        kind: ProviderKind::Moonshot,
+        keyring_slot: "moonshot",
+        models_path: "/models",
+        variant: CatalogListVariant::Flat,
+        keep: KeepRule::All,
+        output_limit: OutputLimitRule::FromCatalog,
+        sync_catalog_before_set: true,
+        sync_catalog_on_activate: true,
+        default_base_url: "https://api.moonshot.cn/v1",
+        default_model: "kimi-k3",
+        section: ModelProviderSection::Free,
+        docs_url: Some("https://platform.kimi.com/docs/guide/kimi-k3-quickstart"),
+    }),
 ];
 
 #[must_use]

@@ -482,6 +482,10 @@ pub static KEYRING_SLOT_REGISTRY: &[KeyringSlotDef] = &[
         env_candidates: &["SENSENOVA_API_KEY", "SENSENOVA_API_TOKEN"],
     },
     KeyringSlotDef {
+        slot: "moonshot",
+        env_candidates: &["MOONSHOT_API_KEY", "KIMI_API_KEY"],
+    },
+    KeyringSlotDef {
         slot: "vision",
         env_candidates: &["VISION_API_KEY", "SILICONFLOW_API_KEY"],
     },
@@ -497,6 +501,7 @@ fn registry_def_for_slot(slot: &str) -> Option<&'static KeyringSlotDef> {
         "ollama-local" => "ollama",
         "agnes-ai" => "agnes",
         "sense-nova" | "sense_nova" => "sensenova",
+        "kimi" | "moonshot-ai" => "moonshot",
         other => other,
     };
     KEYRING_SLOT_REGISTRY
@@ -576,6 +581,8 @@ mod tests {
             "OPENAI_API_KEY",
             "AGNES_API_KEY",
             "SENSENOVA_API_KEY",
+            "MOONSHOT_API_KEY",
+            "KIMI_API_KEY",
             "VISION_API_KEY",
             "SILICONFLOW_API_KEY",
         ] {

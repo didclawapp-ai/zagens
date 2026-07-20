@@ -6,7 +6,8 @@
 // ── Re-exports from zagens-core ─────────────────────────────────────
 
 pub use zagens_core::chat::{
-    CacheControl, ContentBlock, ContentBlockStart, DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS, Delta,
+    CacheControl, ContentBlock, ContentBlockStart, DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS,
+    DEFAULT_MAX_OUTPUT_TOKENS, Delta, KIMI_K3_CONTEXT_WINDOW_TOKENS, KIMI_K3_MAX_OUTPUT_TOKENS,
     LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS, Message, MessageDelta, MessageRequest, MessageResponse,
     StreamEvent, SystemBlock, SystemPrompt, Tool, ToolCaller, compaction_threshold_for_model,
     context_window_for_model,

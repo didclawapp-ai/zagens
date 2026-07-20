@@ -12,12 +12,13 @@ use super::super::types::*;
 use super::super::{
     API_KEYRING_SENTINEL, DEFAULT_AGNES_BASE_URL, DEFAULT_AGNES_MODEL, DEFAULT_DEEPSEEK_BASE_URL,
     DEFAULT_DEEPSEEKCN_BASE_URL, DEFAULT_FIREWORKS_BASE_URL, DEFAULT_FIREWORKS_MODEL,
-    DEFAULT_MAX_SUBAGENTS, DEFAULT_NOVITA_BASE_URL, DEFAULT_NOVITA_MODEL,
-    DEFAULT_NVIDIA_NIM_BASE_URL, DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_OLLAMA_BASE_URL,
-    DEFAULT_OLLAMA_MODEL, DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL,
-    DEFAULT_OPENROUTER_BASE_URL, DEFAULT_OPENROUTER_MODEL, DEFAULT_SENSENOVA_BASE_URL,
-    DEFAULT_SENSENOVA_MODEL, DEFAULT_SGLANG_BASE_URL, DEFAULT_SGLANG_MODEL, DEFAULT_TEXT_MODEL,
-    DEFAULT_VLLM_BASE_URL, DEFAULT_VLLM_MODEL, MAX_SUBAGENTS,
+    DEFAULT_MAX_SUBAGENTS, DEFAULT_MOONSHOT_BASE_URL, DEFAULT_MOONSHOT_MODEL,
+    DEFAULT_NOVITA_BASE_URL, DEFAULT_NOVITA_MODEL, DEFAULT_NVIDIA_NIM_BASE_URL,
+    DEFAULT_NVIDIA_NIM_MODEL, DEFAULT_OLLAMA_BASE_URL, DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OPENAI_BASE_URL, DEFAULT_OPENAI_MODEL, DEFAULT_OPENROUTER_BASE_URL,
+    DEFAULT_OPENROUTER_MODEL, DEFAULT_SENSENOVA_BASE_URL, DEFAULT_SENSENOVA_MODEL,
+    DEFAULT_SGLANG_BASE_URL, DEFAULT_SGLANG_MODEL, DEFAULT_TEXT_MODEL, DEFAULT_VLLM_BASE_URL,
+    DEFAULT_VLLM_MODEL, MAX_SUBAGENTS,
 };
 use super::env_overrides::apply_env_overrides;
 use super::merge::{apply_managed_overrides, apply_profile, apply_requirements};
@@ -91,7 +92,7 @@ impl Config {
                 }
             } else if ApiProvider::parse(provider).is_none() {
                 anyhow::bail!(
-                    "Invalid provider '{provider}': expected deepseek, deepseek-cn, nvidia-nim, openai, openrouter, novita, fireworks, sglang, vllm, ollama, agnes, sensenova, or custom."
+                    "Invalid provider '{provider}': expected deepseek, deepseek-cn, nvidia-nim, openai, openrouter, novita, fireworks, sglang, vllm, ollama, agnes, sensenova, moonshot, or custom."
                 );
             }
         }
@@ -115,6 +116,7 @@ impl Config {
                     | ApiProvider::Openai
                     | ApiProvider::Agnes
                     | ApiProvider::SenseNova
+                    | ApiProvider::Moonshot
                     | ApiProvider::Openrouter
             )
             && normalize_model_name(model).is_none()
@@ -265,6 +267,7 @@ impl Config {
             ApiProvider::Ollama => &providers.ollama,
             ApiProvider::Agnes => &providers.agnes,
             ApiProvider::SenseNova => &providers.sensenova,
+            ApiProvider::Moonshot => &providers.moonshot,
         })
     }
 
@@ -321,6 +324,7 @@ impl Config {
                     | ApiProvider::Openai
                     | ApiProvider::Agnes
                     | ApiProvider::SenseNova
+                    | ApiProvider::Moonshot
                     | ApiProvider::Openrouter
             ) {
                 return model.trim().to_string();
@@ -336,6 +340,7 @@ impl Config {
                     | ApiProvider::Openai
                     | ApiProvider::Agnes
                     | ApiProvider::SenseNova
+                    | ApiProvider::Moonshot
                     | ApiProvider::Openrouter
             )
         {
@@ -364,6 +369,7 @@ impl Config {
             ApiProvider::Ollama => DEFAULT_OLLAMA_MODEL,
             ApiProvider::Agnes => DEFAULT_AGNES_MODEL,
             ApiProvider::SenseNova => DEFAULT_SENSENOVA_MODEL,
+            ApiProvider::Moonshot => DEFAULT_MOONSHOT_MODEL,
         }
         .to_string()
     }
@@ -397,7 +403,8 @@ impl Config {
             | ApiProvider::Vllm
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova => None,
+            | ApiProvider::SenseNova
+            | ApiProvider::Moonshot => None,
         };
         let base = provider_base.or(root_base).unwrap_or_else(|| {
             match provider {
@@ -413,6 +420,7 @@ impl Config {
                 ApiProvider::Ollama => DEFAULT_OLLAMA_BASE_URL,
                 ApiProvider::Agnes => DEFAULT_AGNES_BASE_URL,
                 ApiProvider::SenseNova => DEFAULT_SENSENOVA_BASE_URL,
+                ApiProvider::Moonshot => DEFAULT_MOONSHOT_BASE_URL,
             }
             .to_string()
         });
@@ -465,6 +473,7 @@ impl Config {
             ApiProvider::Ollama => "ollama",
             ApiProvider::Agnes => "agnes",
             ApiProvider::SenseNova => "sensenova",
+            ApiProvider::Moonshot => "moonshot",
         };
 
         // 0. Explicit in-memory override (set by onboarding / provider
@@ -539,6 +548,10 @@ impl Config {
             ApiProvider::SenseNova => anyhow::bail!(
                 "SenseNova API key not found. Set SENSENOVA_API_KEY, \
                  or add [providers.sensenova] in ~/.zagens/config.toml (use Zagens → Models panel)."
+            ),
+            ApiProvider::Moonshot => anyhow::bail!(
+                "Moonshot (Kimi) API key not found. Set MOONSHOT_API_KEY, \
+                 or add [providers.moonshot] in ~/.zagens/config.toml (use Zagens → Models panel)."
             ),
         }
     }

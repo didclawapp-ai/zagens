@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Moonshot / Kimi K3 provider:** first-class `moonshot` provider (`MOONSHOT_API_KEY`, default `https://api.moonshot.cn/v1`, model `kimi-k3`) with always-on thinking (`reasoning_content` stream + replay), `reasoning_effort` `low`/`high`/`max` (off maps to max), omitted fixed sampling params, 1M context / up to 1M max output.
 - **Audit scratchpad P2 closeout (S1):** `scratchpad_defer_remaining`; loop-guard Halt audit recovery; optional staged intermediate reports (`deliverables/audit/staged/*` + `_global` meta `staged_report` when `reviewed_ratio` ≥ 40%).
 - **Audit quality signals (S2):** `scratchpad_status` exposes `dimension_coverage` / `dimension_gaps`; inventory may mark `high_complexity` from on-disk symbol index (no init rebuild); import fails hard on missing `<!-- audit-findings -->` even if craft-verdict exists; `MAX_FILES_PER_AREA` raised to 40.
 - **Audit completion-over-cost prompt:** `base.md` full-repo mode + `audit-repo` skill + scratchpad `contract_hints` / continue steers mandate finishing the user's audit request (no self-budget early stop / unapproved `partial_closeout`); defer_remaining only nudged after `reviewed_ratio` gate.

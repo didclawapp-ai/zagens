@@ -108,6 +108,7 @@ pub(crate) fn apply_env_overrides(config: &mut Config) {
             ApiProvider::Ollama => &mut providers.ollama,
             ApiProvider::Agnes => &mut providers.agnes,
             ApiProvider::SenseNova => &mut providers.sensenova,
+            ApiProvider::Moonshot => &mut providers.moonshot,
         };
         let mut provider_headers = entry.http_headers.clone().unwrap_or_default();
         provider_headers.extend(headers);

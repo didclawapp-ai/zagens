@@ -49,6 +49,7 @@ fn env_only_api_key_recovery_hint(api_config: &Config) -> Option<String> {
         ApiProvider::Ollama => "OLLAMA_API_KEY",
         ApiProvider::Agnes => "AGNES_API_KEY",
         ApiProvider::SenseNova => "SENSENOVA_API_KEY",
+        ApiProvider::Moonshot => "MOONSHOT_API_KEY",
     };
 
     Some(format!(

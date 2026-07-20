@@ -110,6 +110,16 @@
 # model = "accounts/fireworks/models/deepseek-v4-pro"
 
 # ─────────────────────────────────────────────────────────────────────────────────
+# Moonshot / Kimi K3 (hosted OpenAI-compat — optional)
+# Docs: https://platform.kimi.com/docs/guide/kimi-k3-quickstart
+# Env: MOONSHOT_API_KEY (or KIMI_API_KEY). International: base_url = "https://api.moonshot.ai/v1"
+# ─────────────────────────────────────────────────────────────────────────────────
+# [providers.moonshot]
+# api_key = "YOUR_MOONSHOT_KEY"
+# base_url = "https://api.moonshot.cn/v1"
+# model = "kimi-k3"
+
+# ─────────────────────────────────────────────────────────────────────────────────
 # Named profiles (optional) — select with DEEPSEEK_PROFILE=<name>
 # ─────────────────────────────────────────────────────────────────────────────────
 # Profiles merge over the base config. Provider blocks above still supply api_key.

@@ -1350,6 +1350,7 @@ const zhHans = {
     defaultModelHint: '写入 config.toml 的 default_text_model；保存后 Composer 可选该模型。',
     reasoningEffort: '推理深度',
     reasoningOff: '关闭',
+    reasoningLow: '低',
     reasoningHigh: '高',
     reasoningMax: '深度推理',
     reasoningAuto: '自动',

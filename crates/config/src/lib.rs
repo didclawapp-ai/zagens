@@ -94,6 +94,8 @@ const DEFAULT_AGNES_MODEL: &str = "agnes-2.0-flash";
 const DEFAULT_AGNES_BASE_URL: &str = "https://apihub.agnes-ai.com/v1";
 const DEFAULT_SENSENOVA_MODEL: &str = "sensenova-6.7-flash-lite";
 const DEFAULT_SENSENOVA_BASE_URL: &str = "https://token.sensenova.cn/v1";
+const DEFAULT_MOONSHOT_MODEL: &str = "kimi-k3";
+const DEFAULT_MOONSHOT_BASE_URL: &str = "https://api.moonshot.cn/v1";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
@@ -111,6 +113,7 @@ pub enum ProviderKind {
     Agnes,
     #[serde(rename = "sensenova")]
     SenseNova,
+    Moonshot,
     /// User-defined OpenAI-compatible provider (see `[custom_providers]`).
     Custom,
 }
@@ -131,6 +134,7 @@ impl ProviderKind {
         Self::Ollama,
         Self::Agnes,
         Self::SenseNova,
+        Self::Moonshot,
         Self::Custom,
     ];
 
@@ -148,6 +152,7 @@ impl ProviderKind {
             Self::Ollama => "ollama",
             Self::Agnes => "agnes",
             Self::SenseNova => "sensenova",
+            Self::Moonshot => "moonshot",
             Self::Custom => "custom",
         }
     }
@@ -172,6 +177,7 @@ impl ProviderKind {
             "ollama" | "ollama-local" => Some(Self::Ollama),
             "agnes" | "agnes-ai" => Some(Self::Agnes),
             "sensenova" | "sense-nova" | "sense_nova" => Some(Self::SenseNova),
+            "moonshot" | "kimi" | "moonshot-ai" => Some(Self::Moonshot),
             _ => None,
         }
     }
@@ -286,6 +292,8 @@ pub struct ProvidersToml {
     pub agnes: ProviderConfigToml,
     #[serde(default)]
     pub sensenova: ProviderConfigToml,
+    #[serde(default)]
+    pub moonshot: ProviderConfigToml,
 }
 
 impl ProvidersToml {
@@ -303,6 +311,7 @@ impl ProvidersToml {
             ProviderKind::Ollama => &self.ollama,
             ProviderKind::Agnes => &self.agnes,
             ProviderKind::SenseNova => &self.sensenova,
+            ProviderKind::Moonshot => &self.moonshot,
             // Custom entries live in `ConfigToml.custom_providers`, not `[providers.*]`.
             ProviderKind::Custom => &self.openai,
         }
@@ -321,6 +330,7 @@ impl ProvidersToml {
             ProviderKind::Ollama => &mut self.ollama,
             ProviderKind::Agnes => &mut self.agnes,
             ProviderKind::SenseNova => &mut self.sensenova,
+            ProviderKind::Moonshot => &mut self.moonshot,
             ProviderKind::Custom => &mut self.openai,
         }
     }
@@ -920,6 +930,7 @@ impl ConfigToml {
         merge_provider_config(&mut self.providers.ollama, &project.providers.ollama);
         merge_provider_config(&mut self.providers.agnes, &project.providers.agnes);
         merge_provider_config(&mut self.providers.sensenova, &project.providers.sensenova);
+        merge_provider_config(&mut self.providers.moonshot, &project.providers.moonshot);
 
         if project.network.is_some() {
             self.network = project.network;
@@ -1081,6 +1092,17 @@ impl ConfigToml {
             "providers.sensenova.model" => self.providers.sensenova.model.clone(),
             "providers.sensenova.http_headers" => {
                 serialize_http_headers(&self.providers.sensenova.http_headers)
+            }
+            "providers.moonshot.api_key" => self
+                .providers
+                .moonshot
+                .api_key
+                .as_deref()
+                .map(redact_secret),
+            "providers.moonshot.base_url" => self.providers.moonshot.base_url.clone(),
+            "providers.moonshot.model" => self.providers.moonshot.model.clone(),
+            "providers.moonshot.http_headers" => {
+                serialize_http_headers(&self.providers.moonshot.http_headers)
             }
             "vision.api_key" => self
                 .vision
@@ -1248,6 +1270,18 @@ impl ConfigToml {
             "providers.sensenova.http_headers" => {
                 self.providers.sensenova.http_headers = parse_http_headers(value)?;
             }
+            "providers.moonshot.api_key" => {
+                self.providers.moonshot.api_key = Some(value.to_string());
+            }
+            "providers.moonshot.base_url" => {
+                self.providers.moonshot.base_url = Some(value.to_string());
+            }
+            "providers.moonshot.model" => {
+                self.providers.moonshot.model = Some(value.to_string());
+            }
+            "providers.moonshot.http_headers" => {
+                self.providers.moonshot.http_headers = parse_http_headers(value)?;
+            }
             "vision.api_key" => {
                 let v = self.vision.get_or_insert_default();
                 v.api_key = Some(value.to_string());
@@ -1340,6 +1374,10 @@ impl ConfigToml {
             "providers.sensenova.base_url" => self.providers.sensenova.base_url = None,
             "providers.sensenova.model" => self.providers.sensenova.model = None,
             "providers.sensenova.http_headers" => self.providers.sensenova.http_headers.clear(),
+            "providers.moonshot.api_key" => self.providers.moonshot.api_key = None,
+            "providers.moonshot.base_url" => self.providers.moonshot.base_url = None,
+            "providers.moonshot.model" => self.providers.moonshot.model = None,
+            "providers.moonshot.http_headers" => self.providers.moonshot.http_headers.clear(),
             "vision.api_key" => {
                 if let Some(v) = self.vision.as_mut() {
                     v.api_key = None;
@@ -1538,6 +1576,18 @@ impl ConfigToml {
         if let Some(v) = serialize_http_headers(&self.providers.sensenova.http_headers) {
             out.insert("providers.sensenova.http_headers".to_string(), v);
         }
+        if let Some(v) = self.providers.moonshot.api_key.as_ref() {
+            out.insert("providers.moonshot.api_key".to_string(), redact_secret(v));
+        }
+        if let Some(v) = self.providers.moonshot.base_url.as_ref() {
+            out.insert("providers.moonshot.base_url".to_string(), v.clone());
+        }
+        if let Some(v) = self.providers.moonshot.model.as_ref() {
+            out.insert("providers.moonshot.model".to_string(), v.clone());
+        }
+        if let Some(v) = serialize_http_headers(&self.providers.moonshot.http_headers) {
+            out.insert("providers.moonshot.http_headers".to_string(), v);
+        }
         if let Some(v) = self
             .vision
             .as_ref()
@@ -1670,6 +1720,7 @@ impl ConfigToml {
                 ProviderKind::Ollama => DEFAULT_OLLAMA_BASE_URL.to_string(),
                 ProviderKind::Agnes => DEFAULT_AGNES_BASE_URL.to_string(),
                 ProviderKind::SenseNova => DEFAULT_SENSENOVA_BASE_URL.to_string(),
+                ProviderKind::Moonshot => DEFAULT_MOONSHOT_BASE_URL.to_string(),
                 ProviderKind::Custom => DEFAULT_OPENAI_BASE_URL.to_string(),
             });
 
@@ -1693,6 +1744,7 @@ impl ConfigToml {
                 ProviderKind::Ollama => DEFAULT_OLLAMA_MODEL.to_string(),
                 ProviderKind::Agnes => DEFAULT_AGNES_MODEL.to_string(),
                 ProviderKind::SenseNova => DEFAULT_SENSENOVA_MODEL.to_string(),
+                ProviderKind::Moonshot => DEFAULT_MOONSHOT_MODEL.to_string(),
                 ProviderKind::Custom => DEFAULT_OPENAI_MODEL.to_string(),
             });
         let model = normalize_model_for_provider(provider, &model);
@@ -1791,6 +1843,7 @@ fn normalize_model_for_provider(provider: ProviderKind, model: &str) -> String {
             | ProviderKind::Openai
             | ProviderKind::Agnes
             | ProviderKind::SenseNova
+            | ProviderKind::Moonshot
             | ProviderKind::Custom
     ) {
         return model.to_string();
@@ -2322,6 +2375,7 @@ impl EnvRuntimeOverrides {
             ProviderKind::Ollama => self.ollama_base_url.clone(),
             ProviderKind::Agnes => None,
             ProviderKind::SenseNova => None,
+            ProviderKind::Moonshot => None,
             ProviderKind::Custom => None,
         }
     }

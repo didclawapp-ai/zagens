@@ -1091,6 +1091,8 @@ pub struct ProvidersConfig {
     pub agnes: ProviderConfig,
     #[serde(default)]
     pub sensenova: ProviderConfig,
+    #[serde(default)]
+    pub moonshot: ProviderConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

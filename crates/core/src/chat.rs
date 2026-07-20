@@ -16,6 +16,12 @@ pub const DEEPSEEK_V4_MAX_OUTPUT_TOKENS: u32 = 384 * 1024;
 pub const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 65_536;
 /// NVIDIA NIM hosted chat endpoints cap **completion** tokens (not context length).
 pub const NVIDIA_NIM_MAX_COMPLETION_TOKENS: u32 = 262_144;
+/// Kimi K3 context window (1M tokens).
+pub const KIMI_K3_CONTEXT_WINDOW_TOKENS: u32 = 1_000_000;
+/// Kimi K3 default `max_completion_tokens` / request default.
+pub const KIMI_K3_DEFAULT_MAX_OUTPUT_TOKENS: u32 = 131_072;
+/// Kimi K3 hard ceiling for output tokens.
+pub const KIMI_K3_MAX_OUTPUT_TOKENS: u32 = 1_048_576;
 pub const DEFAULT_COMPACTION_TOKEN_THRESHOLD: usize = 102_400;
 const COMPACTION_THRESHOLD_PERCENT: u32 = 80;
 
@@ -305,11 +311,20 @@ pub fn is_deepseek_v4_model(model: &str) -> bool {
         || (lower.contains("v4") && !lower.contains("v3"))
 }
 
+/// Whether the model id refers to Moonshot Kimi K3 (always-on thinking, 1M context).
+#[must_use]
+pub fn is_kimi_k3_model(model: &str) -> bool {
+    let lower = model.to_ascii_lowercase();
+    lower.contains("kimi-k3") || lower.starts_with("kimi-k")
+}
+
 /// Provider-aware `max_tokens` ceiling for outbound API requests.
 #[must_use]
 pub fn max_output_token_cap_for_model(model: &str) -> u32 {
     if is_deepseek_v4_model(model) {
         DEEPSEEK_V4_MAX_OUTPUT_TOKENS
+    } else if is_kimi_k3_model(model) {
+        KIMI_K3_MAX_OUTPUT_TOKENS
     } else {
         DEFAULT_MAX_OUTPUT_TOKENS
     }
@@ -367,6 +382,9 @@ pub fn context_window_for_model(model: &str) -> Option<u32> {
     }
     if lower.contains("claude") {
         return Some(200_000);
+    }
+    if is_kimi_k3_model(&lower) {
+        return Some(KIMI_K3_CONTEXT_WINDOW_TOKENS);
     }
     // Agnes AI chat models (agnes-2.0-flash, agnes-1.5-*): 256K context per official docs.
     if lower.contains("agnes")
@@ -538,6 +556,24 @@ mod max_output_tests {
     fn agnes_chat_context_window() {
         assert_eq!(context_window_for_model("agnes-2.0-flash"), Some(256_000));
         assert!(context_window_for_model("agnes-image-2.0-flash").is_none());
+    }
+
+    #[test]
+    fn kimi_k3_context_and_output_caps() {
+        assert!(is_kimi_k3_model("kimi-k3"));
+        assert!(is_kimi_k3_model("Kimi-K3"));
+        assert_eq!(
+            context_window_for_model("kimi-k3"),
+            Some(KIMI_K3_CONTEXT_WINDOW_TOKENS)
+        );
+        assert_eq!(
+            max_output_token_cap_for_model("kimi-k3"),
+            KIMI_K3_MAX_OUTPUT_TOKENS
+        );
+        assert_eq!(
+            clamp_max_output_tokens_for_model("kimi-k3", KIMI_K3_DEFAULT_MAX_OUTPUT_TOKENS),
+            KIMI_K3_DEFAULT_MAX_OUTPUT_TOKENS
+        );
     }
 
     #[test]

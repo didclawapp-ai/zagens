@@ -1365,6 +1365,7 @@ const ptBr: TranslationMap = {
     defaultModelHint: 'Gravado em config.toml como default_text_model; disponível no Composer após salvar.',
     reasoningEffort: 'Esforço de raciocínio',
     reasoningOff: 'Desligado',
+    reasoningLow: 'Baixo',
     reasoningHigh: 'Alto',
     reasoningMax: 'Máximo',
     reasoningAuto: 'Auto',

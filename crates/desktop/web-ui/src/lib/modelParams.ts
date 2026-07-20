@@ -24,6 +24,12 @@ export const AGNES_CHAT_MAX_OUTPUT_TOKENS = 65_536;
 export const AGNES_CHAT_CONTEXT_TOKENS = 256_000;
 /** NVIDIA NIM hosted chat APIs cap completion tokens separately from context length. */
 export const NVIDIA_NIM_MAX_COMPLETION_TOKENS = 262_144;
+/** Kimi K3 default / typical request budget (API default max_completion_tokens). */
+export const KIMI_K3_DEFAULT_MAX_TOKENS = 131_072;
+/** Kimi K3 hard output ceiling. */
+export const KIMI_K3_MAX_OUTPUT_TOKENS = 1_048_576;
+/** Kimi K3 context window. */
+export const KIMI_K3_CONTEXT_TOKENS = 1_000_000;
 export const DEFAULT_MAX_TOKENS = MODEL_MAX_TOKENS;
 
 /** Stored `maxTokens` at or below this (any historical default: 8192, then the
@@ -66,6 +72,12 @@ export function isDeepSeekV4Model(model: string): boolean {
   );
 }
 
+/** Moonshot Kimi K3 (always-on thinking; fixed sampling). */
+export function isKimiK3Model(model: string): boolean {
+  const lower = model.toLowerCase();
+  return lower.includes('kimi-k3') || lower.startsWith('kimi-k');
+}
+
 function catalogLimitForModel(model: string): number | undefined {
   const limit = catalogOutputLimits[model];
   return typeof limit === 'number' && limit > 0 ? limit : undefined;
@@ -82,6 +94,12 @@ export function maxTokensCapForModel(model: string): number {
       return Math.min(THIRD_PARTY_MAX_TOKENS, catalog);
     }
     return MODEL_MAX_TOKENS;
+  }
+  if (isKimiK3Model(model)) {
+    if (catalog != null) {
+      return Math.min(KIMI_K3_MAX_OUTPUT_TOKENS, catalog);
+    }
+    return KIMI_K3_MAX_OUTPUT_TOKENS;
   }
   if (catalog != null) {
     return Math.min(THIRD_PARTY_MAX_TOKENS, catalog);
@@ -133,8 +151,12 @@ export interface ApiModelSampling {
 }
 
 export function modelSamplingForApi(params: ModelParams, model?: string): ApiModelSampling {
-  const max_tokens =
-    model && model.trim() ? maxTokensForModel(model.trim(), params) : params.maxTokens;
+  const trimmed = model?.trim() ?? '';
+  const max_tokens = trimmed ? maxTokensForModel(trimmed, params) : params.maxTokens;
+  // Kimi K3 fixes temperature/top_p server-side; omit them from the wire payload.
+  if (trimmed && isKimiK3Model(trimmed)) {
+    return { max_tokens };
+  }
   return {
     temperature: params.temperature,
     top_p: params.topP,

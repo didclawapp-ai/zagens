@@ -199,6 +199,7 @@ pub(crate) fn merge_providers(
             ollama: merge_provider_config(base.ollama, override_cfg.ollama),
             agnes: merge_provider_config(base.agnes, override_cfg.agnes),
             sensenova: merge_provider_config(base.sensenova, override_cfg.sensenova),
+            moonshot: merge_provider_config(base.moonshot, override_cfg.moonshot),
         }),
     }
 }

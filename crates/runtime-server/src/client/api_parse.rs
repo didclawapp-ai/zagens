@@ -70,6 +70,21 @@ pub(super) fn apply_reasoning_effort(
     let model = body.get("model").and_then(Value::as_str).unwrap_or("");
     let v4_hosted = is_deepseek_v4_model(model);
     let normalized = effort.trim().to_ascii_lowercase();
+
+    // Kimi K3: thinking is always on; pass low/high/max as-is (do not fold low→high).
+    // `off` cannot disable thinking — map to max.
+    if provider == ApiProvider::Moonshot {
+        let moonshot_effort = match normalized.as_str() {
+            "low" | "minimal" => "low",
+            "high" => "high",
+            "medium" | "mid" | "" => "high",
+            "xhigh" | "max" | "highest" | "off" | "disabled" | "none" | "false" => "max",
+            _ => "max",
+        };
+        body["reasoning_effort"] = json!(moonshot_effort);
+        return;
+    }
+
     match normalized.as_str() {
         "off" | "disabled" | "none" | "false" => match provider {
             ApiProvider::Deepseek
@@ -84,7 +99,8 @@ pub(super) fn apply_reasoning_effort(
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova => {
+            | ApiProvider::SenseNova
+            | ApiProvider::Moonshot => {
                 if v4_hosted {
                     body["thinking"] = json!({ "type": "disabled" });
                 }
@@ -109,7 +125,8 @@ pub(super) fn apply_reasoning_effort(
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova => {
+            | ApiProvider::SenseNova
+            | ApiProvider::Moonshot => {
                 if v4_hosted {
                     body["reasoning_effort"] = json!("high");
                     body["thinking"] = json!({ "type": "enabled" });
@@ -136,7 +153,8 @@ pub(super) fn apply_reasoning_effort(
             ApiProvider::Openai
             | ApiProvider::Ollama
             | ApiProvider::Agnes
-            | ApiProvider::SenseNova => {
+            | ApiProvider::SenseNova
+            | ApiProvider::Moonshot => {
                 if v4_hosted {
                     body["reasoning_effort"] = json!("max");
                     body["thinking"] = json!({ "type": "enabled" });

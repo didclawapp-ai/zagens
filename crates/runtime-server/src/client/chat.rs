@@ -65,6 +65,7 @@ use crate::models::{
 use crate::config::ApiProvider;
 use zagens_core::chat::{
     clamp_max_output_tokens_for_nvidia_nim, clamp_max_output_tokens_with_catalog_limit,
+    is_kimi_k3_model,
 };
 
 use super::api_parse::{apply_reasoning_effort, parse_usage, system_to_instructions};
@@ -99,12 +100,7 @@ impl DeepSeekClient {
             "max_tokens": max_tokens,
         });
 
-        if let Some(temperature) = request.temperature {
-            body["temperature"] = json!(temperature);
-        }
-        if let Some(top_p) = request.top_p {
-            body["top_p"] = json!(top_p);
-        }
+        apply_sampling_params(&mut body, request);
         if let Some(tools) = request.tools.as_ref() {
             body["tools"] = json!(tools.iter().map(tool_to_chat).collect::<Vec<_>>());
         }
@@ -169,12 +165,7 @@ impl DeepSeekClient {
             },
         });
 
-        if let Some(temperature) = request.temperature {
-            body["temperature"] = json!(temperature);
-        }
-        if let Some(top_p) = request.top_p {
-            body["top_p"] = json!(top_p);
-        }
+        apply_sampling_params(&mut body, &request);
         if let Some(tools) = request.tools.as_ref() {
             body["tools"] = json!(tools.iter().map(tool_to_chat).collect::<Vec<_>>());
         }
@@ -884,6 +875,9 @@ fn log_thinking_mode_violations(body: &Value) {
 }
 
 fn requires_reasoning_content(model: &str) -> bool {
+    if is_kimi_k3_model(model) {
+        return true;
+    }
     let lower = model.to_lowercase();
     lower.contains("deepseek-v4")
         || lower.contains("reasoner")
@@ -893,6 +887,10 @@ fn requires_reasoning_content(model: &str) -> bool {
 }
 
 fn should_replay_reasoning_content(model: &str, effort: Option<&str>) -> bool {
+    // Kimi K3 always thinks; replay even if the UI sent `off` (mapped to max on wire).
+    if is_kimi_k3_model(model) {
+        return true;
+    }
     if effort
         .map(|value| {
             matches!(
@@ -906,6 +904,19 @@ fn should_replay_reasoning_content(model: &str, effort: Option<&str>) -> bool {
     }
 
     requires_reasoning_content(model)
+}
+
+/// Kimi K3 fixes temperature/top_p server-side; omit them from the request body.
+fn apply_sampling_params(body: &mut Value, request: &MessageRequest) {
+    if is_kimi_k3_model(&request.model) {
+        return;
+    }
+    if let Some(temperature) = request.temperature {
+        body["temperature"] = json!(temperature);
+    }
+    if let Some(top_p) = request.top_p {
+        body["top_p"] = json!(top_p);
+    }
 }
 
 fn has_deepseek_r_series_marker(model_lower: &str) -> bool {

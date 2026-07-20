@@ -2080,6 +2080,10 @@ fn collect_configured_models(cfg: &zagens_config::ConfigToml) -> Vec<String> {
     for id in &providers.sensenova.available_models {
         push_model_option(&mut out, &mut seen, Some(id.as_str()));
     }
+    push_model_option(&mut out, &mut seen, providers.moonshot.model.as_deref());
+    for id in &providers.moonshot.available_models {
+        push_model_option(&mut out, &mut seen, Some(id.as_str()));
+    }
     for id in &providers.nvidia_nim.available_models {
         push_model_option(&mut out, &mut seen, Some(id.as_str()));
     }

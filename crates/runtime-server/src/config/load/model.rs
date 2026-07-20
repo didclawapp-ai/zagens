@@ -19,6 +19,7 @@ pub(crate) fn normalize_model_config(config: &mut Config) {
                 | ApiProvider::Openai
                 | ApiProvider::Agnes
                 | ApiProvider::SenseNova
+                | ApiProvider::Moonshot
                 | ApiProvider::Openrouter
         )
         && let Some(normalized) = normalize_model_for_provider(config.api_provider(), model)
@@ -79,6 +80,7 @@ pub(crate) fn normalize_model_for_provider(provider: ApiProvider, model: &str) -
             | ApiProvider::Openai
             | ApiProvider::Agnes
             | ApiProvider::SenseNova
+            | ApiProvider::Moonshot
             | ApiProvider::Openrouter
     ) {
         return None;

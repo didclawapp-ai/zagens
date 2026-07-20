@@ -15,6 +15,7 @@ pub enum ApiProvider {
     Ollama,
     Agnes,
     SenseNova,
+    Moonshot,
 }
 
 impl ApiProvider {
@@ -35,6 +36,7 @@ impl ApiProvider {
             "ollama" | "ollama-local" => Some(Self::Ollama),
             "agnes" | "agnes-ai" => Some(Self::Agnes),
             "sensenova" | "sense-nova" | "sense_nova" => Some(Self::SenseNova),
+            "moonshot" | "kimi" | "moonshot-ai" => Some(Self::Moonshot),
             _ => None,
         }
     }
@@ -54,6 +56,7 @@ impl ApiProvider {
             Self::Ollama => "ollama",
             Self::Agnes => "agnes",
             Self::SenseNova => "sensenova",
+            Self::Moonshot => "moonshot",
         }
     }
 
@@ -73,6 +76,7 @@ impl ApiProvider {
             Self::Ollama => "Ollama",
             Self::Agnes => "Agnes AI",
             Self::SenseNova => "SenseNova",
+            Self::Moonshot => "Moonshot (Kimi)",
         }
     }
 
@@ -92,6 +96,7 @@ impl ApiProvider {
             Self::Ollama,
             Self::Agnes,
             Self::SenseNova,
+            Self::Moonshot,
         ]
     }
 }
@@ -150,6 +155,30 @@ pub fn provider_capability(provider: ApiProvider, resolved_model: &str) -> Provi
             context_window: 8192,
             max_output: 4096,
             thinking_supported: false,
+            cache_telemetry_supported: false,
+            request_payload_mode: RequestPayloadMode::ChatCompletions,
+        };
+    }
+
+    if provider == ApiProvider::Moonshot {
+        let model_lower = resolved_model.to_ascii_lowercase();
+        let is_kimi_k3 = model_lower.contains("kimi-k3") || model_lower.starts_with("kimi-k");
+        return ProviderCapability {
+            provider,
+            resolved_model: resolved_model.to_string(),
+            context_window: if is_kimi_k3 {
+                crate::models::KIMI_K3_CONTEXT_WINDOW_TOKENS
+            } else {
+                crate::models::context_window_for_model(resolved_model)
+                    .unwrap_or(crate::models::LEGACY_DEEPSEEK_CONTEXT_WINDOW_TOKENS)
+            },
+            max_output: if is_kimi_k3 {
+                crate::models::KIMI_K3_MAX_OUTPUT_TOKENS
+            } else {
+                crate::models::DEFAULT_MAX_OUTPUT_TOKENS
+            },
+            thinking_supported: is_kimi_k3,
+            // Moonshot auto-caches long prefixes; no special request fields.
             cache_telemetry_supported: false,
             request_payload_mode: RequestPayloadMode::ChatCompletions,
         };

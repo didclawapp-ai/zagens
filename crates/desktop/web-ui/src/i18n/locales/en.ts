@@ -1363,6 +1363,7 @@ const en: TranslationMap = {
     defaultModelHint: 'Saved to config.toml as default_text_model; available in Composer after save.',
     reasoningEffort: 'Reasoning Effort',
     reasoningOff: 'Off',
+    reasoningLow: 'Low',
     reasoningHigh: 'High',
     reasoningMax: 'Max',
     reasoningAuto: 'Auto',

@@ -13,7 +13,12 @@ export interface ThreadDetailWithTurns {
   turns?: ThreadTurnRecordLite[];
 }
 
-import { AGNES_CHAT_CONTEXT_TOKENS, isDeepSeekV4Model } from './modelParams';
+import {
+  AGNES_CHAT_CONTEXT_TOKENS,
+  KIMI_K3_CONTEXT_TOKENS,
+  isDeepSeekV4Model,
+  isKimiK3Model,
+} from './modelParams';
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 128_000;
 export const DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS = 1_000_000;
@@ -134,6 +139,9 @@ export function contextMeterRingSegments(
 export function contextWindowTokensForModel(model: string | undefined): number {
   if (isDeepSeekV4Model(model ?? '')) {
     return DEEPSEEK_V4_CONTEXT_WINDOW_TOKENS;
+  }
+  if (isKimiK3Model(model ?? '')) {
+    return KIMI_K3_CONTEXT_TOKENS;
   }
   const lower = (model ?? '').toLowerCase();
   if (lower.includes('claude')) {

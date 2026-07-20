@@ -20,7 +20,7 @@
 # this file — switching providers in Zagens Settings (or `provider = "..."` here)
 # does not require re-entering keys. Top-level `api_key` / `base_url` are still
 # read as DeepSeek defaults when `[providers.deepseek]` is absent.
-provider = "deepseek" # deepseek | nvidia-nim | openai | openrouter | novita | fireworks | sglang | vllm | ollama
+provider = "deepseek" # deepseek | nvidia-nim | openai | openrouter | novita | fireworks | sglang | vllm | ollama | agnes | sensenova | moonshot
 api_key = "YOUR_DEEPSEEK_API_KEY" # must be non-empty
 base_url = "https://api.deepseek.com/beta"
 # base_url = "https://api.deepseeki.com"         # China users
@@ -239,6 +239,12 @@ max_subagents = 10 # optional (1-20; 0/negative are clamped to 1 — to fully
 # api_key = "YOUR_FIREWORKS_API_KEY"
 # base_url = "https://api.fireworks.ai/inference/v1"
 # model = "accounts/fireworks/models/deepseek-v4-pro"
+
+# Moonshot / Kimi K3 (https://platform.kimi.com — MOONSHOT_API_KEY or KIMI_API_KEY)
+[providers.moonshot]
+# api_key = "YOUR_MOONSHOT_KEY"
+# base_url = "https://api.moonshot.cn/v1"       # international: https://api.moonshot.ai/v1
+# model = "kimi-k3"
 
 # Self-hosted SGLang OpenAI-compatible server
 [providers.sglang]

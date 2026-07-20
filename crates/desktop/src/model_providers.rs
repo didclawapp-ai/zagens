@@ -205,6 +205,17 @@ const PRESETS: &[ProviderPreset] = &[
         section: ModelProviderSection::Free,
         docs_url: Some("https://platform.sensenova.cn/docs"),
     },
+    ProviderPreset {
+        id: "moonshot",
+        display_name: "Moonshot (Kimi)",
+        kind: ProviderKind::Moonshot,
+        keyring_slot: "moonshot",
+        default_base_url: "https://api.moonshot.cn/v1",
+        default_model: "kimi-k3",
+        key_required: true,
+        section: ModelProviderSection::Free,
+        docs_url: Some("https://platform.kimi.com/docs/guide/kimi-k3-quickstart"),
+    },
 ];
 
 fn is_custom_provider_id(id: &str) -> bool {
@@ -705,7 +716,8 @@ mod keyring_injection_tests {
 
     #[test]
     fn every_catalog_preset_in_registry() {
-        const CATALOG_PRESET_IDS: &[&str] = &["openrouter", "sensenova", "agnes", "nvidia-nim"];
+        const CATALOG_PRESET_IDS: &[&str] =
+            &["openrouter", "sensenova", "agnes", "nvidia-nim", "moonshot"];
         for id in CATALOG_PRESET_IDS {
             assert!(
                 registry::catalog_by_id(id).is_some(),

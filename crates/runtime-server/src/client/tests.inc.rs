@@ -343,6 +343,43 @@ fn reasoning_effort_off_disables_nvidia_nim_thinking() {
 }
 
 #[test]
+fn reasoning_effort_moonshot_passes_low_high_max_as_is() {
+    let mut low = json!({ "model": "kimi-k3" });
+    apply_reasoning_effort(&mut low, Some("low"), ApiProvider::Moonshot);
+    assert_eq!(
+        low.get("reasoning_effort").and_then(Value::as_str),
+        Some("low")
+    );
+    assert!(low.get("thinking").is_none());
+
+    let mut high = json!({ "model": "kimi-k3" });
+    apply_reasoning_effort(&mut high, Some("high"), ApiProvider::Moonshot);
+    assert_eq!(
+        high.get("reasoning_effort").and_then(Value::as_str),
+        Some("high")
+    );
+
+    let mut max = json!({ "model": "kimi-k3" });
+    apply_reasoning_effort(&mut max, Some("max"), ApiProvider::Moonshot);
+    assert_eq!(
+        max.get("reasoning_effort").and_then(Value::as_str),
+        Some("max")
+    );
+}
+
+#[test]
+fn reasoning_effort_moonshot_off_maps_to_max_not_disabled() {
+    let mut body = json!({ "model": "kimi-k3" });
+    apply_reasoning_effort(&mut body, Some("off"), ApiProvider::Moonshot);
+    assert_eq!(
+        body.get("reasoning_effort").and_then(Value::as_str),
+        Some("max")
+    );
+    assert!(body.get("thinking").is_none());
+    assert!(body.pointer("/thinking/type").is_none());
+}
+
+#[test]
 fn chat_parser_accepts_nvidia_nim_reasoning_field() -> Result<()> {
     let response = parse_chat_message(&json!({
         "id": "chatcmpl-test",
