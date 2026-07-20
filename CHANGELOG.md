@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **web_search Metaso:** remove hardcoded community API key from source; Metaso now requires `[search] api_key` or `METASO_API_KEY` (same pattern as Baidu/Volcengine).
 - **Audit scratchpad inventory / report gates (S0–S3):** Desktop/runtime-server inventory areas are declared via `[package.metadata.zagens.audit]` (paths relative to crate root; must-hit contract fails loud). Active audit runs gate `deliverables/**` docs (CJK「审核」; `_exempt/` / `non-audit/` escape). `set_area` validates `area_id` first. `write_office` rejects null/empty `blocks` for docx/pdf/pptx. AuditScratchpadPanel no longer shows inventory complete while pending/in_progress remain. Public pointer restored at `docs/desktop/audit-scratchpad-design.md`.
 
 ### Added

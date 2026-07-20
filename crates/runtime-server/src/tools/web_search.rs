@@ -7,7 +7,7 @@
 //! ```toml
 //! [search]
 //! provider = "metaso"   # or tavily / bocha / baidu / volcengine / bing
-//! api_key  = "..."      # not required for metaso (has a built-in community key)
+//! api_key  = "..."      # required for metaso / tavily / bocha / baidu / volcengine
 //! ```
 //!
 //! Supported providers:
@@ -15,7 +15,7 @@
 //! - `bing`                 — HTML scrape, no key needed
 //! - `tavily`               — Tavily AI Search API (global)
 //! - `bocha`                — 博查 (Bocha) AI Search API (China-friendly)
-//! - `metaso`               — 秘塔搜索 API (China-friendly, has free default key)
+//! - `metaso`               — 秘塔搜索 API (China-friendly; needs `[search] api_key` or `METASO_API_KEY`)
 //! - `baidu`                — 百度 AI Search / Qianfan API (China)
 //! - `volcengine`           — 火山引擎 Ark Responses API (China, ByteDance)
 
@@ -42,9 +42,6 @@ const METASO_ENDPOINT: &str = "https://metaso.cn/api/v1";
 const BAIDU_ENDPOINT: &str = "https://qianfan.baidubce.com/v2/ai_search/web_search";
 const VOLCENGINE_RESPONSES_ENDPOINT: &str = "https://ark.cn-beijing.volces.com/api/v3/responses";
 
-/// Intentionally public default key provided by Metaso for open-source / community use.
-/// Last-resort fallback after config and env var. Rate-limited to ~100 searches/day.
-const METASO_DEFAULT_API_KEY: &str = "mk-E384C1DD5E8501BB7EFE27C949AFDE5B";
 const ERROR_BODY_PREVIEW_BYTES: usize = 512;
 
 /// Cap HTML response size so a huge/broken page can't OOM before parse.
@@ -602,8 +599,7 @@ impl WebSearchTool {
 
     /// Search via Metaso (秘塔) AI Search API.
     ///
-    /// Falls back to `METASO_API_KEY` env var, then a built-in community key
-    /// (rate-limited to ~100 searches/day) when no config key is set.
+    /// Requires `[search] api_key` in config, or the `METASO_API_KEY` env var.
     async fn run_metaso_search(
         &self,
         query: &str,
@@ -616,7 +612,12 @@ impl WebSearchTool {
             .search_api_key
             .as_deref()
             .or(env_key.as_deref())
-            .unwrap_or(METASO_DEFAULT_API_KEY);
+            .ok_or_else(|| {
+                ToolError::execution_failed(
+                    "Metaso search requires an API key. Set `METASO_API_KEY` or `[search] api_key` in config.toml \
+                     (get one at https://metaso.cn/search-api/playground).",
+                )
+            })?;
 
         let client = build_simple_client(timeout_ms)?;
 

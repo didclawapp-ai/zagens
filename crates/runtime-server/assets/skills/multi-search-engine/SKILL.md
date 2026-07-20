@@ -84,7 +84,7 @@ Use the `fetch_url` tool with each URL. After identifying result links, fetch th
 
 - `fetch_url` is stateless — no cookie jar between calls; Baidu/Google may return 403 or captcha pages.
 - Prefer `cn.bing.com` and Sogou when domestic engines block.
-- Configure `[search] provider = "metaso"` in config.toml for a more reliable default `web_search` backend.
+- Configure `[search] provider = "metaso"` plus `api_key` (or `METASO_API_KEY`) in config.toml for a more reliable `web_search` backend.
 
 ## License
 
