@@ -198,13 +198,16 @@ def gen_api_provider(providers: list[dict]) -> str:
     for p in providers:
         pats = parse_patterns(p, runtime=True)
         joined = " | ".join(rust_str(x) for x in pats)
-        # Keep rustfmt happy on long alias lists (e.g. deepseek-cn).
-        if len(joined) > 70:
+        # Match rustfmt max_width=100 on the full arm (indent + pats + body),
+        # not just the pattern list — deepseek-cn aliases are ~67 chars but the
+        # whole line exceeds 100 and would otherwise drift after `cargo fmt`.
+        arm = f"            {joined} => Some(Self::{p['rust_variant']}),"
+        if len(arm) > 100:
             lines.append(f"            {joined} => {{")
             lines.append(f"                Some(Self::{p['rust_variant']})")
             lines.append("            }")
         else:
-            lines.append(f"            {joined} => Some(Self::{p['rust_variant']}),")
+            lines.append(arm)
     lines.extend(
         [
             "            _ => None,",
