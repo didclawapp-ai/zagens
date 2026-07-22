@@ -1,7 +1,7 @@
 # Zagens Tool System Principles
 
 > **Document path:** `docs/tech/TOOLS_PRINCIPLES.md` (same `docs/tech/` tree as [API_DESIGN.md](./API_DESIGN.md) and [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md))  
-> **Zagens shell version:** 0.8.7+ | **Last updated:** 2026-07-21 | **Authoritative implementation:** `crates/runtime-server/src/tools/` (formerly `crates/tui/src/tools/`), `registry.rs`  
+> **Zagens shell version:** 0.8.8+ | **Last updated:** 2026-07-21 | **Authoritative implementation:** `crates/runtime-server/src/tools/` (formerly `crates/tui/src/tools/`), `registry.rs`  
 > **Roadmap status:** see [§9 Innovation roadmap status](#9-innovation-roadmap-status-2026-07)
 
 ---

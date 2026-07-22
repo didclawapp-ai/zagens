@@ -12,12 +12,12 @@
 
 > **作者より：** AI Agent が何でもできるわけではない — 境界がある。私たちにできるのは、その境界を広げることだ。
 
-> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.8.7** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
+> **ライセンス:** [MIT](LICENSE)。Runtime 系譜: [NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下は **Zagens v0.8.8** 時点 — [CHANGELOG.md](CHANGELOG.md) を参照。
 
 | リソース | リンク |
 |----------|--------|
 | ユーザーガイド | [zagens.com/docs](https://zagens.com/docs) |
-| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.7`**）· [zagens.com/download](https://zagens.com/download) |
+| ダウンロード | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.8`**）· [zagens.com/download](https://zagens.com/download) |
 | 設計仕様 | [`docs/README.md`](docs/README.md) |
 | コントリビューション | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | セキュリティ | [`SECURITY.md`](SECURITY.md) |
@@ -60,7 +60,9 @@
 
 ---
 
-## 現時点で提供（v0.8.7）
+## 現時点で提供（v0.8.8）
+
+**ツール証拠 + 意図コンポジット:** Evidence 封筒（`facts` / `citations` / `uncertainty`）+ citation auditor；`investigate` / `answer_from_repo` / `change_and_verify`；claim↔evidence nudge；`promote_to_context` + 差分 `read_file`；noisy ツールの段階 compact。**共有 model catalog / providers.toml** SSOT；一等 **Moonshot / Kimi K3**。監査 scratchpad 完了ゲート + 強制 import。
 
 **デスクトップ Browser パネル:** 埋め込み WebView（ウィンドウフォールバック可）；Agent ツール `browser_navigate` / `snapshot` / click·type·scroll / `wait` / preview；URL ポリシー + セッション allowlist；YOLO はグローバル自動承認と分離。**Diff 薄層 Git:** workspace status / changes / file-diff / 読み取り専用 PR；Diff タブバッジ；force-push 承認バナー。**night queue** 停止/取消/再試行/クリア。統合ターミナルのライフサイクルと Shell UX。**Zagens Neural Ring** アイコン。
 
@@ -76,7 +78,7 @@
 
 **Runtime:** スレッド、MCP、スキル、Hooks、マルチプロバイダ、ビジョン；night-queue / agent-health / symbol-index API；**`GET/PUT/DELETE /v1/threads/{id}/config`**；グローバル **`thread.status`** SSE；**`POST /v1/threads/{id}/events`** チャネル注入。
 
-**ツール（代表）:** ファイル、git、`exec_shell`、`write_office`、T4 `assert_*`、T5 複合、任意で `web_search` / `fetch_url`、メモリツール。一覧: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+**ツール（代表）:** ファイル、git、`exec_shell`、`write_office`、T4 `assert_*`、T5 複合、意図コンポジット（`investigate` / `answer_from_repo` / `change_and_verify`）、任意で `web_search` / `fetch_url`、メモリツール。一覧: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -121,7 +123,7 @@
 | **`zagens`**（ヘッドレス CLI） | ✅ | ✅ | ✅ |
 | **デスクトップアプリ** | —（TUI を使用） | —（TUI を使用） | ✅ インストーラ |
 
-**プリビルド**（[Releases `zagens-v0.8.7`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7)）、**`cargo install`**（crates.io）、**ソースビルド**（下記）のいずれかで導入。
+**プリビルド**（[Releases `zagens-v0.8.8`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.8)）、**`cargo install`**（crates.io）、**ソースビルド**（下記）のいずれかで導入。
 
 **Rust 前提**（`cargo install` / ソースのみ）: [rustup](https://rustup.rs/)（Rust **1.88+**；CI は 1.96）。Linux/macOS は `source "$HOME/.cargo/env"`、Windows はターミナル再起動。
 
@@ -134,13 +136,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
 # TUI（初回コンパイルは 10–30 分程度）
-cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens-tui --features tui --locked
 
 # ヘッドレス CLI（任意）
-cargo install zagens-cli --version 0.8.7 --bin zagens --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens --locked
 ```
 
-**プリビルド**（Rust 不要）: [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7) から `zagens-tui-x86_64-unknown-linux-gnu` および/または `zagens-x86_64-unknown-linux-gnu` を取得し、`.sha256` を検証、`chmod +x` して `PATH` に配置。
+**プリビルド**（Rust 不要）: [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.8) から `zagens-tui-x86_64-unknown-linux-gnu` および/または `zagens-x86_64-unknown-linux-gnu` を取得し、`.sha256` を検証、`chmod +x` して `PATH` に配置。
 
 ```bash
 zagens-tui              # 前回セッション復元
@@ -154,29 +156,29 @@ xcode-select --install    # C ツールチェーンがない場合
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
-cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.7 --bin zagens --locked   # 任意
+cargo install zagens-cli --version 0.8.8 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens --locked   # 任意
 ```
 
-**プリビルド:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7) の `zagens-tui-x86_64-apple-darwin`（Intel）または `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
+**プリビルド:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.8) の `zagens-tui-x86_64-apple-darwin`（Intel）または `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
 
 #### Windows
 
-**プリビルド（最速）:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（+ `.sha256`）。フォルダを `PATH` に追加するか、`.exe` を `PATH` 上のディレクトリへコピー。
+**プリビルド（最速）:** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.8) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（+ `.sha256`）。フォルダを `PATH` に追加するか、`.exe` を `PATH` 上のディレクトリへコピー。
 
 **crates.io**（先に [Rust for Windows](https://rustup.rs/) をインストール）:
 
 ```powershell
-cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.7 --bin zagens --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens --locked
 ```
 
 ### crates.io（全プラットフォーム）
 
 ```bash
-cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked   # TUI
-cargo install zagens-cli --version 0.8.7 --bin zagens --locked                   # CLI
-cargo install zagens-cli --version 0.8.7 --bin zagens-runtime --locked           # HTTP sidecar（任意）
+cargo install zagens-cli --version 0.8.8 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.8 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.8 --bin zagens-runtime --locked           # HTTP sidecar（任意）
 ```
 
 ### ソースから — デスクトップ

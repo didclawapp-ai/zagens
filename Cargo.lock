@@ -8386,7 +8386,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-agent"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "serde",
  "zagens-config",
@@ -8394,7 +8394,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-cli"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "arboard",
@@ -8472,7 +8472,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-config"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "dirs",
@@ -8486,7 +8486,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-core"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8513,7 +8513,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-desktop"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "axum",
@@ -8555,7 +8555,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-hooks"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8570,7 +8570,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-mcp"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "serde",
@@ -8579,7 +8579,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-protocol"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "serde",
  "serde_json",
@@ -8587,7 +8587,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-runtime-adapters"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8616,7 +8616,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-runtime-api"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "axum",
  "chrono",
@@ -8634,7 +8634,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-runtime-orchestrator"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8658,7 +8658,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-secrets"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "dirs",
  "keyring",
@@ -8671,7 +8671,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-tools"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8685,7 +8685,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-topic-memory"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "chrono",
  "once_cell",
@@ -8697,7 +8697,7 @@ dependencies = [
 
 [[package]]
 name = "zagens-windows-sandbox"
-version = "0.8.7"
+version = "0.8.8"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

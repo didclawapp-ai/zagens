@@ -12,12 +12,12 @@
 
 > **作者语：** 不要相信 AI Agent 能做任何事情，它是有边界的；我们能做的，就是拓展这种边界。
 
-> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.8.7** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
+> **许可：** [MIT](LICENSE)。Runtime 谱系：[NOTICE.md](NOTICE.md) · [third-party/deepseek-tui/](third-party/deepseek-tui/)。以下以 **Zagens v0.8.8** 为准 — 见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 资源 | 链接 |
 |------|------|
 | 用户文档 | [zagens.com/docs](https://zagens.com/docs) |
-| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.7`**）· [zagens.com/download](https://zagens.com/download) |
+| 安装包 | [GitHub Releases](https://github.com/didclawapp-ai/zagens/releases)（最新 **`zagens-v0.8.8`**）· [zagens.com/download](https://zagens.com/download) |
 | 设计规格 | [`docs/README.md`](docs/README.md) |
 | 贡献指南 | [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`LOCAL_DEV_VERIFY.md`](LOCAL_DEV_VERIFY.md) |
 | 安全策略 | [`SECURITY.md`](SECURITY.md) |
@@ -60,7 +60,9 @@
 
 ---
 
-## 当前已具备（v0.8.7）
+## 当前已具备（v0.8.8）
+
+**工具证据链 + 意图组合工具：** Evidence 信封（`facts` / `citations` / `uncertainty`）+ citation auditor；`investigate` / `answer_from_repo` / `change_and_verify`；claim↔evidence nudge；`promote_to_context` + 差分 `read_file`；noisy 工具分级 compact。**共享 model catalog / providers.toml** SSOT；一等公民 **Moonshot / Kimi K3**。审计 scratchpad 完成门禁 + 强制 import。
 
 **桌面 Browser 面板：** 内嵌 WebView（可回退独立窗）；Agent 工具 `browser_navigate` / `snapshot` / 点击·输入·滚动 / `wait` / preview；URL 策略 + 会话 allowlist；YOLO 与全局自动批准解耦。**Diff 薄层 Git：** 工作区 status / changes / file-diff / 只读 PR；Diff 图标角标；force-push 审批横幅。**夜间队列** 停止/取消/重试/清除。集成终端生命周期与 Shell UX。**Zagens Neural Ring** 图标。
 
@@ -76,7 +78,7 @@
 
 **Runtime：** 线程、MCP、技能、Hooks、多提供商路由、视觉；night-queue / agent-health / symbol-index API；**`GET/PUT/DELETE /v1/threads/{id}/config`**；全局 **`thread.status`** SSE；**`POST /v1/threads/{id}/events`** 通道注入。
 
-**工具（代表）：** 文件、git、`exec_shell`、`write_office`、T4 `assert_*`、T5 复合工具、可选 `web_search` / `fetch_url`、记忆工具。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+**工具（代表）：** 文件、git、`exec_shell`、`write_office`、T4 `assert_*`、T5 复合工具、意图组合（`investigate` / `answer_from_repo` / `change_and_verify`）、可选 `web_search` / `fetch_url`、记忆工具。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -121,7 +123,7 @@
 | **`zagens`**（无 GUI CLI） | ✅ | ✅ | ✅ |
 | **桌面应用** | —（用 TUI） | —（用 TUI） | ✅ 安装包 |
 
-可通过 **预编译包**（[Releases `zagens-v0.8.7`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7)）、**`cargo install`**（crates.io）或 **源码构建**（见下）安装。
+可通过 **预编译包**（[Releases `zagens-v0.8.8`](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.8)）、**`cargo install`**（crates.io）或 **源码构建**（见下）安装。
 
 **Rust 前置**（仅 `cargo install` / 源码需要）：安装 [rustup](https://rustup.rs/)（Rust **1.88+**；CI 使用 1.96）。Linux/macOS 执行 `source "$HOME/.cargo/env"`，Windows 重开终端。
 
@@ -134,13 +136,13 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
 # TUI（首次编译约 10–30 分钟）
-cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens-tui --features tui --locked
 
 # 无 GUI CLI（可选）
-cargo install zagens-cli --version 0.8.7 --bin zagens --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens --locked
 ```
 
-**预编译**（无需 Rust）：从 [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7) 下载 `zagens-tui-x86_64-unknown-linux-gnu` 和/或 `zagens-x86_64-unknown-linux-gnu`，校验对应 `.sha256`，`chmod +x` 后放入 `PATH` 目录。
+**预编译**（无需 Rust）：从 [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.8) 下载 `zagens-tui-x86_64-unknown-linux-gnu` 和/或 `zagens-x86_64-unknown-linux-gnu`，校验对应 `.sha256`，`chmod +x` 后放入 `PATH` 目录。
 
 ```bash
 zagens-tui              # 恢复上次会话
@@ -154,29 +156,29 @@ xcode-select --install    # 若缺少 C 工具链
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 
-cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.7 --bin zagens --locked   # 可选
+cargo install zagens-cli --version 0.8.8 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens --locked   # 可选
 ```
 
-**预编译：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7) 上的 `zagens-tui-x86_64-apple-darwin`（Intel）或 `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
+**预编译：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.8) 上的 `zagens-tui-x86_64-apple-darwin`（Intel）或 `zagens-tui-aarch64-apple-darwin`（Apple Silicon）。
 
 #### Windows
 
-**预编译（最快）：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.7) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（及 `.sha256`）。将目录加入 `PATH`，或把 `.exe` 复制到已在 `PATH` 中的文件夹。
+**预编译（最快）：** [Releases](https://github.com/didclawapp-ai/zagens/releases/tag/zagens-v0.8.8) — `zagens-tui-x86_64-pc-windows-msvc.exe`、`zagens-x86_64-pc-windows-msvc.exe`（及 `.sha256`）。将目录加入 `PATH`，或把 `.exe` 复制到已在 `PATH` 中的文件夹。
 
 **crates.io**（先安装 [Rust for Windows](https://rustup.rs/)）：
 
 ```powershell
-cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked
-cargo install zagens-cli --version 0.8.7 --bin zagens --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens-tui --features tui --locked
+cargo install zagens-cli --version 0.8.8 --bin zagens --locked
 ```
 
 ### crates.io（全平台）
 
 ```bash
-cargo install zagens-cli --version 0.8.7 --bin zagens-tui --features tui --locked   # TUI
-cargo install zagens-cli --version 0.8.7 --bin zagens --locked                   # CLI
-cargo install zagens-cli --version 0.8.7 --bin zagens-runtime --locked           # HTTP sidecar（可选）
+cargo install zagens-cli --version 0.8.8 --bin zagens-tui --features tui --locked   # TUI
+cargo install zagens-cli --version 0.8.8 --bin zagens --locked                   # CLI
+cargo install zagens-cli --version 0.8.8 --bin zagens-runtime --locked           # HTTP sidecar（可选）
 ```
 
 ### 从源码 — 桌面

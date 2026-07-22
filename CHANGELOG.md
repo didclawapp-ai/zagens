@@ -10,7 +10,7 @@ All notable changes to **Zagens** and its embedded runtime will be documented in
 
 **Licensing:** This repository is [MIT](LICENSE). See [NOTICE.md](NOTICE.md) for third-party attribution.
 
-**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.7`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.7**).
+**Zagens** (desktop app in `crates/desktop/`) and the runtime workspace share **`0.8.8`**. Desktop still carries an independent literal in `crates/desktop/Cargo.toml` checked by `check-versions.sh` against Tauri/npm/About. Public releases use `0.MINOR.PATCH` until **1.0.0 GA**. Display form **v** + manifest version (e.g. **v0.8.8**).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,17 +20,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-07-22
+
+**Release highlights**
+
+- **Tool evidence + intent composites:** Evidence envelope (`facts` / `citations` / `uncertainty`) + citation auditor; `investigate` / `answer_from_repo` / `change_and_verify`; claim↔evidence nudge; `promote_to_context` + differential `read_file`; noisy-tool compact.
+- **Shared model catalog / providers.toml** SSOT (Rust↔TS); first-class **Moonshot / Kimi K3**; Agnes/SenseNova context-window fix.
+- **Audit scratchpad** completion-over-cost, force import, quality signals; Metaso search requires configured API key.
+
 ### Fixed
 
 - **claim nudge refuse false-positive (thr_e1b9):** only treat structured first-line `outcome=refuse` / `- fact: answer_allowed=false` as refuse; ignore the same literals inside read/edit source dumps.
 - **arg_repair silent `{}`:** five-stage JSON repair no longer invents an empty object on failure; returns `Unparseable` with `raw_preview`, streaming sets `ToolUseState.arg_parse_error`, and tool phase short-circuits with `InvalidInput` (`[arg_repair_failed]`).
 - **web_search Metaso:** remove hardcoded community API key from source; Metaso now requires `[search] api_key` or `METASO_API_KEY` (same pattern as Baidu/Volcengine).
 - **Audit scratchpad inventory / report gates (S0–S3):** Desktop/runtime-server inventory areas are declared via `[package.metadata.zagens.audit]` (paths relative to crate root; must-hit contract fails loud). Active audit runs gate `deliverables/**` docs (CJK「审核」; `_exempt/` / `non-audit/` escape). `set_area` validates `area_id` first. `write_office` rejects null/empty `blocks` for docx/pdf/pptx. AuditScratchpadPanel no longer shows inventory complete while pending/in_progress remain. Public pointer restored at `docs/desktop/audit-scratchpad-design.md`.
+- **providers-check / rustfmt drift:** `generate-providers.py` wraps long `ApiProvider::parse` arms by full-line width (rustfmt `max_width=100`), so CI regenerate+diff no longer fails on `deepseek-cn` aliases.
 
 ### Changed
 
 - **Intent tool outcomes:** `investigate` / `answer_from_repo` / `change_and_verify` prefix a machine-readable first line (`outcome=ok|limited|refuse|fail`); `answer_from_repo` description clarifies it returns an evidence pack only (no natural-language answer). Claim nudge fires on recent `outcome=refuse`.
 - **Noisy tool compact:** `ToolSpec::is_noisy()` + registry `metadata.context_noisy`; core list covers intent/promote tools and MCP/`browser_*` prefixes; FailureHotStart prefers LSP `ERROR [line:col]` blocks.
+- **Noisy tool context compact:** graded earlier compact for shell/web/grep/explore/browser snapshot tools; truncated/partial evidence injects a no-invention hint.
+- **Tools hand-test fixes (thr_3c79):** workspace-relative evidence paths (`\\?\` stripped); `explore_codebase` include filter + empty `files[]` fallback so investigate grep actually searches; `around_last_edit` anchors recorded from tool metadata in-registry (same turn); `answer_from_repo` allows LIMITED answers when path cites exist; claim nudge matches absolute/`//?/` cites to relative path claims.
+- **ToolContext constructors:** shared `with_common_defaults` so `new` / `with_options` / `with_auto_approve` cannot drift when fields are added.
 
 ### Added
 
@@ -47,12 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audit quality signals (S2):** `scratchpad_status` exposes `dimension_coverage` / `dimension_gaps`; inventory may mark `high_complexity` from on-disk symbol index (no init rebuild); import fails hard on missing `<!-- audit-findings -->` even if craft-verdict exists; `MAX_FILES_PER_AREA` raised to 40.
 - **Audit completion-over-cost prompt:** `base.md` full-repo mode + `audit-repo` skill + scratchpad `contract_hints` / continue steers mandate finishing the user's audit request (no self-budget early stop / unapproved `partial_closeout`); defer_remaining only nudged after `reviewed_ratio` gate.
 - **Audit force `scratchpad_import_agent`:** final audit `write_file` blocked while bound explore/review agents are still running or lack import receipt; import appends `_global` meta `imported_agent:…`. Bundled system skills marker **10→11** (refreshes `audit-repo` on next launch).
-
-### Changed
-
-- **Noisy tool context compact:** graded earlier compact for shell/web/grep/explore/browser snapshot tools; truncated/partial evidence injects a no-invention hint.
-- **Tools hand-test fixes (thr_3c79):** workspace-relative evidence paths (`\\?\` stripped); `explore_codebase` include filter + empty `files[]` fallback so investigate grep actually searches; `around_last_edit` anchors recorded from tool metadata in-registry (same turn); `answer_from_repo` allows LIMITED answers when path cites exist; claim nudge matches absolute/`//?/` cites to relative path claims.
-- **ToolContext constructors:** shared `with_common_defaults` so `new` / `with_options` / `with_auto_approve` cannot drift when fields are added.
 
 ## [0.8.7] - 2026-07-18
 

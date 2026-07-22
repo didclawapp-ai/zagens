@@ -26,7 +26,7 @@ inputs:
   zagens-ref:
     description: Git ref of didclawapp-ai/zagens to build when not running inside the monorepo
     required: false
-    default: 'v0.8.7'
+    default: 'v0.8.8'
   zagens-path:
     description: Path to a pre-built `zagens` binary (skip build when set)
     required: false

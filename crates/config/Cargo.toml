@@ -12,7 +12,7 @@ description = "Config schema and precedence model for Zagens agent runtime"
 
 [dependencies]
 anyhow.workspace = true
-zagens-secrets = { path = "../secrets", version = "0.8.7" }
+zagens-secrets = { path = "../secrets", version = "0.8.8" }
 dirs.workspace = true
 serde.workspace = true
 toml.workspace = true
