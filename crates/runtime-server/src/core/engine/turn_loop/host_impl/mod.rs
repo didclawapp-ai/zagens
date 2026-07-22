@@ -76,11 +76,7 @@ fn parse_citations_from_tool_result(content: &str) -> Option<zagens_tools::Evide
                 .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
             if line_ok {
                 if let Some((s, e)) = lines.split_once('-') {
-                    (
-                        path,
-                        s.parse::<u64>().ok(),
-                        e.parse::<u64>().ok(),
-                    )
+                    (path, s.parse::<u64>().ok(), e.parse::<u64>().ok())
                 } else if let Ok(n) = lines.parse::<u64>() {
                     (path, Some(n), Some(n))
                 } else {
@@ -456,13 +452,10 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
                     | "change_and_verify"
             )
         {
-            self.runtime_ext_mut().failure_hot_start =
-                zagens_core::engine::FailureHotStart::None;
+            self.runtime_ext_mut().failure_hot_start = zagens_core::engine::FailureHotStart::None;
         }
 
-        if success
-            && let Some(env) = parse_citations_from_tool_result(result)
-        {
+        if success && let Some(env) = parse_citations_from_tool_result(result) {
             let mut anchors = self.runtime_ext().diff_read_anchors.lock().await;
             anchors.record_from_evidence(Some(tool_use_id), tool_name, &env);
         }

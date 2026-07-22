@@ -76,9 +76,8 @@ impl Engine {
             }
         }
 
-        ctx = ctx.with_diff_read_anchors(std::sync::Arc::clone(
-            &self.runtime_ext().diff_read_anchors,
-        ));
+        ctx = ctx
+            .with_diff_read_anchors(std::sync::Arc::clone(&self.runtime_ext().diff_read_anchors));
 
         // Wire the external sandbox backend (#516). exec_shell checks this
         // field and routes commands through the backend instead of spawning

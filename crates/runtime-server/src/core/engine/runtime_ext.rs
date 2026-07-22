@@ -35,9 +35,7 @@ pub struct EngineRuntimeExt {
     /// Failure-driven eager-tool hot-start (compile fail / symbol missing).
     pub failure_hot_start: zagens_core::engine::FailureHotStart,
     /// Differential read anchors (last edit / tool_use citation windows).
-    pub diff_read_anchors: std::sync::Arc<
-        tokio::sync::Mutex<zagens_core::engine::DiffReadAnchors>,
-    >,
+    pub diff_read_anchors: std::sync::Arc<tokio::sync::Mutex<zagens_core::engine::DiffReadAnchors>>,
     pub turn_app_mode: crate::agent_surface::AppMode,
     /// Per-turn LHT mode override from the UI toggle (`None` = use config default).
     pub turn_lht_mode: Option<zagens_core::long_horizon::LhtMode>,
