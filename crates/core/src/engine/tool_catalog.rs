@@ -77,6 +77,12 @@ pub fn should_default_defer_tool(name: &str, mode: TurnLoopMode) -> bool {
             | "scratchpad_append"
             | "scratchpad_set_area"
             | "scratchpad_list_notes"
+            | "investigate"
+            | "answer_from_repo"
+            | "explore_codebase"
+            | "change_and_verify"
+            | "edit_and_check"
+            | "promote_to_context"
             | REQUEST_USER_INPUT_NAME
     )
 }

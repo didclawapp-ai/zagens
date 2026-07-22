@@ -157,6 +157,26 @@ impl ToolSpec for FetchUrlTool {
             truncated,
         };
 
+        use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
+        let uncertainty = if truncated {
+            UncertaintyKind::Truncated
+        } else if !status.is_success() || response.content.trim().is_empty() {
+            if response.content.trim().is_empty() {
+                UncertaintyKind::NotFound
+            } else {
+                UncertaintyKind::Partial
+            }
+        } else {
+            UncertaintyKind::None
+        };
+        let evidence = EvidenceEnvelope::new()
+            .with_fact("url", &response.url)
+            .with_fact("status", response.status.to_string())
+            .with_fact("truncated", truncated.to_string())
+            .with_fact("empty", response.content.trim().is_empty().to_string())
+            .with_citation(EvidenceCitation::path(&response.url))
+            .with_uncertainty(uncertainty);
+
         if !status.is_success() {
             // Don't `Err` on 4xx/5xx — the caller often wants to see the body
             // (e.g. a JSON error envelope). Mark the result as a failure so the
@@ -167,11 +187,13 @@ impl ToolSpec for FetchUrlTool {
                 })?,
                 success: false,
                 metadata: None,
-            });
+            }
+            .with_evidence(evidence));
         }
 
         ToolResult::json(&response)
             .map_err(|e| ToolError::execution_failed(format!("failed to serialize response: {e}")))
+            .map(|r| r.with_evidence(evidence))
     }
 }
 

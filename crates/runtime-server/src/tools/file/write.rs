@@ -14,6 +14,7 @@ use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
 
 /// Tool for writing UTF-8 files to the workspace.
 pub struct WriteFileTool;
@@ -167,14 +168,22 @@ impl ToolSpec for WriteFileTool {
         let balance_warning = balance_warning(&file_path, &file_content);
 
         // Append LSP diagnostics for the written file when enabled (#428).
-        let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
+        let diag_block = lsp_diagnostics_for_paths(context, std::slice::from_ref(&file_path)).await;
         let full_body = if diag_block.is_empty() {
             format!("{body}{balance_warning}")
         } else {
             format!("{body}{balance_warning}\n{diag_block}")
         };
 
-        Ok(ToolResult::success(full_body))
+        let rel = super::workspace_relative_posix(&context.workspace, &file_path);
+        let evidence = EvidenceEnvelope::new()
+            .with_fact("path", &rel)
+            .with_fact("written", "true")
+            .with_fact("bytes", byte_len.to_string())
+            .with_citation(EvidenceCitation::path(&rel))
+            .with_uncertainty(UncertaintyKind::None);
+
+        Ok(ToolResult::success(full_body).with_evidence(evidence))
     }
 }
 

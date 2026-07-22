@@ -15,6 +15,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::LazyLock;
 use zagens_config::workspace_meta_file_read;
+use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
 
 // === ReadFileTool ===
 
@@ -28,7 +29,7 @@ impl ToolSpec for ReadFileTool {
     }
 
     fn description(&self) -> &'static str {
-        "Read a file from the workspace. Plain text uses line paging (start_line or offset + limit) with streaming newline decode (low memory); files starting with UTF-16/UTF-32 BOM use full-file decode. PDFs: `pdftotext` or `pdf-extract`. DOCX/XLSX/PPTX: extracts text from OOXML ZIP."
+        "Read a file from the workspace. Plain text uses line paging (start_line or offset + limit) with streaming newline decode (low memory); files starting with UTF-16/UTF-32 BOM use full-file decode. Prefer around_line/symbol/around_last_edit/since_tool_use_id for differential windows instead of re-reading whole files. PDFs: `pdftotext` or `pdf-extract`. DOCX/XLSX/PPTX: extracts text from OOXML ZIP."
     }
 
     fn input_schema(&self) -> Value {
@@ -64,16 +65,24 @@ impl ToolSpec for ReadFileTool {
             return read_pptx(&file_path);
         }
 
-        let start_line = match (
-            input.get("start_line").and_then(Value::as_u64),
-            input.get("offset").and_then(Value::as_u64),
-        ) {
-            (Some(s), _) => s.max(1),
-            (None, Some(o)) => o.max(1),
-            (None, None) => 1,
+        let start_line =
+            resolve_read_window(&input, &file_path, &context.workspace, context).await?;
+        let limit = if input.get("around_line").and_then(Value::as_u64).is_some()
+            || input.get("symbol").and_then(Value::as_str).is_some()
+            || input
+                .get("around_last_edit")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            || input
+                .get("since_tool_use_id")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty())
+        {
+            let radius = optional_u64(&input, "context_radius", 40).clamp(1, 250);
+            ((radius * 2) + 1).min(MAX_LIMIT as u64) as usize
+        } else {
+            optional_u64(&input, "limit", DEFAULT_LIMIT as u64).clamp(1, MAX_LIMIT as u64) as usize
         };
-        let limit =
-            optional_u64(&input, "limit", DEFAULT_LIMIT as u64).clamp(1, MAX_LIMIT as u64) as usize;
 
         let metadata_result = fs::metadata(&file_path);
         let size_bytes = metadata_result.as_ref().ok().map(|m| m.len());
@@ -171,6 +180,7 @@ impl ToolSpec for ReadFileTool {
             "truncated": truncated,
             "encoding_used": encoding_used,
             "encoding_detected_via": encoding_detected_via,
+            "start_line": start_line,
         });
         if let Some(s) = size_bytes {
             metadata["size_bytes"] = json!(s);
@@ -179,8 +189,134 @@ impl ToolSpec for ReadFileTool {
             metadata["total_lines"] = json!(t);
         }
 
-        Ok(ToolResult::success(content).with_metadata(metadata))
+        let rel = super::workspace_relative_posix(&context.workspace, &file_path);
+        let end_line = if collected.is_empty() {
+            start_line
+        } else {
+            start_line + collected.len() as u64 - 1
+        };
+        let uncertainty = if collected.is_empty() && start_line > 1 {
+            UncertaintyKind::NotFound
+        } else if truncated {
+            UncertaintyKind::Truncated
+        } else {
+            UncertaintyKind::None
+        };
+        let mut evidence = EvidenceEnvelope::new()
+            .with_fact("path", &rel)
+            .with_fact("lines_read", collected.len().to_string())
+            .with_fact("start_line", start_line.to_string())
+            .with_uncertainty(uncertainty);
+        if !collected.is_empty() {
+            evidence = evidence.with_citation(EvidenceCitation::lines(&rel, start_line, end_line));
+        }
+        if let Some(t) = total_lines_known {
+            evidence = evidence.with_fact("total_lines", t.to_string());
+        }
+
+        Ok(ToolResult::success(content)
+            .with_metadata(metadata)
+            .with_evidence(evidence))
     }
+}
+
+/// Resolve 1-based start_line for plain-text paging, honoring differential windows.
+async fn resolve_read_window(
+    input: &Value,
+    file_path: &Path,
+    workspace: &Path,
+    context: &ToolContext,
+) -> Result<u64, ToolError> {
+    let rel = super::workspace_relative_posix(workspace, file_path);
+    let radius = optional_u64(input, "context_radius", 40).clamp(1, 250);
+
+    if let Some(tool_use_id) = input
+        .get("since_tool_use_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        if let Some(anchors) = context.diff_read_anchors.as_ref() {
+            let guard = anchors.lock().await;
+            if let Some((anchor_path, window)) = guard.window_for_tool_use(tool_use_id) {
+                let path_ok = zagens_core::engine::repo_paths_match(&anchor_path, &rel);
+                if path_ok {
+                    return Ok(window.with_radius(radius).start_line);
+                }
+                return Err(ToolError::execution_failed(format!(
+                    "since_tool_use_id `{tool_use_id}` anchors `{anchor_path}`, not `{rel}`"
+                )));
+            }
+        }
+        return Err(ToolError::execution_failed(format!(
+            "since_tool_use_id `{tool_use_id}` not found in session differential-read anchors"
+        )));
+    }
+
+    if input
+        .get("around_last_edit")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        if let Some(anchors) = context.diff_read_anchors.as_ref() {
+            let guard = anchors.lock().await;
+            if let Some(window) = guard.window_for_last_edit(&rel) {
+                return Ok(window.with_radius(radius).start_line);
+            }
+        }
+        return Err(ToolError::execution_failed(format!(
+            "around_last_edit: no prior edit window for `{rel}` — edit the file first or use around_line"
+        )));
+    }
+
+    if let Some(symbol) = input.get("symbol").and_then(Value::as_str) {
+        let symbol = symbol.trim();
+        if !symbol.is_empty() {
+            let index_path = workspace_meta_file_read(workspace, "symbols.json");
+            if let Ok(raw) = std::fs::read_to_string(&index_path)
+                && let Ok(index) = serde_json::from_str::<crate::symbol_index::SymbolIndex>(&raw)
+                && let Some(line) = find_symbol_line_in_file(&index, &rel, symbol)
+            {
+                return Ok(line.saturating_sub(radius).max(1));
+            }
+            return Err(ToolError::execution_failed(format!(
+                "symbol `{symbol}` not found in symbol index for `{rel}` — try around_line or start_line"
+            )));
+        }
+    }
+
+    if let Some(around) = input.get("around_line").and_then(Value::as_u64) {
+        let around = around.max(1);
+        return Ok(around.saturating_sub(radius).max(1));
+    }
+
+    Ok(
+        match (
+            input.get("start_line").and_then(Value::as_u64),
+            input.get("offset").and_then(Value::as_u64),
+        ) {
+            (Some(s), _) => s.max(1),
+            (None, Some(o)) => o.max(1),
+            (None, None) => 1,
+        },
+    )
+}
+
+fn find_symbol_line_in_file(
+    index: &crate::symbol_index::SymbolIndex,
+    file_rel: &str,
+    symbol: &str,
+) -> Option<u64> {
+    let hits = crate::symbol_index::query_symbol(index, symbol);
+    let exact = hits
+        .iter()
+        .find(|(path, _, name, _)| *path == file_rel && name.eq_ignore_ascii_case(symbol));
+    if let Some((_, line, _, _)) = exact {
+        return Some(*line as u64);
+    }
+    hits.iter()
+        .find(|(path, _, _, _)| *path == file_rel)
+        .map(|(_, line, _, _)| *line as u64)
 }
 
 /// Detect a PDF by extension OR by sniffing the `%PDF-` magic bytes.

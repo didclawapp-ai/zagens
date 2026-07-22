@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tool evidence envelope:** `ToolResult.metadata.evidence` carries `facts` / `citations` / `uncertainty` (`none`|`not_found`|`partial`|`truncated`) for search/edit/write/glob/shell/web tools; context always prepends the evidence ledger (compact still truncates prose).
+- **Citation auditor:** post-execute cheap verify of citation line ranges vs on-disk line counts and match-count hints; failures annotate evidence (`citation_audit=fail`).
+- **Intent composites:** `investigate` / `answer_from_repo` / `change_and_verify` merge underlying T5 evidence; Agent soft phase catalog (Explore/Edit/Verify/Ship) plus failure hot-start (compile → diagnostics, not-found → explore).
+- **Claim↔evidence nudge:** prose-only turns with strong path assertions lacking recent tool citations get a one-shot unverified-claim user nudge.
+- **promote_to_context + differential read:** workshop `promote_to_context` loads last large-output blob; `read_file` supports `around_line` / `symbol` / `around_last_edit` / `since_tool_use_id` / `context_radius`; large-output routing prefers optional Flash host synthesizer then evidence-aware extractive fallback.
 - **Shared model capability catalog:** `crates/shared-defs/model-catalog.json` is the Rust↔TS SSOT for context/max_output/omit_sampling/thinking flags and per-family `effort_map` (Kimi K3 `off`→`max`); web-ui regenerates via `just model-catalog`. Fixes Agnes/SenseNova `provider_capability` fake 8192 window (now uses catalog, e.g. Agnes chat 256K).
 - **Shared providers.toml:** `crates/shared-defs/providers.toml` generates `ProviderKind` / `ApiProvider`, `ProvidersToml` / `ProvidersConfig`, DEFAULT_* constants, keyring slots, and `PROVIDER_ENV_REGISTRY` for base_url/model env overrides (`just providers`); Ollama default aligned to `qwen2.5-coder:7b` across facade and runtime.
 - **Model catalog TS constants:** web-ui family/default token constants are generated from `model-catalog.json` (no parallel hand-written Kimi/Agnes/V4 numbers).
@@ -35,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audit quality signals (S2):** `scratchpad_status` exposes `dimension_coverage` / `dimension_gaps`; inventory may mark `high_complexity` from on-disk symbol index (no init rebuild); import fails hard on missing `<!-- audit-findings -->` even if craft-verdict exists; `MAX_FILES_PER_AREA` raised to 40.
 - **Audit completion-over-cost prompt:** `base.md` full-repo mode + `audit-repo` skill + scratchpad `contract_hints` / continue steers mandate finishing the user's audit request (no self-budget early stop / unapproved `partial_closeout`); defer_remaining only nudged after `reviewed_ratio` gate.
 - **Audit force `scratchpad_import_agent`:** final audit `write_file` blocked while bound explore/review agents are still running or lack import receipt; import appends `_global` meta `imported_agent:…`. Bundled system skills marker **10→11** (refreshes `audit-repo` on next launch).
+
+### Changed
+
+- **Noisy tool context compact:** graded earlier compact for shell/web/grep/explore/browser snapshot tools; truncated/partial evidence injects a no-invention hint.
+- **Tools hand-test fixes (thr_3c79):** workspace-relative evidence paths (`\\?\` stripped); `explore_codebase` include filter + empty `files[]` fallback so investigate grep actually searches; `around_last_edit` anchors recorded from tool metadata in-registry (same turn); `answer_from_repo` allows LIMITED answers when path cites exist; claim nudge matches absolute/`//?/` cites to relative path claims.
+- **ToolContext constructors:** shared `with_common_defaults` so `new` / `with_options` / `with_auto_approve` cannot drift when fields are added.
 
 ## [0.8.7] - 2026-07-18
 

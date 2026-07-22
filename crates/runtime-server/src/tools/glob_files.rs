@@ -14,6 +14,7 @@ use super::spec::{
     optional_bool, optional_str, optional_u64, required_str,
 };
 use super::workspace_walk::collect_workspace_files;
+use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
 
 const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 100;
@@ -108,11 +109,8 @@ impl ToolSpec for GlobFilesTool {
             if !path_matches_glob(&glob_set, &glob_relative) {
                 continue;
             }
-            let workspace_rel = path
-                .strip_prefix(&context.workspace)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
+            let workspace_rel =
+                crate::tools::file::workspace_relative_posix(&context.workspace, &path);
             let mtime = modified_secs(&path);
             matches.push((path, workspace_rel, mtime));
         }
@@ -132,6 +130,22 @@ impl ToolSpec for GlobFilesTool {
             })
             .collect();
 
+        let uncertainty = if total == 0 {
+            UncertaintyKind::NotFound
+        } else if truncated {
+            UncertaintyKind::Truncated
+        } else {
+            UncertaintyKind::None
+        };
+        let mut evidence = EvidenceEnvelope::new()
+            .with_fact("pattern", pattern)
+            .with_fact("count", files_out.len().to_string())
+            .with_fact("total_matches", total.to_string())
+            .with_uncertainty(uncertainty);
+        for entry in files_out.iter().take(20) {
+            evidence = evidence.with_citation(EvidenceCitation::path(&entry.path));
+        }
+
         ToolResult::json(&json!({
             "pattern": pattern,
             "files": files_out,
@@ -141,6 +155,7 @@ impl ToolSpec for GlobFilesTool {
             "respect_gitignore": respect_gitignore,
         }))
         .map_err(|e| ToolError::execution_failed(e.to_string()))
+        .map(|r| r.with_evidence(evidence))
     }
 }
 

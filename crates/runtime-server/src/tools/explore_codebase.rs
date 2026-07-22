@@ -13,6 +13,7 @@ use super::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_str, optional_u64, required_str,
 };
+use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
 
 const DEFAULT_READ_LIMIT: u64 = 3;
 const MAX_READ_LIMIT: u64 = 5;
@@ -114,7 +115,12 @@ impl ToolSpec for ExploreCodebaseTool {
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
-                    .filter_map(|e| e.get("path").and_then(|p| p.as_str()).map(str::to_string))
+                    .filter_map(|e| {
+                        e.get("path").and_then(|p| p.as_str()).map(|raw| {
+                            crate::tools::file::workspace_relative_from_str(&context.workspace, raw)
+                        })
+                    })
+                    .filter(|p| !p.is_empty())
                     .collect()
             })
             .unwrap_or_default();
@@ -123,10 +129,18 @@ impl ToolSpec for ExploreCodebaseTool {
             let body = format!(
                 "explore_codebase: glob `{glob_pattern}` matched 0 files under `{base_path}`."
             );
-            return Ok(ToolResult::success(body).with_metadata(composite_metadata(&steps)));
+            let evidence = EvidenceEnvelope::new()
+                .with_fact("glob_hits", "0")
+                .with_fact("composite", "explore_codebase")
+                .with_uncertainty(UncertaintyKind::NotFound);
+            return Ok(ToolResult::success(body)
+                .with_metadata(composite_metadata(&steps))
+                .with_evidence(evidence));
         }
 
-        // Step 2: grep (scoped to glob hits via include filter)
+        // Step 2: grep (scoped to glob hits via include filter).
+        // `include` must be workspace-relative paths/globs — absolute/`\\?\`
+        // paths never match the walker's relative keys (thr_3c79).
         let grep_started = Instant::now();
         let grep_tool = GrepFilesTool;
         let grep_input = json!({
@@ -159,7 +173,20 @@ impl ToolSpec for ExploreCodebaseTool {
                 glob_paths.len(),
                 grep_result.content
             );
-            return Ok(ToolResult::success(body).with_metadata(composite_metadata(&steps)));
+            let mut evidence = EvidenceEnvelope::new()
+                .with_fact("glob_hits", glob_paths.len().to_string())
+                .with_fact("reads", "0")
+                .with_fact("composite", "explore_codebase")
+                .with_uncertainty(UncertaintyKind::NotFound);
+            if let Some(ge) = grep_result.evidence() {
+                evidence.merge_from(&ge);
+            }
+            for path in glob_paths.iter().take(10) {
+                evidence = evidence.with_citation(EvidenceCitation::path(path));
+            }
+            return Ok(ToolResult::success(body)
+                .with_metadata(composite_metadata(&steps))
+                .with_evidence(evidence));
         }
 
         // Step 3: read top files
@@ -200,7 +227,20 @@ impl ToolSpec for ExploreCodebaseTool {
             summarize(&grep_result.content, 800),
             sections.join("\n\n")
         );
-        Ok(ToolResult::success(body).with_metadata(composite_metadata(&steps)))
+        let mut evidence = EvidenceEnvelope::new()
+            .with_fact("glob_hits", glob_paths.len().to_string())
+            .with_fact("reads", read_targets.len().to_string())
+            .with_fact("composite", "explore_codebase")
+            .with_uncertainty(UncertaintyKind::Partial);
+        if let Some(ge) = grep_result.evidence() {
+            evidence.merge_from(&ge);
+        }
+        for path in &read_targets {
+            evidence = evidence.with_citation(EvidenceCitation::path(path));
+        }
+        Ok(ToolResult::success(body)
+            .with_metadata(composite_metadata(&steps))
+            .with_evidence(evidence))
     }
 }
 
@@ -215,11 +255,16 @@ fn summarize(text: &str, max: usize) -> String {
 fn extract_read_targets(grep_content: &str, glob_paths: &[String], limit: u64) -> Vec<String> {
     if let Ok(value) = serde_json::from_str::<Value>(grep_content) {
         if let Some(paths) = value.get("files").and_then(|v| v.as_array()) {
-            return paths
+            let collected: Vec<String> = paths
                 .iter()
                 .filter_map(|p| p.as_str().map(str::to_string))
                 .take(limit as usize)
                 .collect();
+            // Empty `files: []` must fall through — otherwise a zero-match grep
+            // suppresses the glob fallback and explore reports reads=0 wrongly.
+            if !collected.is_empty() {
+                return collected;
+            }
         }
         if let Some(matches) = value.get("matches").and_then(|v| v.as_array()) {
             let mut out = Vec::new();
@@ -237,6 +282,17 @@ fn extract_read_targets(grep_content: &str, glob_paths: &[String], limit: u64) -
                 return out;
             }
         }
+        // files_with_matches / count modes may only expose file_counts.
+        if let Some(counts) = value.get("file_counts").and_then(|v| v.as_array()) {
+            let collected: Vec<String> = counts
+                .iter()
+                .filter_map(|e| e.get("file").and_then(|p| p.as_str()).map(str::to_string))
+                .take(limit as usize)
+                .collect();
+            if !collected.is_empty() {
+                return collected;
+            }
+        }
     }
 
     glob_paths.iter().take(limit as usize).cloned().collect()
@@ -251,5 +307,12 @@ mod tests {
         let grep = r#"{"files":["src/a.rs","src/b.rs"]}"#;
         let targets = extract_read_targets(grep, &["other.rs".into()], 2);
         assert_eq!(targets, vec!["src/a.rs", "src/b.rs"]);
+    }
+
+    #[test]
+    fn extract_read_targets_falls_back_when_files_empty() {
+        let grep = r#"{"files":[],"total_matches":0}"#;
+        let targets = extract_read_targets(grep, &["src/hit.rs".into()], 2);
+        assert_eq!(targets, vec!["src/hit.rs"]);
     }
 }

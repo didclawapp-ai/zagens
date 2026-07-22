@@ -2,7 +2,7 @@
 
 use super::super::failure_hints::apply_shell_failure_hints;
 use super::super::types::{ShellResult, ShellStatus};
-use super::helpers::execute_foreground_via_background;
+use super::helpers::{execute_foreground_via_background, shell_evidence};
 use crate::command_safety::{SafetyLevel, analyze_command};
 use crate::execpolicy::{ExecPolicyDecision, load_default_policy};
 use crate::features::Feature;
@@ -267,11 +267,18 @@ impl ToolSpec for ExecShellTool {
                 "sandbox_backend": "opensandbox",
             });
 
+            let evidence = shell_evidence(
+                result.exit_code,
+                &result.status,
+                result.stdout_truncated,
+                result.stderr_truncated,
+            );
             return Ok(ToolResult {
                 content: output,
                 success: result.status == ShellStatus::Completed,
                 metadata: Some(metadata),
-            });
+            }
+            .with_evidence(evidence));
         }
 
         let result = if interactive {
@@ -431,12 +438,19 @@ impl ToolSpec for ExecShellTool {
                     });
                 }
 
+                let evidence = shell_evidence(
+                    result.exit_code,
+                    &result.status,
+                    result.stdout_truncated,
+                    result.stderr_truncated,
+                );
                 let mut tool_result = ToolResult {
                     content: output,
                     success: result.status == ShellStatus::Completed
                         || result.status == ShellStatus::Running,
                     metadata: Some(metadata),
-                };
+                }
+                .with_evidence(evidence);
                 apply_shell_failure_hints(
                     &mut tool_result,
                     command,

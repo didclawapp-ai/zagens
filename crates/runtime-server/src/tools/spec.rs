@@ -139,6 +139,16 @@ pub struct ToolContext {
         std::sync::Arc<tokio::sync::Mutex<crate::tools::large_output_router::WorkshopVariables>>,
     >,
 
+    /// Optional host callback for live Flash (or other) large-output synthesis.
+    /// Registry stays LLM-free: when `None` or the call fails, extractive
+    /// synthesis is used. See `LargeOutputSynthesizer`.
+    pub large_output_synthesizer:
+        Option<Arc<dyn crate::tools::large_output_synthesizer::LargeOutputSynthesizer>>,
+
+    /// Session anchors for differential `read_file` (`around_last_edit` /
+    /// `since_tool_use_id`). Shared with the engine turn loop.
+    pub diff_read_anchors: Option<Arc<tokio::sync::Mutex<zagens_core::engine::DiffReadAnchors>>>,
+
     /// Incremental streaming for the active tool call (desktop SSE / TUI status).
     pub tool_progress: Option<Arc<dyn ToolProgressEmit>>,
     /// Active audit scratchpad run (`thread.scratchpad_run_id`) for E5 tool policy.
@@ -154,22 +164,28 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
-    /// Create a new `ToolContext` with default settings.
-    #[must_use]
-    pub fn new(workspace: impl Into<PathBuf>) -> Self {
-        let workspace = workspace.into();
-        let shell_manager = new_shared_shell_manager(workspace.clone());
-        let notes_path = zagens_config::workspace_meta_file_read(&workspace, "notes.md");
-        let mcp_config_path = zagens_config::workspace_meta_file_read(&workspace, "mcp.json");
+    /// Shared field defaults for all constructors (audit M-01).
+    ///
+    /// Callers only override the few fields that differ (`trust_mode`,
+    /// `auto_approve`, paths). New `ToolContext` fields should be added here
+    /// once so `new` / `with_options` / `with_auto_approve` stay in sync.
+    fn with_common_defaults(
+        workspace: PathBuf,
+        shell_manager: SharedShellManager,
+        notes_path: PathBuf,
+        mcp_config_path: PathBuf,
+        trust_mode: bool,
+        auto_approve: bool,
+    ) -> Self {
         Self {
             workspace,
             shell_manager,
-            trust_mode: false,
+            trust_mode,
             sandbox_policy: SandboxPolicy::None,
             notes_path,
             mcp_config_path,
             elevated_sandbox_policy: None,
-            auto_approve: false,
+            auto_approve,
             features: Features::with_defaults(),
             state_namespace: "workspace".to_string(),
             trusted_external_paths: Vec::new(),
@@ -181,6 +197,8 @@ impl ToolContext {
             lsp_manager: None,
             large_output_router: None,
             workshop_vars: None,
+            large_output_synthesizer: None,
+            diff_read_anchors: None,
             tool_progress: None,
             audit_scratchpad_run_id: None,
             subagent_default_step_timeout_ms: 600_000,
@@ -188,6 +206,23 @@ impl ToolContext {
             search_api_key: None,
             worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
         }
+    }
+
+    /// Create a new `ToolContext` with default settings.
+    #[must_use]
+    pub fn new(workspace: impl Into<PathBuf>) -> Self {
+        let workspace = workspace.into();
+        let shell_manager = new_shared_shell_manager(workspace.clone());
+        let notes_path = zagens_config::workspace_meta_file_read(&workspace, "notes.md");
+        let mcp_config_path = zagens_config::workspace_meta_file_read(&workspace, "mcp.json");
+        Self::with_common_defaults(
+            workspace,
+            shell_manager,
+            notes_path,
+            mcp_config_path,
+            false,
+            false,
+        )
     }
 
     /// Create a `ToolContext` with all settings specified.
@@ -200,33 +235,14 @@ impl ToolContext {
     ) -> Self {
         let workspace = workspace.into();
         let shell_manager = new_shared_shell_manager(workspace.clone());
-        Self {
+        Self::with_common_defaults(
             workspace,
             shell_manager,
+            notes_path.into(),
+            mcp_config_path.into(),
             trust_mode,
-            sandbox_policy: SandboxPolicy::None,
-            notes_path: notes_path.into(),
-            mcp_config_path: mcp_config_path.into(),
-            elevated_sandbox_policy: None,
-            auto_approve: false,
-            features: Features::with_defaults(),
-            state_namespace: "workspace".to_string(),
-            trusted_external_paths: Vec::new(),
-            network_policy: None,
-            runtime: RuntimeToolServices::default(),
-            cancel_token: None,
-            sandbox_backend: None,
-            memory_path: None,
-            lsp_manager: None,
-            large_output_router: None,
-            workshop_vars: None,
-            tool_progress: None,
-            audit_scratchpad_run_id: None,
-            subagent_default_step_timeout_ms: 600_000,
-            search_provider: crate::config::SearchProvider::default(),
-            search_api_key: None,
-            worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
-        }
+            false,
+        )
     }
 
     /// Default per-step sub-agent API timeout when `agent_spawn` omits `step_timeout_ms`.
@@ -246,33 +262,14 @@ impl ToolContext {
     ) -> Self {
         let workspace = workspace.into();
         let shell_manager = new_shared_shell_manager(workspace.clone());
-        Self {
+        Self::with_common_defaults(
             workspace,
             shell_manager,
+            notes_path.into(),
+            mcp_config_path.into(),
             trust_mode,
-            sandbox_policy: SandboxPolicy::None,
-            notes_path: notes_path.into(),
-            mcp_config_path: mcp_config_path.into(),
-            elevated_sandbox_policy: None,
             auto_approve,
-            features: Features::with_defaults(),
-            state_namespace: "workspace".to_string(),
-            trusted_external_paths: Vec::new(),
-            network_policy: None,
-            runtime: RuntimeToolServices::default(),
-            cancel_token: None,
-            sandbox_backend: None,
-            memory_path: None,
-            lsp_manager: None,
-            large_output_router: None,
-            workshop_vars: None,
-            tool_progress: None,
-            audit_scratchpad_run_id: None,
-            subagent_default_step_timeout_ms: 600_000,
-            search_provider: crate::config::SearchProvider::default(),
-            search_api_key: None,
-            worktrees: zagens_runtime_adapters::worktree::WorktreesRuntimeConfig::default(),
-        }
+        )
     }
 
     /// Bind an audit scratchpad run for per-turn tool policy (E5 / eager `agent_spawn`).
@@ -537,6 +534,26 @@ impl ToolContext {
     ) -> Self {
         self.large_output_router = Some(router);
         self.workshop_vars = Some(vars);
+        self
+    }
+
+    /// Attach an optional live large-output synthesizer (Flash host callback).
+    #[must_use]
+    pub fn with_large_output_synthesizer(
+        mut self,
+        synthesizer: Arc<dyn crate::tools::large_output_synthesizer::LargeOutputSynthesizer>,
+    ) -> Self {
+        self.large_output_synthesizer = Some(synthesizer);
+        self
+    }
+
+    /// Attach differential-read session anchors.
+    #[must_use]
+    pub fn with_diff_read_anchors(
+        mut self,
+        anchors: Arc<tokio::sync::Mutex<zagens_core::engine::DiffReadAnchors>>,
+    ) -> Self {
+        self.diff_read_anchors = Some(anchors);
         self
     }
 }

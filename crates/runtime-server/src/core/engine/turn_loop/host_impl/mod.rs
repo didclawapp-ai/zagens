@@ -48,6 +48,62 @@ impl TurnLoopToolRegistry for ToolRegistry {}
 mod capacity;
 mod no_tool_uses;
 
+/// Reconstruct a minimal evidence envelope from ledger / cite lines in tool output.
+fn parse_citations_from_tool_result(content: &str) -> Option<zagens_tools::EvidenceEnvelope> {
+    use zagens_tools::{EvidenceCitation, EvidenceEnvelope};
+    let mut env = EvidenceEnvelope::new();
+    let mut found = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(fact) = trimmed.strip_prefix("- fact: ")
+            && let Some((k, v)) = fact.split_once('=')
+        {
+            env = env.with_fact(k.trim(), v.trim());
+            found = true;
+            continue;
+        }
+        let Some(rest) = trimmed
+            .strip_prefix("- cite:")
+            .or_else(|| trimmed.strip_prefix("cite:"))
+            .map(str::trim)
+        else {
+            continue;
+        };
+        // `path`, `path:start`, or `path:start-end` (rsplit so `F:` drives survive)
+        let (path, start, end) = if let Some((path, lines)) = rest.rsplit_once(':') {
+            let line_ok = lines
+                .split('-')
+                .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()));
+            if line_ok {
+                if let Some((s, e)) = lines.split_once('-') {
+                    (
+                        path,
+                        s.parse::<u64>().ok(),
+                        e.parse::<u64>().ok(),
+                    )
+                } else if let Ok(n) = lines.parse::<u64>() {
+                    (path, Some(n), Some(n))
+                } else {
+                    (rest, None, None)
+                }
+            } else {
+                (rest, None, None)
+            }
+        } else {
+            (rest, None, None)
+        };
+        let path = zagens_core::engine::normalize_repo_path(path);
+        let cite = match (start, end) {
+            (Some(s), Some(e)) => EvidenceCitation::lines(&path, s, e),
+            (Some(s), None) => EvidenceCitation::lines(&path, s, s),
+            _ => EvidenceCitation::path(&path),
+        };
+        env = env.with_citation(cite);
+        found = true;
+    }
+    found.then_some(env)
+}
+
 #[async_trait]
 impl KernelTurnHost for Engine {
     type V3ToolRegistry = ToolRegistry;
@@ -366,8 +422,9 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
         &mut self,
         tool_name: &str,
         tool_input: &serde_json::Value,
-        _result: &str,
+        result: &str,
         success: bool,
+        tool_use_id: &str,
     ) {
         if tool_name == "load_skill"
             && success
@@ -380,6 +437,35 @@ impl zagens_core::engine::turn_loop::InnerStepHost for Engine {
             self, tool_name, tool_input, success,
         )
         .await;
+
+        if success {
+            let phase = self.runtime_ext().agent_tool_phase;
+            self.runtime_ext_mut().agent_tool_phase = phase.advance(tool_name);
+        }
+
+        let hint = zagens_core::engine::FailureHotStart::infer(tool_name, result, success);
+        if hint != zagens_core::engine::FailureHotStart::None {
+            self.runtime_ext_mut().failure_hot_start = hint;
+        } else if success
+            && matches!(
+                tool_name,
+                "diagnostics"
+                    | "run_tests"
+                    | "investigate"
+                    | "answer_from_repo"
+                    | "change_and_verify"
+            )
+        {
+            self.runtime_ext_mut().failure_hot_start =
+                zagens_core::engine::FailureHotStart::None;
+        }
+
+        if success
+            && let Some(env) = parse_citations_from_tool_result(result)
+        {
+            let mut anchors = self.runtime_ext().diff_read_anchors.lock().await;
+            anchors.record_from_evidence(Some(tool_use_id), tool_name, &env);
+        }
 
         if success && crate::harness::affected_tests::is_edit_tool(tool_name) {
             if let Some(suffix) = crate::harness::affected_tests::hint_suffix_for_tool(

@@ -421,15 +421,33 @@ fn build_result(
         format!("Found {} result(s)", results.len())
     };
 
+    let count = results.len();
     let response = WebSearchResponse {
-        query,
+        query: query.clone(),
         source: source.to_string(),
-        count: results.len(),
+        count,
         message,
-        results,
+        results: results.clone(),
     };
 
-    ToolResult::json(&response).map_err(|e| ToolError::execution_failed(e.to_string()))
+    use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
+    let uncertainty = if count == 0 {
+        UncertaintyKind::NotFound
+    } else {
+        UncertaintyKind::None
+    };
+    let mut evidence = EvidenceEnvelope::new()
+        .with_fact("query", query)
+        .with_fact("source", source)
+        .with_fact("count", count.to_string())
+        .with_uncertainty(uncertainty);
+    for entry in results.iter().take(10) {
+        evidence = evidence.with_citation(EvidenceCitation::path(&entry.url));
+    }
+
+    ToolResult::json(&response)
+        .map_err(|e| ToolError::execution_failed(e.to_string()))
+        .map(|r| r.with_evidence(evidence))
 }
 
 // ─── API-backed providers ─────────────────────────────────────────────────────

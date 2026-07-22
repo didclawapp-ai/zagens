@@ -23,7 +23,7 @@ Harness **fixtures** (TOML, demo data, oracle scripts) live under [`fixtures/har
 | [prompt-architecture-diagram.svg](./prompt-architecture-diagram.svg) | Prompt stack diagram |
 | [tech/PERSISTENCE.md](./tech/PERSISTENCE.md) | Persistence model |
 | [tech/SANDBOX_CAPABILITY_MATRIX.md](./tech/SANDBOX_CAPABILITY_MATRIX.md) | Sandbox capability matrix (Windows native sandbox implemented) |
-| [tech/TOOLS_PRINCIPLES.md](./tech/TOOLS_PRINCIPLES.md) | Tool design principles |
+| [tech/TOOLS_PRINCIPLES.md](./tech/TOOLS_PRINCIPLES.md) | Tool design principles; §9 evidence/intent/context-economy **shipped vs open** |
 | [tech/KV_CACHE_OBSERVABILITY.md](./tech/KV_CACHE_OBSERVABILITY.md) | KV cache observability |
 
 ### ADRs (architecture decisions)

@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use zagens_config::workspace_meta_file_read;
+use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
 
 /// Wall-clock cap for the blocking file scan (C6 / audit §3 P0).
 const GREP_TIMEOUT_SECS: u64 = 120;
@@ -458,21 +459,46 @@ impl ToolSpec for GrepFilesTool {
             ),
         ]);
 
+        let uncertainty = if total_matches == 0 {
+            UncertaintyKind::NotFound
+        } else if truncated {
+            UncertaintyKind::Truncated
+        } else {
+            UncertaintyKind::None
+        };
+
+        let mut evidence = EvidenceEnvelope::new()
+            .with_fact("output_mode", output_mode.as_str())
+            .with_fact("total_matches", total_matches.to_string())
+            .with_fact("files_searched", files_searched.to_string())
+            .with_uncertainty(uncertainty);
+
         match output_mode {
             GrepOutputMode::Content => {
+                for m in results.iter().take(20) {
+                    let line = m.line_number as u64;
+                    evidence = evidence.with_citation(EvidenceCitation::lines(&m.file, line, line));
+                }
                 result_map.insert("matches".into(), serde_json::json!(results));
             }
             GrepOutputMode::FilesWithMatches => {
+                for path in files_with_matches.iter().take(20) {
+                    evidence = evidence.with_citation(EvidenceCitation::path(path));
+                }
                 result_map.insert("files".into(), serde_json::json!(files_with_matches));
             }
             GrepOutputMode::Count => {
+                evidence =
+                    evidence.with_fact("files_with_counts", file_counts_json.len().to_string());
                 result_map.insert("file_counts".into(), Value::Array(file_counts_json));
             }
         }
         result_map.extend(extra);
         let result = serde_json::Value::Object(result_map);
 
-        ToolResult::json(&result).map_err(|e| ToolError::execution_failed(e.to_string()))
+        ToolResult::json(&result)
+            .map_err(|e| ToolError::execution_failed(e.to_string()))
+            .map(|r| r.with_evidence(evidence))
     }
 }
 

@@ -20,6 +20,26 @@
     "pages": {
       "type": "string",
       "description": "PDF only: page range to extract, e.g. \"1-5\" or \"10\". Ignored for non-PDF files."
+    },
+    "around_line": {
+      "type": "integer",
+      "description": "Differential read: center the window on this 1-based line (overrides start_line/offset when set)."
+    },
+    "context_radius": {
+      "type": "integer",
+      "description": "Half-window size when around_line is set (default 40, max 250). Total lines ≈ 2*radius+1."
+    },
+    "symbol": {
+      "type": "string",
+      "description": "Differential read: look up this symbol in the workspace symbol index and center the read window on its definition line."
+    },
+    "around_last_edit": {
+      "type": "boolean",
+      "description": "Differential read: center on the last successful edit window for this path (from session anchors)."
+    },
+    "since_tool_use_id": {
+      "type": "string",
+      "description": "Differential read: reuse the citation window from a prior tool_use_id (session anchors)."
     }
   },
   "required": [

@@ -269,6 +269,7 @@ pub async fn run_tool_execution_phase<H: InnerStepHost>(
                     &tool_input,
                     &result_text,
                     output.success,
+                    &outcome.id,
                 )
                 .await;
                 if let Some(suffix) = host.take_long_horizon_tool_suffix() {

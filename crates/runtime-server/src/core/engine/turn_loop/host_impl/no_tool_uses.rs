@@ -964,7 +964,47 @@ impl Engine {
             return TurnLoopControl::Continue;
         }
 
+        if self
+            .maybe_inject_unverified_claim_nudge(current_text_visible)
+            .await
+        {
+            turn.next_step();
+            return TurnLoopControl::Continue;
+        }
+
         TurnLoopControl::Break
+    }
+
+    /// Soft claim↔evidence gate: path assertions without recent citations → one nudge.
+    async fn maybe_inject_unverified_claim_nudge(&mut self, assistant_text: &str) -> bool {
+        if self.evidence_claim_nudge_injected_this_turn {
+            return false;
+        }
+        let Some(msg) = zagens_core::engine::maybe_unverified_path_claim_nudge(
+            &self.session.messages,
+            assistant_text,
+        ) else {
+            return false;
+        };
+        Engine::add_session_message(
+            self,
+            Message {
+                role: "user".to_string(),
+                content: vec![ContentBlock::Text {
+                    text: msg,
+                    cache_control: None,
+                }],
+            },
+        )
+        .await;
+        self.evidence_claim_nudge_injected_this_turn = true;
+        let _ = self
+            .tx_event
+            .send(Event::status(
+                "evidence.claim_nudge: unverified path assertions".to_string(),
+            ))
+            .await;
+        true
     }
 
     /// Hold the turn open while LHT CRAFT review runs, then inject remediation.

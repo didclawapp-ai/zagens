@@ -46,6 +46,7 @@ impl Engine {
         self.scratchpad_summary_injected_this_turn = false;
         self.scratchpad_audit_continue_injected_this_turn = false;
         self.long_horizon_continue_injected_this_turn = false;
+        self.evidence_claim_nudge_injected_this_turn = false;
         self.long_horizon_auto_continue_rounds = 0;
         self.0.overflow_source_budget_cap = None;
         self.runtime_ext_mut().turn_app_mode = mode;
@@ -329,6 +330,16 @@ impl Engine {
             if stage_gate.is_active() {
                 catalog = stage_gate.filter_tool_catalog(catalog, |t| t.name.as_str());
             }
+            catalog = zagens_core::engine::apply_agent_phase_catalog_with_hot_start(
+                catalog,
+                self.runtime_ext().agent_tool_phase,
+                match mode {
+                    AppMode::Agent => zagens_core::turn::TurnLoopMode::Agent,
+                    AppMode::Yolo => zagens_core::turn::TurnLoopMode::Yolo,
+                    AppMode::Plan => zagens_core::turn::TurnLoopMode::Plan,
+                },
+                self.runtime_ext().failure_hot_start,
+            );
             catalog
         });
 

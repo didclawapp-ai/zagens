@@ -60,7 +60,25 @@ impl Engine {
             let router =
                 crate::tools::large_output_router::LargeOutputRouter::new(workshop_cfg.clone());
             ctx = ctx.with_large_output_router(router, vars_arc.clone());
+            if let Some(client) = self.deepseek_client.clone() {
+                let model = self
+                    .config_ext()
+                    .context_config
+                    .seam_model
+                    .clone()
+                    .unwrap_or_else(|| crate::seam_manager::DEFAULT_SEAM_MODEL.to_string());
+                let syn = Arc::new(
+                    crate::tools::large_output_synthesizer::FlashLargeOutputSynthesizer::new(
+                        client, model,
+                    ),
+                );
+                ctx = ctx.with_large_output_synthesizer(syn);
+            }
         }
+
+        ctx = ctx.with_diff_read_anchors(std::sync::Arc::clone(
+            &self.runtime_ext().diff_read_anchors,
+        ));
 
         // Wire the external sandbox backend (#516). exec_shell checks this
         // field and routes commands through the backend instead of spawning

@@ -23,6 +23,18 @@
     "respect_gitignore": {
       "type": "boolean",
       "description": "Honor .gitignore when true (default: true). Set false to search ignored paths (like grep_files)."
+    },
+    "symbol_index": {
+      "type": "boolean",
+      "description": "Also search the symbol index for definitions matching the query (default: false)."
+    },
+    "symbol_kind": {
+      "type": "string",
+      "description": "Optional symbol kind filter when symbol_index is true."
+    },
+    "symbol_limit": {
+      "type": "integer",
+      "description": "Maximum symbol hits when symbol_index is true (default: 15)."
     }
   },
   "required": [

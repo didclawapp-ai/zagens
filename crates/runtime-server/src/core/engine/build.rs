@@ -202,6 +202,11 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
     let runtime_ext = EngineRuntimeExt {
         config_ext,
         long_horizon_state: LongHorizonSessionState::default(),
+        agent_tool_phase: zagens_core::engine::AgentToolPhase::default(),
+        failure_hot_start: zagens_core::engine::FailureHotStart::default(),
+        diff_read_anchors: Arc::new(AsyncMutex::new(
+            zagens_core::engine::DiffReadAnchors::default(),
+        )),
         turn_app_mode: AppMode::Agent,
         turn_lht_mode: None,
         lsp_manager: Arc::clone(&lsp_manager),

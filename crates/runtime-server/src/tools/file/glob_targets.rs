@@ -5,7 +5,9 @@ use crate::tools::spec::{ToolContext, ToolError};
 use crate::tools::workspace_walk::collect_workspace_files;
 use std::path::{Path, PathBuf};
 
-fn workspace_relative_posix(workspace: &Path, file: &Path) -> String {
+/// Workspace-relative POSIX path (`crates/foo.rs`), resilient to `\\?\` prefixes.
+#[must_use]
+pub(crate) fn workspace_relative_posix(workspace: &Path, file: &Path) -> String {
     let workspace_canon = workspace
         .canonicalize()
         .unwrap_or_else(|_| workspace.to_path_buf());
@@ -16,7 +18,26 @@ fn workspace_relative_posix(workspace: &Path, file: &Path) -> String {
     if let Ok(rel) = file.strip_prefix(workspace) {
         return rel.to_string_lossy().replace('\\', "/");
     }
-    file.to_string_lossy().replace('\\', "/")
+    // Last resort: strip verbatim / drive prefixes from the string form.
+    zagens_core::engine::normalize_repo_path(&file.to_string_lossy())
+}
+
+/// Normalize a path string that may already be absolute/`\\?\` into a repo-relative key.
+#[must_use]
+pub(crate) fn workspace_relative_from_str(workspace: &Path, path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let as_path = PathBuf::from(trimmed);
+    if as_path.is_absolute()
+        || trimmed.starts_with("//?/")
+        || trimmed.starts_with(r"\\?\")
+        || trimmed.starts_with("//./")
+    {
+        return workspace_relative_posix(workspace, &as_path);
+    }
+    zagens_core::engine::normalize_repo_path(trimmed)
 }
 
 /// Resolve files under `base_path_str` matching `pattern` (glob relative to base).

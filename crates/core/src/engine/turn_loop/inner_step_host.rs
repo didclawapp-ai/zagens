@@ -133,6 +133,7 @@ pub trait InnerStepHost:
         _tool_input: &Value,
         _result: &str,
         _success: bool,
+        _tool_use_id: &str,
     ) {
     }
 

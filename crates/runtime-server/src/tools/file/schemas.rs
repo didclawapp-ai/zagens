@@ -25,6 +25,26 @@ pub struct ReadFileInput {
         description = "PDF only: page range to extract, e.g. \"1-5\" or \"10\". Ignored for non-PDF files."
     )]
     pub pages: Option<String>,
+    #[schemars(
+        description = "Differential read: center the window on this 1-based line (overrides start_line/offset when set)."
+    )]
+    pub around_line: Option<u64>,
+    #[schemars(
+        description = "Half-window size when around_line is set (default 40, max 250). Total lines ≈ 2*radius+1."
+    )]
+    pub context_radius: Option<u64>,
+    #[schemars(
+        description = "Differential read: look up this symbol in the workspace symbol index and center the read window on its definition line."
+    )]
+    pub symbol: Option<String>,
+    #[schemars(
+        description = "Differential read: center on the last successful edit window for this path (from session anchors)."
+    )]
+    pub around_last_edit: Option<bool>,
+    #[schemars(
+        description = "Differential read: reuse the citation window from a prior tool_use_id (session anchors)."
+    )]
+    pub since_tool_use_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

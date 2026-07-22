@@ -146,6 +146,32 @@ pub(super) fn required_task_id(input: &serde_json::Value) -> Result<&str, ToolEr
         .ok_or_else(|| ToolError::missing_field("task_id"))
 }
 
+pub(super) fn shell_evidence(
+    exit_code: Option<i32>,
+    status: &ShellStatus,
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+) -> zagens_tools::EvidenceEnvelope {
+    use zagens_tools::{EvidenceEnvelope, UncertaintyKind};
+    let uncertainty = if stdout_truncated || stderr_truncated {
+        UncertaintyKind::Truncated
+    } else if matches!(
+        status,
+        ShellStatus::Failed | ShellStatus::TimedOut | ShellStatus::Killed
+    ) {
+        UncertaintyKind::Partial
+    } else {
+        UncertaintyKind::None
+    };
+    let mut evidence = EvidenceEnvelope::new()
+        .with_fact("status", format!("{status:?}"))
+        .with_uncertainty(uncertainty);
+    if let Some(code) = exit_code {
+        evidence = evidence.with_fact("exit_code", code.to_string());
+    }
+    evidence
+}
+
 pub(super) fn build_shell_delta_tool_result(delta: ShellDeltaResult) -> ToolResult {
     let result = delta.result;
     let stdout_summary = summarize_output(&result.stdout);
@@ -169,6 +195,13 @@ pub(super) fn build_shell_delta_tool_result(delta: ShellDeltaResult) -> ToolResu
     } else {
         format!("{}\n\nSTDERR:\n{}", result.stdout, result.stderr)
     };
+
+    let evidence = shell_evidence(
+        result.exit_code,
+        &result.status,
+        result.stdout_truncated,
+        result.stderr_truncated,
+    );
 
     ToolResult {
         content: output,
@@ -198,6 +231,7 @@ pub(super) fn build_shell_delta_tool_result(delta: ShellDeltaResult) -> ToolResu
             "stream_delta": true,
         })),
     }
+    .with_evidence(evidence)
 }
 
 pub(super) async fn wait_for_shell_delta_cancellable(

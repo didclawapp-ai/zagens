@@ -1,7 +1,8 @@
 # Zagens Tool System Principles
 
 > **Document path:** `docs/tech/TOOLS_PRINCIPLES.md` (same `docs/tech/` tree as [API_DESIGN.md](./API_DESIGN.md) and [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md))  
-> **Zagens shell version:** 0.7.5 | **Last updated:** 2026-06-12 | **Authoritative implementation:** `crates/runtime-server/src/tools/` (formerly `crates/tui/src/tools/`), `registry.rs`
+> **Zagens shell version:** 0.8.7+ | **Last updated:** 2026-07-21 | **Authoritative implementation:** `crates/runtime-server/src/tools/` (formerly `crates/tui/src/tools/`), `registry.rs`  
+> **Roadmap status:** see [§9 Innovation roadmap status](#9-innovation-roadmap-status-2026-07)
 
 ---
 
@@ -665,11 +666,27 @@ Supported LSP:
 `LargeOutputRouter` intercepts ToolResult >4096 tokens:
 
 1. **Threshold estimate:** conservative ~3 chars/token
-2. **V4-Flash synthesis:** light sub-agent compresses raw output to bullet summary
+2. **Extractive synthesis:** evidence ledger + high-signal lines + head/tail preview (Flash live call remains optional when a client is safe at the registry layer)
 3. **Raw storage:** full output in `workshop_vars["last_tool_result"]`
-4. **Promotion:** Agent can `promote_to_context` for full output in context
+4. **Promotion:** Agent calls `promote_to_context` (peek / max_chars) for full output in context
 
 **Bypass:** pass `raw=true` on tool call to skip routing.
+
+### 5.2.1 Evidence envelope
+
+Search / edit / write tools attach `metadata.evidence`:
+
+| Field | Meaning |
+|-------|---------|
+| `facts[]` | Machine facts (`path`, `match_count`, `edited`, …) |
+| `citations[]` | `path` + optional line range |
+| `uncertainty` | `none` \| `not_found` \| `partial` \| `truncated` |
+
+`compact_tool_result_for_context` **keeps the evidence ledger** when truncating prose. Prefer intent tools `investigate` / `change_and_verify` over long primitive chains. Soft Agent phase (Explore → Edit → Verify → Ship) eagerly exposes phase-relevant tools without hard-blocking the rest.
+
+### 5.2.2 Differential `read_file`
+
+Prefer `around_line` / `symbol` + `context_radius` over re-reading whole files after a prior hit.
 
 ### 5.3 Unified Diff Output
 
@@ -712,13 +729,17 @@ Supported LSP:
 `update_plan` `checklist_write` `checklist_add` `checklist_update` `checklist_list`
 `todo_write` `todo_add` `todo_update` `todo_list`
 
+### Intent composites (evidence-stamped)
+`investigate` (wraps `explore_codebase`) `answer_from_repo` (cite-or-refuse) `change_and_verify` (wraps `edit_and_check`)  
+T5 primitives remain: `explore_codebase` `edit_and_check`
+
 ### Analysis & review (4)
 `review` `rlm` `diagnostics` `project_map`
 
 ### Other (10+)
 `write_office` `load_skill` `describe_image` `validate_data` `note`
 `remember` `recall_archive` `revert_turn` `run_tests` `request_user_input`
-`fim_edit`
+`fim_edit` `promote_to_context`
 
 ### Deferred / engine-level tools
 
@@ -753,7 +774,14 @@ Line counts are repo snapshot (2026-05-18); verify with `wc`; large files for na
 | Finance | `crates/runtime-server/src/tools/finance.rs` | 951 |
 | Sub-agents | `crates/runtime-server/src/tools/subagent/mod.rs` | 4351 |
 | Diff format | `crates/runtime-server/src/tools/diff_format.rs` | 77 |
-| Large output router | `crates/runtime-server/src/tools/large_output_router.rs` | 320 |
+| Large output router | `crates/runtime-server/src/tools/large_output_router.rs` | — |
+| Evidence envelope | `crates/tools/src/evidence.rs` | — |
+| Citation auditor | `crates/core/src/engine/citation_auditor.rs` | — |
+| Diff-read anchors | `crates/core/src/engine/diff_read_anchors.rs` | — |
+| Intent composites | `crates/runtime-server/src/tools/intent_tools.rs` | — |
+| Promote large output | `crates/runtime-server/src/tools/promote_to_context.rs` | — |
+| Flash large-output synthesizer | `crates/runtime-server/src/tools/large_output_synthesizer.rs` | — |
+| Agent soft phase | `crates/core/src/engine/agent_tool_phase.rs` | — |
 | Diagnostics | `crates/runtime-server/src/tools/diagnostics.rs` | 251 |
 | Filename search | `crates/runtime-server/src/tools/file_search.rs` | 322 |
 | TaskType | `crates/runtime-server/src/task_type.rs` | — |
@@ -767,3 +795,70 @@ Line counts are repo snapshot (2026-05-18); verify with `wc`; large files for na
 | [API_DESIGN.md](./API_DESIGN.md) | Dual-channel API, SSE events, tool approval HTTP |
 | [RUNTIME_ARCHITECTURE.md](./RUNTIME_ARCHITECTURE.md) | Sidecar stack, turn loop, tool host placement |
 | [task-type-prompt-architecture.md](../task-type-prompt-architecture.md) | TaskType prompt + tool surface matrix |
+
+---
+
+## 9. Innovation roadmap status (2026-07)
+
+Status of the **evidence envelope + intent composites + context economy** iteration (plan: evidence / catalog / large-output).  
+Legend: **Shipped** = in tree and wired; **Partial** = usable but incomplete vs plan; **Not shipped** = still open.
+
+### 9.1 M1 — Evidence envelope (anti-hallucination)
+
+| Item | Status | Notes / code |
+|------|--------|----------------|
+| `ToolResult.metadata.evidence` (`facts` / `citations` / `uncertainty`) | **Shipped** | `crates/tools/src/evidence.rs`; helpers on `ToolResult` |
+| Emit evidence from `read_file` / `grep_files` / `glob_files` / `edit_file` / `write_file` | **Shipped** | File + search + glob families |
+| Compact / small results keep evidence ledger; truncate → no-invention hint | **Shipped** | `crates/core/src/engine/context.rs` (ledger always prepended when present) |
+| Engine cheap verify of citations (line in file, match count vs prose) | **Shipped** | `citation_auditor.rs` + registry `annotate_citation_audit` (FS line count + match hint) |
+| Verbal claim vs recent N facts (inject “unverified”) | **Shipped** (soft) | `claim_evidence.rs` + `no_tool_uses` one-shot path-claim nudge |
+| Evidence on `exec_shell` / `web_search` / `fetch_url` | **Shipped** | exit_code / URL citations / truncated+empty uncertainty |
+| Edit/write file content hash in facts | **Partial** | Path / edited / edit line window / LSP presence facts; no content hash |
+
+### 9.2 M2 — Context economy
+
+| Item | Status | Notes / code |
+|------|--------|----------------|
+| Workshop store + spillover / large-output persist | **Shipped** | Pre-existing + A1 persist paths |
+| Evidence-aware **extractive** synthesis on large route | **Shipped** | `LargeOutputRouter::extractive_synthesis` in registry path |
+| Live V4-Flash synthesis call from registry | **Shipped** (host callback) | `LargeOutputSynthesizer` + `FlashLargeOutputSynthesizer`; registry falls back to extractive |
+| `promote_to_context` tool (peek / max_chars / consume) | **Shipped** | `crates/runtime-server/src/tools/promote_to_context.rs` |
+| Differential `read_file` (`around_line` / `symbol` / `context_radius`) | **Shipped** | Schema + `resolve_read_window` |
+| Differential `read_file` (`around_last_edit` / `since_tool_use_id`) | **Shipped** | Session `DiffReadAnchors`; registry records metadata evidence same-turn; paths normalized workspace-relative |
+| Graded noisy-tool compact (shell/web/grep/explore/browser…) | **Shipped** | `tool_result_is_noisy` + tighter soft limit |
+| `uncertainty=truncated` hard hint on compact / wrap | **Shipped** | Compact + `wrap_synthesis` |
+
+### 9.3 M3 — Intent tools + phase catalog
+
+| Item | Status | Notes / code |
+|------|--------|----------------|
+| `investigate` (evidence-stamped explore composite) | **Shipped** | Merges `explore_codebase` citations into evidence pack + ledger prefix |
+| `change_and_verify` (edit → LSP → optional tests) | **Shipped** | Merges `edit_and_check` evidence (edit path + tests_ok) |
+| `answer_from_repo` (cite-or-refuse answer shape) | **Shipped** | Wraps `investigate`; refuses when citations empty / not_found |
+| Soft Agent phase catalog Explore / Edit / Verify / Ship | **Shipped** | Phase-managed tools deferred outside current bonus; UX tools stay eager |
+| Hard stage-gate style blocking for daily Agent | **Not shipped** | Soft defer-eager only; harness `stage_gate` unchanged |
+| Failure-type hot-start (compile fail → diagnostics, …) | **Shipped** | `FailureHotStart` unions eager tools into phase catalog |
+| MCP activate + capability footprint snippet | **Not shipped** | MCP still default-defer; no footprint injection on activate |
+
+### 9.4 Cross-cutting (plan §A–C)
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Tool-name fuzzy resolve / arg repair ladder | **Shipped** (pre-existing) | Not part of this milestone; already present |
+| Call-time **preflight** (missing path / empty glob → structured fix hint) | **Not shipped** | Beyond existing schema missing-field hints |
+| Schema soft-fail examples (no silent `{}` success) | **Partial** | `required_str` lists provided keys; no example payloads |
+| Identical-call guard with state fingerprint | **Not shipped** | Loop guard still count-based |
+| Verify recipe auto-run after writes / done-gate on facts | **Not shipped** | Harness `assert_*` / `task_gate_run` remain separate |
+| Telemetry loop (`doctor --tools` → top failure modes) | **Not shipped** as product loop | Doctor/telemetry exist; no quarterly optimization wiring |
+
+### 9.5 Explicit non-goals (unchanged)
+
+Still intentionally **not** done (plan §D): mass tool aliases; papering over Linux sandbox with more shell tools; forcing `grep_files` onto Office surface without TaskType matrix changes.
+
+### 9.6 Suggested next slices
+
+1. Preflight + state-fingerprint loop guard.  
+2. Edit/write content hash facts.  
+3. MCP activate + capability footprint snippet.  
+4. Hard stage-gate style blocking for daily Agent (optional, beyond soft defer).  
+5. Telemetry loop (`doctor --tools` → top failure modes).

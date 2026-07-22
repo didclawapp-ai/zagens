@@ -16,6 +16,8 @@ mod schemas;
 mod search_replace;
 mod write;
 
+pub(crate) use glob_targets::{workspace_relative_from_str, workspace_relative_posix};
+
 pub use batch_edit::BatchEditTool;
 pub use refactor_imports::RefactorImportsTool;
 pub use restore_file::RestoreFileTool;

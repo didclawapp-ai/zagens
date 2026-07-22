@@ -13,6 +13,42 @@ use crate::tools::spec::{
 };
 use async_trait::async_trait;
 use serde_json::Value;
+use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
+
+fn edit_success_result(
+    body: String,
+    workspace: &std::path::Path,
+    file_path: &std::path::Path,
+    replacements: Option<u64>,
+    diag_block: &str,
+    edit_lines: Option<(u64, u64)>,
+) -> ToolResult {
+    let rel = super::workspace_relative_posix(workspace, file_path);
+    let mut evidence = EvidenceEnvelope::new()
+        .with_fact("path", &rel)
+        .with_fact("edited", "true")
+        .with_uncertainty(UncertaintyKind::None);
+    if let Some((start, end)) = edit_lines {
+        evidence = evidence
+            .with_fact("edit_line", start.to_string())
+            .with_fact("end_line", end.to_string())
+            .with_citation(EvidenceCitation::lines(&rel, start, end));
+    } else {
+        evidence = evidence.with_citation(EvidenceCitation::path(&rel));
+    }
+    if let Some(n) = replacements {
+        evidence = evidence.with_fact("replacements", n.to_string());
+    }
+    if !diag_block.is_empty() {
+        let err_ish = diag_block.to_ascii_lowercase();
+        let has_errors = err_ish.contains("error") || err_ish.contains("diagnostics");
+        evidence = evidence.with_fact(
+            "lsp_diagnostics",
+            if has_errors { "present" } else { "attached" },
+        );
+    }
+    ToolResult::success(body).with_evidence(evidence)
+}
 
 fn edit_unified_diff(display: &str, before: &str, after: &str) -> String {
     if before.len() > DIFF_MAX_INPUT_BYTES || after.len() > DIFF_MAX_INPUT_BYTES {
@@ -274,14 +310,25 @@ impl EditFileTool {
             String::new()
         };
 
-        let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
+        let diag_block = lsp_diagnostics_for_paths(context, std::slice::from_ref(&file_path)).await;
         let full_body = if diag_block.is_empty() {
             format!("{body}{compact}{jsx_warning}")
         } else {
             format!("{body}{compact}{jsx_warning}\n{diag_block}")
         };
 
-        Ok(ToolResult::success(full_body))
+        let edit_lines = match_lines.first().copied().map(|first| {
+            let last = *match_lines.last().unwrap_or(&first);
+            (first as u64, last as u64)
+        });
+        Ok(edit_success_result(
+            full_body,
+            context.workspace.as_path(),
+            &file_path,
+            Some(count as u64),
+            &diag_block,
+            edit_lines,
+        ))
     }
 
     /// insert_after operation — insert `text` after `after_line` (1-based).
@@ -358,13 +405,25 @@ impl EditFileTool {
 
         let jsx_warning = jsx_balance_warning(&file_path, &updated);
 
-        let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
+        let diag_block = lsp_diagnostics_for_paths(context, std::slice::from_ref(&file_path)).await;
         let full_body = if diag_block.is_empty() {
             format!("{body}{jsx_warning}")
         } else {
             format!("{body}{jsx_warning}\n{diag_block}")
         };
-        Ok(ToolResult::success(full_body))
+        let insert_at = if after_line == 0 {
+            1
+        } else {
+            after_line as u64
+        };
+        Ok(edit_success_result(
+            full_body,
+            context.workspace.as_path(),
+            &file_path,
+            None,
+            &diag_block,
+            Some((insert_at, insert_at)),
+        ))
     }
 
     /// delete_lines operation — remove lines [start_line, end_line] inclusive (1-based).
@@ -467,13 +526,20 @@ impl EditFileTool {
 
         let jsx_warning = jsx_balance_warning(&file_path, &updated);
 
-        let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
+        let diag_block = lsp_diagnostics_for_paths(context, std::slice::from_ref(&file_path)).await;
         let full_body = if diag_block.is_empty() {
             format!("{body}{jsx_warning}")
         } else {
             format!("{body}{jsx_warning}\n{diag_block}")
         };
-        Ok(ToolResult::success(full_body))
+        Ok(edit_success_result(
+            full_body,
+            context.workspace.as_path(),
+            &file_path,
+            None,
+            &diag_block,
+            Some((start as u64, e as u64)),
+        ))
     }
 
     /// replace_line operation — replace a single line at `line` (1-based) with `text`.
@@ -546,12 +612,19 @@ impl EditFileTool {
 
         let jsx_warning = jsx_balance_warning(&file_path, &updated);
 
-        let diag_block = lsp_diagnostics_for_paths(context, &[file_path]).await;
+        let diag_block = lsp_diagnostics_for_paths(context, std::slice::from_ref(&file_path)).await;
         let full_body = if diag_block.is_empty() {
             format!("{body}{jsx_warning}")
         } else {
             format!("{body}{jsx_warning}\n{diag_block}")
         };
-        Ok(ToolResult::success(full_body))
+        Ok(edit_success_result(
+            full_body,
+            context.workspace.as_path(),
+            &file_path,
+            Some(1),
+            &diag_block,
+            Some((line as u64, line as u64)),
+        ))
     }
 }

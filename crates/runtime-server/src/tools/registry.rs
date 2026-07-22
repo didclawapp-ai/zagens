@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::models::Tool;
 
@@ -132,7 +132,17 @@ impl ToolRegistry {
             .ok_or_else(|| ToolError::not_available(format!("tool '{name}' is not registered")))?;
 
         let ctx = context_override.unwrap_or(&self.context);
-        let result = tool.execute(input.clone(), ctx).await?;
+        let mut result = tool.execute(input.clone(), ctx).await?;
+        result = annotate_citation_audit(result, &ctx.workspace);
+        // Record differential-read anchors from metadata immediately so the
+        // next tool in the same turn (e.g. around_last_edit) can see them.
+        if result.success
+            && let Some(anchors) = ctx.diff_read_anchors.as_ref()
+            && let Some(env) = result.evidence()
+        {
+            let mut guard = anchors.lock().await;
+            guard.record_from_evidence(None, name, &env);
+        }
 
         // Large-output routing (#548): if the result exceeds the threshold and
         // the caller did not request `raw=true`, synthesise via the workshop.
@@ -179,20 +189,27 @@ impl ToolRegistry {
                         }
                     }
 
-                    // Build a terse synthesis using the same model the registry
-                    // was constructed for (workshop Flash model). For now we
-                    // produce a structured header + truncated preview without
-                    // a live API call so the engine stays dependency-free at
-                    // the registry layer. A follow-up can wire in the Flash
-                    // client when the async LLM call is safe here.
-                    let preview_chars = 1_200usize;
-                    let preview: String = result.content.chars().take(preview_chars).collect();
-                    let ellipsis = if result.content.chars().count() > preview_chars {
-                        "\n… [output truncated — full text in workshop variable `last_tool_result`]"
+                    let synthesis = if let Some(syn) = ctx.large_output_synthesizer.as_ref() {
+                        match syn
+                            .synthesize(name, &result.content, estimated_tokens)
+                            .await
+                        {
+                            Some(text) if !text.trim().is_empty() => text,
+                            _ => LargeOutputRouter::extractive_synthesis(
+                                name,
+                                &result.content,
+                                result.metadata.as_ref(),
+                                2_400,
+                            ),
+                        }
                     } else {
-                        ""
+                        LargeOutputRouter::extractive_synthesis(
+                            name,
+                            &result.content,
+                            result.metadata.as_ref(),
+                            2_400,
+                        )
                     };
-                    let synthesis = format!("{preview}{ellipsis}");
                     let wrapped = LargeOutputRouter::wrap_synthesis(
                         name,
                         &synthesis,
@@ -206,11 +223,32 @@ impl ToolRegistry {
                         threshold,
                         "large-output routed through workshop"
                     );
-                    let mut routed = ToolResult::success(wrapped);
+
+                    let mut evidence = zagens_tools::EvidenceEnvelope::new()
+                        .with_fact("large_output_routed", "true")
+                        .with_fact("raw_tokens", estimated_tokens.to_string())
+                        .with_uncertainty(zagens_tools::UncertaintyKind::Truncated);
+                    if let Some(prior) = result.evidence() {
+                        evidence.merge_from(&prior);
+                    }
+
+                    let mut meta = serde_json::Map::new();
                     if let Some(lo) = large_output_meta {
-                        routed = routed.with_metadata(serde_json::json!({
-                            crate::tools::large_output_router::LARGE_OUTPUT_METADATA_KEY: lo,
-                        }));
+                        meta.insert(
+                            crate::tools::large_output_router::LARGE_OUTPUT_METADATA_KEY
+                                .to_string(),
+                            lo,
+                        );
+                    }
+
+                    let mut routed = ToolResult::success(wrapped).with_evidence(evidence);
+                    if !meta.is_empty() {
+                        // Merge large_output key without dropping evidence.
+                        let mut combined = routed.metadata.take().unwrap_or_else(|| json!({}));
+                        if let Some(obj) = combined.as_object_mut() {
+                            obj.extend(meta);
+                        }
+                        routed.metadata = Some(combined);
                     }
                     return Ok(routed);
                 }
@@ -566,8 +604,19 @@ impl ToolRegistryBuilder {
     pub fn with_composite_tools(self) -> Self {
         use super::edit_and_check::EditAndCheckTool;
         use super::explore_codebase::ExploreCodebaseTool;
+        use super::intent_tools::{AnswerFromRepoTool, ChangeAndVerifyTool, InvestigateTool};
         self.with_tool(Arc::new(ExploreCodebaseTool))
             .with_tool(Arc::new(EditAndCheckTool))
+            .with_tool(Arc::new(InvestigateTool))
+            .with_tool(Arc::new(AnswerFromRepoTool))
+            .with_tool(Arc::new(ChangeAndVerifyTool))
+    }
+
+    /// Promote last workshop-routed large tool output into context.
+    #[must_use]
+    pub fn with_promote_to_context_tool(self) -> Self {
+        use super::promote_to_context::PromoteToContextTool;
+        self.with_tool(Arc::new(PromoteToContextTool))
     }
 
     /// Include T4 harness assert tools (predicate library only).
@@ -876,6 +925,7 @@ impl ToolRegistryBuilder {
             .with_describe_image_tool()
             .with_test_runner_tool()
             .with_composite_tools()
+            .with_promote_to_context_tool()
             .with_validation_tools()
             .with_runtime_task_tools()
             .with_revert_turn_tool();
@@ -1117,6 +1167,84 @@ impl ToolSpec for McpToolAdapter {
         let content = serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string());
         Ok(ToolResult::success(content))
     }
+}
+
+/// Cheap post-execute citation audit: line ranges vs on-disk line counts.
+fn annotate_citation_audit(mut result: ToolResult, workspace: &std::path::Path) -> ToolResult {
+    let Some(envelope) = result.evidence() else {
+        return result;
+    };
+    if envelope.citations.is_empty()
+        && !envelope
+            .facts
+            .iter()
+            .any(|f| f.key == "total_matches" || f.key == "match_count")
+    {
+        return result;
+    }
+
+    let content_hint = count_path_line_markers(&result.content);
+    let report = zagens_core::engine::audit_evidence_citations(
+        &envelope,
+        |path| count_file_lines(workspace, path),
+        content_hint,
+    );
+
+    let mut evidence = envelope;
+    evidence = evidence.with_fact("citation_audit", if report.ok() { "ok" } else { "fail" });
+    if !report.ok() {
+        let uncertainty = evidence
+            .uncertainty
+            .merge(zagens_tools::UncertaintyKind::Partial);
+        evidence = evidence
+            .with_fact("citation_audit_detail", report.summary())
+            .with_uncertainty(uncertainty);
+        result.content = format!("{}\n\n[{}]", result.content.trim_end(), report.summary());
+    }
+    result.with_evidence(evidence)
+}
+
+fn count_file_lines(workspace: &std::path::Path, rel: &str) -> Option<u64> {
+    let normalized = crate::tools::file::workspace_relative_from_str(workspace, rel);
+    let path = if std::path::Path::new(rel).is_absolute()
+        || rel.starts_with("//?/")
+        || rel.starts_with(r"\\?\")
+    {
+        // Prefer workspace-relative join when normalization succeeded.
+        if !normalized.is_empty() && !normalized.contains(':') && !normalized.starts_with("//") {
+            workspace.join(&normalized)
+        } else {
+            std::path::PathBuf::from(rel)
+        }
+    } else {
+        workspace.join(if normalized.is_empty() {
+            rel
+        } else {
+            &normalized
+        })
+    };
+    let file = std::fs::File::open(path).ok()?;
+    let reader = std::io::BufReader::new(file);
+    Some(std::io::BufRead::lines(reader).count() as u64)
+}
+
+fn count_path_line_markers(content: &str) -> Option<u64> {
+    // Rough count of `file.ext:123` markers in grep-style prose — skip the
+    // evidence ledger so `- cite: path:1-2` does not inflate the hint.
+    let re = regex::Regex::new(r"[\w./\\-]+\.\w+:\d+").ok()?;
+    let n = content
+        .lines()
+        .filter(|line| {
+            let t = line.trim();
+            !t.starts_with("[evidence")
+                && !t.starts_with("- cite:")
+                && !t.starts_with("cite:")
+                && !t.starts_with("- fact:")
+                && !t.starts_with("[citation_audit")
+        })
+        .flat_map(|line| re.find_iter(line))
+        .count() as u64;
+    if n == 0 { None } else { Some(n) }
 }
 
 // === Unit Tests ===

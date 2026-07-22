@@ -6,11 +6,12 @@ use std::time::Duration;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio::sync::RwLock;
 use zagens_protocol::{ToolKind, ToolOutput, ToolPayload};
 
 mod dag_scheduler;
+mod evidence;
 mod policy_engine;
 mod resource_locks;
 mod tool_manifest;
@@ -18,6 +19,9 @@ mod tool_manifest;
 pub use dag_scheduler::{
     DagPlanView, ScheduleResource, SchedulerShadowStats, build_execution_waves,
     record_scheduler_shadow_diff, scheduler_shadow_stats, wave_parallel_eligible,
+};
+pub use evidence::{
+    EVIDENCE_METADATA_KEY, EvidenceCitation, EvidenceEnvelope, EvidenceFact, UncertaintyKind,
 };
 pub use policy_engine::{
     ApprovalNeed, ParallelResourceKey, PolicyDecision, PolicyEngine, PolicyInput, PolicyPlanMeta,
@@ -200,6 +204,37 @@ impl ToolResult {
     pub fn with_metadata(mut self, metadata: Value) -> Self {
         self.metadata = Some(metadata);
         self
+    }
+
+    /// Merge an [`EvidenceEnvelope`] into `metadata["evidence"]` (preserving other keys).
+    #[must_use]
+    pub fn with_evidence(mut self, envelope: EvidenceEnvelope) -> Self {
+        let mut meta = match self.metadata.take() {
+            Some(Value::Object(map)) => Value::Object(map),
+            Some(other) => json!({ "prior": other }),
+            None => json!({}),
+        };
+        if let Some(obj) = meta.as_object_mut() {
+            if let Some(existing) = obj.get(EVIDENCE_METADATA_KEY).cloned()
+                && let Ok(mut prior) = serde_json::from_value::<EvidenceEnvelope>(existing)
+            {
+                prior.merge_from(&envelope);
+                obj.insert(EVIDENCE_METADATA_KEY.to_string(), prior.to_metadata_value());
+            } else {
+                obj.insert(
+                    EVIDENCE_METADATA_KEY.to_string(),
+                    envelope.to_metadata_value(),
+                );
+            }
+        }
+        self.metadata = Some(meta);
+        self
+    }
+
+    /// Read the evidence envelope from metadata, if any.
+    #[must_use]
+    pub fn evidence(&self) -> Option<EvidenceEnvelope> {
+        EvidenceEnvelope::from_metadata(self.metadata.as_ref())
     }
 }
 

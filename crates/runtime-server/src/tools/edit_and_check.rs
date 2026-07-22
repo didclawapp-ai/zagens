@@ -15,6 +15,7 @@ use super::spec::{
     optional_bool, optional_str,
 };
 use super::test_runner::RunTestsTool;
+use zagens_tools::{EvidenceEnvelope, UncertaintyKind};
 
 pub struct EditAndCheckTool;
 
@@ -82,7 +83,16 @@ impl ToolSpec for EditAndCheckTool {
                 edit_started,
                 edit_result.content.clone(),
             ));
-            return Ok(edit_result.with_metadata(composite_metadata(&steps)));
+            let mut failed = edit_result.with_metadata(composite_metadata(&steps));
+            let mut evidence = EvidenceEnvelope::new()
+                .with_fact("composite", "edit_and_check")
+                .with_fact("edit_ok", "false")
+                .with_uncertainty(UncertaintyKind::Partial);
+            if let Some(prior) = failed.evidence() {
+                evidence.merge_from(&prior);
+            }
+            failed = failed.with_evidence(evidence);
+            return Ok(failed);
         }
         steps.push(CompositeStep::ok(
             "edit_file",
@@ -91,6 +101,7 @@ impl ToolSpec for EditAndCheckTool {
         ));
 
         let mut body = edit_result.content.clone();
+        let edit_evidence = edit_result.evidence();
 
         if let Some(suffix) = hint_suffix_for_tool(context.workspace.as_path(), "edit_file", &input)
         {
@@ -98,7 +109,17 @@ impl ToolSpec for EditAndCheckTool {
         }
 
         if !run_tests {
-            return Ok(ToolResult::success(body).with_metadata(composite_metadata(&steps)));
+            let mut evidence = EvidenceEnvelope::new()
+                .with_fact("composite", "edit_and_check")
+                .with_fact("edit_ok", "true")
+                .with_fact("tests_ran", "false")
+                .with_uncertainty(UncertaintyKind::Partial);
+            if let Some(prior) = edit_evidence.as_ref() {
+                evidence.merge_from(prior);
+            }
+            return Ok(ToolResult::success(body)
+                .with_metadata(composite_metadata(&steps))
+                .with_evidence(evidence));
         }
 
         // Step 2: run_tests with affected hint or caller args
@@ -116,6 +137,13 @@ impl ToolSpec for EditAndCheckTool {
         }
 
         let tests_result = tests_tool.execute(tests_input, context).await?;
+        let mut evidence = EvidenceEnvelope::new()
+            .with_fact("composite", "edit_and_check")
+            .with_fact("edit_ok", "true")
+            .with_fact("tests_ran", "true");
+        if let Some(prior) = edit_evidence.as_ref() {
+            evidence.merge_from(prior);
+        }
         if tests_result.success {
             steps.push(CompositeStep::ok(
                 "run_tests",
@@ -124,7 +152,12 @@ impl ToolSpec for EditAndCheckTool {
             ));
             body.push_str("\n\n## run_tests\n");
             body.push_str(&tests_result.content);
-            Ok(ToolResult::success(body).with_metadata(composite_metadata(&steps)))
+            evidence = evidence
+                .with_fact("tests_ok", "true")
+                .with_uncertainty(UncertaintyKind::None);
+            Ok(ToolResult::success(body)
+                .with_metadata(composite_metadata(&steps))
+                .with_evidence(evidence))
         } else {
             steps.push(CompositeStep::fail(
                 "run_tests",
@@ -133,7 +166,12 @@ impl ToolSpec for EditAndCheckTool {
             ));
             body.push_str("\n\n## run_tests (failed)\n");
             body.push_str(&tests_result.content);
-            Ok(ToolResult::error(body).with_metadata(composite_metadata(&steps)))
+            evidence = evidence
+                .with_fact("tests_ok", "false")
+                .with_uncertainty(UncertaintyKind::Partial);
+            Ok(ToolResult::error(body)
+                .with_metadata(composite_metadata(&steps))
+                .with_evidence(evidence))
         }
     }
 }

@@ -263,7 +263,6 @@ impl LargeOutputRouter {
     /// registry layer). The method is public so callers outside this crate
     /// can unit-test the prompt shape.
     #[must_use]
-    #[allow(dead_code)] // used by future Flash synthesis call; keep for API stability
     pub fn synthesis_prompt(tool_name: &str, raw_output: &str, estimated_tokens: usize) -> String {
         format!(
             "You are a synthesis assistant. The tool `{tool_name}` produced {estimated_tokens} tokens \
@@ -290,8 +289,76 @@ impl LargeOutputRouter {
             .unwrap_or_default();
         format!(
             "{ref_line}[workshop-synthesis: tool={tool_name}, raw_tokens≈{estimated_tokens}, \
-             threshold={threshold}, raw_stored_in={WORKSHOP_LAST_TOOL_RESULT_VAR}]\n\n{synthesis}"
+             threshold={threshold}, raw_stored_in={WORKSHOP_LAST_TOOL_RESULT_VAR}]\n\
+             Call `promote_to_context` to load the full raw output into context when needed.\n\
+             Uncertainty: truncated — do not invent unread sections.\n\n{synthesis}"
         )
+    }
+
+    /// Extractive synthesis used when a live Flash call is unavailable.
+    ///
+    /// Prefers evidence facts from metadata, then high-signal lines (errors,
+    /// paths, FAIL/error markers), then a head/tail preview with byte offsets
+    /// so the model can request a narrower re-read or `promote_to_context`.
+    #[must_use]
+    pub fn extractive_synthesis(
+        tool_name: &str,
+        raw_output: &str,
+        metadata: Option<&serde_json::Value>,
+        max_chars: usize,
+    ) -> String {
+        let mut parts: Vec<String> = Vec::new();
+
+        if let Some(env) = zagens_tools::EvidenceEnvelope::from_metadata(metadata) {
+            parts.push(env.format_ledger());
+        }
+
+        let signal_lines: Vec<&str> = raw_output
+            .lines()
+            .filter(|line| {
+                let lower = line.to_ascii_lowercase();
+                lower.contains("error")
+                    || lower.contains("fail")
+                    || lower.contains("panic")
+                    || lower.contains("warning:")
+                    || line.contains(".rs:")
+                    || line.contains(".ts:")
+                    || line.contains(".tsx:")
+                    || line.trim_start().starts_with("-->")
+            })
+            .take(40)
+            .collect();
+        if !signal_lines.is_empty() {
+            parts.push("[high-signal lines]".to_string());
+            parts.extend(signal_lines.into_iter().map(str::to_string));
+        }
+
+        let total = raw_output.chars().count();
+        let preview_budget =
+            max_chars.saturating_sub(parts.iter().map(|p| p.chars().count() + 1).sum::<usize>());
+        let preview_budget = preview_budget.max(400).min(max_chars);
+        let head_len = preview_budget * 2 / 3;
+        let tail_len = preview_budget.saturating_sub(head_len);
+        let head: String = raw_output.chars().take(head_len).collect();
+        let tail: String = if total > head_len {
+            raw_output
+                .chars()
+                .skip(total.saturating_sub(tail_len))
+                .collect()
+        } else {
+            String::new()
+        };
+
+        parts.push(format!(
+            "[preview tool={tool_name} chars={total} head_chars={head_len}]\n{head}"
+        ));
+        if !tail.is_empty() {
+            parts.push(format!(
+                "[... omitted middle ≈{} chars — promote_to_context or re-read with offset ...]\n{tail}",
+                total.saturating_sub(head_len + tail_len)
+            ));
+        }
+        parts.join("\n\n")
     }
 }
 
@@ -329,9 +396,8 @@ impl WorkshopVariables {
     /// Retrieve and clear the stored raw output (consume semantics so the
     /// variable is not accidentally promoted twice).
     ///
-    /// Called by the `promote_to_context` tool (not yet wired in this PR).
+    /// Called by the `promote_to_context` tool.
     #[must_use]
-    #[allow(dead_code)] // consumed by promote_to_context tool in follow-up
     pub fn take_raw(&mut self) -> Option<(String, String)> {
         if self.last_tool_result.is_empty() {
             return None;
@@ -340,6 +406,19 @@ impl WorkshopVariables {
         let name = std::mem::take(&mut self.last_tool_name);
         self.last_output_ref = None;
         Some((name, content))
+    }
+
+    /// Peek without consuming (for status / promote dry-run).
+    #[must_use]
+    pub fn peek_raw(&self) -> Option<(&str, &str, Option<&LargeOutputExternalRef>)> {
+        if self.last_tool_result.is_empty() {
+            return None;
+        }
+        Some((
+            self.last_tool_name.as_str(),
+            self.last_tool_result.as_str(),
+            self.last_output_ref.as_ref(),
+        ))
     }
 }
 
@@ -499,6 +578,23 @@ mod tests {
         assert!(wrapped.contains("5000"));
         assert!(wrapped.contains("key facts here"));
         assert!(wrapped.contains(&external_ref.ref_id));
+        assert!(wrapped.contains("promote_to_context"));
+    }
+
+    #[test]
+    fn extractive_synthesis_keeps_evidence_and_errors() {
+        let meta = serde_json::json!({
+            "evidence": {
+                "facts": [{"key": "total_matches", "value": "2"}],
+                "citations": [{"path": "src/a.rs", "start_line": 10, "end_line": 10}],
+                "uncertainty": "partial"
+            }
+        });
+        let raw = "ok\nerror: boom at src/a.rs:10\nmore noise\n";
+        let syn = LargeOutputRouter::extractive_synthesis("grep_files", raw, Some(&meta), 800);
+        assert!(syn.contains("total_matches=2"));
+        assert!(syn.contains("src/a.rs:10"));
+        assert!(syn.contains("error: boom"));
     }
 
     #[test]

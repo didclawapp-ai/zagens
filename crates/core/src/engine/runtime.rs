@@ -59,6 +59,8 @@ pub struct Engine<P, R> {
     pub scratchpad_audit_continue_injected_this_turn: bool,
     /// One-shot guard: inject LHT continue nudge before prose-only turn break.
     pub long_horizon_continue_injected_this_turn: bool,
+    /// One-shot guard: inject claim↔evidence unverified-path nudge.
+    pub evidence_claim_nudge_injected_this_turn: bool,
     /// "一推到底" (C2): auto-continue rounds consumed this turn — bounds the
     /// give-up override (`long_horizon.max_auto_continue_rounds`). Reset per
     /// user message alongside the other per-turn LHT guards.

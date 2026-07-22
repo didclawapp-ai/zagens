@@ -6,7 +6,10 @@
 //! **PR3:** `StartTurnParams` + `TurnEnginePort` — `RuntimeThreadManager::start_turn`
 //! validates and delegates through core before sending `Op::SendMessage`.
 
+pub mod agent_tool_phase;
 pub mod approval;
+pub mod citation_auditor;
+pub mod claim_evidence;
 pub mod composite_tool_events;
 pub mod config;
 pub mod context;
@@ -14,6 +17,7 @@ pub mod context_assembly;
 pub mod context_compiler;
 pub mod context_snapshot;
 pub mod context_usage_breakdown;
+pub mod diff_read_anchors;
 pub mod dispatch;
 pub mod handle;
 pub mod host_bundle;
@@ -26,6 +30,7 @@ pub mod loop_guard;
 pub mod lsp_edit_paths;
 pub mod op;
 pub mod op_loop;
+pub mod path_normalize;
 pub mod platform_ext;
 pub mod replay_pack;
 pub mod request_fingerprint;
@@ -50,10 +55,19 @@ mod turn_port;
 
 pub use crate::session::{Session, SessionUsage};
 pub use crate::turn::{TurnContext, TurnLoopMode, TurnOutcomeStatus};
+pub use agent_tool_phase::{
+    AgentToolPhase, FailureHotStart, apply_agent_phase_catalog,
+    apply_agent_phase_catalog_with_hot_start, phase_bonus_eager_tools,
+};
 pub use approval::{
     ApprovalDecision, ApprovalResult, UserInputDecision, await_tool_approval,
     recv_user_input_for_tool,
 };
+pub use citation_auditor::{
+    CitationAuditIssue, CitationAuditKind, CitationAuditReport, audit_evidence_citations,
+    maybe_citation_audit_nudge,
+};
+pub use claim_evidence::maybe_unverified_path_claim_nudge;
 pub use context::{
     COMPACTED_HISTORY_MARKER, COMPACTION_SUMMARY_MARKER, MAX_CONTEXT_RECOVERY_ATTEMPTS,
     MIN_RECENT_MESSAGES_TO_KEEP, TURN_MAX_OUTPUT_TOKENS, compact_tool_result_for_context,
@@ -74,6 +88,7 @@ pub use context_usage_breakdown::{
     ContextCategory, ContextNextAction, ContextUsageBreakdown, build_context_usage_breakdown,
     categories_from_assembly_report, conversation_turn_children, resolve_next_action,
 };
+pub use diff_read_anchors::{DiffReadAnchors, LineWindow};
 pub use dispatch::{
     ToolParallelPlanFlags, caller_allowed_for_tool, caller_type_for_tool_use, final_tool_input,
     format_tool_error, is_mcp_tool_name, mcp_tool_approval_description, mcp_tool_is_parallel_safe,
@@ -96,6 +111,7 @@ pub use kernel_turn_host::KernelTurnHost;
 pub use loop_guard::{AttemptDecision, LoopGuard, OutcomeDecision};
 pub use lsp_edit_paths::{edited_paths_for_tool, parse_patch_paths};
 pub use op::Op;
+pub use path_normalize::{normalize_repo_path, repo_paths_match};
 pub use replay_pack::{
     REPLAY_PACK_SCHEMA_VERSION, ReplayPack, ReplayPackMetadata, ReplayPackValidation,
     build_replay_pack, build_replay_pack_from_fixture, companion_session_path,

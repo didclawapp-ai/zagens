@@ -1,6 +1,6 @@
 //! Context budgeting and prompt-shaping helpers for the engine (P2 PR4).
 
-use zagens_tools::ToolResult;
+use zagens_tools::{EvidenceEnvelope, ToolResult};
 
 use crate::chat::{
     DEFAULT_MAX_OUTPUT_TOKENS, Message, SystemPrompt, context_window_for_model,
@@ -93,9 +93,42 @@ fn tool_result_is_noisy(tool_name: &str) -> bool {
         "exec_shell"
             | "exec_shell_wait"
             | "exec_shell_interact"
+            | "exec_wait"
+            | "exec_interact"
             | "multi_tool_use.parallel"
             | "web_search"
+            | "fetch_url"
+            | "web.run"
+            | "grep_files"
+            | "glob_files"
+            | "explore_codebase"
+            | "investigate"
+            | "run_tests"
+            | "task_gate_run"
+            | "browser_snapshot"
+            | "browser_get_text"
+            | "browser_console_tail"
     )
+}
+
+/// Soft limit for noisy tools is tighter than the hard limit (graded compact).
+fn noisy_soft_limit_chars(limits: ToolResultContextLimits, tool_name: &str) -> usize {
+    let base = limits.noisy_soft_limit_chars;
+    // Extra-noisy shell / web dumps compact earlier than search.
+    if matches!(
+        tool_name,
+        "exec_shell"
+            | "exec_shell_wait"
+            | "exec_wait"
+            | "web_search"
+            | "fetch_url"
+            | "web.run"
+            | "run_tests"
+    ) {
+        base.saturating_mul(3) / 4
+    } else {
+        base
+    }
 }
 
 fn tool_result_metadata_summary(metadata: Option<&serde_json::Value>) -> Option<String> {
@@ -246,25 +279,45 @@ pub fn compact_tool_result_for_context(
 
     let limits = tool_result_context_limits_for_model(model);
     let raw_chars = raw.chars().count();
+    let soft = noisy_soft_limit_chars(limits, tool_name);
     let should_compact = raw_chars > limits.hard_limit_chars
-        || (tool_result_is_noisy(tool_name) && raw_chars > limits.noisy_soft_limit_chars);
+        || (tool_result_is_noisy(tool_name) && raw_chars > soft);
+    let evidence = EvidenceEnvelope::from_metadata(output.metadata.as_ref());
+    let evidence_ledger = evidence.as_ref().map(|env| env.format_ledger());
+
+    // Always surface the evidence ledger so claims can be reconciled even when
+    // the prose body is small enough to keep verbatim.
     if !should_compact {
-        return raw.to_string();
+        return match evidence_ledger {
+            Some(ledger) => format!("{ledger}\n\n{raw}"),
+            None => raw.to_string(),
+        };
     }
 
     let snippet = summarize_text_head_tail(raw, limits.snippet_chars);
     let omitted = raw_chars.saturating_sub(snippet.chars().count());
     let summary = tool_result_metadata_summary(output.metadata.as_ref());
 
-    if let Some(summary) = summary {
-        format!(
-            "[{tool_name} output compacted to protect context]\nSummary: {summary}\nSnippet: {snippet}\n(Original: {raw_chars} chars, omitted: {omitted} chars.)"
-        )
-    } else {
-        format!(
-            "[{tool_name} output compacted to protect context]\nSnippet: {snippet}\n(Original: {raw_chars} chars, omitted: {omitted} chars.)"
-        )
+    let mut out = format!("[{tool_name} output compacted to protect context]\n");
+    if let Some(ledger) = evidence_ledger {
+        out.push_str(&ledger);
+        out.push('\n');
+        if matches!(
+            evidence.map(|e| e.uncertainty).unwrap_or_default(),
+            zagens_tools::UncertaintyKind::Truncated | zagens_tools::UncertaintyKind::Partial
+        ) {
+            out.push_str(
+                "Do not invent unread ranges; re-call the tool with a narrower window or promote_to_context if a workshop-ref is present.\n",
+            );
+        }
     }
+    if let Some(summary) = summary {
+        out.push_str(&format!("Summary: {summary}\n"));
+    }
+    out.push_str(&format!(
+        "Snippet: {snippet}\n(Original: {raw_chars} chars, omitted: {omitted} chars.)"
+    ));
+    out
 }
 
 #[must_use]
@@ -414,5 +467,38 @@ mod tests {
             estimate_input_tokens_conservative(&messages[drain..], None) <= budget
                 || drain == messages.len() - MIN_RECENT_MESSAGES_TO_KEEP
         );
+    }
+
+    #[test]
+    fn compact_preserves_evidence_ledger() {
+        use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
+
+        let big = "y".repeat(20_000);
+        let result = ToolResult::success(big).with_evidence(
+            EvidenceEnvelope::new()
+                .with_fact("total_matches", "7")
+                .with_citation(EvidenceCitation::lines("src/lib.rs", 1, 3))
+                .with_uncertainty(UncertaintyKind::Truncated),
+        );
+        let compacted = compact_tool_result_for_context("deepseek-chat", "grep_files", &result);
+        assert!(compacted.contains("total_matches=7"));
+        assert!(compacted.contains("src/lib.rs:1-3"));
+        assert!(compacted.contains("Do not invent unread ranges"));
+    }
+
+    #[test]
+    fn small_result_still_surfaces_evidence_ledger() {
+        use zagens_tools::{EvidenceCitation, EvidenceEnvelope, UncertaintyKind};
+
+        let result = ToolResult::success("hello").with_evidence(
+            EvidenceEnvelope::new()
+                .with_fact("path", "src/a.rs")
+                .with_citation(EvidenceCitation::lines("src/a.rs", 1, 2))
+                .with_uncertainty(UncertaintyKind::None),
+        );
+        let out = compact_tool_result_for_context("deepseek-chat", "read_file", &result);
+        assert!(out.starts_with("[evidence uncertainty=none]"));
+        assert!(out.contains("src/a.rs:1-2"));
+        assert!(out.contains("hello"));
     }
 }
