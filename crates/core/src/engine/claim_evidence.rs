@@ -24,6 +24,15 @@ pub fn maybe_unverified_path_claim_nudge(
         return None;
     }
 
+    if recent_answer_refused(messages, RECENT_TOOL_RESULTS) {
+        return Some(
+            "[evidence check] A recent answer_from_repo returned outcome=refuse \
+             (answer_allowed=false). Do not assert repo path facts; broaden \
+             investigate/glob/grep or clearly say the claim could not be verified."
+                .to_string(),
+        );
+    }
+
     let cited = collect_recent_cited_paths(messages, RECENT_TOOL_RESULTS);
     let claimed = extract_path_claims(text);
     if claimed.is_empty() {
@@ -47,6 +56,55 @@ pub fn maybe_unverified_path_claim_nudge(
          (or change_and_verify for edits) and cite paths before restating them as fact.",
         missing.join(", ")
     ))
+}
+
+/// True only when a recent tool result is a structured `answer_from_repo` refuse.
+///
+/// Must not scan free-form prose / source dumps: reading `claim_evidence.rs` tests
+/// that contain the literal `outcome=refuse` must not false-trigger (thr_e1b9).
+fn recent_answer_refused(messages: &[Message], limit: usize) -> bool {
+    let mut seen = 0usize;
+    for msg in messages.iter().rev() {
+        for block in &msg.content {
+            let ContentBlock::ToolResult { content, .. } = block else {
+                continue;
+            };
+            seen += 1;
+            if tool_result_is_answer_refuse(content) {
+                return true;
+            }
+            if seen >= limit {
+                return false;
+            }
+        }
+    }
+    false
+}
+
+fn tool_result_is_answer_refuse(content: &str) -> bool {
+    // Intent tools put a machine-readable first line: `outcome=refuse answer_allowed=false …`
+    if let Some(head) = content.lines().map(str::trim).find(|l| !l.is_empty())
+        && head_line_is_outcome_refuse(head)
+    {
+        return true;
+    }
+    // Evidence ledger facts only (not Rust string literals / assert messages).
+    for line in content.lines().take(40) {
+        let trimmed = line.trim();
+        if trimmed == "- fact: outcome=refuse"
+            || trimmed == "- fact: answer_allowed=false"
+            || trimmed.starts_with("- fact: outcome=refuse ")
+            || trimmed.starts_with("- fact: answer_allowed=false ")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn head_line_is_outcome_refuse(head: &str) -> bool {
+    // Token match only — avoids Rust source / assert strings that embed the phrase.
+    head.split_whitespace().any(|tok| tok == "outcome=refuse")
 }
 
 fn has_strong_claim_signal(text: &str) -> bool {
@@ -218,5 +276,59 @@ mod tests {
             "I updated `citation_auditor.rs` as shown above.",
         );
         assert!(nudge.is_none());
+    }
+
+    #[test]
+    fn nudge_when_answer_from_repo_refused() {
+        let messages = vec![tool_result(
+            "outcome=refuse answer_allowed=false citation_count=0\n\
+             [answer_from_repo — REFUSE: no citations]",
+        )];
+        let nudge = maybe_unverified_path_claim_nudge(
+            &messages,
+            "I fixed `crates/core/src/lib.rs` already.",
+        );
+        assert!(nudge.is_some());
+        assert!(nudge.unwrap().contains("outcome=refuse"));
+    }
+
+    #[test]
+    fn source_dump_refuse_literal_does_not_fake_refuse_nudge() {
+        // thr_e1b9: read_file/change_and_verify of this module's tests embeds the
+        // refuse outcome string; that must not select the refuse nudge path.
+        let messages = vec![tool_result(
+            "fn nudge_when_answer_from_repo_refused() {\n\
+             let messages = vec![tool_result(\n\
+             \"outcome=refuse answer_allowed=false citation_count=0\\n\\\n\
+             );\n\
+             assert!(nudge.unwrap().contains(\"outcome=refuse\"));\n\
+             - cite: crates/core/src/engine/claim_evidence.rs:186\n",
+        )];
+        let nudge = maybe_unverified_path_claim_nudge(
+            &messages,
+            "I fixed `crates/core/src/engine/context.rs` already.",
+        );
+        assert!(nudge.is_some());
+        let text = nudge.unwrap();
+        assert!(
+            !text.contains("answer_allowed=false"),
+            "refuse false-positive: {text}"
+        );
+        assert!(text.contains("context.rs") || text.contains("unverified"));
+    }
+
+    #[test]
+    fn limited_answer_first_line_is_not_refuse() {
+        let messages = vec![tool_result(
+            "outcome=limited answer_allowed=true citation_count=2\n\
+             [answer_from_repo — LIMITED]\n\
+             - cite: crates/core/src/engine/agent_tool_phase.rs:1",
+        )];
+        let nudge = maybe_unverified_path_claim_nudge(
+            &messages,
+            "I fixed `crates/core/src/engine/context.rs` already.",
+        );
+        assert!(nudge.is_some());
+        assert!(!nudge.unwrap().contains("outcome=refuse"));
     }
 }

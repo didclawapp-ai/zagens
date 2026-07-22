@@ -20,6 +20,8 @@
 
 根 `Cargo.toml` 里的 `rust-version = "1.88"` 是 **MSRV**（下游兼容下限）；**贡献者与 CI 实际使用** `rust-toolchain.toml` 中的版本。
 
+**包名提示：** 目录 `crates/runtime-server/` ≠ Cargo package 名。日常对 sidecar/runtime 冒烟请用 **`cargo check -p zagens-cli`**（库名 `zagens_runtime`）。
+
 ---
 
 ## 1. 要不要每次手动跑脚本？

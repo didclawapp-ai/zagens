@@ -73,7 +73,8 @@ pub use context::{
     MIN_RECENT_MESSAGES_TO_KEEP, TURN_MAX_OUTPUT_TOKENS, compact_tool_result_for_context,
     context_input_budget, count_oldest_messages_to_drain, effective_max_output_tokens,
     estimate_input_tokens_conservative, extract_compaction_summary_prompt,
-    is_context_length_error_message, summarize_text, turn_response_headroom_tokens,
+    is_context_length_error_message, summarize_text, tool_result_is_noisy,
+    turn_response_headroom_tokens,
 };
 pub use context_assembly::{
     ByteRange, ContextAssemblyReport, SourceSpan, explorer_category_for_source_id,

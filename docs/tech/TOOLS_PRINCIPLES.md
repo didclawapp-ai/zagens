@@ -825,7 +825,7 @@ Legend: **Shipped** = in tree and wired; **Partial** = usable but incomplete vs 
 | `promote_to_context` tool (peek / max_chars / consume) | **Shipped** | `crates/runtime-server/src/tools/promote_to_context.rs` |
 | Differential `read_file` (`around_line` / `symbol` / `context_radius`) | **Shipped** | Schema + `resolve_read_window` |
 | Differential `read_file` (`around_last_edit` / `since_tool_use_id`) | **Shipped** | Session `DiffReadAnchors`; registry records metadata evidence same-turn; paths normalized workspace-relative |
-| Graded noisy-tool compact (shell/web/grep/explore/browser…) | **Shipped** | `tool_result_is_noisy` + tighter soft limit |
+| Graded noisy-tool compact (shell/web/grep/explore/browser…) | **Shipped** | `tool_result_is_noisy` + `ToolSpec::is_noisy` + `metadata.context_noisy` |
 | `uncertainty=truncated` hard hint on compact / wrap | **Shipped** | Compact + `wrap_synthesis` |
 
 ### 9.3 M3 — Intent tools + phase catalog
@@ -834,19 +834,19 @@ Legend: **Shipped** = in tree and wired; **Partial** = usable but incomplete vs 
 |------|--------|----------------|
 | `investigate` (evidence-stamped explore composite) | **Shipped** | Merges `explore_codebase` citations into evidence pack + ledger prefix |
 | `change_and_verify` (edit → LSP → optional tests) | **Shipped** | Merges `edit_and_check` evidence (edit path + tests_ok) |
-| `answer_from_repo` (cite-or-refuse answer shape) | **Shipped** | Wraps `investigate`; refuses when citations empty / not_found |
+| `answer_from_repo` (cite-or-refuse answer shape) | **Shipped** | Wraps `investigate`; first line `outcome=refuse\|limited\|ok`; evidence pack only (no NL answer) |
 | Soft Agent phase catalog Explore / Edit / Verify / Ship | **Shipped** | Phase-managed tools deferred outside current bonus; UX tools stay eager |
 | Hard stage-gate style blocking for daily Agent | **Not shipped** | Soft defer-eager only; harness `stage_gate` unchanged |
-| Failure-type hot-start (compile fail → diagnostics, …) | **Shipped** | `FailureHotStart` unions eager tools into phase catalog |
+| Failure-type hot-start (compile fail → diagnostics, …) | **Shipped** | `FailureHotStart` prefers LSP `ERROR [line:col]`, then rustc/shell patterns |
 | MCP activate + capability footprint snippet | **Not shipped** | MCP still default-defer; no footprint injection on activate |
 
 ### 9.4 Cross-cutting (plan §A–C)
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Tool-name fuzzy resolve / arg repair ladder | **Shipped** (pre-existing) | Not part of this milestone; already present |
+| Tool-name fuzzy resolve / arg repair ladder | **Shipped** | Ladder repairs common stream damage; unparseable → `[arg_repair_failed]` (no silent `{}`) |
 | Call-time **preflight** (missing path / empty glob → structured fix hint) | **Not shipped** | Beyond existing schema missing-field hints |
-| Schema soft-fail examples (no silent `{}` success) | **Partial** | `required_str` lists provided keys; no example payloads |
+| Schema soft-fail examples (no silent `{}` success) | **Shipped** (arg path) | Unparseable args block execute; schema examples still open |
 | Identical-call guard with state fingerprint | **Not shipped** | Loop guard still count-based |
 | Verify recipe auto-run after writes / done-gate on facts | **Not shipped** | Harness `assert_*` / `task_gate_run` remain separate |
 | Telemetry loop (`doctor --tools` → top failure modes) | **Not shipped** as product loop | Doctor/telemetry exist; no quarterly optimization wiring |
@@ -862,3 +862,12 @@ Still intentionally **not** done (plan §D): mass tool aliases; papering over Li
 3. MCP activate + capability footprint snippet.  
 4. Hard stage-gate style blocking for daily Agent (optional, beyond soft defer).  
 5. Telemetry loop (`doctor --tools` → top failure modes).
+
+### 9.7 Runtime package name (dev tip)
+
+Workspace crate directory is `crates/runtime-server/`, library name is `zagens_runtime`, Cargo package name for checks/tests is **`zagens-cli`**:
+
+```bash
+cargo check -p zagens-cli
+cargo test -p zagens-cli --lib
+```

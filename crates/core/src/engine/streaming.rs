@@ -16,6 +16,10 @@ pub struct ToolUseState {
     pub input: serde_json::Value,
     pub caller: Option<ToolCaller>,
     pub input_buffer: String,
+    /// Set when the streamed argument buffer could not be repaired/parsed.
+    /// Tool phase must short-circuit with `InvalidInput` instead of executing
+    /// against a stale/empty `input` (no silent `{}` success).
+    pub arg_parse_error: Option<String>,
 }
 
 pub const STREAM_CHUNK_TIMEOUT_SECS: u64 = 90;

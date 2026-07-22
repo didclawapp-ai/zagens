@@ -633,6 +633,15 @@ pub trait ToolSpec: Send + Sync {
         false
     }
 
+    /// Whether results should enter graded noisy compact earlier.
+    ///
+    /// Default consults [`zagens_core::engine::tool_result_is_noisy`]. Override
+    /// to `true` for new high-volume tools so context policy cannot drift.
+    /// Registry stamps `metadata.context_noisy` when this returns true.
+    fn is_noisy(&self) -> bool {
+        zagens_core::engine::tool_result_is_noisy(self.name())
+    }
+
     /// Returns whether this tool should be excluded from the model-visible
     /// tool catalog (deferred loading). Tools marked `true` are registered
     /// but not sent to the model until explicitly activated via tool search.

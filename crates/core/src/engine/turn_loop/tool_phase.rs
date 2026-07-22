@@ -125,7 +125,11 @@ pub async fn run_tool_execution_phase<H: InnerStepHost>(
             }
         }
 
-        if !caller_allowed_for_tool(tool_caller.as_ref(), tool_def) {
+        if let Some(parse_err) = tool.arg_parse_error.as_ref() {
+            blocked_error = Some(ToolError::invalid_input(parse_err.clone()));
+        }
+
+        if blocked_error.is_none() && !caller_allowed_for_tool(tool_caller.as_ref(), tool_def) {
             blocked_error = Some(ToolError::permission_denied(format!(
                 "Tool '{tool_name}' does not allow caller '{}'",
                 caller_type_for_tool_use(tool_caller.as_ref())

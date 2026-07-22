@@ -22,8 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **claim nudge refuse false-positive (thr_e1b9):** only treat structured first-line `outcome=refuse` / `- fact: answer_allowed=false` as refuse; ignore the same literals inside read/edit source dumps.
+- **arg_repair silent `{}`:** five-stage JSON repair no longer invents an empty object on failure; returns `Unparseable` with `raw_preview`, streaming sets `ToolUseState.arg_parse_error`, and tool phase short-circuits with `InvalidInput` (`[arg_repair_failed]`).
 - **web_search Metaso:** remove hardcoded community API key from source; Metaso now requires `[search] api_key` or `METASO_API_KEY` (same pattern as Baidu/Volcengine).
 - **Audit scratchpad inventory / report gates (S0–S3):** Desktop/runtime-server inventory areas are declared via `[package.metadata.zagens.audit]` (paths relative to crate root; must-hit contract fails loud). Active audit runs gate `deliverables/**` docs (CJK「审核」; `_exempt/` / `non-audit/` escape). `set_area` validates `area_id` first. `write_office` rejects null/empty `blocks` for docx/pdf/pptx. AuditScratchpadPanel no longer shows inventory complete while pending/in_progress remain. Public pointer restored at `docs/desktop/audit-scratchpad-design.md`.
+
+### Changed
+
+- **Intent tool outcomes:** `investigate` / `answer_from_repo` / `change_and_verify` prefix a machine-readable first line (`outcome=ok|limited|refuse|fail`); `answer_from_repo` description clarifies it returns an evidence pack only (no natural-language answer). Claim nudge fires on recent `outcome=refuse`.
+- **Noisy tool compact:** `ToolSpec::is_noisy()` + registry `metadata.context_noisy`; core list covers intent/promote tools and MCP/`browser_*` prefixes; FailureHotStart prefers LSP `ERROR [line:col]` blocks.
 
 ### Added
 

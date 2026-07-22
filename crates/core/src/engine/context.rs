@@ -87,7 +87,18 @@ fn summarize_text_head_tail(text: &str, limit: usize) -> String {
     format!("{head}{marker}{tail}")
 }
 
-fn tool_result_is_noisy(tool_name: &str) -> bool {
+/// Whether a tool's results should compact earlier (graded noisy soft limit).
+///
+/// Built-in name list plus MCP (`mcp__` / `browser_*`) defaults. Tools may also
+/// stamp `metadata.context_noisy=true` via [`ToolSpec::is_noisy`] in the registry.
+#[must_use]
+pub fn tool_result_is_noisy(tool_name: &str) -> bool {
+    if tool_name.starts_with("mcp__")
+        || tool_name.starts_with("browser_")
+        || tool_name.starts_with("mcp_")
+    {
+        return true;
+    }
     matches!(
         tool_name,
         "exec_shell"
@@ -103,12 +114,22 @@ fn tool_result_is_noisy(tool_name: &str) -> bool {
             | "glob_files"
             | "explore_codebase"
             | "investigate"
+            | "answer_from_repo"
+            | "change_and_verify"
+            | "promote_to_context"
             | "run_tests"
             | "task_gate_run"
             | "browser_snapshot"
             | "browser_get_text"
             | "browser_console_tail"
     )
+}
+
+fn tool_result_marked_noisy(metadata: Option<&serde_json::Value>) -> bool {
+    metadata
+        .and_then(|m| m.get("context_noisy"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 /// Soft limit for noisy tools is tighter than the hard limit (graded compact).
@@ -280,8 +301,9 @@ pub fn compact_tool_result_for_context(
     let limits = tool_result_context_limits_for_model(model);
     let raw_chars = raw.chars().count();
     let soft = noisy_soft_limit_chars(limits, tool_name);
-    let should_compact = raw_chars > limits.hard_limit_chars
-        || (tool_result_is_noisy(tool_name) && raw_chars > soft);
+    let noisy =
+        tool_result_is_noisy(tool_name) || tool_result_marked_noisy(output.metadata.as_ref());
+    let should_compact = raw_chars > limits.hard_limit_chars || (noisy && raw_chars > soft);
     let evidence = EvidenceEnvelope::from_metadata(output.metadata.as_ref());
     let evidence_ledger = evidence.as_ref().map(|env| env.format_ledger());
 

@@ -42,13 +42,19 @@ pub(super) enum ToolExecGuard<'a> {
 // === TUI arg_repair + core JSON ladder =================================
 
 pub(super) fn parse_tool_input(buffer: &str) -> Option<Value> {
-    if let Ok(value) = crate::tools::arg_repair::repair(buffer) {
-        return Some(value);
+    match crate::tools::arg_repair::repair(buffer) {
+        Ok(value) => Some(value),
+        // Unparseable / too-large: try the core fence/segment ladder, then give up.
+        // Never invent `{}` — streaming_phase records `arg_parse_error` on None.
+        Err(_) => dispatch::parse_tool_input_json(buffer),
     }
-    dispatch::parse_tool_input_json(buffer)
 }
 
 /// Like core `final_tool_input`, but runs TUI `arg_repair` on the stream buffer first.
+///
+/// When the buffer is non-empty but unparseable, falls back to the initial
+/// `state.input` for UI display only. Execution must honor `arg_parse_error`
+/// and short-circuit (see tool_phase) — do not treat this Value as validated.
 #[must_use]
 pub(super) fn final_tool_input(state: &ToolUseState) -> Value {
     if !state.input_buffer.trim().is_empty()

@@ -256,7 +256,13 @@ impl FailureHotStart {
     #[must_use]
     pub fn infer(tool_name: &str, result: &str, success: bool) -> Self {
         let lower = result.to_ascii_lowercase();
-        let compile_ish = lower.contains("error[e")
+        // Prefer structured LSP diagnostics (`ERROR [12:8] msg`) over rustc-only
+        // `error[E…]` patterns so non-Rust languages still hot-start verify tools.
+        let lsp_error = result.contains("ERROR [")
+            || result.contains("\nERROR [")
+            || (lower.contains("<diagnostics") && lower.contains("error"));
+        let compile_ish = lsp_error
+            || lower.contains("error[e")
             || lower.contains("cannot find")
             || lower.contains("unresolved import")
             || lower.contains("type mismatch")
@@ -450,6 +456,16 @@ mod tests {
             AgentToolPhase::Verify.advance("pr_attempt_preflight"),
             AgentToolPhase::Ship
         );
+    }
+
+    #[test]
+    fn hot_start_prefers_lsp_error_block() {
+        let hint = FailureHotStart::infer(
+            "edit_file",
+            "Applied edit.\nERROR [12:8] expected `;`, found `}`",
+            true,
+        );
+        assert_eq!(hint, FailureHotStart::CompileDiagnostics);
     }
 
     #[test]

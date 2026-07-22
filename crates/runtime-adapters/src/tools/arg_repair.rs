@@ -5,33 +5,72 @@
 //! reassembly leaves a trailing comma or unclosed brace; (b) some local
 //! backends emit literal control characters inside JSON string values.
 //!
-//! The repair ladder runs five stages before falling back to an empty object:
+//! The repair ladder runs five stages; if all fail, returns
+//! [`ArgRepairError::Unparseable`] (never a silent empty object success).
 //!
 //!  1. Strict parse — done if it parses.
 //!  2. Strip literal control chars inside string values.
 //!  3. Strip trailing commas before `}` or `]`.
 //!  4. Balance braces/brackets (append closers).
 //!  5. Strip excess closers if delta is negative.
-//!  6. Fallback: empty object `{}`.
+//!  6. Fail with [`ArgRepairError::Unparseable`] + raw preview.
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 /// Maximum raw argument length we'll attempt to repair (1 MiB).
 const MAX_ARG_LEN: usize = 1024 * 1024;
+
+/// Characters of the raw input included in unparseable errors.
+const PREVIEW_CHARS: usize = 200;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ArgRepairError {
     #[error("argument exceeded {0} chars; refusing to repair")]
     TooLarge(usize),
+    /// Five-stage ladder failed; do not execute the tool with a fake `{}`.
+    #[error("tool arguments unparseable after repair ladder; raw_preview={preview:?}")]
+    Unparseable { preview: String },
+}
+
+impl ArgRepairError {
+    /// Short message suitable for `ToolError::InvalidInput` / model-facing content.
+    #[must_use]
+    pub fn model_message(&self) -> String {
+        match self {
+            Self::TooLarge(n) => {
+                format!("[arg_repair_failed] argument exceeded {n} chars; refusing to repair")
+            }
+            Self::Unparseable { preview } => format!(
+                "[arg_repair_failed] Could not parse tool arguments as JSON after repair. \
+                 Re-emit a valid JSON object (not an empty {{}}). raw_preview={preview:?}"
+            ),
+        }
+    }
+}
+
+/// Truncate `raw` for error context (char-based, not byte-based).
+#[must_use]
+pub fn raw_preview(raw: &str) -> String {
+    let mut out: String = raw.chars().take(PREVIEW_CHARS).collect();
+    if raw.chars().count() > PREVIEW_CHARS {
+        out.push('…');
+    }
+    out
 }
 
 /// Repair a raw JSON argument string into a valid `serde_json::Value`.
 ///
 /// Runs the deterministic ladder; on success returns the parsed value.
-/// The final fallback is an empty object `{}` so dispatch always proceeds.
+/// Empty / whitespace-only input is treated as a legitimate empty object
+/// (tools with no required args). Non-empty garbage returns
+/// [`ArgRepairError::Unparseable`] — never a silent `{}` success.
 pub fn repair(raw: &str) -> Result<Value, ArgRepairError> {
     if raw.len() > MAX_ARG_LEN {
         return Err(ArgRepairError::TooLarge(raw.len()));
+    }
+    // Legitimate empty args (no InputJsonDelta / no-arg tools).
+    if raw.trim().is_empty() {
+        return Ok(Value::Object(serde_json::Map::new()));
     }
     // Stage 1: strict parse
     if let Ok(v) = serde_json::from_str(raw) {
@@ -57,8 +96,9 @@ pub fn repair(raw: &str) -> Result<Value, ArgRepairError> {
     if let Ok(v) = serde_json::from_str(&s) {
         return Ok(v);
     }
-    // Fallback: empty object
-    Ok(Value::Object(Map::new()))
+    Err(ArgRepairError::Unparseable {
+        preview: raw_preview(raw),
+    })
 }
 
 /// Strip ASCII control characters (0x00–0x1F except \t, \n, \r) that appear
@@ -230,9 +270,15 @@ mod tests {
     }
 
     #[test]
-    fn handles_gibberish() {
-        let v = repair("not json at all").unwrap();
-        assert_eq!(v, json!({}));
+    fn handles_gibberish_as_error() {
+        let err = repair("not json at all").unwrap_err();
+        match &err {
+            ArgRepairError::Unparseable { preview } => {
+                assert!(preview.contains("not json"));
+                assert!(err.model_message().contains("[arg_repair_failed]"));
+            }
+            other => panic!("expected Unparseable, got {other:?}"),
+        }
     }
 
     #[test]

@@ -456,6 +456,7 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
                         input,
                         caller,
                         input_buffer: String::new(),
+                        arg_parse_error: None,
                     });
                 }
                 ContentBlockStart::ServerToolUse { id, name, input } => {
@@ -480,6 +481,7 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
                         input,
                         caller: None,
                         input_buffer: String::new(),
+                        arg_parse_error: None,
                     });
                 }
             },
@@ -605,12 +607,24 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
                             host.parse_streaming_tool_input(&tool_state.input_buffer)
                         {
                             tool_state.input = value;
+                            tool_state.arg_parse_error = None;
                             tracing::info!(
                                 "Tool '{}' final input: {:?}",
                                 tool_state.name,
                                 tool_state.input
                             );
                         } else {
+                            let preview: String =
+                                tool_state.input_buffer.chars().take(200).collect();
+                            let preview = if tool_state.input_buffer.chars().count() > 200 {
+                                format!("{preview}…")
+                            } else {
+                                preview
+                            };
+                            tool_state.arg_parse_error = Some(format!(
+                                "[arg_repair_failed] Could not parse tool arguments as JSON after repair. \
+                                 Re-emit a valid JSON object (not an empty {{}}). raw_preview={preview:?}"
+                            ));
                             tracing::warn!(
                                 "Tool '{}' failed to parse final input buffer: '{}'",
                                 tool_state.name,
@@ -784,6 +798,7 @@ pub async fn run_streaming_phase<H: InnerStepHost + TurnLoopOuterHost>(
                 input: call.args,
                 caller: None,
                 input_buffer: String::new(),
+                arg_parse_error: None,
             });
         }
     }

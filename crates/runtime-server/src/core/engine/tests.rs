@@ -1815,6 +1815,7 @@ fn tool_state(initial: serde_json::Value, buffer: &str) -> ToolUseState {
         input: initial,
         caller: None,
         input_buffer: buffer.into(),
+        arg_parse_error: None,
     }
 }
 
@@ -1836,11 +1837,12 @@ fn final_tool_input_falls_back_to_initial_when_buffer_empty() {
 }
 
 #[test]
-fn final_tool_input_repairs_unparseable_buffer() {
-    // The arg_repair module converts unparseable input to an empty object
-    // {} so dispatch always proceeds. The buffer wins over the initial input.
+fn final_tool_input_unparseable_buffer_falls_back_to_initial() {
+    // Repair ladder no longer invents `{}`. Display falls back to the start-frame
+    // input; streaming_phase sets `arg_parse_error` so tool_phase blocks execution.
     let state = tool_state(json!({"command": "echo hi"}), "{not json");
-    assert_eq!(final_tool_input(&state), json!({}));
+    assert_eq!(final_tool_input(&state), json!({"command": "echo hi"}));
+    assert!(crate::tools::arg_repair::repair("{not json").is_err());
 }
 
 // === #103 transparent stream-retry policy =====================================

@@ -206,6 +206,7 @@ mod tests {
                 input: serde_json::json!({}),
                 caller: None,
                 input_buffer: String::new(),
+                arg_parse_error: None,
             },
             ToolUseState {
                 id: "b".into(),
@@ -213,6 +214,7 @@ mod tests {
                 input: serde_json::json!({}),
                 caller: None,
                 input_buffer: String::new(),
+                arg_parse_error: None,
             },
         ];
         assert_eq!(

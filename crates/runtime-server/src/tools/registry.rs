@@ -133,6 +133,9 @@ impl ToolRegistry {
 
         let ctx = context_override.unwrap_or(&self.context);
         let mut result = tool.execute(input.clone(), ctx).await?;
+        if tool.is_noisy() {
+            result = stamp_context_noisy(result);
+        }
         result = annotate_citation_audit(result, &ctx.workspace);
         // Record differential-read anchors from metadata immediately so the
         // next tool in the same turn (e.g. around_last_edit) can see them.
@@ -249,6 +252,9 @@ impl ToolRegistry {
                             obj.extend(meta);
                         }
                         routed.metadata = Some(combined);
+                    }
+                    if tool.is_noisy() {
+                        routed = stamp_context_noisy(routed);
                     }
                     return Ok(routed);
                 }
@@ -1136,6 +1142,11 @@ impl ToolSpec for McpToolAdapter {
         }
     }
 
+    fn is_noisy(&self) -> bool {
+        // MCP / browser adapters default noisy so large dumps compact early.
+        true
+    }
+
     fn defer_loading(&self) -> bool {
         // Discovery helpers stay loaded; everything else is deferred.
         let keep_loaded = matches!(
@@ -1170,6 +1181,19 @@ impl ToolSpec for McpToolAdapter {
 }
 
 /// Cheap post-execute citation audit: line ranges vs on-disk line counts.
+fn stamp_context_noisy(mut result: ToolResult) -> ToolResult {
+    let mut meta = match result.metadata.take() {
+        Some(Value::Object(map)) => Value::Object(map),
+        Some(other) => json!({ "prior": other }),
+        None => json!({}),
+    };
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("context_noisy".to_string(), Value::Bool(true));
+    }
+    result.metadata = Some(meta);
+    result
+}
+
 fn annotate_citation_audit(mut result: ToolResult, workspace: &std::path::Path) -> ToolResult {
     let Some(envelope) = result.evidence() else {
         return result;
