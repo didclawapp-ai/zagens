@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/screenshot.png" alt="Zagens スクリーンショット" width="800" />
+  <img src="assets/screenshot.gif" alt="Zagens スクリーンショット" width="800" />
 </p>
 
 # Zagens — DeepSeek V4 向けオープンソース Agent harness
