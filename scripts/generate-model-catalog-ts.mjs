@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const src = path.join(root, "crates/shared-defs/model-catalog.json");
+const coreCopy = path.join(root, "crates/core/model-catalog.json");
 const outDir = path.join(root, "crates/desktop/web-ui/src/lib/generated");
 const out = path.join(outDir, "modelCatalog.ts");
 
@@ -182,5 +183,7 @@ export function isKimiK3Model(model: string): boolean {
 `;
 
 fs.mkdirSync(outDir, { recursive: true });
+fs.copyFileSync(src, coreCopy);
 fs.writeFileSync(out, header + body, "utf8");
+console.log(`OK: ${path.relative(root, coreCopy)}`);
 console.log(`OK: ${path.relative(root, out)}`);

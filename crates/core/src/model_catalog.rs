@@ -1,4 +1,5 @@
-//! Shared model capability catalog (`crates/shared-defs/model-catalog.json`).
+//! Shared model capability catalog (`crates/shared-defs/model-catalog.json`, vendored
+//! as `crates/core/model-catalog.json` for `cargo publish`).
 //!
 //! Embeds the JSON at compile time and evaluates match rules on a lowercased
 //! model id. First matching family wins; otherwise defaults apply with
@@ -8,7 +9,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-const CATALOG_JSON: &str = include_str!("../../shared-defs/model-catalog.json");
+const CATALOG_JSON: &str = include_str!("../model-catalog.json");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelCaps {
