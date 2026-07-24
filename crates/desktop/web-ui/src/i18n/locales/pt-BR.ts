@@ -187,6 +187,7 @@ const ptBr: TranslationMap = {
     stackAria: 'Cartões resumo Harness',
     openCount: '{{count}} em aberto',
     runningCount: '{{running}} / {{total}}',
+    fileChanges: 'Alterações da sessão',
   },
   focusMode: {
     enter: 'Modo foco — painéis laterais ocultos',

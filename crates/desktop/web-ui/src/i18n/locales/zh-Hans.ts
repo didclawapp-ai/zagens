@@ -185,6 +185,7 @@ const zhHans = {
     stackAria: 'Harness 摘要浮卡',
     openCount: '{{count}} 待办',
     runningCount: '{{running}} / {{total}}',
+    fileChanges: '本轮变更',
   },
   focusMode: {
     enter: '专注模式 — 已隐藏侧栏与 Harness',

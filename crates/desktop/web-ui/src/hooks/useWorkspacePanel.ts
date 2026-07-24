@@ -41,6 +41,9 @@ export function useWorkspacePanel({
     null,
   );
   const [focusWorkspaceDiffNonce, setFocusWorkspaceDiffNonce] = useState(0);
+  const [focusWorkspaceDiffRelPath, setFocusWorkspaceDiffRelPath] = useState<string | null>(
+    null,
+  );
   const [composerMentionNonce, setComposerMentionNonce] = useState(0);
   const [composerMentionRel, setComposerMentionRel] = useState<string | null>(null);
   const [composerMentionIsDir, setComposerMentionIsDir] = useState(false);
@@ -171,12 +174,16 @@ export function useWorkspacePanel({
     [openWorkspaceFileForPreview, t],
   );
 
-  const openDiffInPanel = useCallback(() => {
-    setActiveInspector('workspace');
-    setAuditGridDismissed(true);
-    setRightPanelCollapsed(false);
-    setFocusWorkspaceDiffNonce((n) => n + 1);
-  }, [setActiveInspector, setAuditGridDismissed, setRightPanelCollapsed]);
+  const openDiffInPanel = useCallback(
+    (relPath?: string | null) => {
+      setActiveInspector('workspace');
+      setAuditGridDismissed(true);
+      setRightPanelCollapsed(false);
+      setFocusWorkspaceDiffRelPath(relPath?.trim() ? relPath.trim() : null);
+      setFocusWorkspaceDiffNonce((n) => n + 1);
+    },
+    [setActiveInspector, setAuditGridDismissed, setRightPanelCollapsed],
+  );
 
   const handleRequestDiffPanel = useCallback(() => {
     openDiffInPanel();
@@ -215,6 +222,7 @@ export function useWorkspacePanel({
     focusWorkspaceFilesNonce,
     focusWorkspaceFilesRelPath,
     focusWorkspaceDiffNonce,
+    focusWorkspaceDiffRelPath,
     composerMentionNonce,
     composerMentionRel,
     composerMentionIsDir,

@@ -4,6 +4,10 @@
  */
 
 import { isEditToolForPreviewHint } from './browserPrefs';
+import {
+  extractPathsFromEditToolOutput,
+  parseWriteSummaryStats,
+} from '../diff/diffEntries';
 
 /** Extensions / config that make sense to open in the desktop Browser pane. */
 const PREVIEW_EXTENSIONS = new Set([
@@ -26,38 +30,6 @@ export function isBrowserPreviewRelevantPath(path: string): boolean {
   const dot = base.lastIndexOf('.');
   if (dot < 0) return false;
   return PREVIEW_EXTENSIONS.has(base.slice(dot));
-}
-
-const WRITE_SUMMARY_RE =
-  /(?:Wrote|Created)\s+\d+\s+bytes(?:\s+\(\d+\s+lines?\))?\s+to\s+(.+?)(?:\r?\n|$)/gi;
-const REPLACED_SUMMARY_RE =
-  /Replaced\s+(?:\d+\s+occurrence\(s\)|line\s+\d+)\s+in\s+(.+?)(?:\s+→|\r?\n|$)/gi;
-const DIFF_PLUS_RE = /^\+\+\+\s+(?:b\/)?(.+)$/gm;
-const DIFF_GIT_RE = /^diff --git\s+a\/(.+?)\s+b\/(.+)$/gm;
-const FACT_PATH_RE = /^- fact: path=(.+)$/gm;
-const CITE_PATH_RE = /^- cite: ([^\s:]+)(?::\d+(?:-\d+)?)?$/gm;
-
-/** Pull edited paths from write/edit/patch tool output text. */
-export function extractPathsFromEditToolOutput(output: string): string[] {
-  const found = new Set<string>();
-  const add = (raw: string | undefined) => {
-    if (!raw) return;
-    let p = raw.trim().replace(/^["'`]+|["'`]+$/g, '');
-    if (p.startsWith('\\\\?\\')) p = p.slice(4);
-    p = p.replace(/\\/g, '/');
-    if (p.startsWith('b/') || p.startsWith('a/')) p = p.slice(2);
-    if (!p || p === '/dev/null') return;
-    found.add(p);
-  };
-
-  for (const m of output.matchAll(WRITE_SUMMARY_RE)) add(m[1]);
-  for (const m of output.matchAll(REPLACED_SUMMARY_RE)) add(m[1]);
-  for (const m of output.matchAll(DIFF_PLUS_RE)) add(m[1]);
-  for (const m of output.matchAll(DIFF_GIT_RE)) add(m[2] ?? m[1]);
-  for (const m of output.matchAll(FACT_PATH_RE)) add(m[1]);
-  for (const m of output.matchAll(CITE_PATH_RE)) add(m[1]);
-
-  return [...found];
 }
 
 export function editOutputSuggestsBrowserPreview(output: string): boolean {
@@ -91,3 +63,6 @@ export function shouldShowPostEditPreviewHint(
   lastOfferedAt = now;
   return true;
 }
+
+// Re-export for tests that assert path parsing from tool output.
+export { extractPathsFromEditToolOutput, parseWriteSummaryStats };

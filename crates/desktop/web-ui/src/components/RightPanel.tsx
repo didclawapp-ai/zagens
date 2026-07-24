@@ -128,6 +128,8 @@ interface Props {
   focusFilesRelPath?: string | null;
   /** Bumped when chat or auto-detect should show the Diff workspace tab. */
   focusDiffNonce: number;
+  /** Optional path to select when `focusDiffNonce` bumps. */
+  focusDiffRelPath?: string | null;
   focusWorkspaceTab?: WorkspaceTabId | null;
   focusWorkspaceTabNonce?: number;
   /** Bumped to create an additional integrated terminal session. */
@@ -227,6 +229,7 @@ export default function RightPanel({
   focusFilesNonce,
   focusFilesRelPath,
   focusDiffNonce,
+  focusDiffRelPath = null,
   focusWorkspaceTab = null,
   focusWorkspaceTabNonce = 0,
   newTerminalSessionNonce = 0,
@@ -854,6 +857,8 @@ export default function RightPanel({
                       messages={messages}
                       workspaceRoot={workspaceRoot}
                       refreshNonce={diffRefreshNonce}
+                      focusDiffNonce={focusDiffNonce}
+                      focusDiffRelPath={focusDiffRelPath}
                       onRevealInFiles={revealWorkspaceFile}
                       active={view === 'workspace' && workspaceTab === 'diff'}
                       onDetected={

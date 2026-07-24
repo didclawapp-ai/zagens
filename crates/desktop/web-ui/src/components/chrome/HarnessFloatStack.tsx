@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import { useT } from '../../i18n';
 import type { HarnessGridDataSnapshot } from '../../lib/useHarnessGridData';
+import type { SessionFileChangeRow } from '../../lib/diff/sessionFileChanges';
 import {
   harnessCardLineLabel,
+  harnessFileChangeLineLabel,
   mapAgentsCardSummary,
   mapAuditCardSummary,
   mapChecklistCardSummary,
@@ -18,9 +20,11 @@ import { IconRailSvg } from './IconRailButton';
 export type HarnessFloatStackProps = {
   visible: boolean;
   harnessData: HarnessGridDataSnapshot;
+  sessionFileChanges: SessionFileChangeRow[];
   agentStates: AgentState[];
   flashCardId?: HarnessCardId | null;
   onHeadClick?: (cardId: HarnessCardId, view: RightPanelView) => void;
+  onOpenDiffInPanel?: (relPath?: string) => void;
 };
 
 function MiniProgressBar({ pct }: { pct: number }) {
@@ -31,12 +35,26 @@ function MiniProgressBar({ pct }: { pct: number }) {
   );
 }
 
+function FileChangeStats({ added, removed, running }: { added: number; removed: number; running: boolean }) {
+  if (running && added === 0 && removed === 0) {
+    return <span className="harness-file-change__stats">…</span>;
+  }
+  return (
+    <span className="harness-file-change__stats">
+      <span className="text-success">+{added}</span>{' '}
+      <span className="text-t-error">−{removed}</span>
+    </span>
+  );
+}
+
 export default function HarnessFloatStack({
   visible,
   harnessData,
+  sessionFileChanges,
   agentStates,
   flashCardId = null,
   onHeadClick,
+  onOpenDiffInPanel,
 }: HarnessFloatStackProps) {
   const { t } = useT();
 
@@ -134,6 +152,57 @@ export default function HarnessFloatStack({
               renderItem={(item) => harnessCardLineLabel('lht', item.id, sources)}
             />
           </>
+        ) : null}
+      </HarnessCard>
+
+      <HarnessCard
+        cardId="changes"
+        label={t('harnessCard.fileChanges')}
+        hasData={sessionFileChanges.length > 0}
+        stat={String(sessionFileChanges.length)}
+        className={flashCardId === 'changes' ? 'harness-card--flash' : ''}
+        onHeadClick={
+          onOpenDiffInPanel
+            ? () =>
+                onOpenDiffInPanel(
+                  sessionFileChanges[sessionFileChanges.length - 1]?.path,
+                )
+            : undefined
+        }
+        icon={
+          <IconRailSvg>
+            <path d="M4 7h16M4 12h10M4 17h14" />
+            <path d="M15 10l3 3-3 3" />
+          </IconRailSvg>
+        }
+      >
+        {sessionFileChanges.length > 0 ? (
+          <div
+            className="harness-file-changes-scroll"
+            onClick={(event) => event.stopPropagation()}
+            onWheel={(event) => event.stopPropagation()}
+          >
+            {sessionFileChanges.map((row) => (
+              <button
+                key={row.path}
+                type="button"
+                className="harness-file-change"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenDiffInPanel?.(row.path);
+                }}
+              >
+                <span className="harness-file-change__name" title={row.path}>
+                  {harnessFileChangeLineLabel(row)}
+                </span>
+                <FileChangeStats
+                  added={row.added}
+                  removed={row.removed}
+                  running={row.status === 'running'}
+                />
+              </button>
+            ))}
+          </div>
         ) : null}
       </HarnessCard>
 

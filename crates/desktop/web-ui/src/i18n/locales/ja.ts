@@ -187,6 +187,7 @@ const ja: TranslationMap = {
     stackAria: 'Harness サマリーカード',
     openCount: '未完了 {{count}}',
     runningCount: '{{running}} / {{total}}',
+    fileChanges: '今回の変更',
   },
   focusMode: {
     enter: 'フォーカスモード — サイドパネルを非表示',

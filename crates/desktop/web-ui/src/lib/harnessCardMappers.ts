@@ -1,3 +1,4 @@
+import type { SessionFileChangeRow } from './diff/sessionFileChanges';
 import type { ScratchpadStatus } from '../api/client';
 import type { ChecklistPanelPayload } from './panelChannel';
 import type { ProgressScrollItem, ProgressState } from './progressScroll';
@@ -94,6 +95,25 @@ export function mapLhtCardSummary(graph: HarnessTaskGraph | null): HarnessCardSu
   };
 }
 
+export function mapFileChangesCardSummary(
+  rows: SessionFileChangeRow[],
+): HarnessCardSummary | null {
+  if (rows.length === 0) {
+    return null;
+  }
+  const items: ProgressScrollItem[] = rows.map((row, index) => ({
+    id: row.path,
+    progress:
+      row.status === 'running' && index === rows.length - 1
+        ? 'current'
+        : 'pending',
+  }));
+  return {
+    items,
+    stat: String(rows.length),
+  };
+}
+
 export function mapAgentsCardSummary(agents: AgentState[]): HarnessCardSummary | null {
   const visible = agents.filter((agent) => isLikelySubAgentId(agent.agentId));
   if (visible.length === 0) {
@@ -115,6 +135,10 @@ export function mapAgentsCardSummary(agents: AgentState[]): HarnessCardSummary |
     stat: `${done}/${items.length}`,
     progressPct: open > 0 ? Math.round((done / items.length) * 100) : 100,
   };
+}
+
+export function harnessFileChangeLineLabel(row: SessionFileChangeRow): string {
+  return row.fileName;
 }
 
 export function harnessCardLineLabel(

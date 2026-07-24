@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-export type HarnessCardId = 'checklist' | 'audit' | 'lht' | 'agents';
+export type HarnessCardId = 'checklist' | 'audit' | 'lht' | 'agents' | 'changes';
 
 export type HarnessCardProps = {
   cardId: HarnessCardId;

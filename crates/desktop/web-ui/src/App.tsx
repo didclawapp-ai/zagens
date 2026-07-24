@@ -9,6 +9,7 @@ import AppShell from './components/AppShell';
 import OnboardingOverlay from './components/OnboardingOverlay';
 import StartupConnectOverlay from './components/StartupConnectOverlay';
 import { useAuditNavActivity } from './lib/useAuditNavActivity';
+import { summarizeSessionFileChanges } from './lib/diff/sessionFileChanges';
 import { useHarnessGridData } from './lib/useHarnessGridData';
 import { readSessionStripOpen, writeSessionStripOpen } from './hooks/useSessionStrip';
 import { type ModelParams } from './components/ModelParamsDialog';
@@ -491,6 +492,7 @@ export default function App() {
     focusWorkspaceFilesNonce,
     focusWorkspaceFilesRelPath,
     focusWorkspaceDiffNonce,
+    focusWorkspaceDiffRelPath,
     composerMentionNonce,
     composerMentionRel,
     composerMentionIsDir,
@@ -1127,7 +1129,12 @@ export default function App() {
     runtimeSessionEstablished,
     agentStates,
   });
-  const auditGridAvailable = !officeSession && auditGridData.hasAnyData;
+  const sessionFileChanges = useMemo(
+    () => summarizeSessionFileChanges(messages),
+    [messages],
+  );
+  const auditGridAvailable =
+    !officeSession && (auditGridData.hasAnyData || sessionFileChanges.length > 0);
   const auditGridVisible = auditGridAvailable && !auditGridDismissed;
 
   useEffect(() => {
@@ -1227,6 +1234,7 @@ export default function App() {
       sessionStripOpen={sessionStripOpen}
       onToggleSessionStrip={() => setSessionStripOpen((open) => !open)}
       harnessGridData={auditGridData}
+      sessionFileChanges={sessionFileChanges}
       userDismissedHarness={auditGridDismissed}
       onShowHarnessStack={() => setAuditGridDismissed(false)}
       focusMode={focusMode}
@@ -1314,6 +1322,7 @@ export default function App() {
       focusFilesRelPath={focusWorkspaceFilesRelPath}
       filesRefreshNonce={filesRefreshNonce}
       focusDiffNonce={focusWorkspaceDiffNonce}
+      focusDiffRelPath={focusWorkspaceDiffRelPath}
       focusWorkspaceTab={focusWorkspaceTab}
       focusWorkspaceTabNonce={focusWorkspaceTabNonce}
       newTerminalSessionNonce={newTerminalSessionNonce}

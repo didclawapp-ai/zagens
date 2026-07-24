@@ -46,6 +46,9 @@ interface Props {
   active: boolean;
   /** Bump to refresh git status/changes (e.g. turn end). */
   refreshNonce?: number;
+  /** Parent focus request — select a workspace-relative path in the list. */
+  focusDiffNonce?: number;
+  focusDiffRelPath?: string | null;
 }
 
 type OutputFormat = 'side-by-side' | 'line-by-line';
@@ -63,6 +66,8 @@ export default function DiffPanel({
   onRevealInFiles,
   active,
   refreshNonce = 0,
+  focusDiffNonce = 0,
+  focusDiffRelPath = null,
 }: Props) {
   const { t } = useT();
   const firedRef = useRef(false);
@@ -118,6 +123,18 @@ export default function DiffPanel({
     panelEntries.find((e) => e.id === selectedId) ??
     panelEntries[panelEntries.length - 1] ??
     null;
+
+  useEffect(() => {
+    if (focusDiffNonce <= 0 || !focusDiffRelPath?.trim()) return;
+    const target = normalizeWorkspaceRelPath(focusDiffRelPath);
+    if (!target) return;
+    const match =
+      panelEntries.find((e) => e.path === target) ??
+      panelEntries.find((e) => normalizeWorkspaceRelPath(e.path) === target);
+    if (match) {
+      setSelectedId(match.id);
+    }
+  }, [focusDiffNonce, focusDiffRelPath, panelEntries]);
   const selectedPath = selected?.path ?? null;
   const selectedNeedsGit =
     gitRepo &&

@@ -1773,6 +1773,52 @@ body {
     color: var(--color-text-muted);
   }
 
+  .harness-file-changes-scroll {
+    /* ~4 visible rows; wheel-scroll through the full session list. */
+    max-height: calc(4 * 1.125rem + 3 * 0.1875rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1875rem;
+    padding-right: 0.125rem;
+  }
+
+  .harness-file-change {
+    display: flex;
+    width: 100%;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .harness-file-change:hover .harness-file-change__name {
+    color: var(--color-text);
+  }
+
+  .harness-file-change__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.6875rem;
+  }
+
+  .harness-file-change__stats {
+    flex-shrink: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+  }
+
   .chat-empty-card {
     border-radius: 0.75rem;
     border: 1px solid var(--color-card-border);

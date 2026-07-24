@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useT } from '../i18n';
 import ChatView from './ChatView';
 import type { SessionRestoreSource } from '../hooks/useSessionNavigation';
@@ -37,6 +37,7 @@ import type { Theme } from '../lib/appPreferences';
 import type { InspectorNavActivity } from '../lib/inspectorUnread';
 import { useHarnessFloatStack } from '../hooks/useHarnessFloatStack';
 import type { HarnessGridDataSnapshot } from '../lib/useHarnessGridData';
+import type { SessionFileChangeRow } from '../lib/diff/sessionFileChanges';
 
 export type AppShellProps = {
   desktopHost: boolean;
@@ -97,6 +98,7 @@ export type AppShellProps = {
   sessionStripOpen: boolean;
   onToggleSessionStrip: () => void;
   harnessGridData: HarnessGridDataSnapshot;
+  sessionFileChanges: SessionFileChangeRow[];
   userDismissedHarness: boolean;
   onShowHarnessStack: () => void;
   focusMode?: boolean;
@@ -151,7 +153,7 @@ export type AppShellProps = {
   agentStates: AgentState[];
   onChatOpenWorkspacePath: (relPath: string) => void;
   onRevealWorkspacePath: (relPath: string) => void;
-  onOpenDiffInPanel: () => void;
+  onOpenDiffInPanel: (relPath?: string) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   onBacktrackFromMessage?: (messageId: string, content: string) => void;
   onRewindWorkspaceFromMessage?: (messageId: string, content: string) => void;
@@ -173,6 +175,7 @@ export type AppShellProps = {
   focusFilesRelPath: string | null;
   filesRefreshNonce?: number;
   focusDiffNonce: number;
+  focusDiffRelPath?: string | null;
   focusWorkspaceTab?: import('./RightPanel').WorkspaceTabId | null;
   focusWorkspaceTabNonce?: number;
   newTerminalSessionNonce?: number;
@@ -242,6 +245,7 @@ export default function AppShell({
   sessionStripOpen,
   onToggleSessionStrip,
   harnessGridData,
+  sessionFileChanges,
   userDismissedHarness,
   onShowHarnessStack,
   focusMode = false,
@@ -314,6 +318,7 @@ export default function AppShell({
   focusFilesRelPath,
   filesRefreshNonce,
   focusDiffNonce,
+  focusDiffRelPath = null,
   focusWorkspaceTab = null,
   focusWorkspaceTabNonce = 0,
   newTerminalSessionNonce = 0,
@@ -342,8 +347,15 @@ export default function AppShell({
   highlightTaskId = null,
 }: AppShellProps) {
   const { t } = useT();
+  const harnessDataForStack = useMemo(
+    () => ({
+      ...harnessGridData,
+      hasAnyData: harnessGridData.hasAnyData || sessionFileChanges.length > 0,
+    }),
+    [harnessGridData, sessionFileChanges.length],
+  );
   const { visible: harnessStackVisible, flashCardId, openAndScrollTo } = useHarnessFloatStack({
-    harnessData: harnessGridData,
+    harnessData: harnessDataForStack,
     userDismissed: userDismissedHarness,
     focusMode,
   });
@@ -363,6 +375,8 @@ export default function AppShell({
         return harnessGridData.hasLongHorizon;
       case 'agents':
         return harnessGridData.hasAgents;
+      case 'changes':
+        return sessionFileChanges.length > 0;
       default:
         return false;
     }
@@ -376,12 +390,22 @@ export default function AppShell({
     if (userDismissedHarness) {
       onShowHarnessStack();
     }
+    if (cardId === 'changes') {
+      onOpenDiffInPanel(sessionFileChanges[sessionFileChanges.length - 1]?.path);
+      openAndScrollTo(cardId);
+      return;
+    }
     onExpandRightPanel();
     onInspectorChange(HARNESS_CARD_VIEWS[cardId]);
     openAndScrollTo(cardId);
   };
 
   const handleHarnessHeadClick = (cardId: HarnessCardId, view: RightPanelView) => {
+    if (cardId === 'changes') {
+      onOpenDiffInPanel(sessionFileChanges[sessionFileChanges.length - 1]?.path);
+      openAndScrollTo(cardId);
+      return;
+    }
     onExpandRightPanel();
     onInspectorChange(view);
     openAndScrollTo(cardId);
@@ -548,9 +572,11 @@ export default function AppShell({
               <HarnessFloatStack
                 visible={harnessStackVisible}
                 harnessData={harnessGridData}
+                sessionFileChanges={sessionFileChanges}
                 agentStates={agentStates}
                 flashCardId={flashCardId}
                 onHeadClick={handleHarnessHeadClick}
+                onOpenDiffInPanel={onOpenDiffInPanel}
               />
             ) : null}
           </div>
@@ -580,6 +606,7 @@ export default function AppShell({
             focusFilesRelPath={focusFilesRelPath}
             filesRefreshNonce={filesRefreshNonce}
             focusDiffNonce={focusDiffNonce}
+            focusDiffRelPath={focusDiffRelPath}
             focusWorkspaceTab={focusWorkspaceTab}
             focusWorkspaceTabNonce={focusWorkspaceTabNonce}
             newTerminalSessionNonce={newTerminalSessionNonce}

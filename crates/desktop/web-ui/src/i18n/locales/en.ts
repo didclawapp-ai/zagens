@@ -187,6 +187,7 @@ const en: TranslationMap = {
     stackAria: 'Harness summary cards',
     openCount: '{{count}} open',
     runningCount: '{{running}} / {{total}}',
+    fileChanges: 'Session changes',
   },
   focusMode: {
     enter: 'Focus mode — side panels hidden',
