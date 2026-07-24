@@ -2,7 +2,7 @@
 """Publish a packaged crate to crates.io using HTTP/1.1 (avoids cargo's HTTP/2 upload flakes).
 
 Usage:
-  python scripts/release/publish-crate-http11.py zagens-cli 0.8.8
+  python scripts/release/publish-crate-http11.py zagens-cli 0.8.9
 
 Requires:
   - cargo package already run (target/package/<name>-<ver>.crate + unpacked dir)
