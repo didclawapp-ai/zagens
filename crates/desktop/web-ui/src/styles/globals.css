@@ -848,6 +848,44 @@ body {
     color: var(--color-text-secondary);
   }
 
+  /* Hold + bounded live panel: header stays put; only inner viewport scrolls. */
+  [data-timeline-live-hold='true'] .message-meta-panel {
+    grid-template-rows: 1fr;
+    transition: none;
+  }
+
+  [data-timeline-live-hold='true'] .message-meta-bar {
+    cursor: pointer;
+  }
+
+  [data-timeline-live-hold='true'] .message-meta-body {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
+  }
+
+  /* ~4–5 lines preview; expand via header toggle (--expanded). */
+  .timeline-activity-live-panel {
+    max-height: 7.5rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin: 0.2rem 0 0.45rem 1.125rem;
+    padding: 0.5rem 0.75rem 0.75rem;
+    border-left: 1px solid var(--color-divider);
+    border-radius: 0 0.375rem 0.375rem 0;
+    background: color-mix(in srgb, var(--color-canvas-alt) 50%, transparent);
+  }
+
+  .timeline-activity-live-panel--expanded {
+    max-height: min(42vh, 22rem);
+  }
+
+  .timeline-streaming-panel {
+    max-height: min(42vh, 22rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
   /* Composer — align with transcript column (max-w-3xl) and message radii */
   .session-restore-banner {
     @apply mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-2 text-xs;

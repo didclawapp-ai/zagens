@@ -1699,6 +1699,7 @@ const ptBr: TranslationMap = {
     collapsePrompt: 'Mostrar menos',
     timelineActivityWithReasoning: 'Inclui {{count}} raciocínios · clique para expandir',
     timelineAbsorbedReasoning: 'Raciocínio ({{count}})',
+    timelineLiveHoldHint: 'Atualizando…',
   },
   terminalCard: {
     runningEmpty: 'Em execução — ainda sem saída de terminal (muitos scripts Python não imprimem nada em caso de sucesso).',

@@ -65,6 +65,15 @@ export const OFFLINE_BILLING_WARN_MS = 15_000;
 /** When chat SSE handler is gone but the backend turn is still active, refresh transcript from replay. */
 export const ACTIVE_TURN_CHAT_RECONCILE_MS = 8_000;
 
+/** True when a thread's poll AbortController exists and has not fired yet. */
+export function streamPollControllerAlive(
+  controllers: Map<string, AbortController>,
+  threadId: string,
+): boolean {
+  const c = controllers.get(threadId.trim());
+  return Boolean(c && !c.signal.aborted);
+}
+
 export type StreamRecoveryContext = {
   assistantId: string;
   threadId: string;
@@ -216,14 +225,19 @@ export function useTurnStreamRecovery({
       writeThreadTurn(streamRegistry, threadId, turnId);
       setPendingComposerStream(true);
 
-      await pollThreadTurnEvents(
-        threadId,
-        detail.latest_seq ?? 0,
-        (ev) => deliver(ev, { turnId }),
-        { signal: controller.signal, turnId },
-      );
-
-      return await threadTurnStillActive(threadId, turnId);
+      try {
+        await pollThreadTurnEvents(
+          threadId,
+          detail.latest_seq ?? 0,
+          (ev) => deliver(ev, { turnId }),
+          { signal: controller.signal, turnId },
+        );
+        return await threadTurnStillActive(threadId, turnId);
+      } finally {
+        if (streamControllersRef.current.get(threadId) === controller) {
+          streamControllersRef.current.delete(threadId);
+        }
+      }
     },
     [
       rebindRecoveryAssistant,
@@ -324,9 +338,15 @@ export function useTurnStreamRecovery({
     }
     const activeTurn = resolveActiveThreadTurn(streamRegistry, resumedThreadIdRef.current);
     const threadId = resumedThreadIdRef.current || activeTurn.threadId;
-    if (!threadId || streamingRef.current) {
+    if (!threadId) {
       return;
     }
+    // Composer may already show "生成中" from reattach; still resume when
+    // there is no in-flight poll controller for this thread.
+    if (streamPollControllerAlive(streamControllersRef.current, threadId)) {
+      return;
+    }
+    streamControllersRef.current.delete(threadId);
     if (threadStoreSaysIdle(threadId)) {
       return;
     }
@@ -369,8 +389,8 @@ export function useTurnStreamRecovery({
     resolveEventDeliverForActive,
     resumedThreadIdRef,
     runTurnEventPoll,
+    streamControllersRef,
     streamRegistry,
-    streamingRef,
     userStopRequestedRef,
   ]);
 
@@ -449,9 +469,10 @@ export function useTurnStreamRecovery({
         return;
       }
 
-      if (streamControllersRef.current.has(tid)) {
+      if (streamPollControllerAlive(streamControllersRef.current, tid)) {
         return;
       }
+      streamControllersRef.current.delete(tid);
 
       // User Stop (or store already idle) while turn DB may still be in_progress
       // during agent_wait — never re-lock Composer / resume the live stream.
@@ -460,9 +481,6 @@ export function useTurnStreamRecovery({
       }
 
       if (isActiveView) {
-        if (streamingRef.current) {
-          return;
-        }
         if (resolveEventDeliverForActive()) {
           void resumeLiveTurnStream();
           return;

@@ -4,6 +4,7 @@ import type { TimelinePresentationItem } from '../../../lib/chat/timeline/timeli
 import { stepHasVisibleProse } from '../../../lib/chat/timeline/settledTurnDisplay';
 import { renderTurnBlock, type BlockRendererContext } from './blockRenderers';
 import { CollapsedToolRunBlock } from './CollapsedToolRunBlock';
+import { trailingActivityIndex } from './activityPresentation';
 
 export function StepCard({
   stepIndex,
@@ -66,7 +67,10 @@ export function StepCard({
       </button>
       {expanded && (
         <div className="space-y-2 border-t border-t-border/40 px-3 py-2">
-          {items.map((item) => {
+          {items.map((item, index) => {
+            const isTrailingActivity =
+              item.kind === 'collapsed_tools' &&
+              index === trailingActivityIndex(items);
             if (item.kind === 'block') {
               return renderTurnBlock(item.block, blockCtx);
             }
@@ -79,6 +83,8 @@ export function StepCard({
                 absorbedCaptions={item.absorbedCaptions}
                 onOpenDiffInPanel={blockCtx.onOpenDiffInPanel}
                 agentStates={blockCtx.agentStates}
+                isTurnStreaming={blockCtx.isTurnStreaming}
+                isTrailingActivity={isTrailingActivity}
               />
             );
           })}

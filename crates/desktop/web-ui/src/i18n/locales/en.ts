@@ -1696,6 +1696,7 @@ const en: TranslationMap = {
     collapsePrompt: 'Show less',
     timelineActivityWithReasoning: 'Includes {{count}} reasoning · click to expand',
     timelineAbsorbedReasoning: 'Reasoning ({{count}})',
+    timelineLiveHoldHint: 'Updating…',
   },
   terminalCard: {
     runningEmpty: 'Running — no terminal output yet (many Python scripts print nothing on success).',

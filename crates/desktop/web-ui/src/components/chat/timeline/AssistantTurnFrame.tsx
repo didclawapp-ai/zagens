@@ -10,16 +10,20 @@ import {
   isStepGroup,
   partitionPresentationForSettledView,
 } from '../../../lib/chat/timeline/settledTurnDisplay';
-import type { TimelinePresentationItem } from '../../../lib/chat/timeline/timelinePresentationTypes';
+import type {
+  TimelinePresentationItem,
+} from '../../../lib/chat/timeline/timelinePresentationTypes';
 import { renderTurnBlock } from './blockRenderers';
 import { CollapsedToolRunBlock } from './CollapsedToolRunBlock';
 import { StepCard } from './StepCard';
 import { TurnProcessBundle } from './TurnProcessBundle';
 import { AssistantTurnActions } from './AssistantTurnActions';
+import { trailingActivityIndex } from './activityPresentation';
 
 function renderPresentationItem(
   item: TimelinePresentationItem,
   blockCtx: Parameters<typeof renderTurnBlock>[1],
+  isTrailingActivity: boolean,
 ) {
   if (item.kind === 'block') {
     return renderTurnBlock(item.block, blockCtx);
@@ -33,6 +37,8 @@ function renderPresentationItem(
       absorbedCaptions={item.absorbedCaptions}
       onOpenDiffInPanel={blockCtx.onOpenDiffInPanel}
       agentStates={blockCtx.agentStates}
+      isTurnStreaming={blockCtx.isTurnStreaming}
+      isTrailingActivity={isTrailingActivity}
     />
   );
 }
@@ -61,12 +67,24 @@ export function AssistantTurnFrame({
       ? message.blocks
       : legacyFieldsToBlocks(message, message.id);
   const isTurnStreaming = Boolean(message.isStreaming);
+  // Prefer live layout while any block is still in flight — guards against a
+  // one-frame `isStreaming: false` sticky that flashed settled「工作过程」.
+  const hasInFlightBlocks = blocks.some(
+    (b) =>
+      (b.kind === 'thinking' && b.streaming !== false) ||
+      (b.kind === 'text' && b.streaming !== false) ||
+      (b.kind === 'tool' && b.status === 'running'),
+  );
+  const useLiveLayout = isTurnStreaming || hasInFlightBlocks;
   const thinkingMissing = Boolean(message.thinkingIncomplete);
   const presentation = buildTimelinePresentation(blocks, {
     stepGrouping: true,
+    // Keep P4.6 absorb during live turns (folding); visibility of absorbed
+    // reasoning is handled by CollapsedToolRunBlock while streaming.
+    absorbActivityGaps: true,
   });
   const blockCtx = {
-    isTurnStreaming,
+    isTurnStreaming: useLiveLayout,
     workspaceRoot,
     desktopHost,
     onOpenWorkspacePath,
@@ -89,8 +107,8 @@ export function AssistantTurnFrame({
           </p>
         )}
         <div className="space-y-2">
-          {isTurnStreaming
-            ? presentation.map((item) => {
+          {useLiveLayout
+            ? presentation.map((item, index) => {
                 if (isStepGroup(item)) {
                   return (
                     <StepCard
@@ -103,7 +121,19 @@ export function AssistantTurnFrame({
                     />
                   );
                 }
-                return renderPresentationItem(item, blockCtx);
+                const trailingIdx = trailingActivityIndex(
+                  presentation.filter((p) => !isStepGroup(p)) as TimelinePresentationItem[],
+                );
+                const flatIndex = presentation
+                  .slice(0, index + 1)
+                  .filter((p) => !isStepGroup(p)).length - 1;
+                const isTrailingActivity =
+                  item.kind === 'collapsed_tools' && flatIndex === trailingIdx;
+                return (
+                  <div key={item.kind === 'block' ? item.block.id : item.id}>
+                    {renderPresentationItem(item, blockCtx, isTrailingActivity)}
+                  </div>
+                );
               })
             : partitionPresentationForSettledView(presentation).map((segment) => {
                 if (segment.kind === 'final-step') {
@@ -119,7 +149,7 @@ export function AssistantTurnFrame({
                   );
                 }
                 if (segment.kind === 'final-item') {
-                  return renderPresentationItem(segment.item, blockCtx);
+                  return renderPresentationItem(segment.item, blockCtx, false);
                 }
                 return (
                   <TurnProcessBundle
@@ -132,7 +162,7 @@ export function AssistantTurnFrame({
                 );
               })}
         </div>
-        {isTurnStreaming ? (
+        {useLiveLayout ? (
           <div className="streaming-status-line mt-2" aria-live="polite">
             {t('message.generating')}
           </div>

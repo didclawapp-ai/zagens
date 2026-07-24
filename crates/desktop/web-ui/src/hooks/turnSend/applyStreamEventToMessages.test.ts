@@ -61,6 +61,34 @@ test('applyStreamEventToMessages builds thinking → tool → text order', () =>
   void timeline;
 });
 
+test('applyStreamEventToMessages clears sticky isStreaming false on non-finalize events', () => {
+  const assistant: TurnChatMessage = {
+    id: 'asst-1',
+    role: 'assistant',
+    content: '配置文件就绪。',
+    isStreaming: false,
+    blocks: [],
+  };
+  let messages = [assistant];
+  let timeline = createEmptyTimelineState();
+
+  ({ messages, timelineState: timeline } = applyStreamEventToMessages(
+    messages,
+    timeline,
+    { kind: 'tool_started', id: 't1', name: 'write_file', input: '{}' },
+    { streamTargetId: 'asst-1', currentToolId: 't1' },
+  ));
+  assert.equal(messages[0].isStreaming, true);
+
+  ({ messages, timelineState: timeline } = applyStreamEventToMessages(
+    messages,
+    timeline,
+    { kind: 'thinking_delta', content: 'next' },
+    { streamTargetId: 'asst-1' },
+  ));
+  assert.equal(messages[0].isStreaming, true);
+});
+
 test('applyStreamEventToMessages updates preparing tool with final input', () => {
   const assistant: TurnChatMessage = {
     id: 'asst-1',

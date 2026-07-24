@@ -22,14 +22,14 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   const stickBottomRef = useRef(true);
 
   useEffect(() => {
-    userToggledRef.current = false;
-    setExpanded(active);
+    if (userToggledRef.current) return;
+    if (active) setExpanded(true);
   }, [block.id, active]);
 
   useEffect(() => {
-    if (active || userToggledRef.current) return;
+    if (active || userToggledRef.current || isTurnStreaming) return;
     setExpanded(false);
-  }, [active]);
+  }, [active, isTurnStreaming]);
 
   useEffect(() => {
     if (!active || !expanded || userToggledRef.current) return;
@@ -65,7 +65,9 @@ export const ThinkingBlock = memo(function ThinkingBlock({
           stickBottomRef.current =
             el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
         }}
-        className={`${REASONING_PREVIEW_MAX_CLASS} overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed`}
+        className={`${
+          active ? 'timeline-streaming-panel' : REASONING_PREVIEW_MAX_CLASS
+        } overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed`}
       >
         {block.text ||
           (active ? t('message.reasoningStreamingPlaceholder') : '')}

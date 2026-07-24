@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop streaming transcript (thr_436d):** Live turns no longer look blank during deep tool loops — absorbed reasoning stays visible via streaming activity accordion while P4.6 folding is preserved; background threads now accumulate timeline deltas in the registry; session reattach keeps `turnId` and resumes poll when the SSE controller is gone. Activity rows no longer oscillate expand/collapse when a later tool starts (trailing-row policy).
+- **Desktop SSE reconnect:** Tauri per-thread event stream now reconnects after transient proxy/decode errors (e.g. `Stream read error: error decoding response body`) while the backend turn is still active, instead of freezing the transcript; recovery no longer treats an aborted poll controller as “still live”.
+- **Desktop live activity Hold panel:** Trailing activity summary stays anchored while the turn streams; reasoning and tools update inside a bounded scroll viewport (default ~4–5 lines, click header to expand); settles to a collapsed Hold row when the turn finishes. Live tool rows stay compact until expanded. Standalone streaming reasoning blocks use a bounded height before the first tool.
+
 ## [0.8.8] - 2026-07-22
 
 **Release highlights**

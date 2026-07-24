@@ -77,11 +77,14 @@ export function applyStreamEventToMessages(
     norm.kind === 'turn_completed' ||
     norm.kind === 'error';
 
+  // Always keep the target assistant in live layout until an explicit finalize.
+  // Previously we inherited a sticky `isStreaming: false` from reconcile/merge,
+  // which flipped the UI into settled「工作过程」for a frame on the next tool event.
   const nextMessages = patchStreamingAssistant(
     messages,
     options.streamTargetId,
     nextState,
-    !finalize && messages.find((m) => m.id === options.streamTargetId)?.isStreaming !== false,
+    !finalize,
   );
 
   return { messages: nextMessages, timelineState: nextState };

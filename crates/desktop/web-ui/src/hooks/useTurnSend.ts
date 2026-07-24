@@ -24,6 +24,10 @@ import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFrom
 import {
   applyStreamEventToMessages,
 } from './turnSend/applyStreamEventToMessages';
+import {
+  applyBackgroundTimelineEvent,
+  isBackgroundTimelineContentEvent,
+} from './turnSend/applyBackgroundStreamEvent';
 import { reconcileMessagesFromThread, mergeThreadTranscript } from './turnSend/completeStreamUi';
 import { createEmptyTimelineState } from '../lib/chat/timeline/turnTimelineReducer';
 import type { TimelineState } from '../lib/chat/timeline/turnBlockTypes';
@@ -932,11 +936,47 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 break;
               }
               default:
-                // thinking_delta / message_delta / tool_* / agent_* / craft_* /
-                // harness_cycle_advanced: skipped for background turns.
+                if (isBackgroundTimelineContentEvent(norm.kind)) {
+                  if (norm.kind === 'tool_started') {
+                    deltaBatcher.flush();
+                    ctx.currentToolId.current = norm.id;
+                    onAgentSpawnToolStarted(norm.id, norm.name, norm.input);
+                  } else if (norm.kind === 'tool_completed') {
+                    deltaBatcher.flush();
+                  } else if (
+                    norm.kind !== 'thinking_delta' &&
+                    norm.kind !== 'message_delta'
+                  ) {
+                    deltaBatcher.flush();
+                  }
+                  applyBackgroundTimelineEvent(
+                    streamRegistry,
+                    eventThreadId,
+                    ownerSessionId,
+                    norm,
+                    { currentToolId: ctx.currentToolId.current },
+                  );
+                  if (norm.kind === 'tool_completed') {
+                    if (ctx.currentToolId.current === norm.id) {
+                      ctx.currentToolId.current = null;
+                    }
+                  }
+                }
                 break;
             }
             return;
+          }
+
+          // Rehydrate closure timeline from registry after a background stretch
+          // so foreground deltas do not overwrite richer background state.
+          if (eventThreadId) {
+            const bgTimeline = streamRegistry.getContext(eventThreadId)?.timelineState;
+            if (
+              bgTimeline &&
+              bgTimeline.blocks.length > timelineState.blocks.length
+            ) {
+              timelineState = bgTimeline;
+            }
           }
 
           switch (norm.kind) {

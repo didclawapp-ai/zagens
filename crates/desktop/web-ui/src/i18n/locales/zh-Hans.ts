@@ -1671,6 +1671,7 @@ const zhHans = {
     collapsePrompt: '收起',
     timelineActivityWithReasoning: '含 {{count}} 段推理 · 点击展开',
     timelineAbsorbedReasoning: '推理（{{count}}）',
+    timelineLiveHoldHint: '进行中…',
   },
   terminalCard: {
     runningEmpty: '正在执行，尚未收到终端输出…（不少 Python 脚本成功时也不打印任何内容）',

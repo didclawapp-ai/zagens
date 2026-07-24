@@ -1696,6 +1696,7 @@ const ja: TranslationMap = {
     collapsePrompt: '折りたたむ',
     timelineActivityWithReasoning: '推論 {{count}} 件を含む · クリックで展開',
     timelineAbsorbedReasoning: '推論（{{count}}）',
+    timelineLiveHoldHint: '更新中…',
   },
   terminalCard: {
     runningEmpty: '実行中 — ターミナル出力はまだありません（成功時に出力しない Python スクリプトが多いです）。',

@@ -1597,25 +1597,38 @@ async function pollThreadTurnEventsViaTauriProxy(
       }
       let sawTerminal = false;
       const path = `/v1/threads/${encodeURIComponent(threadId)}/events?since_seq=${cursor}`;
-      await consumeThreadEventsSse(
-        path,
-        (ev) => {
-          if (localAbort.signal.aborted) {
-            return;
-          }
-          const seq = sseEventSeq(ev);
-          if (seq != null && seq > cursor) {
-            cursor = seq;
-          }
-          const norm = normalizeDesktopStreamEvent(ev, filter);
-          if (norm?.kind === 'turn_completed' || norm?.kind === 'done') {
-            sawTerminal = true;
-            localAbort.abort();
-          }
-          onEvent(ev);
-        },
-        { signal: localAbort.signal, threadId },
-      );
+      try {
+        await consumeThreadEventsSse(
+          path,
+          (ev) => {
+            if (localAbort.signal.aborted) {
+              return;
+            }
+            const seq = sseEventSeq(ev);
+            if (seq != null && seq > cursor) {
+              cursor = seq;
+            }
+            const norm = normalizeDesktopStreamEvent(ev, filter);
+            if (norm?.kind === 'turn_completed' || norm?.kind === 'done') {
+              sawTerminal = true;
+              localAbort.abort();
+            }
+            onEvent(ev);
+          },
+          { signal: localAbort.signal, threadId },
+        );
+      } catch (err) {
+        if (localAbort.signal.aborted || (err as Error).name === 'AbortError') {
+          return;
+        }
+        // Transient proxy / decode / Tauri callback errors — reconnect while the
+        // backend turn is still active (same policy as a quiet stream close).
+        if (!(await threadTurnStillActive(threadId, options?.turnId))) {
+          throw err;
+        }
+        await sleepMs(THREAD_TURN_POLL_MS, localAbort.signal);
+        continue;
+      }
       if (sawTerminal || localAbort.signal.aborted) {
         return;
       }

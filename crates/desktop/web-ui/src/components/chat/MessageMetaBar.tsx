@@ -7,6 +7,9 @@ export function MessageMetaBar({
   label,
   hint,
   expanded,
+  panelOpen,
+  chevronOpen,
+  hintVisible,
   onToggle,
   copyText,
   copyTitle,
@@ -16,24 +19,36 @@ export function MessageMetaBar({
   icon: ReactNode;
   label: string;
   hint?: string;
+  /** Accordion open (panel + chevron) when panelOpen/chevronOpen are omitted. */
   expanded: boolean;
+  /** Panel body visible; defaults to expanded. */
+  panelOpen?: boolean;
+  /** Chevron rotation / aria-expanded; defaults to expanded. */
+  chevronOpen?: boolean;
+  /** Override hint visibility; defaults to hint && !panelOpen. */
+  hintVisible?: boolean;
   onToggle: () => void;
   copyText?: string;
   copyTitle?: string;
   copyDisabled?: boolean;
   children?: ReactNode;
 }) {
+  const isPanelOpen = panelOpen ?? expanded;
+  const isChevronOpen = chevronOpen ?? expanded;
+  const showHint =
+    hintVisible ?? (Boolean(hint) && !isPanelOpen);
+
   return (
     <div className="message-meta-section">
       <button
         type="button"
         onClick={onToggle}
         className="message-meta-bar group"
-        aria-expanded={expanded}
+        aria-expanded={isChevronOpen}
       >
         <IconChevronRight
           className={`message-meta-chevron size-3.5 shrink-0 text-t-text-muted ${
-            expanded ? 'message-meta-chevron--open' : ''
+            isChevronOpen ? 'message-meta-chevron--open' : ''
           }`}
         />
         <span className="message-meta-icon shrink-0 text-t-text-muted">{icon}</span>
@@ -46,14 +61,14 @@ export function MessageMetaBar({
             className="ml-0.5 opacity-0 transition-opacity group-hover:opacity-100"
           />
         )}
-        {hint && !expanded ? (
+        {hint && showHint ? (
           <span className="message-meta-hint ml-auto truncate">{hint}</span>
         ) : null}
       </button>
       {children ? (
         <div
-          className={`message-meta-panel ${expanded ? 'message-meta-panel--open' : ''}`}
-          aria-hidden={!expanded}
+          className={`message-meta-panel ${isPanelOpen ? 'message-meta-panel--open' : ''}`}
+          aria-hidden={!isPanelOpen}
         >
           <div className="message-meta-panel-inner">
             <div className="message-meta-body">{children}</div>

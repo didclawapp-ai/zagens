@@ -33,7 +33,7 @@ import {
 import type { PreviewState } from '../components/preview/types';
 import { toast } from '../lib/toast';
 import type { StreamContextRegistry } from './useStreamContextRegistry';
-import { writeThreadTurn } from '../lib/chat/streamContextAccess';
+import { readThreadTurn, writeThreadTurn } from '../lib/chat/streamContextAccess';
 import type { ApprovalState } from './useTurnApproval';
 import {
   registerWindowThread,
@@ -406,7 +406,6 @@ export function useSessionNavigation({
           }
           cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, reattachedMessages);
         }
-        writeThreadTurn(streamRegistry, resumed.thread_id, '');
         try {
           const threadDetail = await getThreadDetail(resumed.thread_id);
           if (gen !== selectSessionGenerationRef.current) {
@@ -415,6 +414,14 @@ export function useSessionNavigation({
           setThreadDetailForContext(threadDetail);
           const turns = threadDetail.turns ?? [];
           const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined;
+          const latestTurnId =
+            threadDetail.thread.latest_turn_id?.trim() ||
+            lastTurn?.id?.trim() ||
+            readThreadTurn(streamRegistry, resumed.thread_id).turnId ||
+            '';
+          if (latestTurnId) {
+            writeThreadTurn(streamRegistry, resumed.thread_id, latestTurnId);
+          }
           const lastOut = lastTurn?.usage?.output_tokens;
           setLastTurnOutputTokens(
             lastOut != null && Number.isFinite(lastOut) && lastOut > 0 ? lastOut : null,
@@ -535,7 +542,6 @@ export function useSessionNavigation({
       setMessages([]);
       setRuntimeSessionEstablished(true);
       restoreThreadContextFromCache(trimmed);
-      writeThreadTurn(streamRegistry, trimmed, '');
 
       try {
         let fromThread = await rebuildMessagesFromThreadEvents(trimmed, {
@@ -573,6 +579,14 @@ export function useSessionNavigation({
         setThreadDetailForContext(threadDetail);
         const turns = threadDetail.turns ?? [];
         const lastTurn = turns.length > 0 ? turns[turns.length - 1] : undefined;
+        const latestTurnId =
+          threadDetail.thread.latest_turn_id?.trim() ||
+          lastTurn?.id?.trim() ||
+          readThreadTurn(streamRegistry, trimmed).turnId ||
+          '';
+        if (latestTurnId) {
+          writeThreadTurn(streamRegistry, trimmed, latestTurnId);
+        }
         const lastOut = lastTurn?.usage?.output_tokens;
         setLastTurnOutputTokens(
           lastOut != null && Number.isFinite(lastOut) && lastOut > 0 ? lastOut : null,

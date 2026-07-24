@@ -229,6 +229,15 @@ export function mergeAdjacentActivityItems(
   return out;
 }
 
+export type PrepareTimelinePresentationOptions = {
+  /**
+   * When false, completed thinking / short captions stay as top-level rows.
+   * Default true (P4.6); live visibility of absorbed reasoning is handled in
+   * `CollapsedToolRunBlock` while streaming.
+   */
+  absorbActivityGaps?: boolean;
+};
+
 /**
  * Bundle tool activity for scanability (P2.2 / P4 / P4.6 / thr_ea9c).
  *
@@ -240,14 +249,18 @@ export function mergeAdjacentActivityItems(
  * - Long final prose stays expanded.
  * - Adjacent activity rows merge unless a caption marks a new phase.
  */
-export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresentationItem[] {
+export function prepareTimelinePresentation(
+  blocks: TurnBlock[],
+  options: PrepareTimelinePresentationOptions = {},
+): TimelinePresentationItem[] {
+  const absorbGaps = options.absorbActivityGaps !== false;
   const items: TimelinePresentationItem[] = [];
   let i = 0;
 
   while (i < blocks.length) {
     const block = blocks[i];
 
-    if (isAbsorbedGapAt(blocks, i)) {
+    if (absorbGaps && isAbsorbedGapAt(blocks, i)) {
       i += 1;
       continue;
     }
@@ -264,7 +277,9 @@ export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresen
       continue;
     }
 
-    const leading = collectLeadingAbsorbed(blocks, i);
+    const leading = absorbGaps
+      ? collectLeadingAbsorbed(blocks, i)
+      : { thinking: [], captions: [] };
     const run: Extract<TurnBlock, { kind: 'tool' }>[] = [block];
     const absorbedThinking = [...leading.thinking];
     const absorbedCaptions = [...leading.captions];
@@ -273,10 +288,10 @@ export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresen
     while (j < blocks.length) {
       const next = blocks[j];
       // Caption after tools already collected → soft phase boundary (thr_ea9c).
-      if (isAbsorbedCaptionAt(blocks, j)) {
+      if (absorbGaps && isAbsorbedCaptionAt(blocks, j)) {
         break;
       }
-      if (isAbsorbedThinkingAt(blocks, j)) {
+      if (absorbGaps && isAbsorbedThinkingAt(blocks, j)) {
         if (next.kind === 'thinking') absorbedThinking.push(next);
         j += 1;
         continue;
@@ -312,6 +327,8 @@ export function prepareTimelinePresentation(blocks: TurnBlock[]): TimelinePresen
 export type BuildTimelinePresentationOptions = {
   stepGrouping?: boolean;
   stepHint?: StepGroupHint;
+  /** See {@link PrepareTimelinePresentationOptions.absorbActivityGaps}. */
+  absorbActivityGaps?: boolean;
 };
 
 /**
@@ -349,9 +366,13 @@ export function buildTimelinePresentation(
   options: BuildTimelinePresentationOptions = {},
 ): TimelinePresentationRoot[] {
   const deduped = dedupeTimelineProseBlocks(blocks);
+  const prepare = (segment: TurnBlock[]) =>
+    prepareTimelinePresentation(segment, {
+      absorbActivityGaps: options.absorbActivityGaps,
+    });
   if (!options.stepGrouping || deduped.length < 8) {
-    return prepareTimelinePresentation(deduped);
+    return prepare(deduped);
   }
   const stepHint = options.stepHint ?? deriveStepGroupHintFromBlocks(deduped);
-  return groupPresentationIntoSteps(deduped, prepareTimelinePresentation, stepHint);
+  return groupPresentationIntoSteps(deduped, prepare, stepHint);
 }
