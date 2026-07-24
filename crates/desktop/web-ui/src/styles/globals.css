@@ -880,10 +880,15 @@ body {
     max-height: min(42vh, 22rem);
   }
 
-  .timeline-streaming-panel {
-    max-height: min(42vh, 22rem);
+  /* ~3–4 lines for streaming reasoning; expand via header toggle. */
+  .timeline-reasoning-panel {
+    max-height: 6rem;
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+
+  .timeline-reasoning-panel--expanded {
+    max-height: min(42vh, 22rem);
   }
 
   /* Composer — align with transcript column (max-w-3xl) and message radii */

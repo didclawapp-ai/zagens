@@ -17,6 +17,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   const { t } = useT();
   const active = isTurnStreaming && block.streaming !== false;
   const [expanded, setExpanded] = useState(active);
+  const [viewportExpanded, setViewportExpanded] = useState(false);
   const userToggledRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickBottomRef = useRef(true);
@@ -32,16 +33,27 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   }, [active, isTurnStreaming]);
 
   useEffect(() => {
-    if (!active || !expanded || userToggledRef.current) return;
+    if (active) return;
+    setViewportExpanded(false);
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || !expanded) return;
     const el = scrollRef.current;
     if (!el || !stickBottomRef.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [block.text, active, expanded]);
+  }, [block.text, active, expanded, viewportExpanded]);
 
   const hint =
     active && !block.text.trim()
       ? t('message.reasoningStreaming')
       : t('message.reasoningCollapsed');
+
+  const panelClass = active
+    ? `timeline-reasoning-panel${
+        viewportExpanded ? ' timeline-reasoning-panel--expanded' : ''
+      }`
+    : REASONING_PREVIEW_MAX_CLASS;
 
   return (
     <MessageMetaBar
@@ -49,8 +61,20 @@ export const ThinkingBlock = memo(function ThinkingBlock({
       label={t('message.reasoning')}
       hint={hint}
       expanded={expanded}
+      panelOpen={expanded}
+      chevronOpen={active ? viewportExpanded : expanded}
+      hintVisible={active ? Boolean(hint) && !viewportExpanded : undefined}
       onToggle={() => {
         userToggledRef.current = true;
+        if (active) {
+          if (!expanded) {
+            setExpanded(true);
+            setViewportExpanded(false);
+          } else {
+            setViewportExpanded((v) => !v);
+          }
+          return;
+        }
         setExpanded((v) => !v);
       }}
       copyText={block.text.trim()}
@@ -65,9 +89,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
           stickBottomRef.current =
             el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
         }}
-        className={`${
-          active ? 'timeline-streaming-panel' : REASONING_PREVIEW_MAX_CLASS
-        } overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed`}
+        className={`${panelClass} overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed`}
       >
         {block.text ||
           (active ? t('message.reasoningStreamingPlaceholder') : '')}

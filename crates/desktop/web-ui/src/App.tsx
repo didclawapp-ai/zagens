@@ -30,9 +30,9 @@ import { useRuntimeConnection } from './hooks/useRuntimeConnection';
 import { useAgentPanelState } from './hooks/useAgentPanelState';
 import { OPEN_BROWSER_PANE_EVENT, requestOpenBrowserPane } from './lib/openInAppBrowser';
 import {
-  isEditToolForPreviewHint,
   readPostEditPreviewHintPref,
 } from './lib/browser/browserPrefs';
+import { shouldShowPostEditPreviewHint } from './lib/browser/postEditPreviewHint';
 import { useChatMessageActions } from './hooks/useChatMessageActions';
 import { useTraceExport } from './hooks/useTraceExport';
 import { useDesktopShell } from './hooks/useDesktopShell';
@@ -614,8 +614,9 @@ export default function App() {
       if (
         success &&
         desktopHost &&
+        activeInspector !== 'browser' &&
         readPostEditPreviewHintPref() &&
-        isEditToolForPreviewHint(toolName)
+        shouldShowPostEditPreviewHint(toolName, output)
       ) {
         toast.info(t('browser.postEditPreviewHint'), {
           tag: 'post-edit-preview-hint',
