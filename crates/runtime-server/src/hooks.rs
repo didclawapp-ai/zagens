@@ -703,9 +703,10 @@ impl HookExecutor {
     fn build_shell_command(command: &str) -> Command {
         #[cfg(windows)]
         {
-            let (shell, arg) = crate::sandbox::windows_shell();
+            let (shell, _) = crate::sandbox::windows_shell();
+            let args = crate::sandbox::windows_shell_argv(shell, command);
             let mut cmd = Command::new(shell);
-            cmd.arg(arg).arg(command);
+            cmd.args(args);
             cmd
         }
         #[cfg(not(windows))]

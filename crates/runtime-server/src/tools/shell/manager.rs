@@ -25,7 +25,7 @@ use super::types::{ShellDeltaResult, ShellJobDetail, ShellJobSnapshot, ShellResu
 use crate::sandbox::{
     CommandSpec, ExecEnv, SandboxManager, SandboxPolicy as ExecutionSandboxPolicy, SandboxType,
 };
-use crate::tools::shell_output::truncate_with_meta;
+use crate::tools::shell_output::truncate_shell_streams_with_spill;
 
 /// Manages background shell processes with optional sandboxing.
 pub struct ShellManager {
@@ -35,6 +35,8 @@ pub struct ShellManager {
     sandbox_manager: SandboxManager,
     sandbox_policy: ExecutionSandboxPolicy,
     foreground_background_requested: bool,
+    /// agent.shell config: preferred Windows shell ("auto" / "pwsh" / "powershell" / "cmd").
+    shell_preference: Option<String>,
 }
 
 impl std::fmt::Debug for ShellManager {
@@ -62,6 +64,7 @@ impl ShellManager {
             sandbox_manager: SandboxManager::new(),
             sandbox_policy: ExecutionSandboxPolicy::default(),
             foreground_background_requested: false,
+            shell_preference: None,
         }
     }
 
@@ -75,7 +78,13 @@ impl ShellManager {
             sandbox_manager: SandboxManager::new(),
             sandbox_policy: policy,
             foreground_background_requested: false,
+            shell_preference: None,
         }
+    }
+
+    /// Set the Windows shell preference (agent.shell config: "auto" / "pwsh" / "powershell" / "cmd").
+    pub fn set_shell_preference(&mut self, pref: Option<String>) {
+        self.shell_preference = pref;
     }
 
     /// Set the Windows native sandbox mode for future commands.
@@ -96,10 +105,11 @@ impl ShellManager {
     #[must_use]
     pub fn probe_sandbox_enforced(&self) -> bool {
         use std::time::Duration;
-        let spec = CommandSpec::shell(
+        let spec = CommandSpec::shell_with_pref(
             "true",
             self.default_workspace.clone(),
             Duration::from_secs(1),
+            self.shell_preference.as_deref(),
         )
         .with_policy(self.sandbox_policy.clone());
         self.sandbox_manager.prepare(&spec).is_enforced()
@@ -222,9 +232,14 @@ impl ShellManager {
         let policy = policy_override.unwrap_or_else(|| self.sandbox_policy.clone());
 
         // Create command spec and prepare sandboxed environment
-        let spec = CommandSpec::shell(command, work_dir.clone(), Duration::from_millis(timeout_ms))
-            .with_policy(policy)
-            .with_env(extra_env);
+        let spec = CommandSpec::shell_with_pref(
+            command,
+            work_dir.clone(),
+            Duration::from_millis(timeout_ms),
+            self.shell_preference.as_deref(),
+        )
+        .with_policy(policy)
+        .with_env(extra_env);
         let exec_env = self.sandbox_manager.prepare(&spec);
 
         if background {
@@ -235,7 +250,14 @@ impl ShellManager {
                     "TTY mode requires background execution (set background: true)."
                 ));
             }
-            Self::execute_sync_sandboxed(command, &work_dir, timeout_ms, stdin_data, &exec_env)
+            Self::execute_sync_sandboxed(
+                command,
+                &work_dir,
+                timeout_ms,
+                stdin_data,
+                &exec_env,
+                &self.default_workspace,
+            )
         }
     }
 
@@ -282,9 +304,14 @@ impl ShellManager {
         let timeout_ms = timeout_ms.clamp(1000, 600_000);
         let policy = policy_override.unwrap_or_else(|| self.sandbox_policy.clone());
 
-        let spec = CommandSpec::shell(command, work_dir.clone(), Duration::from_millis(timeout_ms))
-            .with_policy(policy)
-            .with_env(extra_env);
+        let spec = CommandSpec::shell_with_pref(
+            command,
+            work_dir.clone(),
+            Duration::from_millis(timeout_ms),
+            self.shell_preference.as_deref(),
+        )
+        .with_policy(policy)
+        .with_env(extra_env);
         let exec_env = self.sandbox_manager.prepare(&spec);
 
         Self::execute_interactive_sandboxed(command, &work_dir, timeout_ms, &exec_env)
@@ -297,6 +324,7 @@ impl ShellManager {
         timeout_ms: u64,
         stdin_data: Option<&str>,
         exec_env: &ExecEnv,
+        workspace: &std::path::Path,
     ) -> Result<ShellResult> {
         #[cfg(windows)]
         if exec_env.is_enforced() {
@@ -305,6 +333,7 @@ impl ShellManager {
                 exec_env,
                 timeout_ms,
                 stdin_data,
+                workspace,
             );
         }
 
@@ -383,8 +412,8 @@ impl ShellManager {
 
             // Check if sandbox denied the operation
             let sandbox_denied = SandboxManager::was_denied(sandbox_type, exit_code, &stderr_str);
-            let (stdout, stdout_meta) = truncate_with_meta(&stdout_str);
-            let (stderr, stderr_meta) = truncate_with_meta(&stderr_str);
+            let (stdout, stdout_meta, stderr, stderr_meta, spill) =
+                truncate_shell_streams_with_spill(workspace, &stdout_str, &stderr_str);
 
             Ok(ShellResult {
                 task_id: None,
@@ -403,6 +432,7 @@ impl ShellManager {
                 stderr_omitted: stderr_meta.omitted,
                 stdout_truncated: stdout_meta.truncated,
                 stderr_truncated: stderr_meta.truncated,
+                full_output_spill_path: spill.map(|s| s.read_path_hint),
                 sandboxed,
                 sandbox_enforced,
                 sandbox_type: if sandboxed {
@@ -425,8 +455,8 @@ impl ShellManager {
             let stderr = join_reader_thread_bounded(stderr_thread);
             let stdout_str = String::from_utf8_lossy(&stdout).to_string();
             let stderr_str = String::from_utf8_lossy(&stderr).to_string();
-            let (stdout, stdout_meta) = truncate_with_meta(&stdout_str);
-            let (stderr, stderr_meta) = truncate_with_meta(&stderr_str);
+            let (stdout, stdout_meta, stderr, stderr_meta, spill) =
+                truncate_shell_streams_with_spill(workspace, &stdout_str, &stderr_str);
 
             Ok(ShellResult {
                 task_id: None,
@@ -441,6 +471,7 @@ impl ShellManager {
                 stderr_omitted: stderr_meta.omitted,
                 stdout_truncated: stdout_meta.truncated,
                 stderr_truncated: stderr_meta.truncated,
+                full_output_spill_path: spill.map(|s| s.read_path_hint),
                 sandboxed,
                 sandbox_enforced,
                 sandbox_type: if sandboxed {
@@ -510,6 +541,7 @@ impl ShellManager {
                 stderr_omitted: 0,
                 stdout_truncated: false,
                 stderr_truncated: false,
+                full_output_spill_path: None,
                 sandboxed,
                 sandbox_enforced,
                 sandbox_type: if sandboxed {
@@ -539,6 +571,7 @@ impl ShellManager {
                 stderr_omitted: 0,
                 stdout_truncated: false,
                 stderr_truncated: false,
+                full_output_spill_path: None,
                 sandboxed,
                 sandbox_enforced,
                 sandbox_type: if sandboxed {
@@ -636,6 +669,7 @@ impl ShellManager {
                 stderr_omitted: 0,
                 stdout_truncated: false,
                 stderr_truncated: false,
+                full_output_spill_path: None,
                 sandboxed,
                 sandbox_type: if sandboxed {
                     Some(sandbox_type.to_string())
@@ -771,6 +805,7 @@ impl ShellManager {
             stderr_omitted: 0,
             stdout_truncated: false,
             stderr_truncated: false,
+            full_output_spill_path: None,
             sandboxed,
             sandbox_type: if sandboxed {
                 Some(sandbox_type.to_string())
@@ -810,13 +845,13 @@ impl ShellManager {
 
             // If still running after timeout
             if shell.status == ShellStatus::Running {
-                return Ok(shell.snapshot());
+                return Ok(shell.snapshot(&self.default_workspace));
             }
         } else {
             shell.poll();
         }
 
-        Ok(shell.snapshot())
+        Ok(shell.snapshot(&self.default_workspace))
     }
 
     /// Write data to stdin of a background process.
@@ -863,8 +898,11 @@ impl ShellManager {
             stdout_total,
             stderr_total,
         ) = shell.take_delta();
-        let (stdout, stdout_meta) = truncate_with_meta(&stdout_delta);
-        let (stderr, stderr_meta) = truncate_with_meta(&stderr_delta);
+        let (stdout, stdout_meta, stderr, stderr_meta, spill) = truncate_shell_streams_with_spill(
+            &self.default_workspace,
+            &stdout_delta,
+            &stderr_delta,
+        );
         let sandboxed = !matches!(shell.sandbox_type, SandboxType::None);
 
         let result = ShellResult {
@@ -880,6 +918,7 @@ impl ShellManager {
             stderr_omitted: stderr_meta.omitted,
             stdout_truncated: stdout_meta.truncated,
             stderr_truncated: stderr_meta.truncated,
+            full_output_spill_path: spill.map(|s| s.read_path_hint),
             sandboxed,
             sandbox_type: if sandboxed {
                 Some(shell.sandbox_type.to_string())
@@ -908,7 +947,7 @@ impl ShellManager {
             .ok_or_else(|| anyhow!("Task {task_id} not found"))?;
 
         shell.kill()?;
-        Ok(shell.snapshot())
+        Ok(shell.snapshot(&self.default_workspace))
     }
 
     /// Kill every currently running background shell process.

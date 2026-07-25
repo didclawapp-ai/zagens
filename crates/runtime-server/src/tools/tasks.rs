@@ -702,8 +702,10 @@ fn task_result(label: &str, task: &TaskRecord) -> Result<ToolResult, ToolError> 
 fn gate_shell_command(command: &str) -> Command {
     #[cfg(windows)]
     {
-        let mut cmd = Command::new("cmd");
-        cmd.arg("/C").arg(command);
+        let (program, _) = crate::sandbox::windows_shell();
+        let args = crate::sandbox::windows_shell_argv(program, command);
+        let mut cmd = Command::new(program);
+        cmd.args(args);
         cmd
     }
     #[cfg(not(windows))]

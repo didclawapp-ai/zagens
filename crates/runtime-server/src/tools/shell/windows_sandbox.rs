@@ -12,7 +12,7 @@ mod imp {
     use crate::tools::shell::process::{ShellChild, StdinWriter, spawn_reader_thread_from_handle};
     use crate::tools::shell::sandbox_meta;
     use crate::tools::shell::types::{ShellResult, ShellStatus};
-    use crate::tools::shell_output::truncate_with_meta;
+    use crate::tools::shell_output::truncate_shell_streams_with_spill;
 
     type SpawnBackgroundHandles = (
         ShellChild,
@@ -26,6 +26,7 @@ mod imp {
         exec_env: &ExecEnv,
         timeout_ms: u64,
         stdin_data: Option<&str>,
+        workspace: &std::path::Path,
     ) -> Result<ShellResult> {
         let plan = exec_env
             .windows_plan
@@ -60,8 +61,8 @@ mod imp {
         let timed_out = started.elapsed() >= timeout && output.exit_code != 0;
         let exit_code = i32::try_from(output.exit_code).unwrap_or(-1);
         let sandbox_denied = SandboxManager::was_denied(sandbox_type, exit_code, &output.stderr);
-        let (stdout, stdout_meta) = truncate_with_meta(&output.stdout);
-        let (stderr, stderr_meta) = truncate_with_meta(&output.stderr);
+        let (stdout, stdout_meta, stderr, stderr_meta, spill) =
+            truncate_shell_streams_with_spill(workspace, &output.stdout, &output.stderr);
 
         Ok(ShellResult {
             task_id: None,
@@ -82,6 +83,7 @@ mod imp {
             stderr_omitted: stderr_meta.omitted,
             stdout_truncated: stdout_meta.truncated,
             stderr_truncated: stderr_meta.truncated,
+            full_output_spill_path: spill.map(|s| s.read_path_hint),
             sandboxed,
             sandbox_enforced,
             sandbox_type: if sandboxed {
@@ -102,7 +104,7 @@ mod imp {
         win32_code: u32,
         message: &str,
     ) -> ShellResult {
-        let (stderr, stderr_meta) = truncate_with_meta(message);
+        let (stderr, stderr_meta) = crate::tools::shell_output::truncate_with_meta(message);
         ShellResult {
             task_id: None,
             status: ShellStatus::Failed,
@@ -116,6 +118,7 @@ mod imp {
             stderr_omitted: stderr_meta.omitted,
             stdout_truncated: false,
             stderr_truncated: stderr_meta.truncated,
+            full_output_spill_path: None,
             sandboxed: exec_env.is_sandboxed(),
             sandbox_enforced: exec_env.is_enforced(),
             sandbox_type: Some(exec_env.sandbox_type.to_string()),

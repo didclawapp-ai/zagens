@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **exec_shell dynamic description (S0):** Tool catalog injects detected host OS and active shell (`pwsh` / `powershell` / `cmd` / `sh`) plus family-specific command rules (e.g. PowerShell 5.1: avoid `&&`, use `cwd` not `cd &&`). Reduces Windows bashism / ParserError from models writing Linux shell syntax.
+- **exec_shell P1 + spawn argv (S1/S1b):** PowerShell spawn uses `-NoProfile -NonInteractive -Command` (OpenCode-aligned); cmd fallback reads `COMSPEC`. Dynamic description warns against `%VAR%`/`%CD%` on PS hosts and clarifies `task_id` is a poll handle. Background `exec_shell` responses include an explicit `exec_shell_wait({"task_id":…})` next step. Agent mode eagerly loads `exec_shell_cancel`. `task_gate_run` reuses `windows_shell()` instead of hardcoded `cmd /C`.
+- **exec_shell truncated output spill (S2):** When stdout/stderr exceeds the 30KB cap, full combined output is written under `.zagens/shell-output/` in the workspace; tool results include `full_output_spill_path` and a read_file/grep_files hint instead of re-running piped `head`/`tail`.
+
 ## [0.8.9] - 2026-07-24
 
 **Release highlights**

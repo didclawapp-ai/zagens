@@ -114,35 +114,101 @@ pub struct CommandSpec {
 /// falls back to cmd.exe only when neither PowerShell is available.
 #[cfg(windows)]
 pub(crate) fn windows_shell() -> (&'static str, &'static str) {
-    use std::sync::OnceLock;
-    static DETECTED: OnceLock<(&'static str, &'static str)> = OnceLock::new();
-    *DETECTED.get_or_init(|| {
-        for ps in &["pwsh", "powershell"] {
-            if std::process::Command::new(ps)
-                .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-            {
-                return (ps, "-Command");
-            }
+    windows_shell_for(None)
+}
+
+/// Returns the Windows shell for a given preference (agent.shell config).
+///
+/// | preference     | result                                       |
+/// |----------------|----------------------------------------------|
+/// | `"pwsh"`       | pwsh.exe (PowerShell 7+)                     |
+/// | `"powershell"` | powershell.exe (Windows PowerShell 5.1)       |
+/// | `"cmd"`        | cmd.exe                                      |
+/// | `"auto"`       | auto-detect: pwsh → powershell → cmd         |
+/// | `None`         | same as `"auto"`                             |
+#[cfg(windows)]
+pub(crate) fn windows_shell_for(preference: Option<&str>) -> (&'static str, &'static str) {
+    let mode = preference.unwrap_or("auto").trim().to_ascii_lowercase();
+    match mode.as_str() {
+        "pwsh" => ("pwsh", "-Command"),
+        "powershell" => ("powershell", "-Command"),
+        "cmd" => ("cmd", "/C"),
+        "auto" | "" => {
+            use std::sync::OnceLock;
+            static DETECTED: OnceLock<(&'static str, &'static str)> = OnceLock::new();
+            *DETECTED.get_or_init(|| {
+                for ps in &["pwsh", "powershell"] {
+                    if std::process::Command::new(ps)
+                        .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .status()
+                        .map(|s| s.success())
+                        .unwrap_or(false)
+                    {
+                        return (ps, "-Command");
+                    }
+                }
+                let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+                let leaked = Box::leak(comspec.into_boxed_str());
+                (leaked, "/C")
+            })
         }
-        ("cmd", "/C")
-    })
+        other => {
+            tracing::warn!(
+                "unknown agent.shell value '{}', falling back to auto-detect",
+                other
+            );
+            windows_shell_for(Some("auto"))
+        }
+    }
+}
+
+/// Whether `program` names a PowerShell executable (short name or full path).
+#[cfg(windows)]
+pub(crate) fn is_powershell_program(program: &str) -> bool {
+    let lower = program.to_ascii_lowercase();
+    lower == "pwsh"
+        || lower == "powershell"
+        || lower.ends_with("\\pwsh.exe")
+        || lower.ends_with("/pwsh.exe")
+        || lower.ends_with("\\powershell.exe")
+        || lower.ends_with("/powershell.exe")
+}
+
+/// argv for `CommandSpec::shell` / hooks / gate runner (OpenCode-aligned PS flags).
+#[cfg(windows)]
+pub(crate) fn windows_shell_argv(program: &str, command: &str) -> Vec<String> {
+    if is_powershell_program(program) {
+        vec![
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            command.to_string(),
+        ]
+    } else {
+        vec!["/C".to_string(), command.to_string()]
+    }
 }
 
 impl CommandSpec {
     /// Create a `CommandSpec` for running a shell command via the platform shell.
     pub fn shell(command: &str, cwd: PathBuf, timeout: Duration) -> Self {
+        Self::shell_with_pref(command, cwd, timeout, None)
+    }
+
+    /// Create a `CommandSpec` with an optional shell preference (Windows: agent.shell config).
+    pub fn shell_with_pref(
+        command: &str,
+        cwd: PathBuf,
+        timeout: Duration,
+        shell_preference: Option<&str>,
+    ) -> Self {
         #[cfg(windows)]
-        let (program, arg_prefix) = windows_shell();
-        #[cfg(windows)]
-        let (program, args) = (
-            program.to_string(),
-            vec![arg_prefix.to_string(), command.to_string()],
-        );
+        let (program, args) = {
+            let (program, _) = windows_shell_for(shell_preference);
+            (program.to_string(), windows_shell_argv(program, command))
+        };
         #[cfg(not(windows))]
         let (program, args) = (
             "sh".to_string(),
@@ -203,14 +269,21 @@ impl CommandSpec {
             // For shell commands, show the actual command
             self.args[1].clone()
         } else if (self.program.eq_ignore_ascii_case("cmd")
-            && self.args.len() == 2
+            && self.args.len() >= 2
             && self.args[0].eq_ignore_ascii_case("/C"))
-            || ((self.program.eq_ignore_ascii_case("powershell")
-                || self.program.eq_ignore_ascii_case("pwsh"))
-                && self.args.len() == 2
-                && self.args[0].eq_ignore_ascii_case("-Command"))
+            || (cfg!(windows)
+                && is_powershell_program(&self.program)
+                && self.args.iter().any(|a| a.eq_ignore_ascii_case("-Command")))
         {
-            self.args[1].clone()
+            if let Some(idx) = self
+                .args
+                .iter()
+                .position(|a| a.eq_ignore_ascii_case("-Command"))
+            {
+                self.args.get(idx + 1).cloned().unwrap_or_default()
+            } else {
+                self.args.last().cloned().unwrap_or_default()
+            }
         } else {
             // For other commands, join program and args
             let mut parts = vec![self.program.clone()];
@@ -855,8 +928,10 @@ mod tests {
     fn expected_shell_command(command: &str) -> Vec<String> {
         #[cfg(windows)]
         {
-            let (shell, arg) = windows_shell();
-            vec![shell.to_string(), arg.to_string(), command.to_string()]
+            let (shell, _) = windows_shell();
+            let mut argv = vec![shell.to_string()];
+            argv.extend(windows_shell_argv(shell, command));
+            argv
         }
         #[cfg(not(windows))]
         {
@@ -870,9 +945,13 @@ mod tests {
 
         #[cfg(windows)]
         {
-            let (shell, arg) = windows_shell();
+            let (shell, _) = windows_shell();
             assert_eq!(spec.program, shell);
-            assert_eq!(spec.args, vec![arg, "echo hello"]);
+            assert_eq!(spec.args, windows_shell_argv(shell, "echo hello"));
+            if is_powershell_program(shell) {
+                assert!(spec.args.contains(&"-NoProfile".to_string()));
+                assert!(spec.args.contains(&"-NonInteractive".to_string()));
+            }
         }
         #[cfg(not(windows))]
         {

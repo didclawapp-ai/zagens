@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 
 use super::types::{ShellJobDetail, ShellJobSnapshot, ShellResult, ShellStatus};
 use crate::sandbox::{ExecEnv, SandboxManager, SandboxType};
-use crate::tools::shell_output::truncate_with_meta;
 
 pub(in crate::tools::shell) fn prepend_sandbox_enforcement_warning(
     exec_env: &ExecEnv,
@@ -545,11 +544,15 @@ impl BackgroundShell {
 
     /// Get a snapshot of the current state
     #[allow(dead_code)]
-    pub fn snapshot(&self) -> ShellResult {
+    pub fn snapshot(&self, workspace: &std::path::Path) -> ShellResult {
         let sandboxed = !matches!(self.sandbox_type, SandboxType::None);
         let (stdout_full, stderr_full, _, _) = self.full_output();
-        let (stdout, stdout_meta) = truncate_with_meta(&stdout_full);
-        let (stderr, stderr_meta) = truncate_with_meta(&stderr_full);
+        let (stdout, stdout_meta, stderr, stderr_meta, spill) =
+            crate::tools::shell_output::truncate_shell_streams_with_spill(
+                workspace,
+                &stdout_full,
+                &stderr_full,
+            );
         ShellResult {
             task_id: Some(self.id.clone()),
             status: self.status.clone(),
@@ -563,6 +566,7 @@ impl BackgroundShell {
             stderr_omitted: stderr_meta.omitted,
             stdout_truncated: stdout_meta.truncated,
             stderr_truncated: stderr_meta.truncated,
+            full_output_spill_path: spill.map(|s| s.read_path_hint),
             sandboxed,
             sandbox_type: if sandboxed {
                 Some(self.sandbox_type.to_string())

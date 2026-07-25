@@ -1,5 +1,8 @@
 //! Output truncation and summarization helpers for shell tools.
 
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
+
 /// Maximum output size before truncation (30KB like Claude Code).
 const MAX_OUTPUT_SIZE: usize = 30_000;
 /// Limits for summary strings in tool metadata.
@@ -55,6 +58,88 @@ pub(crate) fn truncate_with_meta(output: &str) -> (String, TruncationMeta) {
             truncated: true,
         },
     )
+}
+
+/// Spill metadata when truncated shell output is persisted under `.zagens/shell-output/`.
+#[derive(Debug, Clone)]
+pub(crate) struct ShellSpillInfo {
+    pub read_path_hint: String,
+    pub absolute_path: PathBuf,
+}
+
+/// Truncate stdout/stderr; when either exceeds [`MAX_OUTPUT_SIZE`], persist the full
+/// combined log under `{workspace}/.zagens/shell-output/`.
+pub(crate) fn truncate_shell_streams_with_spill(
+    workspace: &Path,
+    stdout_full: &str,
+    stderr_full: &str,
+) -> (
+    String,
+    TruncationMeta,
+    String,
+    TruncationMeta,
+    Option<ShellSpillInfo>,
+) {
+    let (stdout, stdout_meta) = truncate_with_meta(stdout_full);
+    let (stderr, stderr_meta) = truncate_with_meta(stderr_full);
+    let spill = if stdout_meta.truncated || stderr_meta.truncated {
+        persist_shell_combined_output(workspace, stdout_full, stderr_full).ok()
+    } else {
+        None
+    };
+    (stdout, stdout_meta, stderr, stderr_meta, spill)
+}
+
+/// Apply truncation + optional spill to shell buffer fields on [`ShellResult`].
+pub(crate) fn assign_truncated_shell_streams(
+    result: &mut crate::tools::shell::ShellResult,
+    workspace: &Path,
+    stdout_full: &str,
+    stderr_full: &str,
+) {
+    let (stdout, stdout_meta, stderr, stderr_meta, spill) =
+        truncate_shell_streams_with_spill(workspace, stdout_full, stderr_full);
+    result.stdout = stdout;
+    result.stderr = stderr;
+    result.stdout_len = stdout_meta.original_len;
+    result.stderr_len = stderr_meta.original_len;
+    result.stdout_omitted = stdout_meta.omitted;
+    result.stderr_omitted = stderr_meta.omitted;
+    result.stdout_truncated = stdout_meta.truncated;
+    result.stderr_truncated = stderr_meta.truncated;
+    result.full_output_spill_path = spill.map(|s| s.read_path_hint);
+}
+
+/// Append the model-visible spill hint when full output was saved to disk.
+pub(crate) fn append_shell_spill_note(content: &mut String, spill_path: Option<&str>) {
+    if let Some(path) = spill_path.filter(|p| !p.is_empty()) {
+        content.push_str(&format!(
+            "\n\nFull output saved to: {path}. Use read_file or grep_files to inspect the complete log."
+        ));
+    }
+}
+
+fn persist_shell_combined_output(
+    workspace: &Path,
+    stdout_full: &str,
+    stderr_full: &str,
+) -> std::io::Result<ShellSpillInfo> {
+    let spill_id = format!("shout_{}", &Uuid::new_v4().to_string()[..8]);
+    let rel = format!("shell-output/{spill_id}.log");
+    let path = zagens_config::workspace_meta_file_write(workspace, &rel);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let body = format!(
+        "=== STDOUT ({} bytes) ===\n{stdout_full}\n\n=== STDERR ({} bytes) ===\n{stderr_full}\n",
+        stdout_full.len(),
+        stderr_full.len()
+    );
+    std::fs::write(&path, body)?;
+    Ok(ShellSpillInfo {
+        read_path_hint: zagens_config::workspace_meta_rel(&rel),
+        absolute_path: path,
+    })
 }
 
 /// Extract high-signal summary lines from a chunk of output that would
@@ -315,5 +400,37 @@ note: see help
         let preserved = collect_summary_lines(body);
         assert!(preserved.iter().any(|line| line.contains("error[E0277]")));
         assert!(preserved.iter().any(|line| line.contains("warning:")));
+    }
+
+    #[test]
+    fn spill_persists_combined_output_when_truncated() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static SPILL_COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let workspace = std::env::temp_dir().join(format!(
+            "zagens-shell-spill-test-{}",
+            SPILL_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&workspace).expect("workspace dir");
+
+        let mut stdout = String::with_capacity(MAX_OUTPUT_SIZE + 500);
+        stdout.push_str("running 1 test\n");
+        while stdout.len() < MAX_OUTPUT_SIZE {
+            stdout.push('x');
+        }
+        stdout.push_str("\ntest result: ok. 1 passed\n");
+
+        let (_, stdout_meta, _, stderr_meta, spill) =
+            truncate_shell_streams_with_spill(&workspace, &stdout, "");
+        assert!(stdout_meta.truncated);
+        assert!(!stderr_meta.truncated);
+        let spill = spill.expect("spill path");
+        assert!(spill.absolute_path.is_file());
+        let saved = std::fs::read_to_string(&spill.absolute_path).expect("read spill");
+        assert!(saved.contains("=== STDOUT"));
+        assert!(saved.contains("test result: ok. 1 passed"));
+        assert!(spill.read_path_hint.starts_with(".zagens/shell-output/"));
+
+        let _ = std::fs::remove_dir_all(&workspace);
     }
 }

@@ -40,6 +40,10 @@ pub struct ShellResult {
     /// Whether stderr was truncated.
     #[serde(default)]
     pub stderr_truncated: bool,
+    /// Workspace-relative path (`.zagens/shell-output/…`) when full stdout/stderr
+    /// was spilled to disk because of the 30KB cap (S2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_output_spill_path: Option<String>,
     /// Whether the command was executed in a sandbox.
     #[serde(default)]
     pub sandboxed: bool,

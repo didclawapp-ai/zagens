@@ -1,5 +1,6 @@
 //! `exec_shell` ToolSpec.
 
+use super::super::description::exec_shell_tool_description;
 use super::super::failure_hints::apply_shell_failure_hints;
 use super::super::types::{ShellResult, ShellStatus};
 use super::helpers::{execute_foreground_via_background, shell_evidence};
@@ -7,7 +8,9 @@ use crate::command_safety::{SafetyLevel, analyze_command};
 use crate::execpolicy::{ExecPolicyDecision, load_default_policy};
 use crate::features::Feature;
 use crate::tools::shell_inputs::exec_shell_input_schema;
-use crate::tools::shell_output::{summarize_output, truncate_with_meta};
+use crate::tools::shell_output::{
+    append_shell_spill_note, summarize_output, truncate_shell_streams_with_spill,
+};
 use crate::tools::spec::{
     ApprovalRequirement, ToolCapability, ToolContext, ToolError, ToolResult, ToolSpec,
     optional_bool, optional_u64, required_str,
@@ -27,8 +30,8 @@ impl ToolSpec for ExecShellTool {
         "exec_shell"
     }
 
-    fn description(&self) -> &'static str {
-        "Execute a shell command in the workspace directory. Foreground mode is for bounded commands; use background=true or task_shell_start for long-running work, then poll/wait."
+    fn description(&self) -> &str {
+        exec_shell_tool_description()
     }
 
     fn input_schema(&self) -> serde_json::Value {
@@ -194,8 +197,12 @@ impl ToolSpec for ExecShellTool {
 
             let result = match backend_result {
                 Ok(output) => {
-                    let (stdout, stdout_meta) = truncate_with_meta(&output.stdout);
-                    let (stderr, stderr_meta) = truncate_with_meta(&output.stderr);
+                    let (stdout, stdout_meta, stderr, stderr_meta, spill) =
+                        truncate_shell_streams_with_spill(
+                            &context.workspace,
+                            &output.stdout,
+                            &output.stderr,
+                        );
                     ShellResult {
                         task_id: None,
                         status: if output.exit_code == 0 {
@@ -214,6 +221,7 @@ impl ToolSpec for ExecShellTool {
                         stderr_omitted: stderr_meta.omitted,
                         stdout_truncated: stdout_meta.truncated,
                         stderr_truncated: stderr_meta.truncated,
+                        full_output_spill_path: spill.map(|s| s.read_path_hint),
                         sandboxed: true,
                         sandbox_enforced: true,
                         sandbox_type: Some("opensandbox".to_string()),
@@ -235,13 +243,14 @@ impl ToolSpec for ExecShellTool {
             } else {
                 stdout_summary.clone()
             };
-            let output = if result.stdout.is_empty() && result.stderr.is_empty() {
+            let mut output = if result.stdout.is_empty() && result.stderr.is_empty() {
                 "(no output)".to_string()
             } else if result.stderr.is_empty() {
                 result.stdout.clone()
             } else {
                 format!("{}\n\nSTDERR:\n{}", result.stdout, result.stderr)
             };
+            append_shell_spill_note(&mut output, result.full_output_spill_path.as_deref());
 
             let metadata = json!({
                 "exit_code": result.exit_code,
@@ -347,7 +356,7 @@ impl ToolSpec for ExecShellTool {
                 } else {
                     stdout_summary.clone()
                 };
-                let output = if interactive {
+                let mut output = if interactive {
                     format!(
                         "Interactive command completed (exit code: {:?})",
                         result.exit_code
@@ -363,10 +372,12 @@ impl ToolSpec for ExecShellTool {
                 } else if result.status == ShellStatus::Running {
                     if backgrounded_foreground {
                         format!(
-                            "Command moved to background: {task_id_str}\n\nPoll with exec_shell_wait or cancel with exec_shell_cancel."
+                            "Command moved to background: {task_id_str}\n\nNext: exec_shell_wait({{\"task_id\": \"{task_id_str}\"}})\n\nOr cancel: exec_shell_cancel({{\"task_id\": \"{task_id_str}\"}})"
                         )
                     } else {
-                        format!("Background task started: {task_id_str}")
+                        format!(
+                            "Background task started: {task_id_str}\n\nNext: exec_shell_wait({{\"task_id\": \"{task_id_str}\"}})"
+                        )
                     }
                 } else if result.status == ShellStatus::Killed && was_cancelled {
                     format!(
@@ -384,6 +395,7 @@ impl ToolSpec for ExecShellTool {
                         result.exit_code, result.stdout, result.stderr
                     )
                 };
+                append_shell_spill_note(&mut output, result.full_output_spill_path.as_deref());
 
                 let mut metadata = json!({
                     "exit_code": result.exit_code,
@@ -400,6 +412,7 @@ impl ToolSpec for ExecShellTool {
                     "stderr_len": result.stderr_len,
                     "stdout_truncated": result.stdout_truncated,
                     "stderr_truncated": result.stderr_truncated,
+                    "full_output_spill_path": result.full_output_spill_path,
                     "stdout_omitted": result.stdout_omitted,
                     "stderr_omitted": result.stderr_omitted,
                     "summary": summary,

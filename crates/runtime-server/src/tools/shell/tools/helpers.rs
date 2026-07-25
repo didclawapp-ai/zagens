@@ -7,7 +7,7 @@ use anyhow::{Result, anyhow};
 
 use super::super::types::{ShellDeltaResult, ShellResult, ShellStatus};
 use crate::sandbox::SandboxPolicy as ExecutionSandboxPolicy;
-use crate::tools::shell_output::{summarize_output, truncate_with_meta};
+use crate::tools::shell_output::{append_shell_spill_note, summarize_output};
 use crate::tools::spec::{ToolContext, ToolError, ToolResult};
 use serde_json::json;
 
@@ -182,7 +182,7 @@ pub(super) fn build_shell_delta_tool_result(delta: ShellDeltaResult) -> ToolResu
         stdout_summary.clone()
     };
 
-    let output = if result.stdout.is_empty() && result.stderr.is_empty() {
+    let mut output = if result.stdout.is_empty() && result.stderr.is_empty() {
         match result.status {
             ShellStatus::Running => "Background task running (no new output).".to_string(),
             ShellStatus::Completed => "(no new output)".to_string(),
@@ -195,6 +195,7 @@ pub(super) fn build_shell_delta_tool_result(delta: ShellDeltaResult) -> ToolResu
     } else {
         format!("{}\n\nSTDERR:\n{}", result.stdout, result.stderr)
     };
+    append_shell_spill_note(&mut output, result.full_output_spill_path.as_deref());
 
     let evidence = shell_evidence(
         result.exit_code,
@@ -221,6 +222,7 @@ pub(super) fn build_shell_delta_tool_result(delta: ShellDeltaResult) -> ToolResu
             "stderr_len": result.stderr_len,
             "stdout_truncated": result.stdout_truncated,
             "stderr_truncated": result.stderr_truncated,
+            "full_output_spill_path": result.full_output_spill_path,
             "stdout_omitted": result.stdout_omitted,
             "stderr_omitted": result.stderr_omitted,
             "stdout_total_len": delta.stdout_total_len,
@@ -266,6 +268,7 @@ pub(super) async fn wait_for_shell_delta_cancellable(
                     &stderr_accum,
                     delta.stdout_total_len,
                     delta.stderr_total_len,
+                    &context.workspace,
                 ),
                 true,
             ));
@@ -301,6 +304,7 @@ pub(super) async fn wait_for_shell_delta_cancellable(
             &stderr_accum,
             stdout_total_len,
             stderr_total_len,
+            &context.workspace,
         ),
         false,
     ))
@@ -325,17 +329,14 @@ pub(super) fn shell_delta_with_accumulated_output(
     stderr_accum: &str,
     stdout_total_len: usize,
     stderr_total_len: usize,
+    workspace: &std::path::Path,
 ) -> ShellDeltaResult {
-    let (stdout, stdout_meta) = truncate_with_meta(stdout_accum);
-    let (stderr, stderr_meta) = truncate_with_meta(stderr_accum);
-    result.stdout = stdout;
-    result.stderr = stderr;
-    result.stdout_len = stdout_meta.original_len;
-    result.stderr_len = stderr_meta.original_len;
-    result.stdout_omitted = stdout_meta.omitted;
-    result.stderr_omitted = stderr_meta.omitted;
-    result.stdout_truncated = stdout_meta.truncated;
-    result.stderr_truncated = stderr_meta.truncated;
+    crate::tools::shell_output::assign_truncated_shell_streams(
+        &mut result,
+        workspace,
+        stdout_accum,
+        stderr_accum,
+    );
 
     ShellDeltaResult {
         result,

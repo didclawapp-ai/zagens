@@ -23,7 +23,7 @@
     },
     "cwd": {
       "type": "string",
-      "description": "Optional working directory for the command"
+      "description": "Working directory for the command. Use this instead of `cd` / `Set-Location` inside the command string."
     },
     "tty": {
       "type": "boolean",

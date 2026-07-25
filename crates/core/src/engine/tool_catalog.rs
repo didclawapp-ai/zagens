@@ -38,6 +38,7 @@ pub fn should_default_defer_tool(name: &str, mode: TurnLoopMode) -> bool {
             "exec_shell"
                 | "exec_shell_wait"
                 | "exec_shell_interact"
+                | "exec_shell_cancel"
                 | "exec_wait"
                 | "exec_interact"
         );
@@ -513,6 +514,14 @@ mod tests {
     fn deferral_keeps_shell_eager_in_agent_mode() {
         assert!(!should_default_defer_tool(
             "exec_shell",
+            TurnLoopMode::Agent
+        ));
+        assert!(!should_default_defer_tool(
+            "exec_shell_wait",
+            TurnLoopMode::Agent
+        ));
+        assert!(!should_default_defer_tool(
+            "exec_shell_cancel",
             TurnLoopMode::Agent
         ));
         assert!(should_default_defer_tool("exec_shell", TurnLoopMode::Plan));

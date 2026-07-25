@@ -21,7 +21,9 @@ pub struct ExecShellInput {
     pub interactive: Option<bool>,
     #[schemars(description = "Optional stdin data to send before waiting (non-interactive only)")]
     pub stdin: Option<String>,
-    #[schemars(description = "Optional working directory for the command")]
+    #[schemars(
+        description = "Working directory for the command. Use this instead of `cd` / `Set-Location` inside the command string."
+    )]
     pub cwd: Option<String>,
     #[schemars(
         description = "Allocate a pseudo-terminal for interactive programs (implies background)"

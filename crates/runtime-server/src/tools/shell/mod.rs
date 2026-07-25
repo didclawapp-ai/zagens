@@ -10,6 +10,7 @@
 //! - Sandbox support (macOS Seatbelt)
 //! - Streaming output (future)
 
+mod description;
 mod failure_hints;
 mod host;
 mod manager;
@@ -22,7 +23,7 @@ mod windows_sandbox;
 
 pub use host::{SharedShellManager, TuiShellHost, new_shared_shell_manager};
 pub use tools::{ExecShellTool, NoteTool, ShellCancelTool, ShellInteractTool, ShellWaitTool};
-pub(crate) use types::ShellStatus;
+pub(crate) use types::{ShellResult, ShellStatus};
 
 #[cfg(test)]
 pub(crate) use manager::ShellManager;
