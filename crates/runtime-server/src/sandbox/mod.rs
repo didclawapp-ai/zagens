@@ -43,7 +43,7 @@ pub mod windows;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 
 use zagens_config::WindowsSandboxModeToml;
@@ -109,12 +109,37 @@ pub struct CommandSpec {
     pub justification: Option<String>,
 }
 
+static AGENT_SHELL_PREFERENCE: OnceLock<RwLock<Option<String>>> = OnceLock::new();
+
+fn agent_shell_store() -> &'static RwLock<Option<String>> {
+    AGENT_SHELL_PREFERENCE.get_or_init(|| RwLock::new(None))
+}
+
+/// Process-wide `[agent] shell` preference for hooks, gates, and `CommandSpec::shell`.
+pub fn configure_agent_shell(pref: Option<String>) {
+    if let Ok(mut guard) = agent_shell_store().write() {
+        *guard = pref.filter(|s| !s.trim().is_empty());
+    }
+}
+
+/// Wire `[agent] shell` into spawn helpers (call once after config load / before engines).
+pub fn apply_agent_shell_config(pref: Option<String>) {
+    configure_agent_shell(pref);
+}
+
+pub(crate) fn configured_agent_shell_preference() -> Option<String> {
+    agent_shell_store()
+        .read()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
 /// Returns the best-available Windows shell as (program, arg_prefix).
 /// Tries pwsh (PowerShell 7+) first, then powershell (Windows PowerShell 5.1);
 /// falls back to cmd.exe only when neither PowerShell is available.
 #[cfg(windows)]
 pub(crate) fn windows_shell() -> (&'static str, &'static str) {
-    windows_shell_for(None)
+    windows_shell_for(configured_agent_shell_preference().as_deref())
 }
 
 /// Returns the Windows shell for a given preference (agent.shell config).
@@ -206,7 +231,9 @@ impl CommandSpec {
     ) -> Self {
         #[cfg(windows)]
         let (program, args) = {
-            let (program, _) = windows_shell_for(shell_preference);
+            let configured = configured_agent_shell_preference();
+            let effective_pref = shell_preference.or(configured.as_deref());
+            let (program, _) = windows_shell_for(effective_pref);
             (program.to_string(), windows_shell_argv(program, command))
         };
         #[cfg(not(windows))]
@@ -959,6 +986,17 @@ mod tests {
             assert_eq!(spec.args, vec!["-c", "echo hello"]);
         }
         assert_eq!(spec.display_command(), "echo hello");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn configured_agent_shell_overrides_auto_detect() {
+        configure_agent_shell(Some("cmd".to_string()));
+        let (program, _) = windows_shell();
+        assert_eq!(program, "cmd");
+        let spec = CommandSpec::shell("echo hi", PathBuf::from("."), Duration::from_secs(5));
+        assert_eq!(spec.program, "cmd");
+        configure_agent_shell(None);
     }
 
     #[test]

@@ -108,6 +108,13 @@ impl Config {
                 }
             }
         }
+        if let Some(shell) = self.agent_shell_raw()
+            && !zagens_config::is_valid_agent_shell(shell)
+        {
+            anyhow::bail!(
+                "Invalid [agent] shell '{shell}': expected auto, pwsh, powershell, or cmd."
+            );
+        }
         if let Some(model) = self.default_text_model.as_deref()
             && !model.trim().eq_ignore_ascii_case("auto")
             && !matches!(
@@ -660,6 +667,29 @@ impl Config {
     #[must_use]
     pub fn allow_shell(&self) -> bool {
         self.allow_shell.unwrap_or(true)
+    }
+
+    /// Raw `[agent] shell` value from config (may be `"auto"` or unset).
+    #[must_use]
+    pub fn agent_shell_raw(&self) -> Option<&str> {
+        self.agent
+            .as_ref()
+            .and_then(|agent| agent.shell.as_deref())
+            .filter(|s| !s.trim().is_empty())
+    }
+
+    /// Resolved Windows shell preference for spawn/description (`None` = auto-detect).
+    #[must_use]
+    pub fn agent_shell(&self) -> Option<String> {
+        self.agent_shell_raw()
+            .and_then(zagens_config::normalize_agent_shell)
+            .map(str::to_string)
+    }
+
+    /// Apply `[agent] shell` to process-wide spawn helpers and the exec_shell tool description.
+    pub fn apply_agent_shell_runtime(&self) {
+        crate::sandbox::apply_agent_shell_config(self.agent_shell());
+        crate::tools::shell::init_exec_shell_tool_description(self.agent_shell().as_deref());
     }
 
     /// Return whether trust mode is permitted at the deployment level.

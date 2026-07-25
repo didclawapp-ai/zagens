@@ -29,6 +29,7 @@ pub use generated::{
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
+mod agent;
 pub mod api_base_url;
 pub mod deep_link;
 mod hooks_config;
@@ -37,6 +38,7 @@ mod lht_presets;
 mod paths;
 mod ui_settings;
 mod windows;
+pub use agent::{AgentConfigToml, is_valid_agent_shell, normalize_agent_shell};
 pub use api_base_url::{
     has_trailing_api_version_segment, openai_compatible_api_url, openai_compatible_models_url,
     unversioned_openai_base_url, versioned_openai_base_url,
@@ -285,6 +287,9 @@ pub struct ConfigToml {
     /// Windows native sandbox (`[windows]` table).
     #[serde(default)]
     pub windows: Option<WindowsConfigToml>,
+    /// Agent harness (`[agent]` table) — shell spawn preference, etc.
+    #[serde(default)]
+    pub agent: Option<AgentConfigToml>,
     /// User-defined OpenAI-compatible providers (`[custom_providers.<id>]`).
     #[serde(default)]
     pub custom_providers: BTreeMap<String, CustomProviderToml>,
@@ -802,6 +807,9 @@ impl ConfigToml {
         }
         if project.compaction.is_some() {
             self.compaction = project.compaction;
+        }
+        if project.agent.is_some() {
+            self.agent = project.agent;
         }
         for (k, v) in project.extras {
             self.extras.insert(k, v);

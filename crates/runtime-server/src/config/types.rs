@@ -753,6 +753,10 @@ pub struct Config {
     #[serde(default)]
     pub windows: Option<zagens_config::WindowsConfigToml>,
 
+    /// Agent harness (`[agent]` table) — shell spawn preference, etc.
+    #[serde(default)]
+    pub agent: Option<zagens_config::AgentConfigToml>,
+
     /// Tool-plane kernel-v2 knobs (`[tools]` table).
     #[serde(default)]
     pub tools: Option<ToolsConfigToml>,

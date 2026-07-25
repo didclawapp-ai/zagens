@@ -122,6 +122,7 @@ pub(crate) fn merge_config(base: Config, override_cfg: Config) -> Config {
         long_horizon: override_cfg.long_horizon.or(base.long_horizon),
         compaction: override_cfg.compaction.or(base.compaction),
         windows: override_cfg.windows.or(base.windows),
+        agent: merge_agent_config(base.agent, override_cfg.agent),
         tools: merge_tools_config(base.tools, override_cfg.tools),
         kernel: override_cfg.kernel.or(base.kernel),
         browser: merge_browser_config(base.browser, override_cfg.browser),
@@ -141,6 +142,20 @@ fn merge_browser_config(
         (Some(b), Some(o)) => Some(crate::config::BrowserConfigToml {
             yolo: o.yolo.or(b.yolo),
             allow_private_lan: o.allow_private_lan.or(b.allow_private_lan),
+        }),
+    }
+}
+
+fn merge_agent_config(
+    base: Option<zagens_config::AgentConfigToml>,
+    override_cfg: Option<zagens_config::AgentConfigToml>,
+) -> Option<zagens_config::AgentConfigToml> {
+    match (base, override_cfg) {
+        (None, None) => None,
+        (Some(b), None) => Some(b),
+        (None, Some(o)) => Some(o),
+        (Some(b), Some(o)) => Some(zagens_config::AgentConfigToml {
+            shell: o.shell.or(b.shell),
         }),
     }
 }

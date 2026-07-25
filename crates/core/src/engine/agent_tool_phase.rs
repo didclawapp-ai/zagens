@@ -155,6 +155,7 @@ pub fn phase_bonus_eager_tools(phase: AgentToolPhase) -> &'static [&'static str]
 }
 
 /// UX / discovery tools that stay on the native deferral policy (not phase-shrunk).
+/// Shell tools follow native defer (Agent mode: eager) — phase policy must not re-defer them.
 fn phase_always_eager(name: &str) -> bool {
     is_tool_search_tool(name)
         || matches!(
@@ -172,6 +173,12 @@ fn phase_always_eager(name: &str) -> bool {
                 | "scratchpad_list_notes"
                 | "rlm"
                 | "recall_archive"
+                | "exec_shell"
+                | "exec_shell_wait"
+                | "exec_shell_interact"
+                | "exec_shell_cancel"
+                | "exec_wait"
+                | "exec_interact"
         )
 }
 
@@ -466,6 +473,31 @@ mod tests {
             true,
         );
         assert_eq!(hint, FailureHotStart::CompileDiagnostics);
+    }
+
+    #[test]
+    fn explore_phase_keeps_shell_tools_eager() {
+        let catalog = vec![
+            tool("exec_shell", false),
+            tool("exec_shell_wait", false),
+            tool("exec_shell_cancel", false),
+            tool("edit_file", false),
+        ];
+        let out = apply_agent_phase_catalog(catalog, AgentToolPhase::Explore, TurnLoopMode::Agent);
+        for name in ["exec_shell", "exec_shell_wait", "exec_shell_cancel"] {
+            assert_eq!(
+                out.iter().find(|t| t.name == name).unwrap().defer_loading,
+                Some(false),
+                "{name} should stay eager in Explore"
+            );
+        }
+        assert_eq!(
+            out.iter()
+                .find(|t| t.name == "edit_file")
+                .unwrap()
+                .defer_loading,
+            Some(true)
+        );
     }
 
     #[test]

@@ -117,7 +117,9 @@ pub fn build_engine(config: EngineConfig, api_config: &Config) -> (Engine, Engin
         .shell_manager
         .clone()
         .unwrap_or_else(|| new_shared_shell_manager(lean.workspace.clone()));
+    api_config.apply_agent_shell_runtime();
     if let Ok(mut guard) = shell_manager.lock() {
+        guard.set_shell_preference(api_config.agent_shell());
         guard.set_windows_sandbox_mode(resolve_windows_sandbox_mode(api_config));
         guard.set_windows_private_desktop(resolve_windows_sandbox_private_desktop(api_config));
         guard.set_prefer_bwrap(api_config.prefer_bwrap.unwrap_or(false));

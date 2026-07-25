@@ -60,6 +60,7 @@ pub fn load_cli_context(cli: &Cli) -> Result<CliContext> {
     if !cli.no_project_config {
         merge_project_config(&mut config, &workspace);
     }
+    config.apply_agent_shell_runtime();
     Ok(CliContext { config, workspace })
 }
 

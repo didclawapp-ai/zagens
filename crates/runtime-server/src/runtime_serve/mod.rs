@@ -122,6 +122,7 @@ pub async fn run(cli: RuntimeServeCli) -> Result<()> {
     let _ = crate::config::ensure_config_file_exists(cli.config.clone());
 
     let config = load_config(&cli)?;
+    config.apply_agent_shell_runtime();
     let workspace = resolve_workspace(&cli);
     crate::symbol_index::warmup_if_needed(&workspace);
     let skills_dir = config.skills_dir();

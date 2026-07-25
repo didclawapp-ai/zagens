@@ -21,6 +21,7 @@ mod types;
 #[cfg(windows)]
 mod windows_sandbox;
 
+pub use description::init_exec_shell_tool_description;
 pub use host::{SharedShellManager, TuiShellHost, new_shared_shell_manager};
 pub use tools::{ExecShellTool, NoteTool, ShellCancelTool, ShellInteractTool, ShellWaitTool};
 pub(crate) use types::{ShellResult, ShellStatus};
