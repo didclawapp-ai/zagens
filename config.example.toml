@@ -34,7 +34,8 @@ base_url = "https://api.deepseek.com/beta"
 # ─────────────────────────────────────────────────────────────────────────────────
 # DeepSeek V4 family:
 #   deepseek-v4-pro             — flagship reasoning model on DeepSeek Platform
-#   deepseek-v4-flash           — fast, cost-efficient (legacy aliases: deepseek-chat, deepseek-reasoner)
+#   deepseek-v4-flash           — DeepSeek-V4-Flash-0731 (aliases: deepseek-v4-flash-0731; legacy: deepseek-chat, deepseek-reasoner)
+#                                 Chat Completions; Responses API is Codex-oriented and not used by Zagens yet
 #   deepseek-ai/deepseek-v4-pro   — NVIDIA NIM-hosted Pro model ID
 #   deepseek-ai/deepseek-v4-flash — NVIDIA NIM-hosted Flash model ID
 #   accounts/fireworks/models/deepseek-v4-pro — Fireworks AI Pro model ID

@@ -77,6 +77,8 @@ pub fn canonical_model_name(model: &str) -> Option<&'static str> {
     match model.trim().to_ascii_lowercase().as_str() {
         "deepseek-v4pro" => Some("deepseek-v4-pro"),
         "deepseek-v4flash" => Some("deepseek-v4-flash"),
+        // Official version label DeepSeek-V4-Flash-0731 still wires as deepseek-v4-flash.
+        "deepseek-v4-flash-0731" | "deepseek-v4flash-0731" => Some("deepseek-v4-flash"),
         _ => None,
     }
 }

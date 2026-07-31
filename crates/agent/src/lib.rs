@@ -45,6 +45,8 @@ impl Default for ModelRegistry {
                     "deepseek-r1".to_string(),
                     "deepseek-v3".to_string(),
                     "deepseek-v3.2".to_string(),
+                    "deepseek-v4-flash-0731".to_string(),
+                    "deepseek-v4flash-0731".to_string(),
                 ],
                 supports_tools: true,
                 supports_reasoning: true,

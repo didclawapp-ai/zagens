@@ -7,12 +7,12 @@ export const DESKTOP_MODEL_PRESET_IDS = [
 
 const PRESET_LABELS: Record<string, string> = {
   'deepseek-v4-pro': 'DeepSeek V4 Pro',
-  'deepseek-v4-flash': 'DeepSeek V4 Flash',
+  'deepseek-v4-flash': 'DeepSeek V4 Flash (0731)',
 };
 
 const PRESET_SHORT: Record<string, string> = {
   'deepseek-v4-pro': 'V4 Pro',
-  'deepseek-v4-flash': 'V4 Flash',
+  'deepseek-v4-flash': 'Flash 0731',
 };
 
 export const DEFAULT_COMPOSER_MODEL = 'deepseek-v4-pro';

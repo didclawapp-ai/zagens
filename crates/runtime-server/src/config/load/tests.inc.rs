@@ -899,6 +899,15 @@ fn normalize_model_name_preserves_v_series_snapshots() {
         normalize_model_name("deepseek-v4pro").as_deref(),
         Some("deepseek-v4-pro")
     );
+    // Official Flash-0731 version label remaps to the live API id.
+    assert_eq!(
+        normalize_model_name("deepseek-v4-flash-0731").as_deref(),
+        Some("deepseek-v4-flash")
+    );
+    assert_eq!(
+        normalize_model_name("DeepSeek-V4-Flash-0731").as_deref(),
+        Some("deepseek-v4-flash")
+    );
     // v-series dated snapshots pass through unchanged
     assert_eq!(
         normalize_model_name("deepseek-v4-flash-20260423").as_deref(),

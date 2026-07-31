@@ -78,13 +78,13 @@ export {
 /** @deprecated Use `composerModelLabel` from `lib/composerModels`. */
 export const DESKTOP_MODEL_LABELS: Record<string, string> = {
   'deepseek-v4-pro': 'DeepSeek V4 Pro',
-  'deepseek-v4-flash': 'DeepSeek V4 Flash',
+  'deepseek-v4-flash': 'DeepSeek V4 Flash (0731)',
 };
 
 /** @deprecated Use `composerModelShortLabel` from `lib/composerModels`. */
 export const DESKTOP_MODEL_SHORT_LABELS: Record<string, string> = {
   'deepseek-v4-pro': 'V4 Pro',
-  'deepseek-v4-flash': 'V4 Flash',
+  'deepseek-v4-flash': 'Flash 0731',
 };
 
 /** Compact label for Composer routing status chip. */

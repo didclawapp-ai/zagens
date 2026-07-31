@@ -1695,24 +1695,45 @@ fn normalize_model_for_provider(provider: ProviderKind, model: &str) -> String {
         }
         (
             ProviderKind::NvidiaNim,
-            "deepseek-v4-flash" | "deepseek-v4flash" | "deepseek-chat" | "deepseek-reasoner"
-            | "deepseek-r1" | "deepseek-v3" | "deepseek-v3.2",
+            "deepseek-v4-flash"
+            | "deepseek-v4flash"
+            | "deepseek-v4-flash-0731"
+            | "deepseek-v4flash-0731"
+            | "deepseek-chat"
+            | "deepseek-reasoner"
+            | "deepseek-r1"
+            | "deepseek-v3"
+            | "deepseek-v3.2",
         ) => DEFAULT_NVIDIA_NIM_FLASH_MODEL.to_string(),
         (ProviderKind::Openrouter, "deepseek-v4-pro" | "deepseek-v4pro") => {
             DEFAULT_OPENROUTER_MODEL.to_string()
         }
         (
             ProviderKind::Openrouter,
-            "deepseek-v4-flash" | "deepseek-v4flash" | "deepseek-chat" | "deepseek-reasoner"
-            | "deepseek-r1" | "deepseek-v3" | "deepseek-v3.2",
+            "deepseek-v4-flash"
+            | "deepseek-v4flash"
+            | "deepseek-v4-flash-0731"
+            | "deepseek-v4flash-0731"
+            | "deepseek-chat"
+            | "deepseek-reasoner"
+            | "deepseek-r1"
+            | "deepseek-v3"
+            | "deepseek-v3.2",
         ) => DEFAULT_OPENROUTER_FLASH_MODEL.to_string(),
         (ProviderKind::Novita, "deepseek-v4-pro" | "deepseek-v4pro") => {
             DEFAULT_NOVITA_MODEL.to_string()
         }
         (
             ProviderKind::Novita,
-            "deepseek-v4-flash" | "deepseek-v4flash" | "deepseek-chat" | "deepseek-reasoner"
-            | "deepseek-r1" | "deepseek-v3" | "deepseek-v3.2",
+            "deepseek-v4-flash"
+            | "deepseek-v4flash"
+            | "deepseek-v4-flash-0731"
+            | "deepseek-v4flash-0731"
+            | "deepseek-chat"
+            | "deepseek-reasoner"
+            | "deepseek-r1"
+            | "deepseek-v3"
+            | "deepseek-v3.2",
         ) => DEFAULT_NOVITA_FLASH_MODEL.to_string(),
         (ProviderKind::Fireworks, "deepseek-v4-pro" | "deepseek-v4pro") => {
             DEFAULT_FIREWORKS_MODEL.to_string()
@@ -1722,16 +1743,30 @@ fn normalize_model_for_provider(provider: ProviderKind, model: &str) -> String {
         }
         (
             ProviderKind::Sglang,
-            "deepseek-v4-flash" | "deepseek-v4flash" | "deepseek-chat" | "deepseek-reasoner"
-            | "deepseek-r1" | "deepseek-v3" | "deepseek-v3.2",
+            "deepseek-v4-flash"
+            | "deepseek-v4flash"
+            | "deepseek-v4-flash-0731"
+            | "deepseek-v4flash-0731"
+            | "deepseek-chat"
+            | "deepseek-reasoner"
+            | "deepseek-r1"
+            | "deepseek-v3"
+            | "deepseek-v3.2",
         ) => DEFAULT_SGLANG_FLASH_MODEL.to_string(),
         (ProviderKind::Vllm, "deepseek-v4-pro" | "deepseek-v4pro") => {
             DEFAULT_VLLM_MODEL.to_string()
         }
         (
             ProviderKind::Vllm,
-            "deepseek-v4-flash" | "deepseek-v4flash" | "deepseek-chat" | "deepseek-reasoner"
-            | "deepseek-r1" | "deepseek-v3" | "deepseek-v3.2",
+            "deepseek-v4-flash"
+            | "deepseek-v4flash"
+            | "deepseek-v4-flash-0731"
+            | "deepseek-v4flash-0731"
+            | "deepseek-chat"
+            | "deepseek-reasoner"
+            | "deepseek-r1"
+            | "deepseek-v3"
+            | "deepseek-v3.2",
         ) => DEFAULT_VLLM_FLASH_MODEL.to_string(),
         _ => model.to_string(),
     }
