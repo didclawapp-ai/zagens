@@ -419,9 +419,9 @@ mod tests {
         log.append(KernelEvent::StageGateBlocked {
             turn_id: tid.clone(),
             step_idx: 2,
-            skill: "office-weekly-report".into(),
-            stage: "prepare".into(),
-            tool_name: "write_office".into(),
+            skill: "python-csv-pipeline".into(),
+            stage: "inspect".into(),
+            tool_name: "exec_shell".into(),
             code: "stage_gate_blocked".into(),
             suggestion: "Complete prepare first.".into(),
         })

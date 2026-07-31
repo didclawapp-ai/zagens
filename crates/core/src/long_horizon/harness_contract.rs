@@ -376,16 +376,16 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const OFFICE_FIXTURE: &str = include_str!(concat!(
+    const PYTHON_CSV_FIXTURE: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/harness/office-write-skill-manifest.toml"
+        "/../../fixtures/harness/python-csv-skill-manifest.toml"
     ));
 
     #[test]
-    fn parses_office_fixture() {
-        let contract = HarnessContract::parse_toml(OFFICE_FIXTURE).expect("office fixture");
-        assert_eq!(contract.harness.id, "office-write");
-        assert_eq!(contract.stages.len(), 3);
+    fn parses_python_csv_fixture() {
+        let contract = HarnessContract::parse_toml(PYTHON_CSV_FIXTURE).expect("python csv fixture");
+        assert_eq!(contract.harness.id, "python-csv-pipeline");
+        assert!(contract.stages.len() >= 3);
         assert!(contract.verify.iter().any(|v| v.predicate == "file_count"));
     }
 
@@ -394,25 +394,25 @@ mod tests {
         let contract = HarnessContract {
             stages: vec![
                 StageSpec {
-                    id: "prepare".into(),
-                    tools: vec!["read_office".into()],
+                    id: "inspect".into(),
+                    tools: vec!["read_file".into()],
                     requires: vec![],
                 },
                 StageSpec {
-                    id: "write".into(),
-                    tools: vec!["write_office".into()],
-                    requires: vec!["prepare".into()],
+                    id: "deliver".into(),
+                    tools: vec!["write_file".into()],
+                    requires: vec!["inspect".into()],
                 },
             ],
             verify: vec![
                 VerifyEntry {
-                    stage: Some("prepare".into()),
+                    stage: Some("inspect".into()),
                     id: None,
                     predicate: "file_exists".into(),
                     args: json!({"path": "x"}),
                 },
                 VerifyEntry {
-                    stage: Some("write".into()),
+                    stage: Some("deliver".into()),
                     id: None,
                     predicate: "file_exists".into(),
                     args: json!({"path": "y"}),
@@ -420,17 +420,17 @@ mod tests {
             ],
             ..Default::default()
         };
-        assert_eq!(contract.current_stage_id(&[]).as_deref(), Some("prepare"));
-        assert!(contract.tool_allowed("read_office", &[]));
-        assert!(!contract.tool_allowed("write_office", &[]));
+        assert_eq!(contract.current_stage_id(&[]).as_deref(), Some("inspect"));
+        assert!(contract.tool_allowed("read_file", &[]));
+        assert!(!contract.tool_allowed("write_file", &[]));
         assert!(contract.tool_allowed("assert_tests_pass", &[]));
 
-        let verified = vec!["prepare".to_string()];
+        let verified = vec!["inspect".to_string()];
         assert_eq!(
             contract.current_stage_id(&verified).as_deref(),
-            Some("write")
+            Some("deliver")
         );
-        assert!(contract.tool_allowed("write_office", &verified));
+        assert!(contract.tool_allowed("write_file", &verified));
     }
 
     #[test]
@@ -450,15 +450,15 @@ mod tests {
     }
 
     #[test]
-    fn validate_office_fixture_ok() {
-        let contract = HarnessContract::parse_toml(OFFICE_FIXTURE).expect("office fixture");
+    fn validate_python_csv_fixture_ok() {
+        let contract = HarnessContract::parse_toml(PYTHON_CSV_FIXTURE).expect("python csv fixture");
         let report = contract.validate();
         assert!(report.ok, "{:?}", report.errors);
     }
 
     #[test]
     fn flat_queue_gate_rows_skip_staged_verify() {
-        let contract = HarnessContract::parse_toml(OFFICE_FIXTURE).expect("office fixture");
+        let contract = HarnessContract::parse_toml(PYTHON_CSV_FIXTURE).expect("python csv fixture");
         assert!(contract.flat_queue_gate_rows().is_empty());
         let flat = HarnessContract::parse_toml(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),

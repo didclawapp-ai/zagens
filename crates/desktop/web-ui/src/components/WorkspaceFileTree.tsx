@@ -2,7 +2,6 @@ import { useCallback } from 'react';
 import { useT } from '../i18n';
 import {
   filterBrowseEntries,
-  filterEntriesForOfficeChanges,
   joinWorkspaceRel,
   workspaceRelPathsEqual,
   type BrowseEntry,
@@ -17,8 +16,6 @@ export interface WorkspaceFileTreeProps {
   onToggleExpanded: (dirRel: string) => void;
   showHidden: boolean;
   previewRel: string | null;
-  /** When set, only show changed files and dirs that contain them. */
-  officeChangePaths?: ReadonlySet<string>;
   ensureLoaded: (dirRel: string) => Promise<BrowseEntry[]>;
   onOpenFile: (relPath: string, title: string) => void;
   onAddToChat?: (relPath: string, isDirectory?: boolean) => void;
@@ -38,12 +35,9 @@ function TreeDir({
   depth: number;
   props: WorkspaceFileTreeProps;
 }) {
-  const { cache, loadingPaths, expanded, showHidden, officeChangePaths } = props;
+  const { cache, loadingPaths, expanded, showHidden } = props;
   const entries = cache.get(dirRel) ?? [];
-  let visible = filterBrowseEntries(entries, '', showHidden);
-  if (officeChangePaths?.size) {
-    visible = filterEntriesForOfficeChanges(visible, dirRel, officeChangePaths);
-  }
+  const visible = filterBrowseEntries(entries, '', showHidden);
   const isLoading = loadingPaths.has(dirRel);
 
   if (!expanded.has(dirRel)) return null;
@@ -156,13 +150,10 @@ function TreeEntry({
 
 export default function WorkspaceFileTree(props: WorkspaceFileTreeProps) {
   const { t } = useT();
-  const { cache, showHidden, loadingPaths, officeChangePaths } = props;
+  const { cache, showHidden, loadingPaths } = props;
 
   const rootEntries = cache.get('') ?? [];
-  let visibleRoot = filterBrowseEntries(rootEntries, '', showHidden);
-  if (officeChangePaths?.size) {
-    visibleRoot = filterEntriesForOfficeChanges(visibleRoot, '', officeChangePaths);
-  }
+  const visibleRoot = filterBrowseEntries(rootEntries, '', showHidden);
 
   return (
     <ul className="space-y-0.5" role="tree" aria-label={t('workspaceFiles.treeAria')}>

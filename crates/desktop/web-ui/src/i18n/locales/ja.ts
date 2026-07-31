@@ -50,81 +50,6 @@ const ja: TranslationMap = {
         '最近の変更または指定モジュールのテストを追加：既存のテスト構成を説明し、必要最小限のケースを書き、関連テストコマンドを実行してください。',
     },
   },
-  officeEmpty: {
-    title: 'Office モード',
-    subtitle: '文書の作成・整理・納品',
-    hint: 'タスクカードでプロンプトを入力欄に入れるか、下に直接入力',
-    cards: {
-      executiveDailyBrief: {
-        title: '経営日報サマリー',
-        hint: 'DOCX · inbox 複数部門',
-      },
-      customerQuote: {
-        title: '顧客見積書',
-        hint: 'XLSX · 価格表 + 計算',
-      },
-      productionDailyReport: {
-        title: '生産・品質モーニング',
-        hint: 'DOCX · 表読み込み後に概要',
-      },
-      weeklyReport: {
-        title: '週報',
-        hint: 'DOCX · 既定 deliverables/',
-      },
-      meetingMinutes: {
-        title: '議事録',
-        hint: 'DOCX · 議題とアクション',
-      },
-      projectDeck: {
-        title: 'プロジェクト報告 PPT',
-        hint: 'PPTX · 表紙と要点',
-      },
-      dataReport: {
-        title: 'データレポート',
-        hint: 'XLSX · 表とグラフ',
-      },
-      competitiveAnalysis: {
-        title: '競合分析',
-        hint: 'DOCX · 調査と出典',
-      },
-      contractDraft: {
-        title: '契約初稿',
-        hint: 'DOCX · 条項構成',
-      },
-      resume: {
-        title: '履歴書 / 志望書',
-        hint: 'DOCX · 個人資料',
-      },
-      releaseNotes: {
-        title: 'リリースノート',
-        hint: 'DOCX · 版と変更',
-      },
-    },
-    prefill: {
-      executiveDailyBrief:
-        '昨日の経営日報を集約（DOCX）。先に load_skill office-executive-daily-brief：list_dir inbox/ で各部門添付を read_office、文字概要と未決事項の下書きを出し、確認後 write_office で deliverables/（path 省略可）。',
-      customerQuote:
-        '顧客見積（XLSX）。load_skill office-customer-quote：read_office で data/价目表.csv と data/客户需求.md を読み、税込合計を計算、write_office で deliverables/（path 省略可）。',
-      productionDailyReport:
-        '昨日の生産・品質状況（DOCX）。load_skill office-production-daily-report：read_office で data/生产日报_昨日.xlsx、文字概要の後に確認して write_office で deliverables/（path 省略可）。',
-      weeklyReport:
-        '今週の週報（DOCX）を作成してください。先に load_skill office-weekly-report を実行し、期間と宛先を確認、添付があれば read_office、write_office は deliverables/（path 省略可）。',
-      meetingMinutes:
-        '議事録（DOCX）を作成。先に load_skill office-meeting-minutes、日時と参加者を確認、資料があれば read_office、write_office は deliverables/（path 省略可）。',
-      projectDeck:
-        'プロジェクト報告 PPT（PPTX）。先に load_skill office-project-report、プロジェクト名を確認、write_office は deliverables/（path 省略可）。',
-      dataReport:
-        'Excel データレポート（XLSX）。先に load_skill office-data-report、表があれば read_office の後 write_office で deliverables/ に出力。',
-      competitiveAnalysis:
-        '競合分析レポート（DOCX）。先に load_skill office-competitive-analysis、web_search で調査し出典を明記、write_office は deliverables/。',
-      contractDraft:
-        '契約初稿（DOCX）。先に load_skill office-contract-draft、契約種別と当事者を確認、write_office は deliverables/。',
-      resume:
-        '履歴書と志望書（DOCX）。先に load_skill office-resume、希望職種を確認、write_office は deliverables/。',
-      releaseNotes:
-        'リリースノート（DOCX）。先に load_skill office-release-notes、版と対象読者を確認、write_office は deliverables/。',
-    },
-  },
   a11y: {
     skipToMain: 'メインコンテンツへスキップ',
     skipToComposer: 'メッセージ入力へスキップ',
@@ -574,15 +499,11 @@ const ja: TranslationMap = {
     visionBridgeEmpty: 'Vision bridge が空のコンテンツを返しました。プロバイダーの応答形式が認識されていない可能性があります。',
     taskTypeAuto: '自動',
     taskTypeAutoHint: 'ワークスペースと最初のメッセージから推定。新規セッションに適用',
-    taskTypeOffice: 'Office',
-    taskTypeOfficeHint: 'チャットとオフィス文書。簡素化されたツールとプロンプト',
     taskTypeCode: 'Code',
     taskTypeCodeHint: 'フルプログラミング agent ツールセット',
     taskTypeLocked: 'このセッションは {{type}} モードに固定されています',
     selectTaskType: 'タスクタイプ',
     agentModeHint: 'WorkspaceWrite + ネットワーク（engine #273 shell 昇格）',
-    officeRunModeHint: 'Office モードは Agent のみ使用（Plan / YOLO なし）',
-    officeStatusBar: 'Office · deliverables/ · 生成後にプレビュー',
     runModeYoloHint: 'DangerFullAccess: SandboxPolicy が完全に制限なし（注意して使用）',
   },
   banner: {
@@ -776,13 +697,6 @@ const ja: TranslationMap = {
     viewFlat: 'リスト表示',
     viewTree: 'ツリー表示',
     treeAria: 'ワークスペースファイルツリー',
-    officeFilter: {
-      all: 'すべて',
-      deliverables: 'deliverables',
-      docs: 'docs',
-      changes: 'このセッション',
-    },
-    officeFilterChangesEmpty: 'このセッションにファイル差分がまだありません — changes でフィルタできません。',
     openedWithSystemApp: 'システムの既定アプリで開きました',
     errors: {
       invalidRel: 'ワークスペース相対パスが無効です',
@@ -1989,8 +1903,6 @@ const ja: TranslationMap = {
     modeAutoDesc: 'タスクに応じてコードかオフィスかを Zagens が自動判断します。',
     modeCodeTitle: 'コード',
     modeCodeDesc: 'エンジニアリング向け：ファイル読み書き、コマンド実行、長期的なリファクタリング。',
-    modeOfficeTitle: 'オフィス',
-    modeOfficeDesc: 'ドキュメント向け：文章、表計算、レポート、スライド。',
     next: '次へ',
     back: '戻る',
     finish: '使い始める',

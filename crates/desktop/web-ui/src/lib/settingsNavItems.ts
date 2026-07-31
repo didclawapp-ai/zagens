@@ -26,21 +26,20 @@ export interface SettingsNavItem {
 export function buildSettingsNavItems(args: {
   t: (key: string) => string;
   desktopHost: boolean;
-  officeSession: boolean;
 }): SettingsNavItem[] {
-  const { t, desktopHost, officeSession } = args;
+  const { t, desktopHost } = args;
   return [
     { tab: 'settings', label: t('panels.settings'), show: true },
     { tab: 'models', label: t('sidebar.models'), show: desktopHost },
     { tab: 'mcp', label: t('panels.mcp'), show: true },
     { tab: 'skills', label: t('sidebar.skills'), show: true },
-    { tab: 'routing', label: t('panels.routing'), show: !officeSession },
-    { tab: 'topic-memory', label: t('sidebar.topicMemory'), show: !officeSession },
-    { tab: 'index', label: t('panels.index'), show: !officeSession },
+    { tab: 'routing', label: t('panels.routing'), show: true },
+    { tab: 'topic-memory', label: t('sidebar.topicMemory'), show: true },
+    { tab: 'index', label: t('panels.index'), show: true },
     { tab: 'sandbox', label: t('panels.sandbox'), show: true },
-    { tab: 'lht-settings', label: t('panels.lhtSettings'), show: !officeSession },
+    { tab: 'lht-settings', label: t('panels.lhtSettings'), show: true },
     { tab: 'hooks', label: t('sidebar.hooks'), show: desktopHost },
-    { tab: 'schedule', label: t('sidebar.schedule'), show: !officeSession },
+    { tab: 'schedule', label: t('sidebar.schedule'), show: true },
     { tab: 'about', label: t('sidebar.about'), show: true },
   ];
 }

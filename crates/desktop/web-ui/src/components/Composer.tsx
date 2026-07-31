@@ -460,8 +460,6 @@ interface Props {
   lastCacheHitPercent?: number | null;
   /** Long-horizon harness status chip (nudge / blocked / context warning). */
   lhtChip?: import('../lib/lhtChip').LhtChipState | null;
-  /** Office task session — hides Plan/Yolo and code-only chrome. */
-  officeSession?: boolean;
   /** Files panel「添加至对话」— bump `nonce` to append `@path` to the input. */
   workspaceMention?: { relPath: string; isDirectory?: boolean; nonce: number };
   /** Backtrack fork — replace composer text when `nonce` bumps. */
@@ -509,7 +507,6 @@ export default function Composer({
   lastTurnOutputTokens = null,
   lastCacheHitPercent = null,
   lhtChip = null,
-  officeSession = false,
   workspaceMention,
   composerPrefill,
 }: Props) {
@@ -964,9 +961,9 @@ export default function Composer({
     );
 
   const routingActive = routeIntent !== 'off';
-  const availableRunModes = runModesForSession(officeSession);
+  const availableRunModes = runModesForSession();
   const runModePickerDisabled = availableRunModes.length <= 1;
-  const showAutoApprove = officeSession || runMode === 'agent';
+  const showAutoApprove = runMode === 'agent';
   const autoApproveToggleEnabled = composerAutoApproveToggleEnabled(approvalPolicy);
   const ctxPct = contextUsagePct ?? 0;
   const ctxFillClass = ctxPct >= 85 ? 'danger' : ctxPct >= 65 ? 'warn' : '';
@@ -1023,11 +1020,6 @@ export default function Composer({
       <div className="composer-dock shrink-0 px-4 py-3">
         <div className="mx-auto max-w-3xl">
           <div className="composer-shell flex flex-col overflow-visible">
-          {officeSession ? (
-            <p className="px-3 pt-2 pb-1 text-[10px] text-t-text-muted border-b border-divider/40">
-              {t('composer.officeStatusBar')}
-            </p>
-          ) : null}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-3 pb-0">
               {attachments.map((f, i) => (
@@ -1158,7 +1150,6 @@ export default function Composer({
               open={overflowOpen}
               onOpenChange={setOverflowOpen}
               disabled={disabled}
-              officeSession={Boolean(officeSession)}
               showAutoApprove={showAutoApprove}
               autoApprove={autoApprove}
               autoApproveToggleEnabled={autoApproveToggleEnabled}

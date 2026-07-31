@@ -59,7 +59,6 @@
     ],
     "externalBin": ["binaries/zagens-runtime"],
     "resources": {
-      "binaries/python-standalone/python-install": "python/",
       "binaries/zagens-resources/": "zagens-resources/",
       "bundle-legal/": "legal/"
     }

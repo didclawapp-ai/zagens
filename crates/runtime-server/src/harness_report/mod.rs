@@ -7,7 +7,7 @@ mod templates;
 
 pub use office::{ReportFormats, default_out_dir, write_report_bundle};
 pub use render::render_markdown;
-pub use templates::{from_night_queue, from_tool_telemetry};
+pub use templates::from_tool_telemetry;
 
 #[cfg(test)]
 mod tests {

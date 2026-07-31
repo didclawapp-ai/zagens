@@ -20,7 +20,6 @@ export type IconRailProps = {
   onHarnessNavigate?: (cardId: HarnessCardId) => void;
   harnessFlashId?: HarnessCardId | null;
   desktopHost: boolean;
-  officeSession?: boolean;
   runtimeConn: RuntimeConnectionState;
   streaming?: boolean;
   runtimeSessionEstablished?: boolean;
@@ -77,7 +76,6 @@ export default function IconRail({
   onHarnessNavigate,
   harnessFlashId = null,
   desktopHost,
-  officeSession = false,
   runtimeConn,
   streaming = false,
   runtimeSessionEstablished = false,
@@ -183,9 +181,8 @@ export default function IconRail({
 
       <div className="icon-rail-divider" aria-hidden />
 
-      {!officeSession ? (
-        <div className="icon-rail-group" aria-label={t('auditGrid.panelAria')}>
-          <HarnessRailButton
+      <div className="icon-rail-group" aria-label={t('auditGrid.panelAria')}>
+        <HarnessRailButton
             label={t('sidebar.checklist')}
             cardId="checklist"
             flash={harnessFlashId === 'checklist'}
@@ -231,22 +228,6 @@ export default function IconRail({
             </IconRailSvg>
           </HarnessRailButton>
         </div>
-      ) : (
-        <div className="icon-rail-group">
-          <IconRailButton
-            label={t('sidebar.tasks')}
-            active={activeInspector === 'tasks'}
-            onClick={() => {
-              onExpandRightPanel?.();
-              onInspectorChange('tasks');
-            }}
-          >
-            <IconRailSvg>
-              <path d="M9 6h11M9 12h11M9 18h7M5 6h.01M5 12h.01M5 18h.01" />
-            </IconRailSvg>
-          </IconRailButton>
-        </div>
-      )}
 
       <div className="icon-rail-spacer" aria-hidden />
 
@@ -256,7 +237,6 @@ export default function IconRail({
           activeInspector={activeInspector}
           onInspectorChange={onInspectorChange}
           desktopHost={desktopHost}
-          officeSession={officeSession}
           onExpandRightPanel={onExpandRightPanel}
         />
         {desktopHost && apiKeyConfigured === false ? (

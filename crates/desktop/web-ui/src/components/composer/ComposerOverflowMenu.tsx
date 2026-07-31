@@ -18,18 +18,13 @@ import WorktreeBranchIcon from './WorktreeBranchIcon';
 
 const COMPOSER_WORKTREE_TOGGLE_TAG = 'composer-worktree-toggle';
 
-const TASK_TYPE_LABEL_KEYS: Record<
-  DesktopTaskTypePreference | DesktopTaskTypeResolved,
-  TranslationKey
-> = {
+const TASK_TYPE_LABEL_KEYS: Record<DesktopTaskTypePreference, TranslationKey> = {
   auto: 'composer.taskTypeAuto',
-  office: 'composer.taskTypeOffice',
   code: 'composer.taskTypeCode',
 };
 
 const TASK_TYPE_HINT_KEYS: Record<DesktopTaskTypePreference, TranslationKey> = {
   auto: 'composer.taskTypeAutoHint',
-  office: 'composer.taskTypeOfficeHint',
   code: 'composer.taskTypeCodeHint',
 };
 
@@ -45,7 +40,6 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   disabled: boolean;
-  officeSession: boolean;
   showAutoApprove: boolean;
   autoApprove: boolean;
   autoApproveToggleEnabled: boolean;
@@ -100,7 +94,6 @@ export default function ComposerOverflowMenu({
   open,
   onOpenChange,
   disabled,
-  officeSession,
   showAutoApprove,
   autoApprove,
   autoApproveToggleEnabled,
@@ -227,9 +220,9 @@ export default function ComposerOverflowMenu({
         {runModePickerDisabled ? (
           <p
             className="px-3 py-1 text-[11px] leading-snug text-t-text-muted"
-            title={officeSession ? t('composer.officeRunModeHint') : t(RUN_MODE_HINT_KEYS[runMode])}
+            title={t(RUN_MODE_HINT_KEYS[runMode])}
           >
-            {officeSession ? t('composer.officeRunModeHint') : t(RUN_MODE_HINT_KEYS[runMode])}
+            {t(RUN_MODE_HINT_KEYS[runMode])}
           </p>
         ) : (
           availableRunModes.map((id) => (
@@ -258,7 +251,7 @@ export default function ComposerOverflowMenu({
         panelId={sectionPanelId('taskType')}
       >
         <p className="px-3 pb-1 text-[11px] leading-snug text-t-text-muted">{taskTypeChipHint}</p>
-        {(['auto', 'office', 'code'] as DesktopTaskTypePreference[]).map((id) => {
+        {(['auto', 'code'] as DesktopTaskTypePreference[]).map((id) => {
           const selected =
             lockedThreadTaskType == null
               ? id === taskTypePreference
@@ -317,36 +310,34 @@ export default function ComposerOverflowMenu({
         </ComposerOverflowSection>
       ) : null}
 
-      {!officeSession ? (
-        <ComposerOverflowSection
-          title={t('composer.lhtModeLabel')}
-          summary={readLhtModeSummary(t)}
-          expanded={expanded === 'lht'}
-          onToggle={() => toggleSection('lht')}
-          panelId={sectionPanelId('lht')}
-        >
-          <div className="px-2 py-1.5">
-            <LhtModeToggle disabled={disabled} threadId={threadId} />
-          </div>
-          {lhtChip ? (
-            <p
-              className={`px-3 pb-2 text-[11px] leading-snug ${
-                lhtChip.kind === 'blocked'
-                  ? 'text-amber-700 dark:text-amber-300'
-                  : lhtChip.kind === 'warning'
-                    ? 'text-amber-600 dark:text-amber-400'
-                    : 'text-t-text-muted'
-              }`}
-            >
-              {lhtChip.kind === 'continue'
-                ? t('composer.lhtContinue', { detail: lhtChip.detail ?? '' })
-                : lhtChip.kind === 'blocked'
-                  ? t('composer.lhtBlocked', { detail: lhtChip.detail ?? '' })
-                  : t('composer.lhtWarning', { detail: lhtChip.detail ?? '' })}
-            </p>
-          ) : null}
-        </ComposerOverflowSection>
-      ) : null}
+      <ComposerOverflowSection
+        title={t('composer.lhtModeLabel')}
+        summary={readLhtModeSummary(t)}
+        expanded={expanded === 'lht'}
+        onToggle={() => toggleSection('lht')}
+        panelId={sectionPanelId('lht')}
+      >
+        <div className="px-2 py-1.5">
+          <LhtModeToggle disabled={disabled} threadId={threadId} />
+        </div>
+        {lhtChip ? (
+          <p
+            className={`px-3 pb-2 text-[11px] leading-snug ${
+              lhtChip.kind === 'blocked'
+                ? 'text-amber-700 dark:text-amber-300'
+                : lhtChip.kind === 'warning'
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-t-text-muted'
+            }`}
+          >
+            {lhtChip.kind === 'continue'
+              ? t('composer.lhtContinue', { detail: lhtChip.detail ?? '' })
+              : lhtChip.kind === 'blocked'
+                ? t('composer.lhtBlocked', { detail: lhtChip.detail ?? '' })
+                : t('composer.lhtWarning', { detail: lhtChip.detail ?? '' })}
+          </p>
+        ) : null}
+      </ComposerOverflowSection>
 
       <div className="composer-overflow-actions" role="group" aria-label={t('composer.overflowActions')}>
         <button
@@ -399,7 +390,7 @@ export default function ComposerOverflowMenu({
         >
           {t('longHorizon.exportTraceCompare')}
         </button>
-        {onOpenRouting && !officeSession ? (
+        {onOpenRouting ? (
           <button
             type="button"
             role="menuitem"

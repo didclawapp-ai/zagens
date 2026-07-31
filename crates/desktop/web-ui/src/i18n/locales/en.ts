@@ -50,81 +50,6 @@ const en: TranslationMap = {
         'Add tests for recent changes or a module I will specify: explain the existing test layout, add the smallest useful cases, and run the relevant test command.',
     },
   },
-  officeEmpty: {
-    title: 'Office mode',
-    subtitle: 'Draft, refine, and deliver documents',
-    hint: 'Pick a task card to fill the prompt, or type your request below',
-    cards: {
-      executiveDailyBrief: {
-        title: 'Executive daily brief',
-        hint: 'DOCX · aggregate inbox/',
-      },
-      customerQuote: {
-        title: 'Customer quote',
-        hint: 'XLSX · price list + compute',
-      },
-      productionDailyReport: {
-        title: 'Production & QA brief',
-        hint: 'DOCX · read sheet, brief first',
-      },
-      weeklyReport: {
-        title: 'Weekly report',
-        hint: 'DOCX · default deliverables/',
-      },
-      meetingMinutes: {
-        title: 'Meeting minutes',
-        hint: 'DOCX · topics and action items',
-      },
-      projectDeck: {
-        title: 'Project deck',
-        hint: 'PPTX · cover and bullet slides',
-      },
-      dataReport: {
-        title: 'Data report',
-        hint: 'XLSX · tables and charts',
-      },
-      competitiveAnalysis: {
-        title: 'Competitive analysis',
-        hint: 'DOCX · research with sources',
-      },
-      contractDraft: {
-        title: 'Contract draft',
-        hint: 'DOCX · clause structure',
-      },
-      resume: {
-        title: 'Resume / cover letter',
-        hint: 'DOCX · personal materials',
-      },
-      releaseNotes: {
-        title: 'Release notes',
-        hint: 'DOCX · version and changes',
-      },
-    },
-    prefill: {
-      executiveDailyBrief:
-        'Summarize yesterday’s executive daily brief (DOCX). Run load_skill office-executive-daily-brief first: list_dir inbox/, read each department attachment, output a short text summary and pending decisions draft, then after confirmation write_office to deliverables/ (path optional).',
-      customerQuote:
-        'Prepare a customer quote (XLSX). Run load_skill office-customer-quote: read_office data/价目表.csv and data/客户需求.md, compute tax-inclusive totals, write_office to deliverables/ (path optional).',
-      productionDailyReport:
-        'Report yesterday’s production and quality status (DOCX). Run load_skill office-production-daily-report: read_office data/生产日报_昨日.xlsx, output a text brief first, then after confirmation write_office to deliverables/ (path optional).',
-      weeklyReport:
-        'Write this week’s work report (DOCX). Run load_skill office-weekly-report first, then follow the skill: confirm date range and audience, read_office any attachments I provide, write_office to deliverables/ (path optional).',
-      meetingMinutes:
-        'Draft meeting minutes (DOCX). Run load_skill office-meeting-minutes first, confirm time and attendees, read_office any materials I provide, write_office to deliverables/ (path optional).',
-      projectDeck:
-        'Create a project status deck (PPTX). Run load_skill office-project-report first, confirm project name and audience, write_office to deliverables/ (path optional).',
-      dataReport:
-        'Build an Excel data report (XLSX). Run load_skill office-data-report first, read_office any spreadsheet I provide, then write_office to deliverables/.',
-      competitiveAnalysis:
-        'Write a competitive analysis report (DOCX). Run load_skill office-competitive-analysis first, use web_search and cite sources, write_office to deliverables/.',
-      contractDraft:
-        'Draft a contract (DOCX). Run load_skill office-contract-draft first, confirm contract type and parties, write_office to deliverables/.',
-      resume:
-        'Prepare a resume and cover letter (DOCX). Run load_skill office-resume first, confirm target role, write_office to deliverables/.',
-      releaseNotes:
-        'Write product release notes (DOCX). Run load_skill office-release-notes first, confirm version and audience, write_office to deliverables/.',
-    },
-  },
   a11y: {
     skipToMain: 'Skip to main content',
     skipToComposer: 'Skip to message input',
@@ -574,15 +499,11 @@ const en: TranslationMap = {
     visionBridgeEmpty: 'Vision bridge returned empty content; the provider response format may be unrecognized.',
     taskTypeAuto: 'Auto',
     taskTypeAutoHint: 'Inferred from workspace and first message; applies to new sessions',
-    taskTypeOffice: 'Office',
-    taskTypeOfficeHint: 'Chat and office documents; streamlined tools and prompts',
     taskTypeCode: 'Code',
     taskTypeCodeHint: 'Full programming agent tool surface',
     taskTypeLocked: 'This session is locked to {{type}} mode',
     selectTaskType: 'Task type',
     agentModeHint: 'WorkspaceWrite + network (engine #273 shell elevation)',
-    officeRunModeHint: 'Office mode uses Agent only (no Plan / YOLO)',
-    officeStatusBar: 'Office mode · default output: deliverables/ · auto-refresh and preview after generate',
     runModeYoloHint: 'DangerFullAccess: SandboxPolicy fully unrestricted (use with caution)',
   },
   banner: {
@@ -776,13 +697,6 @@ const en: TranslationMap = {
     viewFlat: 'List view',
     viewTree: 'Tree view',
     treeAria: 'Workspace file tree',
-    officeFilter: {
-      all: 'All',
-      deliverables: 'deliverables',
-      docs: 'docs',
-      changes: 'This session',
-    },
-    officeFilterChangesEmpty: 'No file diffs in this session yet — cannot filter by changes.',
     openedWithSystemApp: 'Opened with the system default app',
     errors: {
       invalidRel: 'Invalid workspace-relative path',
@@ -1987,11 +1901,9 @@ const en: TranslationMap = {
     modeTitle: 'Choose a default mode',
     modeDesc: 'You can switch anytime above the composer.',
     modeAutoTitle: 'Auto',
-    modeAutoDesc: 'Zagens decides between code and office based on the task.',
+    modeAutoDesc: 'Zagens infers task type from workspace and first message.',
     modeCodeTitle: 'Code',
     modeCodeDesc: 'For engineering: read/write files, run commands, long-horizon refactors.',
-    modeOfficeTitle: 'Office',
-    modeOfficeDesc: 'For documents: writing, spreadsheets, reports, slides.',
     next: 'Next',
     back: 'Back',
     finish: 'Start using',

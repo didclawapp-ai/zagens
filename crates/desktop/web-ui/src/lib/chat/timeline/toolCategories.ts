@@ -88,12 +88,8 @@ const PLAN_TOOLS = new Set([
   'todo_list',
 ]);
 
-/** Office document tools — collapse like explore/write in activity bundles. */
-const OFFICE_TOOLS = new Set([
-  'read_office',
-  'write_office',
-  'load_office_payload',
-]);
+/** Office document tools removed — category kept for timeline typing only. */
+const OFFICE_TOOLS = new Set<string>([]);
 
 /**
  * Setup / audit / harness / durable-task workflow tools.

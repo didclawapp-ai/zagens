@@ -2,20 +2,19 @@
 
 export type DesktopRunModeId = 'plan' | 'agent' | 'yolo';
 
-/** Session task type: office docs/chat vs full code agent. */
-export type DesktopTaskTypePreference = 'auto' | 'office' | 'code';
+/** Session task type preference (legacy `office` coerced to `code`). */
+export type DesktopTaskTypePreference = 'auto' | 'code';
 
-export type DesktopTaskTypeResolved = 'office' | 'code';
-
-/** Office sessions only use Agent run mode (Plan/Yolo are code-workflow oriented). */
+export type DesktopTaskTypeResolved = 'code';
 
 export function parseDesktopTaskTypePreference(raw: unknown): DesktopTaskTypePreference | undefined {
-  if (raw === 'auto' || raw === 'office' || raw === 'code') return raw;
+  if (raw === 'office' || raw === 'code') return 'code';
+  if (raw === 'auto') return 'auto';
   return undefined;
 }
 
 export function parseDesktopTaskTypeResolved(raw: unknown): DesktopTaskTypeResolved | undefined {
-  if (raw === 'office' || raw === 'code') return raw;
+  if (raw === 'office' || raw === 'code') return 'code';
   return undefined;
 }
 

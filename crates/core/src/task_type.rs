@@ -1,4 +1,4 @@
-//! Task type (Office / Code) — shared between core and TUI.
+//! Task type — shared between core and TUI (Code-only; legacy `office` coerced to Code).
 
 use serde::{Deserialize, Serialize};
 
@@ -6,9 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskType {
-    /// Chat + office documents; slim prompt + office tool surface.
-    Office,
-    /// Programming and repo work; full agent prompt + tools.
+    /// Programming, documents via skills/CLI, and repo work; full agent prompt + tools.
     #[default]
     Code,
 }
@@ -16,40 +14,33 @@ pub enum TaskType {
 impl TaskType {
     #[must_use]
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Office => "office",
-            Self::Code => "code",
-        }
+        "code"
     }
 
     #[must_use]
     pub fn display_name(self) -> &'static str {
-        match self {
-            Self::Office => "办公",
-            Self::Code => "代码",
-        }
+        "代码"
     }
 
     #[must_use]
     pub fn uses_code_tool_surface(self) -> bool {
-        matches!(self, Self::Code)
+        true
     }
 
     #[must_use]
     pub fn needs_full_code_prompt(self) -> bool {
-        matches!(self, Self::Code)
+        true
     }
 
     /// Whether the system prompt should list workspace/global skills and allow `load_skill`.
     #[must_use]
     pub fn includes_skills_catalog(self) -> bool {
-        matches!(self, Self::Office | Self::Code)
+        true
     }
 
     pub fn parse_str(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
-            "office" => Some(Self::Office),
-            "code" => Some(Self::Code),
+            "office" | "code" => Some(Self::Code),
             _ => None,
         }
     }

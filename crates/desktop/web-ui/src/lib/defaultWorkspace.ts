@@ -41,13 +41,3 @@ export async function fetchDefaultComposerWorkspace(): Promise<string> {
   }
   return '.';
 }
-
-/** Office mode default: `<Documents>/Zagens` (creates `deliverables/` on the host). */
-export async function applyOfficeDefaultWorkspace(
-  setWorkspace: (path: string) => void,
-): Promise<void> {
-  const path = await fetchDefaultComposerWorkspace();
-  if (path.trim().length > 0 && !isUnsafeComposerWorkspace(path)) {
-    setWorkspace(path);
-  }
-}

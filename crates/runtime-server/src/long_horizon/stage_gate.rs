@@ -305,78 +305,47 @@ mod tests {
         assert!(session.check_tool("write_file").is_ok());
     }
 
-    const OFFICE_PILOT_HARNESS: &str =
-        include_str!("../../assets/skills/office-weekly-report/harness.toml");
+    const CSV_PIPELINE_HARNESS: &str =
+        include_str!("../../assets/skills/python-csv-pipeline/harness.toml");
 
-    fn office_pilot_session() -> StageGateSession {
+    fn csv_pipeline_session() -> StageGateSession {
         let mut session = StageGateSession::default();
-        let contract = HarnessContract::parse_toml(OFFICE_PILOT_HARNESS).expect("office pilot");
+        let contract = HarnessContract::parse_toml(CSV_PIPELINE_HARNESS).expect("csv pipeline");
         session.load_contract(contract, true);
         session
     }
 
     #[test]
-    fn office_pilot_blocks_write_before_prepare() {
-        let session = office_pilot_session();
-        assert!(session.check_tool("read_office").is_ok());
-        assert!(session.check_tool("write_office").is_err());
+    fn csv_pipeline_blocks_shell_before_inspect() {
+        let session = csv_pipeline_session();
+        assert!(session.check_tool("read_file").is_ok());
+        assert!(session.check_tool("exec_shell").is_err());
         assert!(session.check_tool("write_file").is_err());
     }
 
     #[tokio::test]
-    async fn office_pilot_write_then_readback_blocks_rewrite_bypass() {
+    async fn csv_pipeline_deliver_requires_analyze() {
         let dir = TempDir::new().unwrap();
         std::fs::create_dir_all(dir.path().join("deliverables")).unwrap();
-        std::fs::write(dir.path().join("deliverables/weekly.docx"), b"pk").unwrap();
 
-        let mut session = office_pilot_session();
+        let mut session = csv_pipeline_session();
         assert!(
             session
-                .try_pass_stage(dir.path(), "prepare", None)
+                .try_pass_stage(dir.path(), "inspect", None)
                 .await
                 .unwrap()
                 .0
         );
-        assert!(session.check_tool("write_office").is_ok());
+        assert!(session.check_tool("exec_shell").is_ok());
+        assert!(session.check_tool("write_file").is_err());
 
         assert!(
             session
-                .try_pass_stage(dir.path(), "write", None)
+                .try_pass_stage(dir.path(), "analyze", None)
                 .await
                 .unwrap()
                 .0
         );
-        assert_eq!(
-            session.current_stage_id().as_deref(),
-            Some("readback_verify")
-        );
-        assert!(session.check_tool("read_office").is_ok());
-        assert!(
-            session.check_tool("write_office").is_err(),
-            "rewrite bypass"
-        );
-        assert!(
-            session.check_tool("write_file").is_err(),
-            "write_file bypass"
-        );
-    }
-
-    #[tokio::test]
-    async fn office_pilot_readback_stage_passes_with_docx() {
-        let dir = TempDir::new().unwrap();
-        std::fs::create_dir_all(dir.path().join("deliverables")).unwrap();
-        std::fs::write(dir.path().join("deliverables/report.docx"), b"pk").unwrap();
-
-        let mut session = office_pilot_session();
-        session.verified_stages.insert("prepare".into());
-        session.verified_stages.insert("write".into());
-        assert!(
-            session
-                .try_pass_stage(dir.path(), "readback_verify", None)
-                .await
-                .unwrap()
-                .0
-        );
-        assert!(session.current_stage_id().is_none());
+        assert!(session.check_tool("write_file").is_ok());
     }
 }

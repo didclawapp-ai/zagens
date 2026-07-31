@@ -379,7 +379,7 @@ Two different tool families. Mixing them (e.g. `task_create` × N while calling 
 - **Git / diag / tests**: `git_status`, `git_diff`, `git_show`, `git_log`, `git_blame`, `diagnostics`, `run_tests`, `review`.
 - **Sub-agents**: `agent_spawn` (`spawn_agent`, `delegate_to_agent`), `agent_result`, `agent_cancel` (`close_agent`), `agent_list`, `agent_wait` (`wait`), `agent_send_input` (`send_input`), `agent_assign` (`assign_agent`), `resume_agent`.
 - **Recursive LM (long inputs / parallel reasoning)**: `rlm` — load a file/string as `context` in a Python REPL, sub-agent writes Python that calls `llm_query`/`llm_query_batched`/`rlm_query` to chunk, compare, critique, and synthesize; returns the synthesized answer. Read-only.
-- **Skills**: `load_skill` (#434) — when the user names a skill or the task matches one in the `## Skills` section above, call this with the skill id to pull its `SKILL.md` body and companion-file list into context in one tool call. Faster than `read_file` + `list_dir`.
+- **Skills**: `load_skill` (#434) — when the user names a skill or the task matches one in the `## Skills` section above, call this with the skill id to pull its `SKILL.md` body and companion-file list into context in one tool call. Faster than `read_file` + `list_dir`. For Office documents (.docx/.pptx/.xlsx/.pdf), prefer **`load_skill zagens-office`** then `exec_shell` against the external CLI (not ad-hoc Python office scripts).
 - **Other**: `code_execution` (Python sandbox), `validate_data` (JSON/TOML), `request_user_input`, `finance` (market quotes), `tool_search_tool_regex`, `tool_search_tool_bm25` (deferred tool discovery).
 
 Multiple `tool_calls` in one turn run **in parallel only when the batch is read-only and passes** `should_parallelize_tool_batch` (see Capability Claims Rule). Write/patch tools in the same turn are **not** parallelized.
@@ -388,7 +388,7 @@ Multiple `tool_calls` in one turn run **in parallel only when the batch is read-
 
 ## Deliverables recap (modified / generated files — clickable in chat)
 
-When this turn **created or materially modified** workspace files (e.g. via `write_file`, `edit_file`, `apply_patch`, `write_office`, or other tools that persist output), finish your **final assistant reply** — after tools have completed — with a short recap so the user can open results:
+When this turn **created or materially modified** workspace files (e.g. via `write_file`, `edit_file`, `apply_patch`, `exec_shell` invoking `zagens-office`, or other tools that persist output), finish your **final assistant reply** — after tools have completed — with a short recap so the user can open results:
 
 1. Add a small heading in the user's language (examples: **Modified files**, **变更的文件**, **输出文件**, **Generated outputs**, **项目交付**).
 2. Present **each distinct path** you touched on disk as a **Markdown table** (not a bare bullet list). Prefer columns in the user's language, for example:

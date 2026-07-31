@@ -29,13 +29,6 @@ pub(crate) mod html_page_text;
 pub mod intent_tools;
 pub mod large_output_router;
 pub mod large_output_synthesizer;
-pub mod office_common;
-pub mod office_payload;
-pub mod office_read;
-pub mod office_write;
-
-#[cfg(test)]
-mod office_smoke;
 pub mod parallel;
 pub mod plan;
 pub mod plan_checklist_sync;
@@ -58,7 +51,6 @@ mod draft_skill;
 pub mod git_inputs;
 pub mod github_inputs;
 pub mod misc_inputs;
-pub mod office_inputs;
 pub mod scratchpad_inputs;
 pub mod search;
 pub mod search_inputs;

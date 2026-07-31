@@ -50,81 +50,6 @@ const ptBr: TranslationMap = {
         'Adicione testes para mudanças recentes ou um módulo que eu indicar: explique o layout de testes existente, escreva o mínimo útil e rode o comando de teste relevante.',
     },
   },
-  officeEmpty: {
-    title: 'Modo escritório',
-    subtitle: 'Redigir, organizar e entregar documentos',
-    hint: 'Escolha um cartão de tarefa ou digite o pedido abaixo',
-    cards: {
-      executiveDailyBrief: {
-        title: 'Resumo diário executivo',
-        hint: 'DOCX · agregar inbox/',
-      },
-      customerQuote: {
-        title: 'Cotação ao cliente',
-        hint: 'XLSX · tabela + cálculo',
-      },
-      productionDailyReport: {
-        title: 'Briefing produção/QA',
-        hint: 'DOCX · ler planilha, resumo primeiro',
-      },
-      weeklyReport: {
-        title: 'Relatório semanal',
-        hint: 'DOCX · padrão deliverables/',
-      },
-      meetingMinutes: {
-        title: 'Ata de reunião',
-        hint: 'DOCX · tópicos e ações',
-      },
-      projectDeck: {
-        title: 'Apresentação de projeto',
-        hint: 'PPTX · capa e tópicos',
-      },
-      dataReport: {
-        title: 'Relatório de dados',
-        hint: 'XLSX · tabelas e gráficos',
-      },
-      competitiveAnalysis: {
-        title: 'Análise competitiva',
-        hint: 'DOCX · pesquisa com fontes',
-      },
-      contractDraft: {
-        title: 'Rascunho de contrato',
-        hint: 'DOCX · estrutura de cláusulas',
-      },
-      resume: {
-        title: 'Currículo / carta',
-        hint: 'DOCX · materiais pessoais',
-      },
-      releaseNotes: {
-        title: 'Notas de versão',
-        hint: 'DOCX · versão e mudanças',
-      },
-    },
-    prefill: {
-      executiveDailyBrief:
-        'Resuma o briefing diário de ontem (DOCX). Execute load_skill office-executive-daily-brief: list_dir inbox/, leia anexos de cada área, mostre resumo em texto e rascunho de pendências; após confirmar, write_office em deliverables/ (path opcional).',
-      customerQuote:
-        'Monte cotação ao cliente (XLSX). load_skill office-customer-quote: read_office em data/价目表.csv e data/客户需求.md, calcule totais com imposto, write_office em deliverables/ (path opcional).',
-      productionDailyReport:
-        'Relate produção e qualidade de ontem (DOCX). load_skill office-production-daily-report: read_office em data/生产日报_昨日.xlsx, resumo em texto primeiro, depois write_office em deliverables/ (path opcional).',
-      weeklyReport:
-        'Escreva o relatório semanal (DOCX). Execute load_skill office-weekly-report, confirme período e público, read_office nos anexos se houver, write_office em deliverables/ (path opcional).',
-      meetingMinutes:
-        'Redija a ata (DOCX). Execute load_skill office-meeting-minutes, confirme data e participantes, read_office nos materiais se houver, write_office em deliverables/ (path opcional).',
-      projectDeck:
-        'Crie um deck de status (PPTX). Execute load_skill office-project-report, confirme o projeto, write_office em deliverables/ (path opcional).',
-      dataReport:
-        'Gere relatório Excel (XLSX). Execute load_skill office-data-report, read_office na planilha existente, depois write_office em deliverables/.',
-      competitiveAnalysis:
-        'Escreva análise competitiva (DOCX). Execute load_skill office-competitive-analysis, use web_search e cite fontes, write_office em deliverables/.',
-      contractDraft:
-        'Rascunhe um contrato (DOCX). Execute load_skill office-contract-draft, confirme tipo e partes, write_office em deliverables/.',
-      resume:
-        'Prepare currículo e carta (DOCX). Execute load_skill office-resume, confirme a vaga, write_office em deliverables/.',
-      releaseNotes:
-        'Escreva notas de versão (DOCX). Execute load_skill office-release-notes, confirme versão e público, write_office em deliverables/.',
-    },
-  },
   a11y: {
     skipToMain: 'Ir para o conteúdo principal',
     skipToComposer: 'Ir para a entrada de mensagem',
@@ -576,15 +501,11 @@ const ptBr: TranslationMap = {
     visionBridgeEmpty: 'O vision bridge retornou conteúdo vazio; o formato de resposta do provedor pode não ser reconhecido.',
     taskTypeAuto: 'Auto',
     taskTypeAutoHint: 'Inferido do workspace e da primeira mensagem; aplica-se a novas sessões',
-    taskTypeOffice: 'Escritório',
-    taskTypeOfficeHint: 'Chat e documentos de escritório; ferramentas e prompts simplificados',
     taskTypeCode: 'Código',
     taskTypeCodeHint: 'Superfície completa de ferramentas do agente de programação',
     taskTypeLocked: 'Esta sessão está bloqueada no modo {{type}}',
     selectTaskType: 'Tipo de tarefa',
     agentModeHint: 'WorkspaceWrite + rede (elevação de shell do engine #273)',
-    officeRunModeHint: 'O modo Escritório usa apenas Agent (sem Plan / YOLO)',
-    officeStatusBar: 'Escritório · deliverables/ · visualização após gerar',
     runModeYoloHint: 'DangerFullAccess: SandboxPolicy totalmente irrestrita (use com cautela)',
   },
   banner: {
@@ -778,13 +699,6 @@ const ptBr: TranslationMap = {
     viewFlat: 'Visualização em lista',
     viewTree: 'Visualização em árvore',
     treeAria: 'Árvore de arquivos do workspace',
-    officeFilter: {
-      all: 'Todos',
-      deliverables: 'entregáveis',
-      docs: 'docs',
-      changes: 'Esta sessão',
-    },
-    officeFilterChangesEmpty: 'Ainda não há diffs de arquivo nesta sessão — não é possível filtrar por alterações.',
     openedWithSystemApp: 'Aberto com o aplicativo padrão do sistema',
     errors: {
       invalidRel: 'Caminho relativo ao workspace inválido',
@@ -1993,8 +1907,6 @@ const ptBr: TranslationMap = {
     modeAutoDesc: 'O Zagens decide entre código e escritório conforme a tarefa.',
     modeCodeTitle: 'Código',
     modeCodeDesc: 'Para engenharia: ler/escrever arquivos, rodar comandos, refatorações longas.',
-    modeOfficeTitle: 'Escritório',
-    modeOfficeDesc: 'Para documentos: redação, planilhas, relatórios, slides.',
     next: 'Avançar',
     back: 'Voltar',
     finish: 'Começar a usar',

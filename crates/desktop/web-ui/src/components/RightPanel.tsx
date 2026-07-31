@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { extractDiffRelPaths } from '../lib/diff/diffEntries';
 import type { invoke as InvokeFn } from '@tauri-apps/api/core';
 import ModelProvidersPanel from './ModelProvidersPanel';
 import McpPanel from './McpPanel';
@@ -161,9 +160,8 @@ interface Props {
   onCollapse?: () => void;
   routeIntent: DesktopRouteIntentOption;
   onRouteIntentChange: (v: DesktopRouteIntentOption) => void;
-  officeSession?: boolean;
   onSystemSettingsSaved?: (settings: import('../api/client').SystemSettings) => void;
-  /** Parent bump refreshes workspace file list (e.g. after write_office). */
+  /** Parent bump refreshes workspace file list. */
   filesRefreshNonce?: number;
   /** Open tasks panel; optional task id to highlight. */
   onOpenTasks?: (taskId?: string) => void;
@@ -250,7 +248,6 @@ export default function RightPanel({
   onCollapse,
   routeIntent,
   onRouteIntentChange,
-  officeSession = false,
   onSystemSettingsSaved,
   filesRefreshNonce: filesRefreshNonceProp = 0,
   onOpenTasks,
@@ -260,10 +257,6 @@ export default function RightPanel({
   narrativeSpawnSuspected = false,
 }: Props) {
   const { t } = useT();
-  const officeChangePaths = useMemo(
-    () => (officeSession ? extractDiffRelPaths(messages) : []),
-    [officeSession, messages],
-  );
   const [diffRefreshNonce, setDiffRefreshNonce] = useState(0);
   const wasStreamingRef = useRef(streaming);
   const diffGit = useWorkspaceGitStatus(workspaceRoot, Boolean(streaming));
@@ -324,18 +317,6 @@ export default function RightPanel({
     setSnapError(null);
     setRestoreMessage(null);
   }, [resumedThreadId, workspaceRoot]);
-
-  useEffect(() => {
-    if (!officeSession) return;
-    if (
-      workspaceTab === 'restore' ||
-      workspaceTab === 'rules' ||
-      workspaceTab === 'terminal' ||
-      workspaceTab === 'diff'
-    ) {
-      setWorkspaceTab('files');
-    }
-  }, [officeSession, workspaceTab]);
 
   useEffect(() => {
     if (view !== 'workspace' || workspaceTab !== 'rules' || !desktopHost) {
@@ -561,16 +542,8 @@ export default function RightPanel({
   );
 
   const visibleWorkspaceTabs = useMemo((): WorkspaceTabId[] => {
-    const tabs: WorkspaceTabId[] = [];
-    if (!officeSession) {
-      tabs.push('restore');
-    }
-    tabs.push('files');
-    if (!officeSession) {
-      tabs.push('rules', 'terminal', 'diff');
-    }
-    return tabs;
-  }, [officeSession]);
+    return ['restore', 'files', 'rules', 'terminal', 'diff'];
+  }, []);
 
   const workbenchTabId = (tab: WorkspaceTabId) => `workbench-tab-${tab}`;
   const workbenchTabPanelId = 'workbench-tabpanel';
@@ -757,8 +730,6 @@ export default function RightPanel({
                       resumedThreadId={resumedThreadId}
                       runtimeOk={runtimeOk}
                       desktopHost={desktopHost}
-                      officeSession={officeSession}
-                      officeChangePaths={officeChangePaths}
                       preview={preview}
                       openWorkspaceFile={openWorkspaceFile}
                       onAddToChat={addWorkspaceFileToChat}
@@ -829,8 +800,8 @@ export default function RightPanel({
 
                   {/* Keep TerminalPanel mounted across workspace tab switches so PTYs
                       stay alive and session state is preserved. Kill happens on
-                      unmount (office mode / leave desktop host / window teardown). */}
-                  {desktopHost && !officeSession && (
+                      unmount (leave desktop host / window teardown). */}
+                  {desktopHost && (
                     <div
                       className={
                         workspaceTab === 'terminal'
@@ -950,7 +921,7 @@ export default function RightPanel({
           />
         )}
 
-        {view === 'agents' && !officeSession && (
+        {view === 'agents' && (
           <AgentPanel
             agents={agentStates}
             workspaceRoot={workspaceRoot}
@@ -960,7 +931,7 @@ export default function RightPanel({
           />
         )}
 
-        {view === 'topic-memory' && !officeSession && (
+        {view === 'topic-memory' && (
           <TopicMemoryPanel
             runtimeConn={runtimeConn}
             streaming={streaming}
@@ -968,7 +939,7 @@ export default function RightPanel({
           />
         )}
 
-        {view === 'routing' && !officeSession && (
+        {view === 'routing' && (
           <RoutingPanel
             runtimeConn={runtimeConn}
             streaming={streaming}
@@ -979,7 +950,6 @@ export default function RightPanel({
         )}
 
         {/* Always mounted (hidden when inactive) so polling can auto-trigger the view */}
-        {!officeSession && (
         <div style={{ display: view === 'checklist' ? undefined : 'none' }}>
           <ChecklistPanel
             threadId={resumedThreadId ?? ''}
@@ -987,9 +957,7 @@ export default function RightPanel({
             onDetected={onRequestChecklist}
           />
         </div>
-        )}
 
-        {!officeSession && (
         <div style={{ display: view === 'audit' ? undefined : 'none' }}>
           <AuditScratchpadPanel
             threadId={resumedThreadId ?? ''}
@@ -1001,9 +969,8 @@ export default function RightPanel({
             onDetected={onRequestAudit}
           />
         </div>
-        )}
 
-        {!officeSession && view === 'long-horizon' && (
+        {view === 'long-horizon' && (
           <LongHorizonPanel
             threadId={resumedThreadId ?? ''}
             streaming={streaming}
@@ -1070,7 +1037,7 @@ export default function RightPanel({
 
         {view === 'browser' && <BrowserPane desktopHost={desktopHost} />}
 
-        {view === 'index' && !officeSession && (
+        {view === 'index' && (
           <IndexPanel
             workspace={workspaceRoot}
             onRebuild={onRebuildIndex}

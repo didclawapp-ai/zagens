@@ -3,9 +3,6 @@
 use anyhow::Result;
 
 use crate::cli::context::CliContext;
-use crate::harness_report::{
-    ReportFormats, default_out_dir, from_night_queue, write_report_bundle,
-};
 use crate::night_queue::{
     self, EnqueueGateInput, QueueTaskStatus, RunOptions, render_briefing, resolve_gate_specs,
 };
@@ -89,30 +86,9 @@ fn run_briefing(ctx: &CliContext, args: QueueBriefingArgs) -> Result<()> {
     );
 
     if args.office {
-        let report_ctx = from_night_queue(&doc);
-        let out_dir = args
-            .office_out
-            .unwrap_or_else(|| default_out_dir(&ctx.workspace, &report_ctx));
-        let written = write_report_bundle(
-            &ctx.workspace,
-            &out_dir,
-            &report_ctx,
-            &ReportFormats {
-                markdown: false,
-                docx: true,
-                xlsx: true,
-                pptx: false,
-            },
-        )?;
-        if let Some(path) = written.docx {
-            println!("  office docx: {}", path.display());
-        }
-        if let Some(path) = written.xlsx {
-            println!("  office xlsx: {}", path.display());
-        }
-        for warn in written.warnings {
-            eprintln!("  warning: {warn}");
-        }
+        eprintln!(
+            "warning: --office export removed; use --format md or the zagens-office skill for docx/xlsx/pptx"
+        );
     }
 
     Ok(())

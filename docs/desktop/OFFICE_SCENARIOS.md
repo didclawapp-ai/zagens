@@ -1,6 +1,8 @@
 # Zagens Office Scenario Map
 
-> **Status:** Product memo (2026-06-05, landing criteria synced 2026-06-05)  
+> **2026-07-31 (breaking):** Built-in Office mode and `write_office` / `read_office` were **removed** from open-source Zagens. Use skill **`zagens-office`** + external CLI ([install](https://raw.githubusercontent.com/didclawapp-ai/zagens-office/main/install.md)). Rich in-process Office tooling remains a **Zagens Pro** product surface. The catalog below is historical product research.
+
+> **Status:** Product memo (2026-06-05, landing criteria synced 2026-06-05) — **historical** after 2026-07-31  
 > **Phase A completion:** L1/L2/L3 foundation landed; L4 has **11** bundled skills + **11** empty-state cards + P0 fixtures/oracle; remaining focus is read-table fidelity stability and P0 end-to-end green runs.  
 > **Out of scope this phase (not counted as gaps):** STT/TTS voice (Phase C), ERP/CRM connectors (Phase B), `inbox/`/`data/` workspace auto-initialization (users create or copy from fixtures).  
 > **Positioning:** Beyond coding harnesses like LHT / CRAFT, map **Office mode** real work scenarios, alignment with current capabilities, and run-through priorities.  

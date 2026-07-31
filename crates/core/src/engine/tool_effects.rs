@@ -55,12 +55,7 @@ mod tests {
                 "whitelist tool {name} must write state"
             );
         }
-        for name in [
-            "exec_shell",
-            "exec_shell_wait",
-            "exec_shell_interact",
-            "write_office",
-        ] {
+        for name in ["exec_shell", "exec_shell_wait", "exec_shell_interact"] {
             assert!(
                 tool_writes_state(name),
                 "heuristic tool {name} must write state"
@@ -126,7 +121,6 @@ mod tests {
             ("grep_files", false),
             ("list_dir", false),
             ("list_mcp_resources", false),
-            ("load_office_payload", false),
             ("load_skill", false),
             ("draft_skill", true),
             ("multi_tool_use.parallel", false),
@@ -137,7 +131,6 @@ mod tests {
             ("pr_attempt_record", false),
             ("project_map", false),
             ("read_file", false),
-            ("read_office", false),
             ("recall_archive", false),
             ("refactor_imports", true),
             ("remember", false),
@@ -176,7 +169,6 @@ mod tests {
             ("web.run", false),
             ("web_search", false),
             ("write_file", true),
-            ("write_office", true),
         ];
 
         for (name, expected) in EXPECTED {

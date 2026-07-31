@@ -79,11 +79,7 @@ fn ensure_resource_stubs() -> Result<(), String> {
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").map_err(|e| e.to_string())?);
 
     // Mirrors the `bundle.resources` entries in `tauri.conf.json`.
-    let stubs = [
-        "binaries/python-standalone/python-install",
-        "bundle-legal",
-        "binaries/zagens-resources",
-    ];
+    let stubs = ["bundle-legal", "binaries/zagens-resources"];
 
     for rel in stubs {
         let path = manifest_dir.join(rel);

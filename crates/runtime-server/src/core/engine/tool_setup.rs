@@ -3,7 +3,6 @@
 //! This keeps mode/feature-specific registry construction out of the send path.
 
 use super::*;
-use crate::task_type::TaskType;
 
 impl Engine {
     pub(super) fn build_turn_tool_registry_builder(
@@ -12,17 +11,6 @@ impl Engine {
         todo_list: SharedTodoList,
         plan_state: SharedPlanState,
     ) -> ToolRegistryBuilder {
-        if self.config.task_type == TaskType::Office {
-            // Office always ships web_search / fetch_url / finance / web.run (install-time
-            // networking only). Code mode still respects Feature::WebSearch.
-            let mut builder = ToolRegistryBuilder::new().with_office_surface(true);
-            builder = builder.with_harness_assert_tools();
-            if self.config.memory_enabled {
-                builder = builder.with_remember_tool();
-            }
-            return builder;
-        }
-
         let mut builder = if mode == AppMode::Plan {
             ToolRegistryBuilder::new()
                 .with_read_only_file_tools()
@@ -64,7 +52,7 @@ impl Engine {
             builder = builder.with_remember_tool();
         }
 
-        if self.config.task_type != TaskType::Office && mode != AppMode::Plan {
+        if mode != AppMode::Plan {
             builder = builder.with_scratchpad_tools();
         }
 

@@ -1058,8 +1058,7 @@ fn format_run_mode_label(mode: &str, yolo: bool) -> String {
 
 fn format_task_type_label(task_type: &str) -> String {
     match task_type.to_ascii_lowercase().as_str() {
-        "office" => "Office".to_string(),
-        "code" => "Code".to_string(),
+        "office" | "code" => "Code".to_string(),
         "auto" => "Auto".to_string(),
         "" => "Code".to_string(),
         other => other.to_string(),
@@ -1153,7 +1152,7 @@ mod tests {
     #[test]
     fn task_type_labels_capitalize() {
         assert_eq!(format_task_type_label("code"), "Code");
-        assert_eq!(format_task_type_label("office"), "Office");
+        assert_eq!(format_task_type_label("office"), "Code");
     }
 
     #[test]

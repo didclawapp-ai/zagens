@@ -1,7 +1,7 @@
 //! `zagens://` deep link parsing and workspace validation.
 //!
 //! Supported form:
-//! `zagens://open?workspace=<path>&prompt=<urlencoded>&task_type=code|office|auto&use_worktree=1`
+//! `zagens://open?workspace=<path>&prompt=<urlencoded>&task_type=code|auto&use_worktree=1`
 
 use std::path::{Component, Path, PathBuf};
 
@@ -44,7 +44,7 @@ pub enum DeepLinkError {
     MissingWorkspace,
     #[error("invalid workspace path: {0}")]
     InvalidWorkspace(String),
-    #[error("invalid task_type `{0}` (expected code, office, or auto)")]
+    #[error("invalid task_type `{0}` (expected code or auto)")]
     InvalidTaskType(String),
     #[error("malformed URL: {0}")]
     Malformed(String),
@@ -87,7 +87,8 @@ pub fn parse_open_url(raw: &str) -> Result<DeepLinkOpen, DeepLinkError> {
     let task_type = match params.get("task_type").map(String::as_str) {
         None => None,
         Some("") => None,
-        Some("code" | "office" | "auto") => params.get("task_type").cloned(),
+        Some("code" | "office") => Some("code".to_string()),
+        Some("auto") => Some("auto".to_string()),
         Some(other) => return Err(DeepLinkError::InvalidTaskType(other.to_string())),
     };
 
@@ -119,7 +120,7 @@ pub fn build_open_url(
         url.push_str("&prompt=");
         url.push_str(&encode_query_component(p));
     }
-    if let Some(t) = task_type.filter(|s| matches!(*s, "code" | "office" | "auto")) {
+    if let Some(t) = task_type.filter(|s| matches!(*s, "code" | "auto")) {
         url.push_str("&task_type=");
         url.push_str(t);
     }

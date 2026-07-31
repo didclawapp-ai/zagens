@@ -549,7 +549,6 @@ Environment variables:
   DEEPSEEK_RUNTIME_TOKEN=<UUID from main.rs>
   DEEPSEEK_CLIENT_SURFACE=zagens
   DEEPSEEK_API_KEY=<OS keyring>
-  DEEPSEEK_BUNDLED_PYTHON=<Office tools, optional>
 ```
 
 **Spawn candidate:** only **`deepseek-runtime`** (Tauri `externalBin` embeds `deepseek-runtime-<triple>`). If sidecar does not emit `DS_PICK_READY`, supervisor falls back to HTTP probe (`/health` + token validation), compatible with legacy sidecar behavior; **no longer** spawns legacy `deepseek-tui` binary.

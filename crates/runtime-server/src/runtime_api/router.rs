@@ -15,8 +15,8 @@ use super::{
     delete_thread_config_field, discover_mcp, edit_last_thread_turn, fork_thread,
     fork_thread_at_user_message, get_agent_health, get_automation, get_blackboard,
     get_kernel_thread_replay, get_kernel_turn_replay, get_mcp_server, get_night_queue,
-    get_office_environment, get_resume_task, get_routing_rules, get_runtime_active_turns,
-    get_session, get_task, get_thread, get_thread_checklist, get_thread_config, get_thread_context,
+    get_resume_task, get_routing_rules, get_runtime_active_turns, get_session, get_task,
+    get_thread, get_thread_checklist, get_thread_config, get_thread_context,
     get_thread_context_breakdown, get_thread_harness_cycles, get_thread_harness_task_graph,
     get_thread_scratchpad_status, get_thread_trace_report, get_topic_memory, get_trace_compare,
     get_usage, import_skill_local, init_thread_scratchpad, install_skill_remote,
@@ -57,7 +57,6 @@ pub fn build_router(state: RuntimeApiState) -> Router {
             "/v1/runtime/kernel-replay/{turn_id}",
             get(get_kernel_turn_replay),
         )
-        .route("/v1/office/environment", get(get_office_environment))
         .route("/v1/workspace/browse", get(browse_workspace_by_root))
         .route("/v1/workspace/file", get(read_workspace_file_by_root))
         .route("/v1/stream", post(stream::stream_turn))

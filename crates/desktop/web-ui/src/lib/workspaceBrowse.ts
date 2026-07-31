@@ -209,27 +209,6 @@ export function writeExpandedDirs(key: string, expanded: Set<string>): void {
   }
 }
 
-/** Parent directory paths to expand so `rel` (file or folder) is visible in the tree. */
-export type OfficeDirPreset = 'all' | 'deliverables' | 'docs' | 'changes';
-
-/** Keep entries that are changed files or directories containing a change. */
-export function filterEntriesForOfficeChanges(
-  entries: BrowseEntry[],
-  parentRel: string,
-  changePaths: ReadonlySet<string>,
-): BrowseEntry[] {
-  if (changePaths.size === 0) return [];
-  return entries.filter((ent) => {
-    const rel = joinWorkspaceRel(parentRel, ent.name);
-    if (changePaths.has(rel)) return true;
-    if (ent.kind !== 'directory') return false;
-    for (const cp of changePaths) {
-      if (cp.startsWith(`${rel}/`)) return true;
-    }
-    return false;
-  });
-}
-
 const WS_REVEAL_ATTR = 'data-ws-reveal';
 
 /** Scroll the files panel so the row for `rel` is visible (list or tree). */
@@ -242,6 +221,7 @@ export function scrollWorkspaceRelIntoView(container: HTMLElement | null, rel: s
   el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
+/** Parent directory paths to expand so `rel` (file or folder) is visible in the tree. */
 export function ancestorDirPaths(rel: string): string[] {
   const trimmed = normalizePathsForCompare(rel);
   if (!trimmed) return [];

@@ -246,27 +246,22 @@ pub fn merge_instruction_paths_with_pick_rules(
 /// Core: task execution, tool-use rules, output format, toolbox reference,
 /// "When NOT to use" guidance, sub-agent sentinel protocol.
 pub const BASE_PROMPT: &str = include_str!("prompts/base.md");
-pub const OFFICE_BASE_PROMPT: &str = include_str!("prompts/base-office.md");
-pub const TASK_OFFICE: &str = include_str!("prompts/tasks/office.md");
 pub const TASK_CODE: &str = include_str!("prompts/tasks/code.md");
 
-fn compose_base_prompt_layer_for_task(task_type: TaskType) -> String {
-    let body = match task_type {
-        TaskType::Office => OFFICE_BASE_PROMPT.trim(),
-        TaskType::Code => BASE_PROMPT.trim(),
-    };
-    format!("{}\n\n{}", client_identity_line_from_env(), body)
+fn compose_base_prompt_layer_for_task(_task_type: TaskType) -> String {
+    format!(
+        "{}\n\n{}",
+        client_identity_line_from_env(),
+        BASE_PROMPT.trim()
+    )
 }
 
 fn compose_base_prompt_layer() -> String {
     compose_base_prompt_layer_for_task(TaskType::Code)
 }
 
-fn task_overlay(task_type: TaskType) -> &'static str {
-    match task_type {
-        TaskType::Office => TASK_OFFICE,
-        TaskType::Code => TASK_CODE,
-    }
+fn task_overlay(_task_type: TaskType) -> &'static str {
+    TASK_CODE
 }
 
 /// Personality overlays — voice and tone.

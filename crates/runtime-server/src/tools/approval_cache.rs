@@ -132,7 +132,7 @@ pub fn build_approval_key(tool_name: &str, input: &serde_json::Value) -> Approva
                 format!("browser_nav:{host}")
             }
         }
-        "write_file" | "edit_file" | "write_office" => {
+        "write_file" | "edit_file" => {
             let path = input
                 .get("path")
                 .or_else(|| input.get("file_path"))

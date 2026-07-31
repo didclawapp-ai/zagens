@@ -220,32 +220,6 @@ fn read_log_tail(path: &Path, max_lines: usize) -> String {
     lines[start..].join("\n")
 }
 
-/// Bundled PBS Python shipped in the installer (`tauri.conf.json` → `python/`).
-fn bundled_python_executable(app: &AppHandle) -> Option<PathBuf> {
-    #[cfg(windows)]
-    let py_name = "python.exe";
-    #[cfg(not(windows))]
-    let py_name = if cfg!(target_os = "macos") {
-        "python3.12"
-    } else {
-        "python3"
-    };
-
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Ok(res) = app.path().resource_dir() {
-        candidates.push(res.join("python").join(py_name));
-    }
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        candidates.push(dir.join("python").join(py_name));
-        #[cfg(target_os = "macos")]
-        candidates.push(dir.join("../Resources/python").join(py_name));
-    }
-
-    candidates.into_iter().find(|path| path.is_file())
-}
-
 fn runtime_sidecar_cli_args(port: &str) -> Vec<String> {
     let mut args = vec![
         "--host".into(),
@@ -312,9 +286,6 @@ fn spawn_sidecar(app: &AppHandle, runtime_bin: &str, port: u16, token: &str) -> 
     // Desktop UI modes (YOLO / trust) may opt in per request; gate in runtime via
     // `Config::effective_trust_mode` requires deployment-level permission.
     std_cmd.env("DEEPSEEK_TRUST_MODE", "1");
-    if let Some(py) = bundled_python_executable(app) {
-        std_cmd.env("DEEPSEEK_BUNDLED_PYTHON", py);
-    }
 
     // Pull provider API keys from OS keyring into env vars. Runtime resolves
     // credentials via env → config (no keyring I/O in the sidecar process).

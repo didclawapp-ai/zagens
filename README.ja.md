@@ -43,7 +43,7 @@
 
 **2. 複数入口、1 エンジン** — [Tauri 2](https://tauri.app/) デスクトップ **または** 全画面 **`zagens-tui`**（ratatui）**または** ヘッドレス **`zagens`** CLI — いずれも **Kernel V3**（`LiveTurnMachine` + `EffectInterpreter`、イベントソーシング turn、log-first セッション再開）。デスクトップはトレイ・WebView・PTY・sidecar 監督；TUI はターミナル内 3 カラム transcript/composer/inspector + LHT パネル。
 
-**3. Code + Office、1 つの runtime** — **Code / Office** タスク種別は設定とツールを共有しつつ、プロンプトとツール面は異なります。種別切替は KV 安定のため**新セッション**を開始（[アーキテクチャ](docs/task-type-prompt-architecture.md)）。Office: `read_file` / **`write_office`**（xlsx は Rust、docx/pptx/pdf は同梱 Python）。
+**3. 統一コード Agent 面** — デスクトップ Composer は **Auto / Code**（旧 **Office** は Code に移行）。文書は **`load_skill zagens-office`** + 外部 CLI。独立 Office モードは無し。
 
 その他: **CRAFT マルチエージェント**（サブエージェント、fix-loop 判定、P1 ブラックボード — [メモ](docs/craft-v2-improvements.md)）、遅延**シンボル索引**（`.zagens/symbols.json`）、MCP、スキル、Hooks、スケジュールタスク / **night queue**、**`batch_edit`** / **`refactor_imports`** 一括コードツール。
 
@@ -55,7 +55,7 @@
 |------|---------------------|
 | Agent が途中停止、または早すぎる完了マーク | **段階的完了ゲート** + 長時間タスクパネル（[composable harness](docs/harness/COMPOSABLE_HARNESS.md)） |
 | IDE プラグインとターミナル Agent のセッション分断 | 単一 **sidecar** + SQLite スレッド、fork/再開、**リプレイ**、ワークスペーススナップショット |
-| 表計算・文書がコーディング Agent の外 | **Office モード** + `write_office` + デスクトッププレビュー |
+| 表計算・文書の専用面が欲しい | **`load_skill zagens-office`** + 外部 CLI；デスクトップで成果物を開く |
 | ローカルツール実行を盲信しない | 実行ポリシー、ネットワーク規則、パス正規化、承認 UI、runtime トークンは WebView に入れない（[サンドボックス行列](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)） |
 
 ---
@@ -80,7 +80,7 @@
 
 **Runtime:** スレッド、MCP、スキル、Hooks、マルチプロバイダ、ビジョン；night-queue / agent-health / symbol-index API；**`GET/PUT/DELETE /v1/threads/{id}/config`**；グローバル **`thread.status`** SSE；**`POST /v1/threads/{id}/events`** チャネル注入。
 
-**ツール（代表）:** ファイル、git、`exec_shell`、`write_office`、T4 `assert_*`、T5 複合、意図コンポジット（`investigate` / `answer_from_repo` / `change_and_verify`）、任意で `web_search` / `fetch_url`、メモリツール。一覧: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+**ツール（代表）:** ファイル、git、`exec_shell`、T4 `assert_*`、T5 複合、意図コンポジット（`investigate` / `answer_from_repo` / `change_and_verify`）、任意で `web_search` / `fetch_url`、メモリ；Office はスキル **`zagens-office`**。一覧: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -94,7 +94,7 @@
 | **OS サンドボックス強制** | **macOS Seatbelt** — `sandbox-exec` 利用時に強制。**Windows** — ネイティブサンドボックス実装済み（`elevated` 推奨：`zagens sandbox setup` 後に強制；`unelevated` は workspace 書き込み隔離のみ）。設定 → **Sandbox** 初回ウィザード。**Linux** — ポリシー宣言のみ、**OS 未強制**（degraded）。詳細: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
 | **プロバイダ** | **DeepSeek V4**（Pro / Flash）向けに最適化。API キーはユーザー提供。OpenAI 互換エンドポイントも利用可 — **モデルはホストしません**。 |
 | **長時間 & マルチエージェント** | ゲートと CRAFT は**利用可能だが進化中**；エッジケースと新ゲート種別を開発中。 |
-| **Office の深さ** | コア読み書きは動作；エンタープライズコネクタ、音声、一部シナリオテンプレは**将来**（[Office シナリオ](docs/desktop/OFFICE_SCENARIOS.md)）。 |
+| **文書ワークフロー** | 組み込み **Office モード**削除。スキル **`zagens-office`** + 外部 CLI（[備忘](docs/desktop/OFFICE_SCENARIOS.md)）。 |
 
 セキュリティ報告: [`SECURITY.md`](SECURITY.md)。
 
@@ -106,7 +106,7 @@
 
 - **プラットフォーム parity** — macOS/Linux デスクトップインストーラ；**Linux** ネイティブサンドボックス（Landlock/bwrap）。Windows ネイティブサンドボックスは 0.7.x で提供済み。
 - **信頼できる長時間タスク** — より厳密な完了ゲート、Harness フィクスチャ、リプレイ可能なオペレータワークフロー。
-- **Office ワークフロー** — 共有 runtime から分離せずシナリオを拡充。
+- **Office ワークフロー** — CLI/スキル統合と Pro エンジン。
 - **ハードニング** — [CHANGELOG](CHANGELOG.md) と [SECURITY.md](SECURITY.md) で追跡。
 
 ---

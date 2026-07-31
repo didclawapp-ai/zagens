@@ -18,7 +18,6 @@ pub(crate) mod channel_events;
 pub(crate) mod kernel_replay;
 mod mcp;
 mod night_queue;
-mod office;
 mod router;
 mod runtime_status;
 mod sessions;
@@ -52,7 +51,6 @@ pub(crate) use night_queue::{
     delete_night_queue_task, get_night_queue, list_gate_presets, post_night_queue_briefing,
     retry_night_queue_task, run_night_queue, stop_night_queue,
 };
-pub(crate) use office::get_office_environment;
 pub(crate) use sessions::{
     delete_session, get_resume_task, get_session, list_sessions, resume_session_thread,
 };

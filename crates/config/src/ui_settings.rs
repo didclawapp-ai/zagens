@@ -283,8 +283,7 @@ fn write_settings_doc(path: &Path, doc: &toml::Value) -> Result<()> {
 fn normalize_task_type_preference(raw: &str) -> Option<&'static str> {
     match raw.trim().to_ascii_lowercase().as_str() {
         "auto" => Some("auto"),
-        "code" => Some("code"),
-        "office" => Some("office"),
+        "code" | "office" => Some("code"),
         _ => None,
     }
 }
@@ -319,7 +318,7 @@ pub fn write_onboarding_complete_setting(complete: bool) -> Result<()> {
     write_settings_doc(&path, &doc)
 }
 
-/// Read the persisted default task type (`auto` / `code` / `office`).
+/// Read the persisted default task type (`auto` / `code`; legacy `office` → `code`).
 pub fn read_task_type_preference_setting() -> Result<Option<String>> {
     let (_path, doc) = load_settings_doc()?;
     Ok(doc
@@ -333,7 +332,7 @@ pub fn read_task_type_preference_setting() -> Result<Option<String>> {
 /// Persist the desktop default task type preference.
 pub fn write_task_type_preference_setting(value: &str) -> Result<()> {
     let Some(normalized) = normalize_task_type_preference(value) else {
-        bail!("invalid task_type_preference '{value}'. Expected: auto, code, office.");
+        bail!("invalid task_type_preference '{value}'. Expected: auto or code.");
     };
     let (path, mut doc) = load_settings_doc()?;
     let table = doc
@@ -393,7 +392,7 @@ mod tests {
         write_task_type_preference_setting("office").expect("write");
         assert_eq!(
             read_task_type_preference_setting().expect("read"),
-            Some("office".to_string())
+            Some("code".to_string())
         );
         write_onboarding_complete_setting(true).expect("write onboarding");
         assert!(read_onboarding_complete_setting().expect("read onboarding"));

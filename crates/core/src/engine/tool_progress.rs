@@ -48,16 +48,6 @@ pub fn tool_progress_opening_line(tool_name: &str, input: &Value) -> String {
             _ => format!("{tool_name} …"),
         },
         "apply_patch" => "apply_patch → unified diff".to_string(),
-        "write_office" => {
-            let fmt = input.get("format").and_then(Value::as_str).unwrap_or("");
-            match input.get("path").and_then(Value::as_str) {
-                Some(p) if !p.is_empty() && !fmt.is_empty() => {
-                    format!("write_office ({fmt}) → {p}")
-                }
-                Some(p) if !p.is_empty() => format!("write_office → {p}"),
-                _ => "write_office …".to_string(),
-            }
-        }
         "exec_shell" => match input.get("command").and_then(Value::as_str) {
             Some(cmd) if cmd.len() > PROGRESS_CMD_PREVIEW_BYTES => {
                 format!(
@@ -93,7 +83,6 @@ pub fn tool_progress_phase_line(tool_name: &str) -> &'static str {
         "edit_file" => "Reading target file and applying replacement…",
         "apply_patch" => "Applying patch hunks to workspace…",
         "read_file" => "Reading from disk…",
-        "write_office" => "Generating Office document (may take a few seconds)…",
         "exec_shell" => "Running shell command…",
         "task_shell_start" => "Starting background shell task…",
         "task_shell_wait" => "Collecting task output…",

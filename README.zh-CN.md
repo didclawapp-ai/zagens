@@ -31,7 +31,7 @@
 | **DeepSeek 深度用户** — 日常用 DeepSeek API / V4 做编码与 Agent 工作流，想要比官方工具更强的本地 Agent 平台 | 托管 SaaS、包月模型、零配置云端 |
 | 想要**独立 Agent 平台**（桌面 / 终端 / CLI，不绑死某一 IDE 插件）的开发者 | 纯聊天、无工具、无工作区、无回放 |
 | **终端优先**用户（macOS / Linux / Windows）— 全屏 **`zagens-tui`**，与桌面同引擎 | 完全自主、无护栏的 YOLO Agent |
-| 做**长程代码重构**或**Office 交付物**、希望同一工作流的人 | 零安装的移动端 / 纯浏览器体验 |
+| 做**长程代码重构**、希望同一可审计工作流的人 | 零安装的移动端 / 纯浏览器体验 |
 | 在意**本地 sidecar**、MCP/技能、UI 内**执行审批**的用户 | 只需网页 Copilot、不需要本地执行能力的团队 |
 | 当前 **Windows 桌面**用户；macOS/Linux 可用 **TUI**、**CLI** 或源码构建 | |
 
@@ -43,7 +43,7 @@
 
 **2. 多入口，一套引擎** — [Tauri 2](https://tauri.app/) 桌面 **或** 全屏 **`zagens-tui`**（ratatui）**或** 无 GUI 的 **`zagens`** CLI — 均运行 **Kernel V3**（`LiveTurnMachine` + `EffectInterpreter`，事件溯源 turn、log-first 会话恢复）。桌面提供托盘、WebView 面板、嵌入式 PTY 与 sidecar 监督；TUI 在终端内提供三栏 transcript/composer/inspector 与 LHT 面板。
 
-**3. Code + Office，一套 runtime** — **Code / Office** 任务类型共享配置与工具面，但提示词与工具集不同；切换类型会**新开会话**以保持 KV 稳定（[架构说明](docs/task-type-prompt-architecture.md)）。Office：`read_file` / **`write_office`**（xlsx 用 Rust；docx/pptx/pdf 用捆绑 Python）。
+**3. 统一代码 Agent 面** — 桌面 Composer 仅保留 **Auto / Code** 任务类型（历史 **Office** 偏好会迁移为 Code）。文档类任务请用 **`load_skill zagens-office`** 配合外部 Office CLI，不再内置独立 Office 模式。
 
 另有：**CRAFT 多代理**（子代理、fix-loop 裁决、P1 黑板 — [说明](docs/craft-v2-improvements.md)）、懒加载**符号索引**（`.zagens/symbols.json`）、MCP、技能、Hooks、定时任务 / **夜间队列**、**`batch_edit`** / **`refactor_imports`** 批量代码工具。
 
@@ -55,7 +55,6 @@
 |------|----------------|
 | Agent 中途停手或过早标记完成 | **分层完成门禁** + 长程任务面板（[组合式 Harness](docs/harness/COMPOSABLE_HARNESS.md)） |
 | IDE 插件与终端 Agent 会话割裂 | 统一 **sidecar** + SQLite 线程、分叉/恢复、**回放**、工作区快照 |
-| 表格与文档在编码 Agent 流程之外 | **Office 模式** + `write_office` + 桌面预览 |
 | 本地跑工具又不能盲信 | 执行策略、网络规则、路径规范化、审批 UI、运行时 Token 不进 WebView（[沙箱矩阵](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)） |
 
 ---
@@ -70,7 +69,7 @@
 
 **Harness 2026 H2（Phase 0–4）：** 谓词库 + **`HarnessVerifyLoop`**；**夜间队列**（`zagens queue` + 桌面面板 + 日程/Hooks）；技能 **stage gate**；**Gate-as-Code**（`zagens gate`）；**`draft_skill`** + promote；T5 **`explore_codebase`** / **`edit_and_check`**；Agent 体检（`GET /v1/agent-health`）；replay pack + **`zagens trace benchmark`**。规格：[`docs/harness/`](docs/harness/README.md)。
 
-**桌面流式时间线：** 交错展示 thinking / tool / text，活动束折叠、回合结束自动收起、长 turn 可扫读（office / workflow / 子代理 / browser 折叠）。**子代理步骤 journal**（防黑盒）。LHT 校验卫生 + 完成门禁实时状态。
+**桌面流式时间线：** 交错展示 thinking / tool / text，活动束折叠、回合结束自动收起、长 turn 可扫读（workflow / 子代理 / browser 折叠）。**子代理步骤 journal**（防黑盒）。LHT 校验卫生 + 完成门禁实时状态。
 
 **Kernel V3 引擎：** 事件溯源 turn 循环 — `sessions.db` 中的 `KernelEvent` 日志、`LiveTurnMachine` 规划、`EffectInterpreter` IO、golden 重放夹具。规格：[AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md)。
 
@@ -80,7 +79,7 @@
 
 **Runtime：** 线程、MCP、技能、Hooks、多提供商路由、视觉；night-queue / agent-health / symbol-index API；**`GET/PUT/DELETE /v1/threads/{id}/config`**；全局 **`thread.status`** SSE；**`POST /v1/threads/{id}/events`** 通道注入。
 
-**工具（代表）：** 文件、git、`exec_shell`、`write_office`、T4 `assert_*`、T5 复合工具、意图组合（`investigate` / `answer_from_repo` / `change_and_verify`）、可选 `web_search` / `fetch_url`、记忆工具。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
+**工具（代表）：** 文件、git、`exec_shell`、T4 `assert_*`、T5 复合工具、意图组合（`investigate` / `answer_from_repo` / `change_and_verify`）、可选 `web_search` / `fetch_url`、记忆工具；Office 经技能 **`zagens-office`**。完整列表：`crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -94,7 +93,7 @@
 | **OS 级沙箱** | **macOS Seatbelt** — 在 `sandbox-exec` 可用时强制执行。**Windows** — 原生沙箱已实现（`elevated` 推荐：`zagens sandbox setup` 后强制隔离；`unelevated` 为工作区写隔离）。设置 → **Sandbox** 首次引导。**Linux** — 策略已声明，**尚未 OS 级强制**（degraded）。详见 [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)。 |
 | **模型与 Key** | 面向 **DeepSeek V4**（Pro / Flash）深度优化；需自备 API Key。亦支持其他 OpenAI 兼容端点 — **我们不托管模型**。 |
 | **长程与多代理** | 门禁与 CRAFT **可用且在持续演进**，边界场景与新门禁类型在活跃开发中。 |
-| **Office 深度** | 核心读写路径已有；企业连接器、语音及部分场景模板为**后续方向**（[Office 场景](docs/desktop/OFFICE_SCENARIOS.md)）。 |
+| **文档工作流** | 内置 **Office 模式**已移除；请用技能 **`zagens-office`** + 外部 CLI。见 [OFFICE_SCENARIOS.md](docs/desktop/OFFICE_SCENARIOS.md)（已弃用备忘）。 |
 
 安全问题请走 [`SECURITY.md`](SECURITY.md)。
 
@@ -106,7 +105,7 @@
 
 - **平台对齐** — macOS/Linux 桌面安装包；**Linux** 原生沙箱（Landlock/bwrap）。Windows 原生沙箱已在 0.7.x 落地。
 - **可信长任务** — 更严完成门禁、Harness 夹具、可回放的操作者工作流。
-- **Office 工作流** — 更丰富的场景覆盖，且不脱离统一 runtime。
+- **Office 工作流** — 加深 CLI/技能集成与 Pro 引擎能力。
 - **安全加固** — 见 [CHANGELOG](CHANGELOG.md) 与 [SECURITY.md](SECURITY.md)。
 
 ---

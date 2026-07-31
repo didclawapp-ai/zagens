@@ -62,9 +62,6 @@ pub fn should_default_defer_tool(name: &str, mode: TurnLoopMode) -> bool {
             | "update_plan"
             | "checklist_write"
             | "todo_write"
-            | "write_office"
-            | "read_office"
-            | "load_office_payload"
             | "describe_image"
             | "task_list"
             | "task_read"
@@ -525,22 +522,6 @@ mod tests {
             TurnLoopMode::Agent
         ));
         assert!(should_default_defer_tool("exec_shell", TurnLoopMode::Plan));
-    }
-
-    #[test]
-    fn deferral_keeps_office_read_tools_eager_in_agent_mode() {
-        assert!(!should_default_defer_tool(
-            "read_office",
-            TurnLoopMode::Agent
-        ));
-        assert!(!should_default_defer_tool(
-            "load_office_payload",
-            TurnLoopMode::Agent
-        ));
-        assert!(!should_default_defer_tool(
-            "write_office",
-            TurnLoopMode::Agent
-        ));
     }
 
     #[test]

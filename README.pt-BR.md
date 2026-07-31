@@ -43,7 +43,7 @@ Tarefas longas de Agent tendem a **parar no meio ou marcar “concluído” cedo
 
 **2. Várias superfícies, um motor** — Desktop [Tauri 2](https://tauri.app/) **ou** **`zagens-tui`** em tela cheia (ratatui) **ou** CLI headless **`zagens`** — todos rodam **Kernel V3** (`LiveTurnMachine` + `EffectInterpreter`, turns event-sourced, resume log-first). O desktop adiciona bandeja, WebView, PTY embutido e supervisão do sidecar; o TUI traz transcript/composer/inspector em 3 colunas + painel LHT no terminal.
 
-**3. Code + Office, um runtime** — Tipos **Code / Office** compartilham ferramentas e config, com superfícies e prompts diferentes; trocar o tipo abre **nova sessão** para KV estável ([arquitetura](docs/task-type-prompt-architecture.md)). Office: `read_file` / **`write_office`** (xlsx em Rust; docx/pptx/pdf via Python embutido).
+**3. Superfície Code unificada** — Composer: **Auto / Code** (legado **Office** → Code). Documentos: **`load_skill zagens-office`** + CLI externo. Sem modo Office embutido.
 
 Também: **CRAFT multi-agent** (sub-agents, vereditos fix-loop, blackboard P1 — [notas](docs/craft-v2-improvements.md)), **índice de símbolos** lazy (`.zagens/symbols.json`), MCP, skills, hooks, tarefas agendadas / **night queue**, **`batch_edit`** / **`refactor_imports`** em lote.
 
@@ -55,7 +55,7 @@ Também: **CRAFT multi-agent** (sub-agents, vereditos fix-loop, blackboard P1 �
 |-----|---------------------|
 | Agent para no meio ou marca conclusão cedo | **Portões em camadas** + painel de tarefa longa ([harness composável](docs/harness/COMPOSABLE_HARNESS.md)) |
 | Plugins de IDE vs agents de terminal sem história única | **Sidecar** único + threads SQLite, fork/retomar, **replay**, snapshots |
-| Planilhas e docs fora do loop do agent de código | **Modo Office** + `write_office` + previews no desktop |
+| Planilhas/docs precisam de superfície dedicada | **`load_skill zagens-office`** + CLI externo; desktop abre entregáveis |
 | Executar ferramentas localmente sem confiança cega | Política de exec, regras de rede, canonicalização de paths, UI de aprovação, token de runtime fora do WebView ([matriz de sandbox](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)) |
 
 ---
@@ -80,7 +80,7 @@ Também: **CRAFT multi-agent** (sub-agents, vereditos fix-loop, blackboard P1 �
 
 **Runtime:** threads, MCP, skills, hooks, roteamento multi-provedor, visão; APIs night-queue / agent-health / symbol-index; **`GET/PUT/DELETE /v1/threads/{id}/config`**; SSE global **`thread.status`**; injeção de canal **`POST /v1/threads/{id}/events`**.
 
-**Ferramentas (representativas):** arquivos, git, `exec_shell`, `write_office`, T4 `assert_*`, compostos T5, compostos de intenção (`investigate` / `answer_from_repo` / `change_and_verify`), opcional `web_search` / `fetch_url`, memória. Lista completa: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md).
+**Ferramentas (representativas):** arquivos, git, `exec_shell`, T4 `assert_*`, compostos T5, compostos de intenção (`investigate` / `answer_from_repo` / `change_and_verify`), opcional `web_search` / `fetch_url`, memória; Office via skill **`zagens-office`**. Lista: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -94,7 +94,7 @@ Preferimos escopo honesto a checklist de marketing.
 | **Sandbox no OS** | **macOS Seatbelt** — aplicado quando `sandbox-exec` existe. **Windows** — sandbox nativo implementado (`elevated` recomendado após `zagens sandbox setup`; `unelevated`: isolamento de escrita no workspace). Configurações → **Sandbox** assistente na primeira execução. **Linux** — política declarada, **sem enforcement no OS** (degraded). Detalhes: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
 | **Provedores** | Otimizado para **DeepSeek V4** (Pro / Flash); você traz API keys. Endpoints OpenAI-compatíveis também — **não hospedamos modelos**. |
 | **Longo prazo & multi-agent** | Portões e CRAFT **usáveis em produção, ainda evoluindo**; edge cases e novos tipos de portão em desenvolvimento. |
-| **Profundidade Office** | Leitura/escrita core ok; conectores enterprise, voz e alguns templates de cenário são **futuro** ([cenários Office](docs/desktop/OFFICE_SCENARIOS.md)). |
+| **Fluxos de documento** | Modo **Office** embutido removido; skill **`zagens-office`** + CLI externo ([memo](docs/desktop/OFFICE_SCENARIOS.md)). |
 
 Reporte segurança via [`SECURITY.md`](SECURITY.md).
 
@@ -106,7 +106,7 @@ Specs públicas em [`docs/`](docs/README.md). Direção:
 
 - **Paridade de plataforma** — instaladores desktop macOS/Linux; sandbox nativo **Linux** (Landlock/bwrap). Sandbox nativo Windows entregue na 0.7.x.
 - **Tarefas longas confiáveis** — portões mais rígidos, fixtures de harness, fluxos de operador com replay.
-- **Fluxos Office** — mais cenários sem separar do runtime compartilhado.
+- **Fluxos Office** — integração CLI/skill e motor Pro.
 - **Endurecimento** — melhorias de segurança e exec policy em [CHANGELOG](CHANGELOG.md) e [SECURITY.md](SECURITY.md).
 
 ---

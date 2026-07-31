@@ -9,7 +9,6 @@ import { useTurnScroll } from './chat/timeline/useTurnScroll';
 import { isLastUserMessage } from '../lib/chat/backtrackDepth';
 import { useT } from '../i18n';
 import { ChatEmptyState } from './ChatEmptyState';
-import { OfficeEmptyState } from './OfficeEmptyState';
 import { SessionRestoreBanner } from './chat/SessionRestoreBanner';
 import type { SessionRestoreSource } from '../hooks/useSessionNavigation';
 
@@ -35,8 +34,6 @@ interface Props {
   onOpenDiffInPanel?: () => void;
   onBacktrackFromMessage?: (messageId: string, content: string) => void;
   onRewindWorkspaceFromMessage?: (messageId: string, content: string) => void;
-  officeSession?: boolean;
-  onOfficeQuickStart?: (prefill: string) => void;
   sessionRestoreLoading?: boolean;
   sessionRestoreSource?: SessionRestoreSource;
   onRetrySessionRestore?: () => void;
@@ -64,8 +61,6 @@ export default function ChatView({
   onOpenDiffInPanel,
   onBacktrackFromMessage,
   onRewindWorkspaceFromMessage,
-  officeSession = false,
-  onOfficeQuickStart,
   sessionRestoreLoading = false,
   sessionRestoreSource = null,
   onRetrySessionRestore,
@@ -114,12 +109,7 @@ export default function ChatView({
           source={sessionRestoreSource}
           onRetry={onRetrySessionRestore}
         />
-        {messages.length === 0 &&
-          (officeSession && onOfficeQuickStart ? (
-            <OfficeEmptyState onPick={onOfficeQuickStart} />
-          ) : (
-            <ChatEmptyState />
-          ))}
+        {messages.length === 0 && <ChatEmptyState />}
 
         {messages.map((msg) => (
           <ChatErrorBoundary key={msg.id}>

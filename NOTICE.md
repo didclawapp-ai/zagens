@@ -30,4 +30,4 @@ See `doc_Private/docs/tech/AGENT_KERNEL_V3_PHASE3_DESIGN.md`.
 
 ## Other dependencies
 
-Rust crates, npm packages, bundled Python, Tauri, React, and other libraries are subject to their respective licenses in `Cargo.lock`, package lockfiles, and vendor manifests.
+Rust crates, npm packages, Tauri, React, and other libraries are subject to their respective licenses in `Cargo.lock`, package lockfiles, and vendor manifests.

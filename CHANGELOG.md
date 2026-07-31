@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **Office mode & built-in document engine (breaking):** Removed `TaskType::Office`, Desktop Office empty-state / task-type UI, and built-in tools `write_office` / `read_office` / `load_office_payload` (Python docx/pptx/pdf + `rust_xlsxwriter` stack, office venv / `/v1/office/environment`). Legacy `task_type=office` sessions coerce to **Code**. Bundled `office-*` scenario skills removed.
+- **Bundled PBS Python (breaking):** Desktop no longer downloads/embeds python-build-standalone (`prepare-python.mjs`, Tauri `python/` resource, `DEEPSEEK_BUNDLED_PYTHON`). RLM / `code_execution` use system `PATH` Python when present.
+
+### Added
+
+- **Skill `zagens-office`:** System skill guides Code-mode agents to call the external [`zagens-office`](https://github.com/didclawapp-ai/zagens-office) CLI via `exec_shell` (JSON schema / write / edit / read; install + license gate documented in the skill).
+
 ### Fixed
 
 - **Browser (P0 audit):** Unified URL policy in shared `zagens-browser-policy` crate — runtime approval heuristics now match desktop `url_policy` (fixes `172.*` over-broad skip, private LAN https now prompts). Split **session** vs **persistent** allowlist: approval and `browser_allow_host` add session-only entries; `prefs.json` stores persistent hosts only. Preview: `wait_ready` runs in `spawn_blocking`; Windows preview stop uses `taskkill /T /F` to kill npm/node child processes. **Nav policy chain:** agent navigate/click keeps Agent URL policy through redirect chains plus a 3s post-chain grace window. **JS interact:** `browser_type` uses native value setter for React controlled inputs; snapshot skips non-visible elements. **`window.open`:** handled via `on_new_window` — same `url_policy` as navigation, opens in current Browser host (never spawns popups). **CDP interact (Windows):** `browser_click` / `browser_type` prefer WebView2 CDP (`Input.dispatchMouseEvent`, `Input.insertText`) with JS inject fallback. **CDP snapshot/history (Windows):** `browser_snapshot` prefers `Page.getFrameTree` + `Accessibility.getFullAXTree` (iframe refs `fN:role:slug:nth`); back/forward prefer `Page.getNavigationHistory` + `navigateToHistoryEntry`; non-Windows keeps JS snapshot and self-managed history. **Ref resolution alignment:** CDP snapshot refs use AX roles (`link` / `textbox` / `heading` / …) which the JS resolver (DOM tag roles) could not find — `zagensFindInDoc` now matches via an AX↔DOM role alias table, filters to visible elements (nth aligned with the CDP snapshot), and accepts any name candidate (aria-label / name / placeholder / title / text / value / alt), so `browser_click` / `browser_type` work with CDP snapshot refs.

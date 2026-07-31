@@ -12,7 +12,6 @@ export type SettingsRailMenuProps = {
   activeInspector: RightPanelView;
   onInspectorChange: (view: RightPanelView) => void;
   desktopHost: boolean;
-  officeSession: boolean;
   onExpandRightPanel?: () => void;
 };
 
@@ -20,15 +19,14 @@ export default function SettingsRailMenu({
   activeInspector,
   onInspectorChange,
   desktopHost,
-  officeSession,
   onExpandRightPanel,
 }: SettingsRailMenuProps) {
   const { t } = useT();
   const wrapRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const items = useMemo(
-    () => buildSettingsNavItems({ t, desktopHost, officeSession }).filter((item) => item.show),
-    [t, desktopHost, officeSession],
+    () => buildSettingsNavItems({ t, desktopHost }).filter((item) => item.show),
+    [t, desktopHost],
   );
   const settingsActive = isSettingsNavActive(activeInspector, items);
 

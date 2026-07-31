@@ -151,18 +151,6 @@ export function useWorkspacePanel({
     ],
   );
 
-  const handleOfficeDeliverableReady = useCallback(
-    async (relPath: string) => {
-      setFilesRefreshNonce((n) => n + 1);
-      try {
-        await openWorkspaceFileForPreview(relPath);
-      } catch {
-        // files tab still reveals path; office formats open via system app
-      }
-    },
-    [openWorkspaceFileForPreview],
-  );
-
   const handleChatOpenWorkspacePath = useCallback(
     async (relPath: string) => {
       try {
@@ -238,7 +226,6 @@ export function useWorkspacePanel({
     handleComposerWorkspaceChange,
     filesRefreshNonce,
     bumpFilesRefresh,
-    handleOfficeDeliverableReady,
     focusWorkspaceTab,
     focusWorkspaceTabNonce,
     setFocusWorkspaceTab,

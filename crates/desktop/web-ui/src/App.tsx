@@ -58,7 +58,6 @@ import {
   getActiveThreadIdsFromStore,
   subscribeThreadStatusStore,
 } from './lib/chat/threadStatusStore';
-import { parseWriteOfficeOutputPath } from './lib/officeDeliverable';
 import {
   type ComposerModelId,
   type DesktopRouteIntentOption,
@@ -71,9 +70,6 @@ import {
   mergeComposerModelOptions,
 } from './lib/composerModels';
 import { fetchSystemSettings, type SystemSettings } from './api/client';
-import {
-  applyOfficeDefaultWorkspace,
-} from './lib/defaultWorkspace';
 import { worktreeSessionLabel } from './lib/worktreePath';
 import {
   ACTIVE_INSPECTOR_STORAGE_KEY,
@@ -97,7 +93,6 @@ import { type CachedUiMessage } from './lib/chat/sessionUiCache';
 import { confirmDialog } from './lib/confirmDialog';
 import { toast } from './lib/toast';
 import type { LhtChipState } from './lib/lhtChip';
-import { coerceRunModeForSession, isOfficeSession } from './lib/taskTypeSession';
 
 export default function App() {
   const { t } = useT();
@@ -508,7 +503,6 @@ export default function App() {
     handleComposerWorkspaceChange,
     filesRefreshNonce,
     bumpFilesRefresh,
-    handleOfficeDeliverableReady,
     focusWorkspaceTab,
     focusWorkspaceTabNonce,
     setFocusWorkspaceTab,
@@ -607,18 +601,13 @@ export default function App() {
     streamRegistry,
     bindThreadSession,
     onNavigateToSession: (sessionId) => handleSelectSessionRef.current(sessionId),
-    onToolCompleted: (toolName, success, output) => {
-      if (officeSession && success && toolName === 'write_office') {
-        const rel = parseWriteOfficeOutputPath(output);
-        if (rel) void handleOfficeDeliverableReady(rel);
-        return;
-      }
+    onToolCompleted: (_toolName, _success, _output) => {
       if (
-        success &&
+        _success &&
         desktopHost &&
         activeInspector !== 'browser' &&
         readPostEditPreviewHintPref() &&
-        shouldShowPostEditPreviewHint(toolName, output)
+        shouldShowPostEditPreviewHint(_toolName, _output)
       ) {
         toast.info(t('browser.postEditPreviewHint'), {
           tag: 'post-edit-preview-hint',
@@ -890,12 +879,6 @@ export default function App() {
     lockedThreadTaskTypeRef.current = lockedThreadTaskType;
   }, [lockedThreadTaskType]);
 
-  const officeSession = isOfficeSession(
-    taskTypePreference,
-    lockedThreadTaskType,
-    Boolean(resumedThreadId),
-  );
-
   useKeyboardShortcuts([
     { key: 'k', ctrl: true, description: t('keyboard.newSession'), handler: () => handleNewSessionPreserveMode() },
     {
@@ -917,7 +900,6 @@ export default function App() {
       global: true,
       description: t('keyboard.terminal'),
       handler: () => {
-        if (officeSession) return;
         if (!desktopHost) {
           toast.info(t('terminal.desktopOnly'));
           return;
@@ -932,7 +914,6 @@ export default function App() {
       global: true,
       description: t('keyboard.newTerminal'),
       handler: () => {
-        if (officeSession) return;
         if (!desktopHost) {
           toast.info(t('terminal.desktopOnly'));
           return;
@@ -1039,31 +1020,8 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!officeSession) return;
-    if (
-      activeInspector === 'agents' ||
-      activeInspector === 'index' ||
-      activeInspector === 'checklist' ||
-      activeInspector === 'audit' ||
-      activeInspector === 'long-horizon' ||
-      activeInspector === 'routing' ||
-      activeInspector === 'lht-settings'
-    ) {
-      setActiveInspector('workspace');
-    }
-  }, [officeSession, activeInspector]);
-
-  /** Office composer uses Documents/Zagens when not bound to a resumed thread workspace. */
-  useEffect(() => {
-    if (!officeSession || resumedThreadId) return;
-    if (taskTypePreference !== 'office' && lockedThreadTaskType !== 'office') return;
-    void applyOfficeDefaultWorkspace(setSelectedWorkspace);
-  }, [officeSession, taskTypePreference, lockedThreadTaskType, resumedThreadId]);
-
-  useEffect(() => {
-    if (!officeSession) return;
-    setRunMode((m) => coerceRunModeForSession(m, true));
-  }, [officeSession]);
+    syncAutoApproveFromRunMode(runMode);
+  }, [runMode, syncAutoApproveFromRunMode]);
 
   const handleTaskTypePreferenceChange = useCallback(
     (next: DesktopTaskTypePreference) => {
@@ -1076,11 +1034,6 @@ export default function App() {
           handleNewSessionPreserveMode();
         }
         setTaskTypePreference(next);
-        if (next === 'office') {
-          setRunMode('agent');
-          setAutoApprove(true);
-          await applyOfficeDefaultWorkspace(setSelectedWorkspace);
-        }
       })();
     },
     [resumedThreadId, handleNewSessionPreserveMode],
@@ -1134,7 +1087,7 @@ export default function App() {
     [messages],
   );
   const auditGridAvailable =
-    !officeSession && (auditGridData.hasAnyData || sessionFileChanges.length > 0);
+    auditGridData.hasAnyData || sessionFileChanges.length > 0;
   const auditGridVisible = auditGridAvailable && !auditGridDismissed;
 
   useEffect(() => {
@@ -1238,7 +1191,6 @@ export default function App() {
       userDismissedHarness={auditGridDismissed}
       onShowHarnessStack={() => setAuditGridDismissed(false)}
       focusMode={focusMode}
-      officeSession={officeSession}
       checklistActivity={checklistActivity}
       auditActivity={auditActivity}
       taskActivity={taskActivity}
@@ -1288,9 +1240,6 @@ export default function App() {
           : undefined
       }
       composerPrefill={composerPrefill}
-      onOfficeQuickStart={(text) =>
-        setComposerPrefill({ text: text.trim(), nonce: Date.now() })
-      }
       messages={messages}
       sessionRestoreLoading={sessionRestoreLoading}
       sessionRestoreSource={sessionRestoreSource}

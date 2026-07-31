@@ -48,81 +48,6 @@ const zhHans = {
         '请为最近改动或我指定的模块补充测试：先说明现有测试布局，再写最小必要的用例，并运行相关测试命令确认通过。',
     },
   },
-  officeEmpty: {
-    title: '办公模式',
-    subtitle: '撰写、整理与交付文档',
-    hint: '点击下方任务卡片填充提示，或直接在下方输入需求',
-    cards: {
-      executiveDailyBrief: {
-        title: '经营日报汇总',
-        hint: 'DOCX · inbox 多部门聚合',
-      },
-      customerQuote: {
-        title: '客户报价单',
-        hint: 'XLSX · 价目表 + 需求计算',
-      },
-      productionDailyReport: {
-        title: '生产品质晨报',
-        hint: 'DOCX · 读表先概况',
-      },
-      weeklyReport: {
-        title: '周报',
-        hint: 'DOCX · 默认 deliverables/',
-      },
-      meetingMinutes: {
-        title: '会议纪要',
-        hint: 'DOCX · 议题与行动项',
-      },
-      projectDeck: {
-        title: '项目汇报 PPT',
-        hint: 'PPTX · 封面与要点页',
-      },
-      dataReport: {
-        title: '数据报表',
-        hint: 'XLSX · 表格与图表',
-      },
-      competitiveAnalysis: {
-        title: '竞品分析',
-        hint: 'DOCX · 调研与来源',
-      },
-      contractDraft: {
-        title: '合同初稿',
-        hint: 'DOCX · 条款结构',
-      },
-      resume: {
-        title: '简历 / 求职信',
-        hint: 'DOCX · 个人材料',
-      },
-      releaseNotes: {
-        title: '发布说明',
-        hint: 'DOCX · 版本与变更',
-      },
-    },
-    prefill: {
-      executiveDailyBrief:
-        '请汇总昨日经营日报（DOCX）。先 load_skill office-executive-daily-brief，按技能执行：list_dir inbox/ 读取各部门附件，先输出文字概况与待决事项草稿，确认后 write_office 输出到 deliverables/（不必填 path）。',
-      customerQuote:
-        '请按客户需求整理报价单（XLSX）。先 load_skill office-customer-quote：read_office 读取 data/价目表.csv 与 data/客户需求.md，计算含税合计，write_office 输出到 deliverables/（不必填 path）。',
-      productionDailyReport:
-        '请汇报昨日生产与品质现况（DOCX）。先 load_skill office-production-daily-report：read_office 读取 data/生产日报_昨日.xlsx，先输出文字概况，确认后 write_office 输出到 deliverables/（不必填 path）。',
-      weeklyReport:
-        '请撰写本周工作周报（DOCX）。先 load_skill office-weekly-report，再按技能执行：确认时间范围与汇报对象，用 read_office 读取我提供的附件（若有），write_office 输出到 deliverables/（不必填 path）。',
-      meetingMinutes:
-        '请整理本次会议纪要（DOCX）。先 load_skill office-meeting-minutes，确认时间与参会人，用 read_office 读取会议材料（若有），write_office 输出到 deliverables/（不必填 path）。',
-      projectDeck:
-        '请制作项目汇报 PPT（PPTX）。先 load_skill office-project-report，确认项目名与汇报对象，write_office 输出到 deliverables/（不必填 path）。',
-      dataReport:
-        '请生成 Excel 数据报表（XLSX）。先 load_skill office-data-report，用 read_office 读取我提供的表格（若有），再 write_office 输出到 deliverables/。',
-      competitiveAnalysis:
-        '请撰写竞品分析报告（DOCX）。先 load_skill office-competitive-analysis，用 web_search 调研并标注来源，write_office 输出到 deliverables/。',
-      contractDraft:
-        '请起草合同初稿（DOCX）。先 load_skill office-contract-draft，确认合同类型与双方，write_office 输出到 deliverables/。',
-      resume:
-        '请撰写简历与求职信（DOCX）。先 load_skill office-resume，确认目标岗位，write_office 输出到 deliverables/。',
-      releaseNotes:
-        '请整理产品发布说明（DOCX）。先 load_skill office-release-notes，确认版本与受众，write_office 输出到 deliverables/。',
-    },
-  },
   a11y: {
     skipToMain: '跳到主要内容',
     skipToComposer: '跳到输入框',
@@ -564,15 +489,11 @@ const zhHans = {
     visionBridgeEmpty: '视觉桥接返回空内容，可能是提供商响应格式未被识别。',
     taskTypeAuto: '自动',
     taskTypeAutoHint: '按工作区与首条消息推断；新建会话时生效',
-    taskTypeOffice: '办公',
-    taskTypeOfficeHint: '聊天与办公文档；精简工具与 prompt',
     taskTypeCode: '代码',
     taskTypeCodeHint: '完整编程 Agent 工具面',
     taskTypeLocked: '本会话固定为 {{type}} 模式',
     selectTaskType: '任务类型',
     agentModeHint: 'WorkspaceWrite + 网络（引擎 #273 Shell 升格）',
-    officeRunModeHint: '办公模式仅使用 Agent（无 Plan / YOLO）',
-    officeStatusBar: '办公模式 · 默认 deliverables/ · PDF/HTML 右侧预览 · Word/Excel/PPT 系统打开',
     runModeYoloHint: 'DangerFullAccess：SandboxPolicy 完全不限制（慎用）',
   },
   banner: {
@@ -764,13 +685,6 @@ const zhHans = {
     viewFlat: '列表视图',
     viewTree: '树形视图',
     treeAria: '工作区文件树',
-    officeFilter: {
-      all: '全部',
-      deliverables: 'deliverables',
-      docs: 'docs',
-      changes: '本轮变更',
-    },
-    officeFilterChangesEmpty: '当前会话尚无文件 diff，无法筛选本轮变更。',
     openedWithSystemApp: '已用系统默认应用打开',
     errors: {
       invalidRel: '文件相对路径无效',
@@ -1957,11 +1871,9 @@ const zhHans = {
     modeTitle: '选择默认模式',
     modeDesc: '随时可在输入框上方切换。',
     modeAutoTitle: '自动',
-    modeAutoDesc: '由 Zagens 根据任务自动判断走代码还是办公。',
+    modeAutoDesc: '由 Zagens 根据工作区与首条消息推断任务类型。',
     modeCodeTitle: '代码',
     modeCodeDesc: '面向工程：读写文件、跑命令、长程重构。',
-    modeOfficeTitle: '办公',
-    modeOfficeDesc: '面向文档：写作、表格、报告、幻灯片。',
     next: '下一步',
     back: '上一步',
     finish: '开始使用',

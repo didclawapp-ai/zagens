@@ -37,14 +37,6 @@ const REGISTRY: &[RegistryEntry] = &[
         summary: "Path must exist under workspace; use grep_files when you know a filename fragment.",
     },
     RegistryEntry {
-        tool: "write_office",
-        summary: "Use blocks JSON schema; default output under deliverables/; read_office to verify.",
-    },
-    RegistryEntry {
-        tool: "read_office",
-        summary: "Path must point to an existing office file; run write_office first if missing.",
-    },
-    RegistryEntry {
         tool: "load_skill",
         summary: "Skill name must match bundled or user skill dir; check skills list in doctor output.",
     },
@@ -128,12 +120,7 @@ mod tests {
 
     #[test]
     fn registry_covers_common_tools() {
-        for tool in [
-            "read_file",
-            "grep_files",
-            "write_office",
-            "assert_file_count",
-        ] {
+        for tool in ["read_file", "grep_files", "load_skill", "assert_file_count"] {
             assert!(audit_tool(tool).covered, "{tool} should have hints");
         }
     }

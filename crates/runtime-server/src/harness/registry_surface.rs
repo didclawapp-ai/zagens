@@ -34,7 +34,7 @@ mod tests {
     use zagens_core::long_horizon::HarnessContract;
 
     fn sample_contract() -> HarnessContract {
-        let raw = include_str!("../../../../fixtures/harness/office-write-skill-manifest.toml");
+        let raw = include_str!("../../../../fixtures/harness/python-csv-skill-manifest.toml");
         HarnessContract::parse_toml(raw).expect("fixture manifest")
     }
 
@@ -44,13 +44,13 @@ mod tests {
         session.load_contract(sample_contract(), true);
         assert!(session.is_active());
 
-        let tools = vec!["read_file", "write_office", "list_dir"];
+        let tools = vec!["read_file", "write_file", "list_dir"];
         let filtered = session.filter_tools(tools, |n| n);
         assert!(filtered.contains(&"read_file"));
         assert!(filtered.contains(&"list_dir"));
         assert!(
-            !filtered.contains(&"write_office"),
-            "write_office blocked in prepare stage"
+            !filtered.contains(&"write_file"),
+            "write_file blocked in inspect stage"
         );
     }
 

@@ -34,7 +34,7 @@ fn run_harness(ctx: &CliContext, args: HarnessReportArgs) -> Result<()> {
     }
 
     let formats = if args.all_formats {
-        ReportFormats::all_office()
+        ReportFormats::markdown_only()
     } else if args.format.is_empty() {
         ReportFormats::default_bundle()
     } else {
@@ -49,15 +49,6 @@ fn run_harness(ctx: &CliContext, args: HarnessReportArgs) -> Result<()> {
     println!("Harness report written to {}", written.out_dir.display());
     if let Some(path) = written.markdown {
         println!("  markdown: {}", path.display());
-    }
-    if let Some(path) = written.docx {
-        println!("  docx: {}", path.display());
-    }
-    if let Some(path) = written.xlsx {
-        println!("  xlsx: {}", path.display());
-    }
-    if let Some(path) = written.pptx {
-        println!("  pptx: {}", path.display());
     }
     for warn in written.warnings {
         eprintln!("  warning: {warn}");

@@ -1,11 +1,11 @@
-//! Write Office deliverables from a [`ReportContext`].
+//! Write harness report deliverables from a [`ReportContext`] (markdown-only).
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, bail};
 
 use super::context::ReportContext;
-use super::render::{build_docx_payload, build_pptx_progress_payload, build_xlsx_evidence_payload};
+use super::render::render_markdown;
 
 #[derive(Debug, Clone, Default)]
 pub struct ReportFormats {
@@ -17,12 +17,10 @@ pub struct ReportFormats {
 
 impl ReportFormats {
     #[must_use]
-    pub fn all_office() -> Self {
+    pub fn markdown_only() -> Self {
         Self {
             markdown: true,
-            docx: true,
-            xlsx: true,
-            pptx: true,
+            ..Self::default()
         }
     }
 
@@ -36,22 +34,18 @@ impl ReportFormats {
         if parts.is_empty() {
             return Self::default_bundle();
         }
+        let wants_office = parts.iter().any(|p| matches!(*p, "docx" | "xlsx" | "pptx"));
         Self {
-            markdown: parts.contains(&"md") || parts.contains(&"markdown"),
-            docx: parts.contains(&"docx"),
-            xlsx: parts.contains(&"xlsx"),
-            pptx: parts.contains(&"pptx"),
+            markdown: parts.contains(&"md") || parts.contains(&"markdown") || wants_office,
+            docx: false,
+            xlsx: false,
+            pptx: false,
         }
     }
 
     #[must_use]
     pub fn default_bundle() -> Self {
-        Self {
-            markdown: true,
-            docx: true,
-            xlsx: true,
-            pptx: false,
-        }
+        Self::markdown_only()
     }
 
     #[must_use]
@@ -85,7 +79,13 @@ pub fn write_report_bundle(
     formats: &ReportFormats,
 ) -> Result<WrittenReport> {
     if !formats.any_selected() {
-        bail!("no output format selected — use --format md,docx,xlsx,pptx");
+        bail!("no output format selected — use --format md");
+    }
+
+    if formats.docx || formats.xlsx || formats.pptx {
+        bail!(
+            "built-in Office export (docx/xlsx/pptx) was removed; use --format md or the zagens-office skill"
+        );
     }
 
     std::fs::create_dir_all(out_dir)
@@ -99,43 +99,11 @@ pub fn write_report_bundle(
 
     if formats.markdown {
         let path = out_dir.join(format!("{base}.md"));
-        std::fs::write(&path, super::render::render_markdown(ctx))
+        std::fs::write(&path, render_markdown(ctx))
             .with_context(|| format!("write markdown {}", path.display()))?;
         written.markdown = Some(path);
     }
 
-    if formats.docx {
-        let path = out_dir.join(format!("{base}.docx"));
-        let payload = build_docx_payload(ctx);
-        crate::tools::office_write::write_office_docx(&path, &payload)
-            .map_err(|e| anyhow::anyhow!(e))
-            .with_context(|| format!("write docx {}", path.display()))?;
-        written.docx = Some(path);
-    }
-
-    if formats.xlsx {
-        let path = out_dir.join(format!("{base}-evidence.xlsx"));
-        let payload = build_xlsx_evidence_payload(ctx);
-        crate::tools::office_write::write_office_xlsx(&path, workspace, &payload)
-            .map_err(|e| anyhow::anyhow!(e))
-            .with_context(|| format!("write xlsx {}", path.display()))?;
-        written.xlsx = Some(path);
-    }
-
-    if formats.pptx {
-        let path = out_dir.join(format!("{base}-progress.pptx"));
-        let payload = build_pptx_progress_payload(ctx);
-        match crate::tools::office_write::write_office_pptx(&path, &payload) {
-            Ok(_engine) => {
-                written.pptx = Some(path);
-            }
-            Err(err) => {
-                written
-                    .warnings
-                    .push(format!("pptx skipped (python-pptx unavailable): {err}"));
-            }
-        }
-    }
-
+    let _ = workspace;
     Ok(written)
 }

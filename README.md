@@ -33,7 +33,7 @@ Long-horizon agent work tends to **stall or “claim done” too early**. Code a
 | **DeepSeek power users** — daily DeepSeek API / V4 coding and agent workflows who want a local agent platform beyond official tools | A hosted SaaS with managed models and billing |
 | Developers who want a **standalone agent platform** (desktop, TUI, or CLI — not locked into one IDE extension) | “Chat only” — no tools, no workspace, no replay |
 | **Terminal-first users** on macOS / Linux / Windows — full-screen **`zagens-tui`** with the same engine as desktop | Fully autonomous YOLO agents with no guardrails |
-| Teams working on **long code refactors** or **Office deliverables** in the same workflow | Zero-setup mobile or browser-only experience |
+| Teams working on **long code refactors** in one auditable workflow | Zero-setup mobile or browser-only experience |
 | People who care about **local sidecar architecture**, MCP/skills, and **exec approval** in the UI | Teams that only want a web copilot with no local execution |
 | Windows desktop users today; macOS/Linux via **TUI**, **CLI**, or source build | |
 
@@ -45,7 +45,7 @@ Long-horizon agent work tends to **stall or “claim done” too early**. Code a
 
 **2. Multiple surfaces, one engine** — [Tauri 2](https://tauri.app/) desktop **or** full-screen **`zagens-tui`** (ratatui) **or** headless **`zagens`** CLI — all run **Kernel V3** (`LiveTurnMachine` + `EffectInterpreter`, event-sourced turns, log-first session resume). Desktop adds tray, WebView panels, embedded PTY, and sidecar supervision; TUI adds three-column transcript/composer/inspector + LHT panel in the terminal.
 
-**3. Code + Office, one runtime** — **Code** and **Office** task types share tools and config but use different tool surfaces and prompts; switching types starts a **new session** for stable model KV ([architecture](docs/task-type-prompt-architecture.md)). Office: `read_file` / **`write_office`** (xlsx via Rust; docx/pptx/pdf via bundled Python).
+**3. One code agent surface** — Desktop Composer exposes **Auto / Code** task types (legacy **Office** preference migrates to Code). For document workflows, use **`load_skill zagens-office`** plus an external Office CLI — not a separate built-in Office mode.
 
 Also shipped: **CRAFT multi-agent** (sub-agents, fix-loop verdicts, P1 blackboard — [notes](docs/craft-v2-improvements.md)), lazy **symbol index** (`.zagens/symbols.json`), MCP, skills, hooks, scheduled tasks / **night queue**, **`batch_edit`** / **`refactor_imports`** bulk code tools.
 
@@ -57,7 +57,6 @@ Also shipped: **CRAFT multi-agent** (sub-agents, fix-loop verdicts, P1 blackboar
 |------|---------------------------|
 | Agent stops mid-task or marks work complete prematurely | Layered **completion gates** + long-horizon task panel ([composable harness](docs/harness/COMPOSABLE_HARNESS.md)) |
 | IDE plugins vs terminal agents don’t share one session story | Single **sidecar** + SQLite threads, fork/resume, **replay**, workspace snapshots |
-| Spreadsheets and docs are outside the coding agent loop | **Office mode** with `write_office` and file previews in the desktop shell |
 | Running tools locally without blind trust | Exec policy, network rules, path canonicalization, approval UI, runtime token kept out of the WebView ([sandbox matrix](docs/tech/SANDBOX_CAPABILITY_MATRIX.md)) |
 
 ---
@@ -72,7 +71,7 @@ Also shipped: **CRAFT multi-agent** (sub-agents, fix-loop verdicts, P1 blackboar
 
 **Harness 2026 H2 (Phase 0–4):** Predicate library + **`HarnessVerifyLoop`**; **night queue** (`zagens queue` + desktop panel + schedule/hooks); skill **stage gates**; **Gate-as-Code** (`zagens gate`); **`draft_skill`** + promote; T5 **`explore_codebase`** / **`edit_and_check`**; Agent health (`GET /v1/agent-health`); replay pack + **`zagens trace benchmark`**. Specs: [`docs/harness/`](docs/harness/README.md).
 
-**Desktop streaming timeline:** Interleaved thinking / tool / text blocks with activity bundles, settled auto-collapse, and long-turn scanability (office / workflow / sub-agent / browser collapse). **Sub-agent step journals** (anti-black-box). LHT verify-hygiene + live completion-gate status.
+**Desktop streaming timeline:** Interleaved thinking / tool / text blocks with activity bundles, settled auto-collapse, and long-turn scanability (workflow / sub-agent / browser collapse). **Sub-agent step journals** (anti-black-box). LHT verify-hygiene + live completion-gate status.
 
 **Kernel V3 engine:** event-sourced turn loop — `KernelEvent` log in `sessions.db`, `LiveTurnMachine` planning, `EffectInterpreter` IO, golden replay fixtures. Spec: [AGENT_KERNEL_V3.md](docs/tech/AGENT_KERNEL_V3.md).
 
@@ -82,7 +81,7 @@ Also shipped: **CRAFT multi-agent** (sub-agents, fix-loop verdicts, P1 blackboar
 
 **Runtime:** threads, MCP, skills, lifecycle hooks, multi-provider routing, vision; night-queue / agent-health / symbol-index APIs; **`GET/PUT/DELETE /v1/threads/{id}/config`**; global **`thread.status`** SSE; **`POST /v1/threads/{id}/events`** channel injection.
 
-**Tools (representative):** files, git, `exec_shell`, `write_office`, T4 `assert_*`, T5 composites, intent composites (`investigate` / `answer_from_repo` / `change_and_verify`), optional `web_search` / `fetch_url`, memory tools. Full list: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md).
+**Tools (representative):** files, git, `exec_shell`, T4 `assert_*`, T5 composites, intent composites (`investigate` / `answer_from_repo` / `change_and_verify`), optional `web_search` / `fetch_url`, memory tools; Office files via skill **`zagens-office`**. Full list: `crates/runtime-server/src/tools/` · [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -96,7 +95,7 @@ We prefer honest scope over marketing checklists.
 | **OS sandbox enforcement** | **macOS Seatbelt** — enforced when `sandbox-exec` is available. **Windows** — native sandbox enforced after setup (`elevated` recommended: profile read isolation + WFP; `unelevated` fallback: workspace write isolation only). Settings → **Sandbox** first-run wizard. **Linux** — policy declared, **not OS-enforced yet** (degraded). Details: [`SANDBOX_CAPABILITY_MATRIX.md`](docs/tech/SANDBOX_CAPABILITY_MATRIX.md). |
 | **Providers** | Optimized for **DeepSeek V4** (Pro / Flash); you bring API keys. Other OpenAI-compatible endpoints supported — we do not host models. |
 | **Long-horizon & multi-agent** | Gates and CRAFT are **production-usable but still evolving**; edge cases and new gate types land in active development. |
-| **Office depth** | Core read/write paths work; enterprise connectors, voice, and some scenario templates are **future** ([Office scenarios](docs/desktop/OFFICE_SCENARIOS.md)). |
+| **Document workflows** | Built-in **Office mode** removed; use skill **`zagens-office`** + external CLI. See [OFFICE_SCENARIOS.md](docs/desktop/OFFICE_SCENARIOS.md) (deprecated memo). |
 
 Report security issues via [`SECURITY.md`](SECURITY.md).
 
@@ -108,7 +107,6 @@ Public design specs live under [`docs/`](docs/README.md). Directionally:
 
 - **Platform parity** — macOS/Linux desktop installers; **Linux** native sandbox (Landlock/bwrap). Windows native sandbox shipped in 0.7.x.
 - **Trustworthy long tasks** — tighter completion gates, harness fixtures, and replay-friendly operator workflows.
-- **Office workflows** — richer scenario coverage without splitting away from the shared runtime.
 - **Hardening** — security and exec-policy improvements tracked in [CHANGELOG](CHANGELOG.md) and [SECURITY.md](SECURITY.md).
 
 ---

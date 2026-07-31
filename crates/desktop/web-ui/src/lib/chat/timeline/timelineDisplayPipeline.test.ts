@@ -240,29 +240,29 @@ test('prepareTimelinePresentation keeps streaming thinking visible', () => {
   }
 });
 
-test('prepareTimelinePresentation collapses office tool runs', () => {
+test('prepareTimelinePresentation collapses write tool runs', () => {
   const blocks: TurnBlock[] = [
-    tool('o1', 'read_office'),
-    tool('o2', 'write_office'),
-    tool('o3', 'load_office_payload'),
-    { kind: 'text', id: 'x', content: '文档已生成。', streaming: false },
+    tool('w1', 'write_file'),
+    tool('w2', 'edit_file'),
+    tool('w3', 'apply_patch'),
+    { kind: 'text', id: 'x', content: '文件已更新。', streaming: false },
   ];
   const items = prepareTimelinePresentation(blocks);
   assert.equal(items.length, 2);
   assert.equal(items[0].kind, 'collapsed_tools');
   if (items[0].kind === 'collapsed_tools') {
     assert.equal(items[0].blocks.length, 3);
-    assert.equal(items[0].category, 'office');
+    assert.equal(items[0].category, 'write');
   }
   assert.equal(items[1].kind === 'block' && items[1].block.kind, 'text');
 });
 
-test('prepareTimelinePresentation merges office with explore across absorbed gaps', () => {
+test('prepareTimelinePresentation merges write with explore across absorbed gaps', () => {
   const blocks: TurnBlock[] = [
     tool('r1', 'list_dir'),
-    tool('r2', 'read_office'),
+    tool('r2', 'read_file'),
     { kind: 'thinking', id: 'th', text: 'draft next', streaming: false, status: 'done' },
-    tool('w1', 'write_office'),
+    tool('w1', 'write_file'),
     { kind: 'text', id: 'x', content: '完成。', streaming: false },
   ];
   const items = prepareTimelinePresentation(blocks);
@@ -323,13 +323,13 @@ test('prepareTimelinePresentation collapses agent_spawn sub-agent tools', () => 
   }
 });
 
-test('prepareTimelinePresentation collapses lone workflow/office tools (thr_82ac)', () => {
+test('prepareTimelinePresentation collapses lone workflow tools (thr_82ac)', () => {
   const blocks: TurnBlock[] = [
     tool('a', 'read_file'),
     tool('b', 'read_file'),
     tool('solo', 'scratchpad_set_area'),
     tool('c', 'grep_files'),
-    tool('office', 'write_office'),
+    tool('wf', 'load_skill'),
     tool('d', 'write_file'),
     { kind: 'text', id: 'x', content: '报告完成。', streaming: false },
   ];

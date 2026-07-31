@@ -2140,22 +2140,6 @@ export async function fetchSandboxPlatformsOverview(): Promise<SandboxPlatformsO
   return invoke<SandboxPlatformsOverview>('get_sandbox_platforms_overview');
 }
 
-export type OfficeEnvironmentStatus = {
-  bundled_python?: string | null;
-  office_venv_ready?: boolean;
-  resolved_python?: string | null;
-  ready?: boolean;
-  imports?: Record<string, unknown>;
-};
-
-export async function fetchOfficeEnvironment(): Promise<OfficeEnvironmentStatus> {
-  const res = await runtimeRequest('/v1/office/environment', { method: 'GET' });
-  if (!res.ok) {
-    throw new Error(`office environment: HTTP ${res.status}`);
-  }
-  return res.json() as Promise<OfficeEnvironmentStatus>;
-}
-
 // ========== LHT Settings (Desktop Tauri) ==========
 
 export type LhtGateMode = 'off' | 'observe' | 'enforce';

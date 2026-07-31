@@ -55,21 +55,21 @@ test('summarizeToolCalls', () => {
       [
         {
           id: '1',
-          name: 'read_office',
-          input: JSON.stringify({ path: 'data/价目表.csv' }),
+          name: 'update_plan',
+          input: JSON.stringify({ steps: ['review', 'ship'] }),
           status: 'done',
         },
         {
           id: '2',
-          name: 'write_office',
-          input: JSON.stringify({ path: 'deliverables/周报.docx' }),
+          name: 'checklist_write',
+          input: JSON.stringify({ items: ['verify build'] }),
           status: 'done',
         },
       ],
       t,
     ),
-    '办公文档 2 次 · 周报.docx',
-    'office tools collapse under toolGroupOffice',
+    '更新计划 2 次',
+    'plan tools collapse under toolGroupPlan',
   );
 
   assert.equal(

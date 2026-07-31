@@ -50,7 +50,7 @@ Harness **fixtures** (TOML, demo data, oracle scripts) live under [`fixtures/har
 |-----|-------------|
 | [desktop/PREVIEW_ARCHITECTURE.md](./desktop/PREVIEW_ARCHITECTURE.md) | Preview panel architecture |
 | [desktop/MERMAID_PREVIEW_TOLERANCE.md](./desktop/MERMAID_PREVIEW_TOLERANCE.md) | Mermaid → WebView2 tolerance layer (markdown preview) |
-| [desktop/OFFICE_SCENARIOS.md](./desktop/OFFICE_SCENARIOS.md) | Office scenario map (four-axis model) |
+| [desktop/OFFICE_SCENARIOS.md](./desktop/OFFICE_SCENARIOS.md) | Historical Office scenario map (built-in Office removed; use skill `zagens-office`) |
 | [desktop/SCHEDULED_TASKS.md](./desktop/SCHEDULED_TASKS.md) | Scheduled tasks (RRULE automations → background Tasks) |
 | [desktop/HOOKS.md](./desktop/HOOKS.md) | Lifecycle shell hooks (config, Cursor JSON, protocol) |
 | [desktop/GITHUB_ACTION.md](./desktop/GITHUB_ACTION.md) | GitHub Actions · `coverage-gate` composite action |
@@ -65,7 +65,7 @@ Harness **fixtures** (TOML, demo data, oracle scripts) live under [`fixtures/har
 | [harness/LONG_HORIZON_CODE_TASKS.md](./harness/LONG_HORIZON_CODE_TASKS.md) | Long-horizon code tasks |
 | [harness/COMPOSABLE_HARNESS.md](./harness/COMPOSABLE_HARNESS.md) | Composable completion gates |
 | [craft-v2-improvements.md](./craft-v2-improvements.md) | CRAFT multi-agent |
-| [task-type-prompt-architecture.md](./task-type-prompt-architecture.md) | Code / Office task types |
+| [task-type-prompt-architecture.md](./task-type-prompt-architecture.md) | Task types (Code; Office removed) |
 | [prompt-architecture.md](./prompt-architecture.md) | Prompt layering |
 
 ---

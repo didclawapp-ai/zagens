@@ -1,9 +1,11 @@
-# TaskType Layering — Office / Code Two-Type MVP
+# TaskType Layering — Code (Office mode removed)
 
-**Status:** **MVP landed** (`crates/tui/src/task_type.rs`, prompt overlay, Office tool trimming, Zagens Composer switch)  
-**Date:** 2026-05-17 (first draft, four types) · **2026-05-18** (converged to two types, aligned with current tools and prompts)  
+> **2026-07-31 update (breaking):** Open-source Zagens **removed** `TaskType::Office` and built-in `write_office` / `read_office` / `load_office_payload`. Document work uses **Code** mode + bundled skill **`zagens-office`** (external [`zagens-office`](https://github.com/didclawapp-ai/zagens-office) CLI via `exec_shell`). Legacy API value `office` coerces to `code`. Historical sections below describe the former two-type MVP and are retained for archaeology only.
+
+**Status:** **Superseded for Office** — Code-only task type in production  
+**Date:** 2026-05-17 (first draft, four types) · **2026-05-18** (converged to two types) · **2026-07-31** (Office removed; skill + CLI)  
 **Based on:** [prompt-architecture.md](prompt-architecture.md)  
-**Related:** [TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md), `crates/runtime-server/src/prompts/base.md` (retrieval triad)
+**Related:** [TOOLS_PRINCIPLES.md](tech/TOOLS_PRINCIPLES.md), `crates/runtime-server/src/prompts/base.md` (retrieval triad), skill `assets/skills/zagens-office/SKILL.md`
 
 ---
 

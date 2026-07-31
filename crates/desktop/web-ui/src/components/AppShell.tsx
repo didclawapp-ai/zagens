@@ -102,7 +102,6 @@ export type AppShellProps = {
   userDismissedHarness: boolean;
   onShowHarnessStack: () => void;
   focusMode?: boolean;
-  officeSession: boolean;
   checklistActivity: InspectorNavActivity;
   auditActivity: InspectorNavActivity;
   taskActivity: InspectorNavActivity;
@@ -145,7 +144,6 @@ export type AppShellProps = {
     nonce: number;
   };
   composerPrefill?: { text: string; nonce: number };
-  onOfficeQuickStart?: (prefill: string) => void;
   messages: TurnChatMessage[];
   sessionRestoreLoading?: boolean;
   sessionRestoreSource?: SessionRestoreSource;
@@ -249,7 +247,6 @@ export default function AppShell({
   userDismissedHarness,
   onShowHarnessStack,
   focusMode = false,
-  officeSession,
   checklistActivity,
   auditActivity,
   taskActivity,
@@ -288,7 +285,6 @@ export default function AppShell({
   lhtChip,
   composerMention,
   composerPrefill,
-  onOfficeQuickStart,
   messages,
   sessionRestoreLoading = false,
   sessionRestoreSource = null,
@@ -423,7 +419,7 @@ export default function AppShell({
             toast.error((e as Error).message);
           });
         }}
-        auditGridAvailable={auditGridAvailable && !officeSession}
+        auditGridAvailable={auditGridAvailable}
         auditGridVisible={harnessStackVisible}
         onToggleAuditGrid={onToggleAuditGrid}
       />
@@ -470,7 +466,6 @@ export default function AppShell({
             onHarnessNavigate={handleHarnessNavigate}
             harnessFlashId={flashCardId}
             desktopHost={desktopHost}
-            officeSession={officeSession}
             runtimeConn={runtimeConn}
             streaming={streaming}
             runtimeSessionEstablished={runtimeSessionEstablished}
@@ -514,8 +509,6 @@ export default function AppShell({
                 onEditMessage={onEditMessage}
                 onBacktrackFromMessage={onBacktrackFromMessage}
                 onRewindWorkspaceFromMessage={onRewindWorkspaceFromMessage}
-                officeSession={officeSession}
-                onOfficeQuickStart={officeSession ? onOfficeQuickStart : undefined}
                 sessionRestoreLoading={sessionRestoreLoading}
                 sessionRestoreSource={sessionRestoreSource}
                 onRetrySessionRestore={onRetrySessionRestore}
@@ -534,7 +527,7 @@ export default function AppShell({
               lockedThreadTaskType={lockedThreadTaskType}
               onTaskTypePreferenceChange={onTaskTypePreferenceChange}
               routeIntent={routeIntent}
-              onOpenRouting={officeSession ? undefined : onOpenRouting}
+              onOpenRouting={onOpenRouting}
               sessionExportEnabled={Boolean(activeSessionId)}
               threadExportEnabled={Boolean(resumedThreadId)}
               onExportSessionJson={() => void onExportSessionJson()}
@@ -562,29 +555,25 @@ export default function AppShell({
               lastTurnOutputTokens={lastTurnOutputTokens}
               lastCacheHitPercent={lastCacheHitPercent}
               lhtChip={lhtChip}
-              officeSession={officeSession}
               workspaceMention={composerMention}
                   composerPrefill={composerPrefill}
                 />
               </section>
             </div>
-            {!officeSession ? (
-              <HarnessFloatStack
-                visible={harnessStackVisible}
-                harnessData={harnessGridData}
-                sessionFileChanges={sessionFileChanges}
-                agentStates={agentStates}
-                flashCardId={flashCardId}
-                onHeadClick={handleHarnessHeadClick}
-                onOpenDiffInPanel={onOpenDiffInPanel}
-              />
-            ) : null}
+            <HarnessFloatStack
+              visible={harnessStackVisible}
+              harnessData={harnessGridData}
+              sessionFileChanges={sessionFileChanges}
+              agentStates={agentStates}
+              flashCardId={flashCardId}
+              onHeadClick={handleHarnessHeadClick}
+              onOpenDiffInPanel={onOpenDiffInPanel}
+            />
           </div>
         </main>
         {!harnessStackVisible && !rightPanelCollapsed && !focusMode && (
           <RightPanel
             view={activeInspector}
-            officeSession={officeSession}
             desktopHost={desktopHost}
             runtimeConn={runtimeConn}
             runtimeSessionEstablished={runtimeSessionEstablished}

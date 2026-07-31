@@ -50,8 +50,8 @@ Copyright (c) 2024-2025 DeepSeek CLI Contributors
 Per the MIT License, the copyright and permission notices above must be
 retained in copies or substantial portions of the corresponding components.
 
-Other dependencies (Rust crates, npm packages, bundled Python, Tauri,
-React, etc.) are subject to their respective upstream licenses.
+Other dependencies (Rust crates, npm packages, Tauri, React, etc.)
+are subject to their respective upstream licenses.
 `;
 
   writeFileSync(join(outDir, 'THIRD-PARTY-NOTICES.txt'), notices, 'utf8');

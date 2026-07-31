@@ -103,8 +103,6 @@ sha2.workspace = true
 rusqlite.workspace = true
 encoding_rs = "0.8"
 zip = "2.2"
-rust_xlsxwriter = "0.81"
-calamine = { version = "0.35", features = ["dates"] }
 ratatui = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }
 arboard = { workspace = true, optional = true }

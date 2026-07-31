@@ -18,7 +18,7 @@ interface Props {
   onComplete: (taskType?: DesktopTaskTypePreference) => void;
 }
 
-const MODE_OPTIONS: DesktopTaskTypePreference[] = ['auto', 'code', 'office'];
+const MODE_OPTIONS: DesktopTaskTypePreference[] = ['auto', 'code'];
 
 function resolveInitialPhase(
   needsKeyStep: boolean,
@@ -193,17 +193,9 @@ export default function OnboardingOverlay({
                 {MODE_OPTIONS.map((mode) => {
                   const selected = taskTypePreference === mode;
                   const titleKey =
-                    mode === 'auto'
-                      ? 'onboarding.modeAutoTitle'
-                      : mode === 'code'
-                        ? 'onboarding.modeCodeTitle'
-                        : 'onboarding.modeOfficeTitle';
+                    mode === 'auto' ? 'onboarding.modeAutoTitle' : 'onboarding.modeCodeTitle';
                   const descKey =
-                    mode === 'auto'
-                      ? 'onboarding.modeAutoDesc'
-                      : mode === 'code'
-                        ? 'onboarding.modeCodeDesc'
-                        : 'onboarding.modeOfficeDesc';
+                    mode === 'auto' ? 'onboarding.modeAutoDesc' : 'onboarding.modeCodeDesc';
                   return (
                     <button
                       key={mode}

@@ -505,27 +505,7 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(FileInfoTool))
     }
 
-    /// Include the office document generation tool (`write_office`).
-    #[must_use]
-    pub fn with_office_write_tool(self) -> Self {
-        use super::office_write::WriteOfficeTool;
-        self.with_tool(Arc::new(WriteOfficeTool))
-    }
-
-    /// Include the office document read tool (`read_office`).
-    #[must_use]
-    pub fn with_read_office_tool(self) -> Self {
-        use super::office_read::ReadOfficeTool;
-        self.with_tool(Arc::new(ReadOfficeTool))
-    }
-
-    #[must_use]
-    pub fn with_load_office_payload_tool(self) -> Self {
-        use super::office_payload::LoadOfficePayloadTool;
-        self.with_tool(Arc::new(LoadOfficePayloadTool))
-    }
-
-    /// Include the image description tool (`describe_image`).
+    /// Include file tools (read, write, edit, list).
     ///
     /// Reads an image file and extracts its text content via a configured
     /// vision model (defaults to SiliconFlow `Qwen/Qwen3-VL-32B-Instruct`).
@@ -569,43 +549,7 @@ impl ToolRegistryBuilder {
             .with_tool(Arc::new(FileSearchTool))
     }
 
-    /// Office sessions: `glob_files` + `file_search` only (no `grep_files`).
-    #[must_use]
-    pub fn with_office_search_tools(self) -> Self {
-        use super::file_search::FileSearchTool;
-        use super::glob_files::GlobFilesTool;
-        self.with_tool(Arc::new(GlobFilesTool))
-            .with_tool(Arc::new(FileSearchTool))
-    }
-
-    /// Office task surface: read/list, write_file, write_office, filename search, skills,
-    /// note, and (when `include_web`) web_search / fetch_url / finance / web.run.
-    #[must_use]
-    pub fn with_office_surface(self, include_web: bool) -> Self {
-        use super::file::{ListDirTool, ReadFileTool, WriteFileTool};
-        use super::file_info::FileInfoTool;
-        let builder = self
-            .with_tool(Arc::new(ReadFileTool))
-            .with_tool(Arc::new(ListDirTool))
-            .with_tool(Arc::new(FileInfoTool))
-            .with_tool(Arc::new(WriteFileTool))
-            .with_office_write_tool()
-            .with_read_office_tool()
-            .with_load_office_payload_tool()
-            .with_office_search_tools()
-            .with_skill_tools()
-            .with_describe_image_tool()
-            .with_note_tool()
-            .with_user_input_tool()
-            .with_parallel_tool();
-        if include_web {
-            builder.with_web_tools()
-        } else {
-            builder
-        }
-    }
-
-    /// Include T5 composite tools (Phase 4.3) when T1 sequences meet threshold.
+    /// Include search tools (`grep_files`).
     #[must_use]
     pub fn with_composite_tools(self) -> Self {
         use super::edit_and_check::EditAndCheckTool;
@@ -927,7 +871,6 @@ impl ToolRegistryBuilder {
             .with_diagnostics_tool()
             .with_project_tools()
             .with_skill_tools()
-            .with_office_write_tool()
             .with_describe_image_tool()
             .with_test_runner_tool()
             .with_composite_tools()
@@ -1661,32 +1604,6 @@ mod tests {
         let readonly = registry.read_only_tools();
         assert_eq!(readonly.len(), 1);
         assert_eq!(readonly[0].name(), "reader");
-    }
-
-    #[test]
-    fn test_builder_office_surface_includes_web_research() {
-        let tmp = tempdir().expect("tempdir");
-        let ctx = ToolContext::new(tmp.path().to_path_buf());
-
-        let registry = ToolRegistryBuilder::new()
-            .with_office_surface(true)
-            .build(ctx);
-
-        for name in [
-            "read_office",
-            "load_office_payload",
-            "write_office",
-            "describe_image",
-            "load_skill",
-            "web_search",
-            "fetch_url",
-            "finance",
-            "web.run",
-        ] {
-            assert!(registry.contains(name), "office surface missing {name}");
-        }
-        assert!(!registry.contains("grep_files"));
-        assert!(!registry.contains("exec_shell"));
     }
 
     #[test]
