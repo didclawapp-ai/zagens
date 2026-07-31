@@ -20,6 +20,7 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+zagens-browser-policy = { path = "../browser-policy", version = "0.8.9" }
 zagens-config = { path = "../config", version = "0.8.9" }
 zagens-secrets = { path = "../secrets", version = "0.8.9" }
 toml.workspace = true

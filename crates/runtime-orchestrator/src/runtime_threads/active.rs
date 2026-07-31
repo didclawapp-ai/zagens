@@ -65,8 +65,7 @@ pub fn browser_tool_blocks_thread_auto_approve(tool_name: &str, description: &st
         tool_name,
         "browser_click" | "browser_type" | "browser_scroll" | "browser_start_preview"
     ) || (tool_name == "browser_navigate"
-        && (description.contains("external site")
-            || description.contains("will allow for this session")))
+        && (description.contains("external site") || description.contains("session allowlist")))
 }
 
 pub fn touch_lru(lru: &mut VecDeque<String>, thread_id: &str) {
@@ -125,7 +124,7 @@ mod tests {
     fn external_navigate_blocks_auto_approve() {
         assert!(browser_tool_blocks_thread_auto_approve(
             "browser_navigate",
-            "Browser: open external site www.deepseek.com (will allow for this session)"
+            "Browser: open external site www.deepseek.com (session allowlist)"
         ));
         assert!(!browser_tool_blocks_thread_auto_approve(
             "browser_navigate",

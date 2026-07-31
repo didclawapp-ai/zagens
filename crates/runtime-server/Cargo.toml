@@ -44,6 +44,7 @@ anyhow.workspace = true
 zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.8.9" }
 zagens-runtime-api = { path = "../runtime-api", version = "0.8.9" }
 zagens-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.8.9" }
+zagens-browser-policy = { path = "../browser-policy", version = "0.8.9" }
 zagens-config = { path = "../config", version = "0.8.9" }
 zagens-core = { path = "../core", version = "0.8.9" }
 zagens-topic-memory = { path = "../topic-memory", version = "0.8.9" }

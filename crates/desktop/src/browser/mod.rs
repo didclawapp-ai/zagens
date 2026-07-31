@@ -6,7 +6,13 @@
 //! `current webview is not a WebviewWindow` — breaking the whole app, not just Browser.
 
 mod bridge;
+mod cdp;
+mod cdp_history;
+mod cdp_interact;
+mod cdp_snapshot;
 pub mod interact;
+mod nav_actor;
+mod new_window;
 mod prefs_store;
 pub mod preview;
 mod screenshot;
@@ -15,7 +21,10 @@ mod url_policy;
 
 pub use bridge::{BrowserBridgeUrl, start_browser_bridge};
 pub use preview::PreviewProcess;
-pub use url_policy::{NavActor, is_loopback_host, security_kind, validate_human_url};
+pub use url_policy::{
+    NavActor, agent_external_https_host, is_loopback_host, security_kind, validate_human_url,
+    validate_navigation_with,
+};
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -30,14 +39,17 @@ use tauri::{
 };
 use url::Url;
 
+use nav_actor::NavPolicyChain;
+
 use crate::window_registry::WindowRegistry;
 use scripts::{
     CONSOLE_CLEAR_JS, CONSOLE_HOOK_INIT, CONSOLE_HOOK_JS, CONSOLE_TAIL_JS, HISTORY_BACK_JS,
     HISTORY_FORWARD_JS, normalize_eval_json, parse_snapshot_json, snapshot_js, wait_check_js,
 };
-use url_policy::{NavOpts, normalize_host, validate_navigation_with};
+use url_policy::{NavOpts, normalize_host};
 
 const BLANK: &str = "about:blank";
+pub(crate) const BLANK_URL: &str = BLANK;
 const STATE_EVENT: &str = "browser://state";
 const NAV_BLOCKED_EVENT: &str = "browser://nav_blocked";
 
@@ -168,12 +180,13 @@ struct HostRecord {
     /// Chrome-driven history for can_go_back / can_go_forward.
     history: Vec<String>,
     history_idx: usize,
+    /// When set (Windows CDP), drives back/forward + chrome flags.
+    cdp_nav: Option<cdp_history::CdpNavHistory>,
     /// True while browser_create is awaiting the async WebView construction
     /// (between the first lock release and the final lock acquire).
     creating: bool,
-    /// Actor used by `on_navigation` for the next / in-flight page navigation.
-    /// Set to Agent before agent navigate/click; reset to Human on load finished.
-    nav_policy_actor: NavActor,
+    /// Agent vs human URL policy for in-page / programmatic navigations.
+    nav_policy: NavPolicyChain,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,7 +204,10 @@ struct NavBlockedDto {
 
 pub struct BrowserHosts {
     inner: Mutex<HashMap<String, HostRecord>>,
-    allowlist: Mutex<HashSet<String>>,
+    /// Loaded from `~/.zagens/browser/prefs.json` — survives app restarts.
+    pub(crate) persistent_allowlist: Mutex<HashSet<String>>,
+    /// In-memory only — cleared when the desktop app exits.
+    pub(crate) session_allowlist: Mutex<HashSet<String>>,
     allow_private_lan: Mutex<bool>,
     default_persist: Mutex<bool>,
     /// Independent of global YOLO — mirrored to sidecar env at spawn.
@@ -201,7 +217,7 @@ pub struct BrowserHosts {
 impl BrowserHosts {
     pub fn new() -> Self {
         let persisted = prefs_store::load();
-        let allowlist = persisted
+        let persistent_allowlist = persisted
             .allowlist
             .into_iter()
             .map(|h| normalize_host(&h))
@@ -209,7 +225,8 @@ impl BrowserHosts {
             .collect::<HashSet<_>>();
         Self {
             inner: Mutex::new(HashMap::new()),
-            allowlist: Mutex::new(allowlist),
+            persistent_allowlist: Mutex::new(persistent_allowlist),
+            session_allowlist: Mutex::new(HashSet::new()),
             allow_private_lan: Mutex::new(persisted.allow_private_lan),
             default_persist: Mutex::new(true),
             browser_yolo: Mutex::new(persisted.yolo),
@@ -218,7 +235,7 @@ impl BrowserHosts {
 
     pub(crate) fn persist_prefs_disk(&self) {
         let allowlist = self
-            .allowlist
+            .persistent_allowlist
             .lock()
             .map(|g| {
                 let mut v: Vec<String> = g.iter().cloned().collect();
@@ -249,8 +266,25 @@ impl BrowserHosts {
             .unwrap_or_default()
     }
 
-    /// Insert host into session allowlist (normalized) and persist.
-    pub(crate) fn allow_host_name(&self, host: &str) -> Result<String, BrowserError> {
+    fn effective_allowlist(&self) -> Result<Vec<String>, BrowserError> {
+        let mut merged = self
+            .persistent_allowlist
+            .lock()
+            .map_err(|_| BrowserError::msg("lock_failed", "persistent allowlist 锁失败"))?
+            .clone();
+        let session = self
+            .session_allowlist
+            .lock()
+            .map_err(|_| BrowserError::msg("lock_failed", "session allowlist 锁失败"))?;
+        merged.extend(session.iter().cloned());
+        let mut v: Vec<String> = merged.into_iter().collect();
+        v.sort();
+        v.dedup();
+        Ok(v)
+    }
+
+    /// Add host to in-memory session allowlist (normalized). Not written to disk.
+    pub(crate) fn allow_host_session(&self, host: &str) -> Result<String, BrowserError> {
         let host = normalize_host(host);
         if host.is_empty() {
             return Err(BrowserError::msg("no_host", "主机名为空"));
@@ -258,12 +292,34 @@ impl BrowserHosts {
         if is_loopback_host(&host) {
             return Ok(host);
         }
-        self.allowlist
+        self.session_allowlist
             .lock()
-            .map_err(|_| BrowserError::msg("lock_failed", "allowlist 锁失败"))?
+            .map_err(|_| BrowserError::msg("lock_failed", "session allowlist 锁失败"))?
+            .insert(host.clone());
+        Ok(host)
+    }
+
+    /// Add host to persistent allowlist and save prefs.json.
+    #[allow(dead_code)] // reserved for explicit UI "always allow this domain"
+    pub(crate) fn allow_host_persistent(&self, host: &str) -> Result<String, BrowserError> {
+        let host = normalize_host(host);
+        if host.is_empty() {
+            return Err(BrowserError::msg("no_host", "主机名为空"));
+        }
+        if is_loopback_host(&host) {
+            return Ok(host);
+        }
+        self.persistent_allowlist
+            .lock()
+            .map_err(|_| BrowserError::msg("lock_failed", "persistent allowlist 锁失败"))?
             .insert(host.clone());
         self.persist_prefs_disk();
         Ok(host)
+    }
+
+    /// Back-compat: session-only allow (UI / bridge manual allow).
+    pub(crate) fn allow_host_name(&self, host: &str) -> Result<String, BrowserError> {
+        self.allow_host_session(host)
     }
 
     pub fn browser_yolo(&self) -> bool {
@@ -283,13 +339,7 @@ impl BrowserHosts {
     }
 
     pub(crate) fn nav_opts(&self) -> Result<(Vec<String>, bool), BrowserError> {
-        let allow = self
-            .allowlist
-            .lock()
-            .map_err(|_| BrowserError::msg("lock_failed", "allowlist 锁失败"))?
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+        let allow = self.effective_allowlist()?;
         let lan = *self
             .allow_private_lan
             .lock()
@@ -301,12 +351,12 @@ impl BrowserHosts {
         self.default_persist.lock().map(|g| *g).unwrap_or(true)
     }
 
-    /// Mark the next in-page navigation for policy checks (plan §6.1 actor split).
-    pub(crate) fn set_nav_policy_actor(&self, parent: &str, actor: NavActor) {
+    /// Begin an agent navigation chain (navigate / click / type).
+    pub(crate) fn begin_agent_nav_chain(&self, parent: &str) {
         if let Ok(mut g) = self.inner.lock()
             && let Some(rec) = g.get_mut(parent)
         {
-            rec.nav_policy_actor = actor;
+            rec.nav_policy.begin_agent();
         }
     }
 }
@@ -395,6 +445,11 @@ fn state_from_rec(app: &AppHandle, rec: &HostRecord) -> BrowserStateDto {
     } else {
         url
     };
+    let (can_go_back, can_go_forward) = if let Some(ref nav) = rec.cdp_nav {
+        (nav.can_go_back(), nav.can_go_forward())
+    } else {
+        (rec.history_idx > 0, rec.history_idx + 1 < rec.history.len())
+    };
     BrowserStateDto {
         parent_label: rec.parent_label.clone(),
         host_label: rec.host_label.clone(),
@@ -404,14 +459,116 @@ fn state_from_rec(app: &AppHandle, rec: &HostRecord) -> BrowserStateDto {
         title,
         visible: rec.visible,
         loading: rec.loading,
-        can_go_back: rec.history_idx > 0,
-        can_go_forward: rec.history_idx + 1 < rec.history.len(),
+        can_go_back,
+        can_go_forward,
         persist_profile: rec.persist_profile,
     }
 }
 
 fn emit_state(app: &AppHandle, parent: &str, state: &BrowserStateDto) {
     let _ = app.emit_to(parent, STATE_EVENT, state);
+}
+
+fn apply_page_load(rec: &mut HostRecord, started: bool, finished: bool, url: &str) {
+    rec.loading = !finished;
+    if started {
+        rec.nav_policy.on_page_started();
+    }
+    if finished {
+        rec.nav_policy.on_page_finished();
+        if !url.is_empty() {
+            push_history(rec, url);
+        }
+    }
+}
+
+/// Shared url_policy gate for `on_navigation` and `window.open`.
+pub(crate) fn gate_navigation(app: &AppHandle, parent_label: &str, url_str: &str) -> bool {
+    if url_str.eq_ignore_ascii_case(BLANK) {
+        return true;
+    }
+    let hosts = app.state::<BrowserHosts>();
+    let actor = match hosts.inner.lock() {
+        Ok(mut g) => g
+            .get_mut(parent_label)
+            .map(|rec| rec.nav_policy.expire_if_needed())
+            .unwrap_or(NavActor::Human),
+        Err(_) => return false,
+    };
+    let (allow, lan) = match hosts.nav_opts() {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let ws = workspace_path_for(app, parent_label);
+    let opts = NavOpts {
+        allowlist: &allow,
+        allow_private_lan: lan,
+        workspace_root: ws.as_deref(),
+    };
+    match validate_navigation_with(url_str, actor, &opts) {
+        Ok(_) => true,
+        Err(e) => {
+            let err = BrowserError::from_policy(e);
+            tracing::warn!(
+                target: "zagens_browser",
+                parent = %parent_label,
+                url = %url_str,
+                code = %err.code,
+                "browser navigation blocked by url_policy"
+            );
+            let actor_s = match actor {
+                NavActor::Human => "human",
+                NavActor::Agent => "agent",
+            };
+            let dto = NavBlockedDto {
+                parent_label: parent_label.to_string(),
+                url: url_str.to_string(),
+                code: err.code.clone(),
+                message: err.message.clone(),
+                hint: err.hint.clone(),
+                actor: actor_s.into(),
+            };
+            let _ = app.emit_to(parent_label, NAV_BLOCKED_EVENT, &dto);
+            false
+        }
+    }
+}
+
+/// Navigate the Browser host in-place (embedded or windowed).
+pub(crate) fn navigate_host_url(
+    app: &AppHandle,
+    hosts: &BrowserHosts,
+    parent_label: &str,
+    url: Url,
+) -> Result<(), BrowserError> {
+    let url_str = url.to_string();
+    let (mode, host_label) = {
+        let mut g = hosts.lock()?;
+        let rec = g.get_mut(parent_label).ok_or_else(BrowserError::missing)?;
+        if rec.creating {
+            return Err(BrowserError::busy(parent_label));
+        }
+        push_history(rec, &url_str);
+        rec.loading = true;
+        (rec.mode, rec.host_label.clone())
+    };
+    match mode {
+        BrowserMode::Embedded => {
+            let wv = app
+                .get_webview(&host_label)
+                .ok_or_else(BrowserError::missing)?;
+            wv.navigate(url)
+                .map_err(|e| BrowserError::msg("navigate_failed", e.to_string()))?;
+        }
+        BrowserMode::Windowed => {
+            let w = app
+                .get_webview_window(&host_label)
+                .ok_or_else(BrowserError::missing)?;
+            w.navigate(url)
+                .map_err(|e| BrowserError::msg("navigate_failed", e.to_string()))?;
+        }
+    }
+    Ok(())
 }
 
 fn attach_page_load(
@@ -430,6 +587,43 @@ fn attach_page_load(
         }
         if finished {
             let _ = webview.eval(CONSOLE_HOOK_JS);
+            if cdp_history::is_available() {
+                let app_hist = app.clone();
+                let parent_hist = parent_label.clone();
+                let (mode, host_label) = {
+                    let Ok(g) = hosts.inner.lock() else {
+                        return;
+                    };
+                    let Some(rec) = g.get(&parent_label) else {
+                        return;
+                    };
+                    if rec.creating || rec.host_label != webview.label() {
+                        return;
+                    }
+                    (rec.mode, rec.host_label.clone())
+                };
+                tauri::async_runtime::spawn(async move {
+                    if let Ok(nav) =
+                        cdp_history::fetch_navigation_history(&app_hist, mode, &host_label).await
+                    {
+                        let hosts = app_hist.state::<BrowserHosts>();
+                        if let Ok(mut g) = hosts.inner.lock()
+                            && let Some(rec) = g.get_mut(&parent_hist)
+                        {
+                            let (urls, idx) = nav.to_chrome_history();
+                            rec.cdp_nav = Some(nav);
+                            rec.history = urls;
+                            rec.history_idx = idx;
+                        }
+                        if let Ok(g) = hosts.inner.lock()
+                            && let Some(rec) = g.get(&parent_hist)
+                        {
+                            let dto = state_from_rec(&app_hist, rec);
+                            emit_state(&app_hist, &parent_hist, &dto);
+                        }
+                    }
+                });
+            }
         }
         if let Ok(mut g) = hosts.inner.lock()
             && let Some(rec) = g.get_mut(&parent_label)
@@ -437,14 +631,11 @@ fn attach_page_load(
             if rec.creating || rec.host_label != webview.label() {
                 return;
             }
-            rec.loading = !finished;
-            if finished {
-                // Spontaneous link clicks use human policy after agent actions settle.
-                rec.nav_policy_actor = NavActor::Human;
-                if !url.is_empty() {
-                    push_history(rec, &url);
-                }
-            }
+            apply_page_load(rec, started, finished, &url);
+        }
+        if let Ok(g) = hosts.inner.lock()
+            && let Some(rec) = g.get(&parent_label)
+        {
             let dto = state_from_rec(&app, rec);
             emit_state(&app, &parent_label, &dto);
         }
@@ -458,57 +649,7 @@ fn attach_navigation(
     parent_label: String,
 ) -> impl Fn(&Url) -> bool + Send + 'static {
     let app = app.clone();
-    move |url: &Url| {
-        let url_str = url.as_str();
-        if url_str.eq_ignore_ascii_case(BLANK) {
-            return true;
-        }
-        let hosts = app.state::<BrowserHosts>();
-        let actor = match hosts.inner.lock() {
-            Ok(g) => g
-                .get(&parent_label)
-                .map(|rec| rec.nav_policy_actor)
-                .unwrap_or(NavActor::Human),
-            Err(_) => return false,
-        };
-        let (allow, lan) = match hosts.nav_opts() {
-            Ok(v) => v,
-            Err(_) => return false,
-        };
-        let ws = workspace_path_for(&app, &parent_label);
-        let opts = NavOpts {
-            allowlist: &allow,
-            allow_private_lan: lan,
-            workspace_root: ws.as_deref(),
-        };
-        match validate_navigation_with(url_str, actor, &opts) {
-            Ok(_) => true,
-            Err(e) => {
-                let err = BrowserError::from_policy(e);
-                tracing::warn!(
-                    target: "zagens_browser",
-                    parent = %parent_label,
-                    url = %url_str,
-                    code = %err.code,
-                    "browser navigation blocked by url_policy"
-                );
-                let actor_s = match actor {
-                    NavActor::Human => "human",
-                    NavActor::Agent => "agent",
-                };
-                let dto = NavBlockedDto {
-                    parent_label: parent_label.clone(),
-                    url: url_str.to_string(),
-                    code: err.code.clone(),
-                    message: err.message.clone(),
-                    hint: err.hint.clone(),
-                    actor: actor_s.into(),
-                };
-                let _ = app.emit_to(&parent_label, NAV_BLOCKED_EVENT, &dto);
-                false
-            }
-        }
-    }
+    move |url: &Url| gate_navigation(&app, &parent_label, url.as_str())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -548,6 +689,10 @@ async fn create_embedded(
         .data_directory(data_dir)
         .initialization_script(CONSOLE_HOOK_INIT)
         .on_navigation(attach_navigation(app, parent_label.clone()))
+        .on_new_window(new_window::attach_new_window(
+            app.clone(),
+            parent_label.clone(),
+        ))
         .on_page_load(attach_page_load(app, parent_label));
 
     let w = width.max(1.0);
@@ -585,6 +730,10 @@ async fn create_windowed(
         .data_directory(data_dir)
         .initialization_script(CONSOLE_HOOK_INIT)
         .on_navigation(attach_navigation(app, parent_label.clone()))
+        .on_new_window(new_window::attach_new_window(
+            app.clone(),
+            parent_label.clone(),
+        ))
         .on_page_load({
             let app = app.clone();
             let parent_label = parent_label.clone();
@@ -606,13 +755,11 @@ async fn create_windowed(
                     if rec.host_label != window.label() {
                         return;
                     }
-                    rec.loading = !finished;
-                    if finished {
-                        rec.nav_policy_actor = NavActor::Human;
-                        if !url.is_empty() {
-                            push_history(rec, &url);
-                        }
-                    }
+                    apply_page_load(rec, started, finished, &url);
+                }
+                if let Ok(g) = hosts.inner.lock()
+                    && let Some(rec) = g.get(&parent_label)
+                {
                     let dto = state_from_rec(&app, rec);
                     emit_state(&app, &parent_label, &dto);
                 }
@@ -692,8 +839,9 @@ pub async fn browser_create(
                 persist_profile: persist,
                 history: Vec::new(),
                 history_idx: 0,
+                cdp_nav: None,
                 creating: true,
-                nav_policy_actor: NavActor::Human,
+                nav_policy: NavPolicyChain::default(),
             },
         );
     }
@@ -774,8 +922,9 @@ pub async fn browser_create(
         persist_profile: persist,
         history: Vec::new(),
         history_idx: 0,
+        cdp_nav: None,
         creating: false,
-        nav_policy_actor: NavActor::Human,
+        nav_policy: NavPolicyChain::default(),
     };
     if !initial_url.is_empty() {
         push_history(&mut rec, &initial_url);
@@ -885,7 +1034,10 @@ pub async fn browser_navigate(
         if rec.creating {
             return Err(BrowserError::busy(&parent));
         }
-        rec.nav_policy_actor = actor;
+        match actor {
+            NavActor::Agent => rec.nav_policy.begin_agent(),
+            NavActor::Human => rec.nav_policy.begin_human(),
+        }
         push_history(rec, &url_str);
         rec.loading = true;
         (rec.mode, rec.host_label.clone())
@@ -1090,6 +1242,55 @@ async fn history_step(
     delta: i32,
 ) -> Result<BrowserStateDto, BrowserError> {
     let parent = window.label().to_string();
+
+    if cdp_history::is_available() {
+        let (mode, host_label) = lookup_host(hosts, &parent)?;
+        let cdp_result = if delta < 0 {
+            cdp_history::history_back(app, mode, &host_label).await
+        } else {
+            cdp_history::history_forward(app, mode, &host_label).await
+        };
+        match cdp_result {
+            Ok(Some(_)) => {
+                {
+                    let mut g = hosts.lock()?;
+                    if let Some(rec) = g.get_mut(&parent) {
+                        rec.loading = true;
+                    }
+                }
+                if let Ok(nav) = cdp_history::fetch_navigation_history(app, mode, &host_label).await
+                {
+                    let mut g = hosts.lock()?;
+                    if let Some(rec) = g.get_mut(&parent) {
+                        let (urls, idx) = nav.to_chrome_history();
+                        rec.cdp_nav = Some(nav);
+                        rec.history = urls;
+                        rec.history_idx = idx;
+                    }
+                }
+                let g = hosts.lock()?;
+                let rec = g.get(&parent).ok_or_else(BrowserError::missing)?;
+                let dto = state_from_rec(app, rec);
+                emit_state(app, &parent, &dto);
+                return Ok(dto);
+            }
+            Ok(None) => {
+                let g = hosts.lock()?;
+                let rec = g.get(&parent).ok_or_else(BrowserError::missing)?;
+                let dto = state_from_rec(app, rec);
+                return Ok(dto);
+            }
+            Err(e) if e.code == "cdp_unsupported" => {}
+            Err(e) => {
+                tracing::debug!(
+                    target: "zagens_browser",
+                    code = %e.code,
+                    "CDP history step failed; falling back to chrome history"
+                );
+            }
+        }
+    }
+
     let (mode, host_label) = {
         let mut g = hosts.lock()?;
         let rec = g.get_mut(&parent).ok_or_else(BrowserError::missing)?;
@@ -1322,6 +1523,19 @@ async fn eval_snapshot_on_host(
     mode: BrowserMode,
     host_label: &str,
 ) -> Result<BrowserSnapshotDto, BrowserError> {
+    if cdp_snapshot::is_available() {
+        match cdp_snapshot::snapshot_via_cdp(app, mode, host_label).await {
+            Ok(snap) => return Ok(snap),
+            Err(e) if e.code == "cdp_unsupported" => {}
+            Err(e) => {
+                tracing::debug!(
+                    target: "zagens_browser",
+                    code = %e.code,
+                    "CDP snapshot failed; falling back to JS inject"
+                );
+            }
+        }
+    }
     let raw = eval_js_string(app, mode, host_label, &snapshot_js()).await?;
     Ok(parse_snapshot_json(&raw))
 }
@@ -1428,7 +1642,7 @@ pub async fn agent_navigate(
         if rec.creating {
             return Err(BrowserError::busy(parent_label));
         }
-        rec.nav_policy_actor = NavActor::Agent;
+        rec.nav_policy.begin_agent();
         push_history(rec, &url_str);
         rec.loading = true;
         (rec.mode, rec.host_label.clone())
@@ -1448,6 +1662,9 @@ pub async fn agent_navigate(
             w.navigate(url)
                 .map_err(|e| BrowserError::msg("navigate_failed", e.to_string()))?;
         }
+    }
+    if let Some(host) = agent_external_https_host(&url_str) {
+        let _ = hosts.allow_host_session(&host);
     }
     let g = hosts.lock()?;
     let rec = g.get(parent_label).ok_or_else(BrowserError::missing)?;
@@ -1559,8 +1776,9 @@ mod tests {
             persist_profile: false,
             history: Vec::new(),
             history_idx: 0,
+            cdp_nav: None,
             creating: true,
-            nav_policy_actor: NavActor::Human,
+            nav_policy: NavPolicyChain::default(),
         }
     }
 
@@ -1574,8 +1792,9 @@ mod tests {
             persist_profile: true,
             history: vec!["about:blank".into()],
             history_idx: 0,
+            cdp_nav: None,
             creating: false,
-            nav_policy_actor: NavActor::Human,
+            nav_policy: NavPolicyChain::default(),
         }
     }
 
@@ -1627,6 +1846,29 @@ mod tests {
         let (list, _) = hosts.nav_opts().unwrap();
         assert!(list.iter().any(|h| h == "example.com"));
         assert!(!list.iter().any(|h| h == "localhost"));
+    }
+
+    #[test]
+    fn session_allowlist_does_not_touch_persistent_store() {
+        let hosts = BrowserHosts::new();
+        let before = hosts.persistent_allowlist.lock().unwrap().len();
+        let _ = hosts.allow_host_session("session-only.example").unwrap();
+        assert_eq!(hosts.persistent_allowlist.lock().unwrap().len(), before);
+        let (merged, _) = hosts.nav_opts().unwrap();
+        assert!(merged.iter().any(|h| h == "session-only.example"));
+    }
+
+    #[test]
+    fn persistent_allowlist_writes_disk_field_only() {
+        let hosts = BrowserHosts::new();
+        let _ = hosts.allow_host_persistent("persist.example").unwrap();
+        assert!(
+            hosts
+                .persistent_allowlist
+                .lock()
+                .unwrap()
+                .contains("persist.example")
+        );
     }
 
     #[test]

@@ -19,27 +19,125 @@ const REF_HELPERS: &str = r#"
     return (el.getAttribute('aria-label') || el.getAttribute('name') || el.getAttribute('placeholder') ||
       el.getAttribute('title') || el.innerText || el.value || el.getAttribute('alt') || '').trim().slice(0, 120);
   }
+  function zagensNameCandidates(el) {
+    var out = [];
+    function add(v) { var s = String(v || '').trim(); if (s) out.push(s.slice(0, 120)); }
+    add(el.getAttribute && el.getAttribute('aria-label'));
+    add(el.getAttribute && el.getAttribute('name'));
+    add(el.getAttribute && el.getAttribute('placeholder'));
+    add(el.getAttribute && el.getAttribute('title'));
+    add(el.innerText);
+    add(el.value);
+    add(el.getAttribute && el.getAttribute('alt'));
+    return out;
+  }
+  function zagensRoleMatches(el, wantRole) {
+    if (zagensRole(el) === wantRole) return true;
+    var tag = (el.tagName || '').toLowerCase();
+    var type = ((el.getAttribute && el.getAttribute('type')) || '').toLowerCase();
+    switch (wantRole) {
+      case 'link': return tag === 'a';
+      case 'button': return tag === 'button' || (tag === 'input' && (type === 'button' || type === 'submit' || type === 'reset' || type === 'image'));
+      case 'textbox': case 'textfield': return tag === 'textarea' ||
+        (tag === 'input' && ['', 'text', 'email', 'url', 'tel', 'password', 'number'].indexOf(type) >= 0);
+      case 'searchbox': return tag === 'input' && type === 'search';
+      case 'checkbox': return tag === 'input' && type === 'checkbox';
+      case 'radio': return tag === 'input' && type === 'radio';
+      case 'combobox': case 'listbox': return tag === 'select';
+      case 'slider': return tag === 'input' && type === 'range';
+      case 'heading': return tag === 'h1' || tag === 'h2' || tag === 'h3';
+      case 'option': return tag === 'option';
+      default: return false;
+    }
+  }
   function zagensEscAttr(s) {
     return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
-  function zagensFindByRef(ref) {
+  function zagensDocForFrame(idx) {
+    if (idx === 0) return document;
+    var frames = document.querySelectorAll('iframe');
+    var fr = frames[idx - 1];
+    if (!fr) return null;
+    try { return fr.contentDocument || fr.contentWindow.document; } catch (e) { return null; }
+  }
+  function zagensParseRef(ref) {
+    var s = String(ref || '');
+    var fm = /^f(\d+):(.+)$/.exec(s);
+    if (fm) return { doc: zagensDocForFrame(parseInt(fm[1], 10)), inner: fm[2] };
+    return { doc: document, inner: s };
+  }
+  function zagensFindInDoc(doc, innerRef) {
+    if (!doc) return null;
     try {
-      var el = document.querySelector('[data-zagens-ref="' + zagensEscAttr(ref) + '"]');
+      var el = doc.querySelector('[data-zagens-ref="' + zagensEscAttr(innerRef) + '"]');
       if (el) return el;
     } catch (e) {}
-    var m = /^([a-z0-9-]+):([a-z0-9-]+):(\d+)$/.exec(String(ref || ''));
+    var m = /^([a-z0-9-]+):([a-z0-9-]+):(\d+)$/.exec(String(innerRef || ''));
     if (!m) return null;
     var wantRole = m[1], wantSlug = m[2], wantNth = parseInt(m[3], 10);
-    var els = document.querySelectorAll(ZAGENS_SEL);
+    var els = doc.querySelectorAll(ZAGENS_SEL);
     var n = 0;
     for (var i = 0; i < els.length; i++) {
       var cur = els[i];
-      if (zagensRole(cur) !== wantRole) continue;
-      if (zagensSlug(zagensName(cur)) !== wantSlug) continue;
+      // AX-role aliases + visibility keep CDP snapshot refs (link/textbox/heading/...)
+      // resolvable here, with nth counting aligned to the CDP visible-node filter.
+      if (!zagensRoleMatches(cur, wantRole)) continue;
+      if (!zagensIsVisible(cur)) continue;
+      var names = zagensNameCandidates(cur);
+      var hit = names.length === 0 && wantSlug === 'anon';
+      for (var j = 0; j < names.length && !hit; j++) {
+        if (zagensSlug(names[j]) === wantSlug) hit = true;
+      }
+      if (!hit) continue;
       if (n === wantNth) return cur;
       n++;
     }
     return null;
+  }
+  function zagensFindByRef(ref) {
+    var p = zagensParseRef(ref);
+    return zagensFindInDoc(p.doc, p.inner);
+  }
+  function zagensPagePoint(el, doc) {
+    var rect = el.getBoundingClientRect();
+    var x = rect.left + rect.width / 2;
+    var y = rect.top + rect.height / 2;
+    if (doc && doc !== document) {
+      var frames = document.querySelectorAll('iframe');
+      for (var i = 0; i < frames.length; i++) {
+        try {
+          if (frames[i].contentDocument === doc) {
+            var fr = frames[i].getBoundingClientRect();
+            x += fr.left;
+            y += fr.top;
+            break;
+          }
+        } catch (e) {}
+      }
+    }
+    return { x: x, y: y };
+  }
+  function zagensIsVisible(el) {
+    if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+    try {
+      // Use the element's own window: getComputedStyle from the top window is
+      // unreliable for elements inside iframe documents.
+      var win = (el.ownerDocument && el.ownerDocument.defaultView) || window;
+      var st = win.getComputedStyle(el);
+      if (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+      var r = el.getBoundingClientRect();
+      if (r.width <= 0 && r.height <= 0) return false;
+    } catch (e) { return false; }
+    return true;
+  }
+  function zagensSetNativeValue(el, text) {
+    try {
+      var proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype
+        : el instanceof HTMLInputElement ? HTMLInputElement.prototype : null;
+      var desc = proto && Object.getOwnPropertyDescriptor(proto, 'value');
+      if (desc && desc.set) { desc.set.call(el, text); return; }
+    } catch (e) {}
+    el.value = text;
   }
 "#;
 
@@ -62,6 +160,7 @@ pub fn snapshot_js() -> String {
     var els = document.querySelectorAll(ZAGENS_SEL);
     for (var i = 0; i < els.length && nodes.length < 120; i++) {{
       var el = els[i];
+      if (!zagensIsVisible(el)) continue;
       var role = zagensRole(el);
       var name = zagensName(el);
       var slug = zagensSlug(name);
@@ -222,6 +321,67 @@ fn js_str(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())
 }
 
+/// Click target center for CDP `Input.dispatchMouseEvent`.
+pub fn click_point_js(ref_id: &str) -> String {
+    let r = js_str(ref_id);
+    format!(
+        r#"(function(){{
+  {helpers}
+  try {{
+    var ref = {r};
+    var el = zagensFindByRef(ref);
+    if (!el) return JSON.stringify({{ ok: false, error: 'ref_not_found', ref: ref }});
+    try {{ el.scrollIntoView({{ block: 'center', inline: 'nearest' }}); }} catch (e) {{}}
+    var p = zagensParseRef(ref);
+    var pt = zagensPagePoint(el, p.doc);
+    var name = zagensName(el);
+    return JSON.stringify({{
+      ok: true,
+      ref: ref,
+      role: zagensRole(el),
+      name: name,
+      x: pt.x,
+      y: pt.y
+    }});
+  }} catch (err) {{
+    return JSON.stringify({{ ok: false, error: String(err) }});
+  }}
+}})()"#,
+        helpers = REF_HELPERS,
+        r = r
+    )
+}
+
+/// Focus a ref target before CDP `Input.insertText`.
+pub fn focus_ref_js(ref_id: &str) -> String {
+    let r = js_str(ref_id);
+    format!(
+        r#"(function(){{
+  {helpers}
+  try {{
+    var ref = {r};
+    var el = zagensFindByRef(ref);
+    if (!el) return JSON.stringify({{ ok: false, error: 'ref_not_found', ref: ref }});
+    try {{ el.scrollIntoView({{ block: 'center', inline: 'nearest' }}); }} catch (e) {{}}
+    el.focus();
+    var name = zagensName(el);
+    return JSON.stringify({{
+      ok: true,
+      ref: ref,
+      role: zagensRole(el),
+      name: name,
+      x: 0,
+      y: 0
+    }});
+  }} catch (err) {{
+    return JSON.stringify({{ ok: false, error: String(err) }});
+  }}
+}})()"#,
+        helpers = REF_HELPERS,
+        r = r
+    )
+}
+
 /// Click element by stable snapshot ref (`role:slug:nth` or legacy tagged attr).
 pub fn click_js(ref_id: &str) -> String {
     let r = js_str(ref_id);
@@ -265,7 +425,7 @@ pub fn type_js(ref_id: &str, text: &str) -> String {
     if (!el) return JSON.stringify({{ ok: false, error: 'ref_not_found', ref: ref }});
     el.focus();
     if ('value' in el) {{
-      el.value = text;
+      zagensSetNativeValue(el, text);
       el.dispatchEvent(new Event('input', {{ bubbles: true }}));
       el.dispatchEvent(new Event('change', {{ bubbles: true }}));
     }} else if (el.isContentEditable) {{
@@ -410,6 +570,51 @@ mod tests {
         assert!(js.contains("role + ':' + slug + ':' + nth"));
         assert!(js.contains("[contenteditable"));
         assert!(js.contains("iframe"));
+        assert!(js.contains("zagensIsVisible"));
+    }
+
+    /// CDP snapshot emits AX roles (link/textbox/heading/...); the JS resolver must
+    /// accept them via the alias table with visibility-aligned nth counting.
+    #[test]
+    fn find_by_ref_supports_ax_role_aliases_and_visibility() {
+        let js = click_js("link:home:0");
+        assert!(js.contains("zagensRoleMatches(cur, wantRole)"));
+        assert!(js.contains("zagensIsVisible(cur)"));
+        assert!(js.contains("zagensNameCandidates"));
+        for role in [
+            "link",
+            "textbox",
+            "textfield",
+            "searchbox",
+            "checkbox",
+            "radio",
+            "combobox",
+            "listbox",
+            "slider",
+            "heading",
+            "option",
+            "button",
+        ] {
+            assert!(
+                js.contains(&format!("case '{role}'")),
+                "missing zagensRoleMatches alias case for {role}"
+            );
+        }
+    }
+
+    #[test]
+    fn click_point_js_returns_coordinates() {
+        let js = click_point_js("button:go:0");
+        assert!(js.contains("zagensPagePoint"));
+        assert!(js.contains("zagensFindByRef"));
+        let frame_js = click_point_js("f1:button:go:0");
+        assert!(frame_js.contains("zagensParseRef"));
+    }
+
+    #[test]
+    fn focus_ref_js_focuses_element() {
+        let js = focus_ref_js("input:name:0");
+        assert!(js.contains(".focus()"));
     }
 
     #[test]
@@ -444,6 +649,7 @@ mod tests {
     fn type_js_escapes_injection_payloads() {
         let evil = r#"';alert(1)//"#;
         let js = type_js("input:name:0", evil);
+        assert!(js.contains("zagensSetNativeValue"));
         assert!(js.contains("var text = "));
         assert!(js.contains("var ref = "));
         assert!(!js.contains("var text = JSON.parse("));

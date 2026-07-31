@@ -50,7 +50,7 @@ impl ToolSpec for BrowserNavigateTool {
     }
 
     fn description(&self) -> &'static str {
-        "Navigate the Zagens desktop Browser pane to a URL. Loopback http://127.0.0.1|localhost|::1 is allowed without ask. External https prompts an approval card (unless browser_yolo or the host is already on the session allowlist); after approve the host is allowlisted for this profile."
+        "Navigate the Zagens desktop Browser pane to a URL. Loopback http://127.0.0.1|localhost|::1 is allowed without ask. External https prompts an approval card (unless browser_yolo or the host is already on the session/persistent allowlist); after a successful navigate the host is added to the session allowlist for this app run."
     }
 
     fn input_schema(&self) -> Value {
@@ -77,8 +77,9 @@ impl ToolSpec for BrowserNavigateTool {
         let host = require_browser_host(context)?;
         let url = required_str(&input, "url")?;
         let window_label = optional_str(&input, "window_label");
-        // After approval (or yolo / prior allowlist), seed desktop allowlist so url_policy accepts the host.
-        if let Some(ext_host) = external_https_host_for_allow(url) {
+        // Seed desktop **session** allowlist so url_policy accepts the host after user approval.
+        // Persistent allowlist is never touched here; failed navigates only affect session scope.
+        if let Some(ext_host) = zagens_browser_policy::agent_external_https_host(url) {
             host.allow_host(thread_id(context), window_label, &ext_host)
                 .await
                 .map_err(map_host_err)?;
@@ -87,30 +88,11 @@ impl ToolSpec for BrowserNavigateTool {
             .navigate(thread_id(context), window_label, url)
             .await
             .map_err(map_host_err)?;
+        if let Some(ext_host) = zagens_browser_policy::agent_external_https_host(url) {
+            super::browser_session::remember_session_host(&ext_host);
+        }
         Ok(ToolResult::success(value.to_string()))
     }
-}
-
-fn external_https_host_for_allow(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if !lower.starts_with("https://") {
-        return None;
-    }
-    let rest = trimmed.get(8..)?;
-    let hostport = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let host = hostport
-        .trim()
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .split(':')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if host.is_empty() || matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1") {
-        return None;
-    }
-    Some(host)
 }
 
 pub struct BrowserSnapshotTool;

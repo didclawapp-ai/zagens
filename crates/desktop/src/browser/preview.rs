@@ -58,8 +58,7 @@ impl PreviewProcess {
     fn replace(&self, parent: &str, child: Child) {
         if let Ok(mut g) = self.inner.lock() {
             if let Some(mut prev) = g.remove(parent) {
-                let _ = prev.kill();
-                let _ = prev.wait();
+                kill_child_tree(&mut prev);
             }
             g.insert(parent.to_string(), child);
         }
@@ -69,10 +68,25 @@ impl PreviewProcess {
         if let Ok(mut g) = self.inner.lock()
             && let Some(mut prev) = g.remove(parent)
         {
-            let _ = prev.kill();
-            let _ = prev.wait();
+            kill_child_tree(&mut prev);
         }
     }
+}
+
+/// Terminate a spawned preview process and its children (Windows `cmd /C` leaves npm/node orphans).
+fn kill_child_tree(child: &mut Child) {
+    #[cfg(windows)]
+    {
+        let pid = child.id();
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn preview_path(workspace: &Path) -> PathBuf {
@@ -191,7 +205,6 @@ fn wait_ready(
             Ok(line) => {
                 if matched.is_none() && line_matches(pat, &line, as_regex) {
                     matched = Some(line);
-                    // Keep draining briefly so the pipe does not fill; then return.
                     let drain_until = Instant::now() + Duration::from_millis(50);
                     while Instant::now() < drain_until {
                         match rx.try_recv() {
@@ -206,8 +219,6 @@ fn wait_ready(
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
-    // Detached drain: keep consuming remaining lines in background (tx already dropped;
-    // reader threads exit on EOF when child is killed).
     let _ = rx;
     (false, matched)
 }
@@ -233,17 +244,17 @@ async fn start_preview_inner(
     let mut child = spawn_preview_command(&config.command, &cwd)?;
     let timeout = Duration::from_millis(config.ready_timeout_ms.unwrap_or(60_000).max(1_000));
     let as_regex = config.ready_regex.unwrap_or(false);
-    let (ready, matched) = wait_ready(
-        &mut child,
-        config.ready_pattern.as_deref(),
-        as_regex,
-        timeout,
-    );
+    let pattern = config.ready_pattern.clone();
+    let (ready, matched, mut child) = tokio::task::spawn_blocking(move || {
+        let (ready, matched) = wait_ready(&mut child, pattern.as_deref(), as_regex, timeout);
+        (ready, matched, child)
+    })
+    .await
+    .map_err(|e| BrowserError::msg("preview_wait_join", format!("preview wait 任务失败: {e}")))?;
 
     let timed_out = !ready;
     if timed_out {
-        let _ = child.kill();
-        let _ = child.wait();
+        kill_child_tree(&mut child);
         return Ok(PreviewStartResult {
             config,
             ready: false,

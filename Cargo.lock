@@ -8393,6 +8393,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zagens-browser-policy"
+version = "0.8.9"
+dependencies = [
+ "serde",
+ "url",
+]
+
+[[package]]
 name = "zagens-cli"
 version = "0.8.9"
 dependencies = [
@@ -8456,6 +8464,7 @@ dependencies = [
  "windows 0.60.0",
  "windows-sys 0.52.0",
  "wiremock",
+ "zagens-browser-policy",
  "zagens-config",
  "zagens-core",
  "zagens-protocol",
@@ -8548,6 +8557,7 @@ dependencies = [
  "uuid",
  "webview2-com",
  "windows 0.61.3",
+ "zagens-browser-policy",
  "zagens-config",
  "zagens-secrets",
  "zagens-windows-sandbox",

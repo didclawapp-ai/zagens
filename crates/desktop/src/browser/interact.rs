@@ -5,7 +5,85 @@ use serde_json::json;
 use tauri::{AppHandle, State};
 
 use super::scripts::{click_js, scroll_js, type_js};
-use super::{BrowserError, BrowserHosts, BrowserMode, NavActor, eval_js_string, lookup_host};
+use super::{BrowserError, BrowserHosts, BrowserMode, eval_js_string, lookup_host};
+
+async fn click_impl(
+    app: &AppHandle,
+    hosts: &BrowserHosts,
+    parent_label: &str,
+    ref_id: &str,
+) -> Result<super::cdp_interact::CdpInteractOk, BrowserError> {
+    if super::cdp_interact::is_available() {
+        match super::cdp_interact::cdp_click(app, hosts, parent_label, ref_id).await {
+            Ok(ok) => return Ok(ok),
+            Err(e) if e.code == "cdp_unsupported" => {}
+            Err(e) => {
+                tracing::debug!(
+                    target: "zagens_browser",
+                    code = %e.code,
+                    "CDP click failed; falling back to JS inject"
+                );
+            }
+        }
+    }
+    let (mode, host_label) = lookup_host(hosts, parent_label)?;
+    let raw = eval_js_string(app, mode, &host_label, &click_js(ref_id)).await?;
+    let dto = parse_interact(&raw);
+    if !dto.ok {
+        return map_interact_result(dto).map(|_| unreachable!());
+    }
+    Ok(super::cdp_interact::CdpInteractOk {
+        r#ref: dto.r#ref.unwrap_or_else(|| ref_id.to_string()),
+        role: dto.role,
+        name: dto.name,
+        detail: serde_json::json!({ "via": "js" }),
+    })
+}
+
+async fn type_impl(
+    app: &AppHandle,
+    hosts: &BrowserHosts,
+    parent_label: &str,
+    ref_id: &str,
+    text: &str,
+) -> Result<super::cdp_interact::CdpInteractOk, BrowserError> {
+    if super::cdp_interact::is_available() {
+        match super::cdp_interact::cdp_type(app, hosts, parent_label, ref_id, text).await {
+            Ok(ok) => return Ok(ok),
+            Err(e) if e.code == "cdp_unsupported" => {}
+            Err(e) => {
+                tracing::debug!(
+                    target: "zagens_browser",
+                    code = %e.code,
+                    "CDP type failed; falling back to JS inject"
+                );
+            }
+        }
+    }
+    let (mode, host_label) = lookup_host(hosts, parent_label)?;
+    let raw = eval_js_string(app, mode, &host_label, &type_js(ref_id, text)).await?;
+    let dto = parse_interact(&raw);
+    if !dto.ok {
+        return map_interact_result(dto).map(|_| unreachable!());
+    }
+    Ok(super::cdp_interact::CdpInteractOk {
+        r#ref: dto.r#ref.unwrap_or_else(|| ref_id.to_string()),
+        role: dto.role,
+        name: dto.name,
+        detail: serde_json::json!({ "via": "js", "typedLen": text.chars().count() }),
+    })
+}
+
+fn ok_to_dto(ok: super::cdp_interact::CdpInteractOk) -> BrowserInteractDto {
+    BrowserInteractDto {
+        ok: true,
+        r#ref: Some(ok.r#ref),
+        role: ok.role,
+        name: ok.name,
+        error: None,
+        detail: Some(ok.detail),
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -89,11 +167,10 @@ pub async fn agent_click(
     if ref_id.is_empty() {
         return Err(BrowserError::msg("missing_ref", "element ref 为空"));
     }
-    let (mode, host_label) = lookup_host(hosts, parent_label)?;
-    // Agent-triggered navigations from click follow agent URL policy (§6.1).
-    hosts.set_nav_policy_actor(parent_label, NavActor::Agent);
-    let raw = eval_js_string(app, mode, &host_label, &click_js(ref_id)).await?;
-    map_interact_result(parse_interact(&raw))
+    hosts.begin_agent_nav_chain(parent_label);
+    Ok(ok_to_dto(
+        click_impl(app, hosts, parent_label, ref_id).await?,
+    ))
 }
 
 pub async fn agent_type(
@@ -107,10 +184,10 @@ pub async fn agent_type(
     if ref_id.is_empty() {
         return Err(BrowserError::msg("missing_ref", "element ref 为空"));
     }
-    let (mode, host_label) = lookup_host(hosts, parent_label)?;
-    hosts.set_nav_policy_actor(parent_label, NavActor::Agent);
-    let raw = eval_js_string(app, mode, &host_label, &type_js(ref_id, text)).await?;
-    map_interact_result(parse_interact(&raw))
+    hosts.begin_agent_nav_chain(parent_label);
+    Ok(ok_to_dto(
+        type_impl(app, hosts, parent_label, ref_id, text).await?,
+    ))
 }
 
 pub async fn agent_scroll(

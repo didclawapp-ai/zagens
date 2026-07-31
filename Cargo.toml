@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/agent",
+    "crates/browser-policy",
     "crates/config",
     "crates/core",
     "crates/hooks",

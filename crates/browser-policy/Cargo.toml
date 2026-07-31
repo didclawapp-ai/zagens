@@ -1,0 +1,15 @@
+[package]
+name = "zagens-browser-policy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Shared Browser URL policy for Zagens desktop and runtime sidecar"
+
+[dependencies]
+serde.workspace = true
+url = "2"

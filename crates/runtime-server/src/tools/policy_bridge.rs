@@ -11,6 +11,7 @@
 //! does not generate human-readable descriptions.
 
 use serde_json::Value;
+use zagens_browser_policy::agent_external_https_host;
 use zagens_core::engine::dispatch::{
     is_mcp_tool_name, mcp_tool_approval_description, mcp_tool_is_parallel_safe,
     mcp_tool_is_read_only,
@@ -25,6 +26,7 @@ use zagens_tools::{
 
 use crate::config::ToolsPolicyMode;
 use crate::tools::ToolRegistry;
+use crate::tools::browser_session::{merged_allowlist, session_host_allowed};
 use crate::tools::spec::ApprovalRequirement as SpecApprovalRequirement;
 
 fn is_first_party_mcp_surface_tool(name: &str) -> bool {
@@ -158,7 +160,7 @@ fn browser_write_approval_description(tool_name: &str, tool_input: &Value) -> St
                 .get("url")
                 .and_then(|v| v.as_str())
                 .unwrap_or("?");
-            if let Some(host) = external_https_host(url) {
+            if let Some(host) = agent_external_https_host(url) {
                 format!("Browser: open external site {host} (session allowlist)")
             } else {
                 format!("Browser: navigate to {url}")
@@ -246,50 +248,23 @@ fn browser_yolo_enabled() -> bool {
     hot_browser_prefs_cached().yolo
 }
 
-/// Rough external-https host extractor (mirrors desktop url_policy agent ask).
+/// Rough external-https host extractor — delegates to shared browser policy.
 fn external_https_host(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if !lower.starts_with("https://") {
-        return None;
-    }
-    let rest = trimmed.get(8..)?;
-    let hostport = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let host = hostport
-        .trim()
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .split(':')
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    if host.is_empty()
-        || matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1")
-        || host.starts_with("192.168.")
-        || host.starts_with("10.")
-        || host.starts_with("172.")
-    {
-        return None;
-    }
-    Some(host)
+    agent_external_https_host(raw)
 }
 
 fn browser_navigate_needs_external_ask(tool_input: &Value) -> Option<String> {
     let url = tool_input.get("url").and_then(|v| v.as_str())?;
-    let host = external_https_host(url)?;
+    let host = agent_external_https_host(url)?;
     let prefs = hot_browser_prefs_cached();
-    // browser_yolo auto-allows external nav (same as writes). Already-allowlisted hosts skip ask.
     if prefs.yolo {
         return None;
     }
-    if prefs
-        .allowlist
-        .iter()
-        .any(|h| h.eq_ignore_ascii_case(&host))
-    {
+    if session_host_allowed(&host) {
         return None;
     }
-    Some(host)
+    let merged = merged_allowlist(&prefs.allowlist);
+    zagens_browser_policy::agent_navigate_needs_external_approval(url, &merged, false)
 }
 
 fn is_browser_write_tool(name: &str) -> bool {
@@ -342,7 +317,7 @@ fn legacy_tool_plan_approval_meta(
         {
             meta.approval_required = true;
             meta.approval_description =
-                format!("Browser: open external site {host} (will allow for this session)");
+                format!("Browser: open external site {host} (session allowlist)");
             meta.read_only = false;
         }
         return meta;
@@ -537,7 +512,7 @@ pub fn resolve_tool_plan_approval_meta(
     {
         meta.approval_required = true;
         meta.approval_description =
-            format!("Browser: open external site {host} (will allow for this session)");
+            format!("Browser: open external site {host} (session allowlist)");
         meta.read_only = false;
     }
     meta
@@ -685,5 +660,26 @@ mod tests {
     fn describe_stable_browser_ref_handles_anon_and_legacy() {
         assert!(describe_stable_browser_ref("link:anon:2").contains("(unnamed)"));
         assert_eq!(describe_stable_browser_ref("e12"), "ref=e12");
+    }
+
+    #[test]
+    fn external_https_lan_and_public_hosts_require_approval() {
+        for url in [
+            "https://172.50.1.1/",
+            "https://192.168.1.1/",
+            "https://172.16.0.1/",
+            "https://169.254.1.1/",
+        ] {
+            assert!(
+                browser_navigate_needs_external_ask(&serde_json::json!({ "url": url })).is_some(),
+                "expected ask for {url}"
+            );
+        }
+        assert!(
+            browser_navigate_needs_external_ask(
+                &serde_json::json!({ "url": "http://127.0.0.1:5173/" })
+            )
+            .is_none()
+        );
     }
 }
