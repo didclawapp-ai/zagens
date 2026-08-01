@@ -64,9 +64,8 @@ fn active_shell_from_program(program: &str) -> ActiveShell {
         || lower.ends_with("/powershell.exe")
     {
         ActiveShell::PowerShell51
-    } else if lower == "cmd" || lower == "cmd.exe" || lower.ends_with("\\cmd.exe") {
-        ActiveShell::Cmd
     } else {
+        // Explicit cmd / cmd.exe and unknown Windows shells fall back to Cmd.
         ActiveShell::Cmd
     }
 }
