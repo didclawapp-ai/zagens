@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Skill `zagens-office`:** System skill guides Code-mode agents to call the external [`zagens-office`](https://github.com/didclawapp-ai/zagens-office) CLI via `exec_shell` (JSON schema / write / edit / read; install + license gate documented in the skill).
+- **Skill `zagens-office`:** System skill guides Code-mode agents to call the external [`zagens-office`](https://github.com/didclawapp-ai/zagens-office) CLI via `exec_shell` (JSON schema / write / edit / read; install + license gate documented in the skill). Skill body synced to the upstream package guide (DSL / 83 edit ops / XLSX modes / `validate_only` / design heuristics) while keeping the open-source hard route (`exec_shell` only, no script fallback).
 
 ### Fixed
 
@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Prompt: Office → `zagens-office` hard route:** After Office mode removal, `base.md` / `tasks/code.md` / skill `zagens-office` now **require** `load_skill zagens-office` on document intents (填写表格 / 做报告 / PPT / `.docx`·`.xlsx`·`.pptx`·`.pdf`, etc.) and **forbid** falling back to Agent tools (`write_file`, python-pptx/openpyxl, `agent_spawn`, …) even after the skill is loaded; Office turns also skip default checklist verbosity. Bundled system-skill marker bumped to **v13** so existing installs refresh the skill body.
+- **Prompt: Office → `zagens-office` hard route:** After Office mode removal, `base.md` / `tasks/code.md` / skill `zagens-office` now **require** `load_skill zagens-office` on document intents (填写表格 / 做报告 / PPT / `.docx`·`.xlsx`·`.pptx`·`.pdf`, etc.) and **forbid** falling back to Agent tools (`write_file`, python-pptx/openpyxl, `agent_spawn`, …) even after the skill is loaded; Office turns also skip default checklist verbosity. Bundled system-skill marker bumped to **v14** so existing installs refresh the skill body.
 - **Composer approval policy:** The overflow menu「审批策略」section can switch `approval_policy` (on-request / untrusted / never / auto) directly—no need to open System Settings. Saving still restarts the local runtime (with the same streaming confirm as Settings).
 - **DeepSeek-V4-Flash-0731:** Official Flash version label is now shown in Desktop Composer (`DeepSeek V4 Flash (0731)`). Wire ID remains `deepseek-v4-flash` (Chat Completions); aliases `deepseek-v4-flash-0731` / `deepseek-v4flash-0731` canonicalize to it. Platform pricing synced to current docs (Flash ¥0.02/1/2; Pro ¥0.025/3/6 — removed post–2026-05-31 higher fallback that no longer matches published rates).
 - **exec_shell dynamic description (S0):** Tool catalog injects detected host OS and active shell (`pwsh` / `powershell` / `cmd` / `sh`) plus family-specific command rules (e.g. PowerShell 5.1: avoid `&&`, use `cwd` not `cd &&`). Reduces Windows bashism / ParserError from models writing Linux shell syntax.

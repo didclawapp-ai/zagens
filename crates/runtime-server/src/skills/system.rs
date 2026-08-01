@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 /// Bump when bundled skill set changes so existing installs refresh.
-const BUNDLED_SKILL_VERSION: &str = "13";
+const BUNDLED_SKILL_VERSION: &str = "14";
 
 struct BundledFile {
     path: &'static str,
