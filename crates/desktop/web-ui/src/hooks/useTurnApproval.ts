@@ -7,9 +7,15 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
-import { fetchSystemSettings, postResolveApproval, type SystemSettings } from '../api/client';
+import {
+  fetchSystemSettings,
+  postResolveApproval,
+  saveSystemSettings,
+  type SystemSettings,
+} from '../api/client';
 import { autoApproveFromPolicy, composerAutoApproveToggleEnabled } from '../lib/approvalPolicy';
 import { persistNotifyMethod } from '../lib/appPreferences';
+import { confirmDialog } from '../lib/confirmDialog';
 import { threadOwnedByWindow } from '../lib/windowBridge';
 import { toast } from '../lib/toast';
 import { resolveActiveThreadTurn } from '../lib/chat/streamContextAccess';
@@ -28,6 +34,7 @@ export type UseTurnApprovalParams = {
   resumedThreadIdRef: MutableRefObject<string | null>;
   desktopHost: boolean;
   runModeRef: MutableRefObject<DesktopRunModeId>;
+  streamingRef: MutableRefObject<boolean>;
 };
 
 export type UseTurnApprovalResult = {
@@ -35,9 +42,11 @@ export type UseTurnApprovalResult = {
   setApproval: Dispatch<SetStateAction<ApprovalState | null>>;
   approvalBusy: boolean;
   approvalPolicy: string;
+  approvalPolicyBusy: boolean;
   autoApprove: boolean;
   setAutoApprove: Dispatch<SetStateAction<boolean>>;
   handleAutoApproveChange: (value: boolean) => void;
+  handleApprovalPolicyChange: (policy: string) => Promise<boolean>;
   syncAutoApproveFromPolicy: (policy: string) => void;
   syncAutoApproveFromRunMode: (mode: DesktopRunModeId) => void;
   handleSystemSettingsSaved: (settings: SystemSettings) => void;
@@ -52,10 +61,12 @@ export function useTurnApproval({
   resumedThreadIdRef,
   desktopHost,
   runModeRef,
+  streamingRef,
 }: UseTurnApprovalParams): UseTurnApprovalResult {
   const [approval, setApproval] = useState<ApprovalState | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalPolicy, setApprovalPolicy] = useState('on-request');
+  const [approvalPolicyBusy, setApprovalPolicyBusy] = useState(false);
   const [autoApprove, setAutoApprove] = useState(false);
   const approvalPolicyRef = useRef('on-request');
 
@@ -91,6 +102,33 @@ export function useTurnApproval({
     }
     setAutoApprove(value);
   }, []);
+
+  const handleApprovalPolicyChange = useCallback(
+    async (policy: string): Promise<boolean> => {
+      const next = policy.trim().toLowerCase();
+      if (!desktopHost || !next || next === approvalPolicyRef.current.trim().toLowerCase()) {
+        return false;
+      }
+      if (streamingRef.current && !(await confirmDialog(t('settings.saveRestartsSidecar')))) {
+        return false;
+      }
+      setApprovalPolicyBusy(true);
+      try {
+        const settings = await fetchSystemSettings();
+        const updated = { ...settings, approval_policy: next };
+        await saveSystemSettings(updated);
+        syncAutoApproveFromPolicy(next);
+        persistNotifyMethod(updated.notify_method);
+        return true;
+      } catch (e) {
+        toast.error(t('composer.approvalPolicySaveFailed', { message: (e as Error).message }));
+        return false;
+      } finally {
+        setApprovalPolicyBusy(false);
+      }
+    },
+    [desktopHost, streamingRef, syncAutoApproveFromPolicy, t],
+  );
 
   const handleSystemSettingsSaved = useCallback(
     (settings: SystemSettings) => {
@@ -174,9 +212,11 @@ export function useTurnApproval({
     setApproval,
     approvalBusy,
     approvalPolicy,
+    approvalPolicyBusy,
     autoApprove,
     setAutoApprove,
     handleAutoApproveChange,
+    handleApprovalPolicyChange,
     syncAutoApproveFromPolicy,
     syncAutoApproveFromRunMode,
     handleSystemSettingsSaved,

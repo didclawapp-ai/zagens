@@ -42,8 +42,21 @@ function patchStreamingAssistant(
     ? timelineState.blocks
     : finalizeTimelineBlocks(timelineState.blocks);
   const legacy = blocksToLegacyFields(blocks);
-  return messages.map((m) => {
-    if (m.id !== targetId) return m;
+  // If restore + send collided on the same id, only the last matching row is
+  // the live target — updating every match duplicated the stream into older bubbles.
+  let lastMatch = -1;
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i].id === targetId) lastMatch = i;
+  }
+  if (lastMatch < 0) return messages;
+  return messages.map((m, i) => {
+    if (i !== lastMatch) {
+      // Settle any older duplicate-id assistant so it cannot stay「生成中」.
+      if (m.id === targetId && m.role === 'assistant' && m.isStreaming) {
+        return { ...m, isStreaming: false };
+      }
+      return m;
+    }
     return {
       ...m,
       blocks,

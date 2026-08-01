@@ -445,7 +445,14 @@ const ptBr: TranslationMap = {
     autoApproveLockedAria: 'Política de aprovação: {{policy}}',
     approvalFromSettings: 'Aprovação: {{policy}}',
     approvalFromSettingsHint:
-      'Altere em Configurações → Política de aprovação. Escolha Aprovar automaticamente para habilitar a caixa de aprovação automática de ferramentas.',
+      'Altere a política de aprovação aqui. Escolha Aprovar automaticamente para habilitar a caixa por turno.',
+    approvalOnRequestHint: 'Confirmar antes das chamadas de ferramentas',
+    approvalUntrustedHint: 'Confirmar apenas ações não confiáveis',
+    approvalNeverHint: 'Negar ferramentas que exigem aprovação (use com cuidado)',
+    approvalAutoHint: 'Sem prompts de ferramentas; opcionalmente ative aprovação automática por turno',
+    approvalPolicyRestartHint:
+      'As alterações são salvas nas configurações do sistema e aplicam após reiniciar o runtime local.',
+    approvalPolicySaveFailed: 'Não foi possível salvar a política de aprovação: {{message}}',
     moreMenu: 'Mais',
     overflowOff: 'Desligado',
     overflowActions: 'Ações',

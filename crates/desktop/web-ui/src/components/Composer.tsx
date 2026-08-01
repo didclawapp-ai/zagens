@@ -410,7 +410,9 @@ interface Props {
   autoApprove: boolean;
   /** From system settings — non-`auto` policies lock the Composer toggle off. */
   approvalPolicy: string;
+  approvalPolicyBusy?: boolean;
   onAutoApproveChange: (value: boolean) => void;
+  onApprovalPolicyChange: (policy: string) => void | Promise<boolean>;
   runMode: DesktopRunModeId;
   onRunModeChange: (mode: DesktopRunModeId) => void;
   taskTypePreference: DesktopTaskTypePreference;
@@ -472,7 +474,9 @@ export default function Composer({
   disabled,
   autoApprove,
   approvalPolicy,
+  approvalPolicyBusy = false,
   onAutoApproveChange,
+  onApprovalPolicyChange,
   runMode,
   onRunModeChange,
   taskTypePreference,
@@ -1154,7 +1158,9 @@ export default function Composer({
               autoApprove={autoApprove}
               autoApproveToggleEnabled={autoApproveToggleEnabled}
               approvalPolicy={approvalPolicy}
+              approvalPolicyBusy={approvalPolicyBusy}
               onAutoApproveChange={onAutoApproveChange}
+              onApprovalPolicyChange={onApprovalPolicyChange}
               runMode={runMode}
               availableRunModes={availableRunModes}
               runModePickerDisabled={runModePickerDisabled}

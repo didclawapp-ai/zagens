@@ -7,7 +7,11 @@ import type {
   DesktopTaskTypeResolved,
 } from '../../types/desktop';
 import { DESKTOP_RUN_MODE_LABELS } from '../../types/desktop';
-import { approvalPolicySettingsKey } from '../../lib/approvalPolicy';
+import {
+  APPROVAL_POLICY_OPTIONS,
+  approvalPolicySettingsKey,
+  type ApprovalPolicyOption,
+} from '../../lib/approvalPolicy';
 import type { LhtChipState } from '../../lib/lhtChip';
 import { toast } from '../../lib/toast';
 import LhtModeToggle from '../LhtModeToggle';
@@ -15,6 +19,13 @@ import OverflowMenu from '../chrome/OverflowMenu';
 import { IconBolt } from '../icons/FlatIcons';
 import ComposerOverflowSection from './ComposerOverflowSection';
 import WorktreeBranchIcon from './WorktreeBranchIcon';
+
+const APPROVAL_POLICY_HINT_KEYS: Record<ApprovalPolicyOption, TranslationKey> = {
+  'on-request': 'composer.approvalOnRequestHint',
+  untrusted: 'composer.approvalUntrustedHint',
+  never: 'composer.approvalNeverHint',
+  auto: 'composer.approvalAutoHint',
+};
 
 const COMPOSER_WORKTREE_TOGGLE_TAG = 'composer-worktree-toggle';
 
@@ -44,7 +55,9 @@ type Props = {
   autoApprove: boolean;
   autoApproveToggleEnabled: boolean;
   approvalPolicy: string;
+  approvalPolicyBusy?: boolean;
   onAutoApproveChange: (value: boolean) => void;
+  onApprovalPolicyChange: (policy: string) => void | Promise<boolean>;
   runMode: DesktopRunModeId;
   availableRunModes: DesktopRunModeId[];
   runModePickerDisabled: boolean;
@@ -98,7 +111,9 @@ export default function ComposerOverflowMenu({
   autoApprove,
   autoApproveToggleEnabled,
   approvalPolicy,
+  approvalPolicyBusy = false,
   onAutoApproveChange,
+  onApprovalPolicyChange,
   runMode,
   availableRunModes,
   runModePickerDisabled,
@@ -155,13 +170,20 @@ export default function ComposerOverflowMenu({
     close();
   };
 
-  const autoApproveSummary = autoApproveToggleEnabled
-    ? autoApprove
-      ? t('composer.autoApproveShort')
-      : t('composer.overflowOff')
-    : t(
-        `settings.${approvalPolicySettingsKey(approvalPolicy)}` as 'settings.approvalOnRequest',
-      );
+  const selectApprovalPolicy = async (policy: ApprovalPolicyOption) => {
+    if (policy === approvalPolicy.trim().toLowerCase()) {
+      close();
+      return;
+    }
+    const ok = await onApprovalPolicyChange(policy);
+    if (ok) {
+      close();
+    }
+  };
+
+  const approvalPolicySummary = t(
+    `settings.${approvalPolicySettingsKey(approvalPolicy)}` as 'settings.approvalOnRequest',
+  );
 
   return (
     <OverflowMenu
@@ -176,37 +198,52 @@ export default function ComposerOverflowMenu({
     >
       {showAutoApprove ? (
         <ComposerOverflowSection
-          title={t('composer.autoApproveShort')}
-          summary={autoApproveSummary}
+          title={t('settings.approvalPolicy')}
+          summary={approvalPolicySummary}
           expanded={expanded === 'autoApprove'}
           onToggle={() => toggleSection('autoApprove')}
           panelId={sectionPanelId('autoApprove')}
         >
+          {APPROVAL_POLICY_OPTIONS.map((policy) => {
+            const selected = approvalPolicy.trim().toLowerCase() === policy;
+            return (
+              <button
+                key={policy}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                disabled={disabled || approvalPolicyBusy}
+                title={t(APPROVAL_POLICY_HINT_KEYS[policy])}
+                onClick={() => void selectApprovalPolicy(policy)}
+                className={optionBtnClass(selected)}
+              >
+                <span className="font-medium">
+                  {t(`settings.${approvalPolicySettingsKey(policy)}` as 'settings.approvalOnRequest')}
+                </span>
+                <span className="text-[11px] leading-snug text-t-text-muted">
+                  {t(APPROVAL_POLICY_HINT_KEYS[policy])}
+                </span>
+              </button>
+            );
+          })}
           {autoApproveToggleEnabled ? (
             <button
               type="button"
               role="menuitemcheckbox"
               aria-checked={autoApprove}
-              disabled={disabled}
+              disabled={disabled || approvalPolicyBusy}
               onClick={() => onAutoApproveChange(!autoApprove)}
-              className={`mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors ${
+              className={`mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors ${
                 autoApprove ? 'bg-accent-soft text-accent' : 'text-t-text hover:bg-hover'
               }`}
             >
               <IconBolt className="size-4 shrink-0" />
               <span>{t('composer.autoApprove')}</span>
             </button>
-          ) : (
-            <p className="px-3 py-1 text-[11px] leading-snug text-t-text-muted">
-              {t('composer.approvalFromSettings', {
-                policy: t(
-                  `settings.${approvalPolicySettingsKey(approvalPolicy)}` as 'settings.approvalOnRequest',
-                ),
-              })}
-              {' — '}
-              {t('composer.approvalFromSettingsHint')}
-            </p>
-          )}
+          ) : null}
+          <p className="px-3 py-1 text-[11px] leading-snug text-t-text-muted">
+            {t('composer.approvalPolicyRestartHint')}
+          </p>
         </ComposerOverflowSection>
       ) : null}
 

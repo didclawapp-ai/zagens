@@ -22,11 +22,13 @@ import { dispatchSidecarReadyForPanels } from '../lib/sidecarPanelRecovery';
 import { RUNTIME_TRANSIENT_TAG, toast } from '../lib/toast';
 import {
   anyAssistantStreaming,
-  clearStreamingAssistants,
   lastAssistantMessageId,
-  markLastAssistantStreaming,
-  rebindStreamingAssistant,
 } from '../lib/chat/activeTurnStreamUi';
+import {
+  clearStreamingAssistantsUi,
+  markLastAssistantStreamingUi,
+  rebindStreamingAssistantUi,
+} from '../lib/chat/finalizeInactiveAssistants';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
 import { mergeThreadTranscript } from './turnSend/completeStreamUi';
 import {
@@ -180,7 +182,7 @@ export function useTurnStreamRecovery({
         const lastId = lastAssistantMessageId(prev);
         if (!lastId) return prev;
         reboundId = lastId;
-        return rebindStreamingAssistant(prev, lastId, banner) as TurnChatMessage[];
+        return rebindStreamingAssistantUi(prev, lastId, banner);
       });
       if (activeThreadId && reboundId) {
         patchRecoveryAssistantId(streamRegistry, activeThreadId, reboundId);
@@ -408,7 +410,7 @@ export function useTurnStreamRecovery({
       applyThreadStatusEvent({ threadId, status: 'idle', source: 'reconcile' });
       setMessages((prev) => {
         if (!anyAssistantStreaming(prev)) return prev;
-        return clearStreamingAssistants(prev) as TurnChatMessage[];
+        return clearStreamingAssistantsUi(prev) as TurnChatMessage[];
       });
       setPendingComposerStream(false);
     },
@@ -459,7 +461,7 @@ export function useTurnStreamRecovery({
           } else {
             setMessages((prev) => {
               if (!anyAssistantStreaming(prev)) return prev;
-              return clearStreamingAssistants(prev) as TurnChatMessage[];
+              return clearStreamingAssistantsUi(prev) as TurnChatMessage[];
             });
             clearBackgroundStreamingUi(tid);
           }
@@ -494,8 +496,15 @@ export function useTurnStreamRecovery({
             return;
           }
           const live = (streamRegistry?.getContext(tid)?.messages ?? []) as TurnChatMessage[];
+          // mergeThreadTranscript already refuses stale fewer-user / fewer-assistant
+          // snapshots; if it kept `live` identical, skip the setState so a slow
+          // full replay cannot flash-replace the in-flight bubble.
           const merged = mergeThreadTranscript(live, rebuilt as TurnChatMessage[]);
-          const { messages, assistantId } = markLastAssistantStreaming(merged);
+          if (merged === live) {
+            setPendingComposerStream(true);
+            return;
+          }
+          const { messages, assistantId } = markLastAssistantStreamingUi(merged);
           if (!assistantId) {
             return;
           }
@@ -516,7 +525,7 @@ export function useTurnStreamRecovery({
         }
         const live = (streamRegistry?.getContext(tid)?.messages ?? []) as TurnChatMessage[];
         const merged = mergeThreadTranscript(live, rebuilt as TurnChatMessage[]);
-        const { messages: marked } = markLastAssistantStreaming(merged);
+        const { messages: marked } = markLastAssistantStreamingUi(merged);
         const sessionId = streamRegistry?.getContext(tid)?.sessionId ?? null;
         streamRegistry?.ensureContext(tid, sessionId);
         streamRegistry?.patchContext(tid, {

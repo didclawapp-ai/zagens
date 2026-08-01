@@ -385,9 +385,11 @@ export default function App() {
     setApproval,
     approvalBusy,
     approvalPolicy,
+    approvalPolicyBusy,
     autoApprove,
     setAutoApprove,
     handleAutoApproveChange,
+    handleApprovalPolicyChange,
     syncAutoApproveFromRunMode,
     handleSystemSettingsSaved,
     handleApproveDecision,
@@ -399,6 +401,7 @@ export default function App() {
     resumedThreadIdRef,
     desktopHost,
     runModeRef,
+    streamingRef,
   });
 
   const handleSystemSettingsSavedWithModels = useCallback(
@@ -1199,7 +1202,9 @@ export default function App() {
       onCancelStream={handleCancelStream}
       autoApprove={autoApprove}
       approvalPolicy={approvalPolicy}
+      approvalPolicyBusy={approvalPolicyBusy}
       onAutoApproveChange={handleAutoApproveChange}
+      onApprovalPolicyChange={handleApprovalPolicyChange}
       runMode={runMode}
       onRunModeChange={handleRunModeChange}
       taskTypePreference={taskTypePreference}

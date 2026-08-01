@@ -1,4 +1,5 @@
 import type { TurnBlock } from './timeline/turnBlockTypes';
+import { allocateMessageId, resetMessageIdStateForTests } from './messageIds';
 
 export interface UiMessage {
   id: string;
@@ -20,15 +21,13 @@ export interface UiToolCall {
   status: 'running' | 'done' | 'error';
 }
 
-let msgCounter = 0;
 export function nextUiMessageId(prefix = 'msg'): string {
-  msgCounter += 1;
-  return `${prefix}-${msgCounter}`;
+  return allocateMessageId(prefix);
 }
 
 /** Reset counter when loading a fresh session (stable ids come from thread items when available). */
 export function resetUiMessageIdCounter(): void {
-  msgCounter = 0;
+  resetMessageIdStateForTests();
 }
 
 export { mapSessionDetailToMessages } from './mapSessionDetailToMessages';

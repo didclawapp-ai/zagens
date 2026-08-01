@@ -110,7 +110,9 @@ export type AppShellProps = {
   onCancelStream: () => void;
   autoApprove: boolean;
   approvalPolicy: Parameters<typeof Composer>[0]['approvalPolicy'];
+  approvalPolicyBusy?: boolean;
   onAutoApproveChange: (value: boolean) => void;
+  onApprovalPolicyChange: (policy: string) => void | Promise<boolean>;
   runMode: DesktopRunModeId;
   onRunModeChange: (mode: DesktopRunModeId) => void;
   taskTypePreference: DesktopTaskTypePreference;
@@ -255,7 +257,9 @@ export default function AppShell({
   onCancelStream,
   autoApprove,
   approvalPolicy,
+  approvalPolicyBusy = false,
   onAutoApproveChange,
+  onApprovalPolicyChange,
   runMode,
   onRunModeChange,
   taskTypePreference,
@@ -520,7 +524,9 @@ export default function AppShell({
               disabled={streaming || storagePauseTurns}
               autoApprove={autoApprove}
               approvalPolicy={approvalPolicy}
+              approvalPolicyBusy={approvalPolicyBusy}
               onAutoApproveChange={onAutoApproveChange}
+              onApprovalPolicyChange={onApprovalPolicyChange}
               runMode={runMode}
               onRunModeChange={onRunModeChange}
               taskTypePreference={taskTypePreference}

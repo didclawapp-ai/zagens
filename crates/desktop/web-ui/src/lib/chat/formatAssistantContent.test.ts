@@ -30,11 +30,42 @@ test('formatAssistantContent', () => {
   );
 
   assert.equal(appendStreamingTextDelta('Let', ' me'), 'Let me', 'incremental token append');
-  assert.equal(appendStreamingTextDelta('Let me ', 'Let me '), 'Let me ', 'duplicate delta skipped');
   assert.equal(
-    appendStreamingTextDelta('Let me check', 'Let me check trust'),
-    'Let me check trust',
-    'cumulative snapshot replaces prefix',
+    appendStreamingTextDelta('Let me check the trust settings ', 'Let me check the trust settings '),
+    'Let me check the trust settings ',
+    'long duplicate replay chunk skipped',
+  );
+  assert.equal(
+    appendStreamingTextDelta('Let me check the trust', 'Let me check the trust settings now'),
+    'Let me check the trust settings now',
+    'long replayed overlap extends the accumulated text',
+  );
+  // Regression (thr_65ce8faa): short legit deltas that repeat the current suffix
+  // must never be dropped — "100"+"0" and "smart"+"art" are real token splits.
+  assert.equal(appendStreamingTextDelta('尺寸 100', '0'), '尺寸 1000', 'suffix-colliding digit kept');
+  assert.equal(
+    appendStreamingTextDelta('result.smart', 'art'),
+    'result.smartart',
+    'suffix-colliding token kept',
+  );
+  assert.equal(appendStreamingTextDelta('好。', '好。'), '好。好。', 'short repeat appended, not deduped');
+  // Volume-amplifying regression: a fresh batch that happens to equal an earlier
+  // mid-string substring must still append. Mid-string `includes` false positives
+  // only show up after the bubble has grown (multi-tool / multi-turn prose).
+  const longAccum =
+    '结构清楚。现在并行定位问题源码——先读动画模块。继续定位：函数名不同。放宽搜索。';
+  const freshBatch = '继续定位：函数名不同'; // appears earlier, but this is new prose later
+  assert.equal(
+    appendStreamingTextDelta(longAccum, freshBatch),
+    longAccum + freshBatch,
+    'mid-string collision must not drop a fresh batch',
+  );
+  const trailingReplay = '继续定位：函数名不同。放宽搜索。';
+  assert.ok(trailingReplay.length >= 16);
+  assert.equal(
+    appendStreamingTextDelta(longAccum, trailingReplay),
+    longAccum,
+    'true trailing replay of a long chunk is still skipped',
   );
 
   const turnEvents = [
@@ -114,6 +145,22 @@ test('formatAssistantContent', () => {
     'assistant segments merge into one bubble with paragraph breaks',
   );
   assert.equal(rebuilt[1].tools?.length, 1, 'tool cards stay in the same assistant bubble');
+});
+
+test('mergeAgentMessageSegment replaces lossy streamed copy instead of appending', () => {
+  // Regression (thr_65ce8faa item_477e1865): delta dedup swallowed one "0",
+  // so the streamed bubble held a lossy copy; the completed segment must
+  // replace it, not append the whole message a second time.
+  const full =
+    'G/H 前半完成。G4 显示编辑后 sheet 尺寸 1000×702 异常——对比原始文件验证行列操作是否造成膨胀。';
+  const lossy = full.replace('1000×702', '100×702');
+  assert.equal(mergeAgentMessageSegment(lossy, full), full, 'lossy copy replaced by full text');
+  // Distinct short segments still concatenate.
+  assert.equal(
+    mergeAgentMessageSegment('第一段结论。', '接下来是完全不同的第二段补充说明内容。'),
+    '第一段结论。\n\n接下来是完全不同的第二段补充说明内容。',
+    'distinct segments still merge with a gap',
+  );
 });
 
 test('mergeAgentMessageSegment keeps longer near-duplicate final report', () => {

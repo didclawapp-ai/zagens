@@ -3,10 +3,8 @@
  * switch-back shows live thinking/tools without waiting for full rebuild.
  */
 import type { NormalizedStreamEvent } from '../../api/streamNormalize';
-import {
-  lastAssistantMessageId,
-  rebindStreamingAssistant,
-} from '../../lib/chat/activeTurnStreamUi';
+import { lastAssistantMessageId } from '../../lib/chat/activeTurnStreamUi';
+import { finalizeInactiveAssistants } from '../../lib/chat/finalizeInactiveAssistants';
 import { createEmptyTimelineState } from '../../lib/chat/timeline/turnTimelineReducer';
 import type { StreamContextRegistry } from '../useStreamContextRegistry';
 import type { TurnChatMessage } from '../useTurnSend';
@@ -32,15 +30,14 @@ function ensureStreamingAssistant(messages: TurnChatMessage[]): {
     if (last?.role === 'assistant' && last.isStreaming) {
       return { messages, targetId: lastId };
     }
-    return {
-      messages: rebindStreamingAssistant(messages, lastId) as TurnChatMessage[],
-      targetId: lastId,
-    };
   }
+  // Never rebind a completed assistant into the live stream — that overwrites
+  // the previous turn's content with the new turn's deltas (dual identical
+  // bubbles after thread-replay restore + continue). Always append a fresh row.
   const targetId = nextBackgroundAssistantId();
   return {
     messages: [
-      ...messages,
+      ...finalizeInactiveAssistants(messages, null),
       {
         id: targetId,
         role: 'assistant',

@@ -89,6 +89,44 @@ test('applyStreamEventToMessages clears sticky isStreaming false on non-finalize
   assert.equal(messages[0].isStreaming, true);
 });
 
+test('applyStreamEventToMessages patches only the last row when ids collide', () => {
+  // Regression: after restore, send reminted msg-2 and both assistants shared it.
+  const messages: TurnChatMessage[] = [
+    { id: 'u1', role: 'user', content: '第一轮' },
+    {
+      id: 'msg-2',
+      role: 'assistant',
+      content: '旧回复',
+      isStreaming: true,
+      blocks: [{ kind: 'text', id: 'old', content: '旧回复', streaming: true }],
+    },
+    { id: 'u2', role: 'user', content: '第二轮' },
+    {
+      id: 'msg-2',
+      role: 'assistant',
+      content: '',
+      isStreaming: true,
+      blocks: [],
+    },
+  ];
+  let timeline = createEmptyTimelineState();
+  let next = messages;
+  ({ messages: next, timelineState: timeline } = applyStreamEventToMessages(
+    next,
+    timeline,
+    { kind: 'message_delta', content: '新流式内容' },
+    { streamTargetId: 'msg-2' },
+  ));
+
+  const assistants = next.filter((m) => m.role === 'assistant');
+  assert.equal(assistants.length, 2);
+  assert.equal(assistants[0].content, '旧回复', 'older duplicate-id bubble kept');
+  assert.equal(assistants[0].isStreaming, false, 'older duplicate settled');
+  assert.equal(assistants[1].content, '新流式内容');
+  assert.equal(assistants[1].isStreaming, true);
+  void timeline;
+});
+
 test('applyStreamEventToMessages updates preparing tool with final input', () => {
   const assistant: TurnChatMessage = {
     id: 'asst-1',

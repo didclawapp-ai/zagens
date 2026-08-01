@@ -56,6 +56,7 @@ import {
   resetThreadStatusStoreForTests,
 } from './threadStatusStore';
 import {
+  compactIdleStreamHandles,
   evictIdleContextMessages,
   IDLE_CONTEXT_EVICT_MS,
 } from './streamContextAccess';
@@ -556,4 +557,38 @@ assert.equal(
   undefined,
   'A draft bucket removed after migration',
 );
+});
+
+test('compactIdleStreamHandles drops the finished turn timelineState', () => {
+  const map = new Map<string, StreamContext>();
+  ensureContextInMap(map, 'thr_tl', 'sess_tl');
+  patchContextInMap(map, 'thr_tl', {
+    isStreaming: true,
+    timelineState: {
+      blocks: [{ kind: 'text', id: 'tx', content: '第一轮输出', streaming: false }],
+      lastBoundary: 'message_delta',
+      concurrentGroupAnchor: null,
+    },
+  });
+  const registry = {
+    getContext: (tid: string | null | undefined) => {
+      const key = tid?.trim();
+      return key ? map.get(key) : undefined;
+    },
+    patchContext: (
+      tid: string,
+      patch: Partial<StreamContext> | ((prev: StreamContext) => Partial<StreamContext>),
+    ) => {
+      patchContextInMap(map, tid, patch);
+    },
+  } as StreamContextRegistry;
+
+  compactIdleStreamHandles(registry, 'thr_tl');
+  const ctx = map.get('thr_tl');
+  assert.equal(ctx?.isStreaming, false);
+  assert.equal(
+    ctx?.timelineState,
+    undefined,
+    'stale timeline must not survive into the next turn (duplicate stream guard)',
+  );
 });

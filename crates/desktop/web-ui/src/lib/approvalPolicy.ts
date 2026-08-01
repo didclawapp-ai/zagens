@@ -1,3 +1,13 @@
+/** Values persisted as `approval_policy` in system settings / config.toml. */
+export const APPROVAL_POLICY_OPTIONS = [
+  'on-request',
+  'untrusted',
+  'never',
+  'auto',
+] as const;
+
+export type ApprovalPolicyOption = (typeof APPROVAL_POLICY_OPTIONS)[number];
+
 /** Mirror `zagens_core::approval::ApprovalMode::config_implies_auto_approve`. */
 export function autoApproveFromPolicy(approvalPolicy: string): boolean {
   return approvalPolicy.trim().toLowerCase() === 'auto';

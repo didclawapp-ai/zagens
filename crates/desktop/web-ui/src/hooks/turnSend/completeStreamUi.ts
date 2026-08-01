@@ -1,4 +1,7 @@
 import type { TurnChatMessage } from '../useTurnSend';
+import { lastAssistantMessageId } from '../../lib/chat/activeTurnStreamUi';
+import { finalizeInactiveAssistants } from '../../lib/chat/finalizeInactiveAssistants';
+import { isNearDuplicateProse } from '../../lib/chat/formatAssistantContent';
 import {
   blocksToLegacyFields,
   legacyFieldsToBlocks,
@@ -137,10 +140,48 @@ export function reconcileAssistantBlocks(
         // Equal / shorter / overlapping: keep live text — never push a duplicate.
         continue;
       }
+      // Live may have coalesced several captions into one longer block while the
+      // replay spine still emits one text per agent_message. Pushing those would
+      // re-render the same prose as the turn grows (multi-tool / large threads).
+      if (textAlreadyRepresented(merged, block.content)) {
+        continue;
+      }
+    }
+    if (block.kind === 'thinking' && thinkingAlreadyRepresented(merged, block.text)) {
+      continue;
     }
     merged.push(block);
   }
   return merged;
+}
+
+function textAlreadyRepresented(merged: TurnBlock[], content: string): boolean {
+  const next = content.trim();
+  if (!next) return true;
+  for (const b of merged) {
+    if (b.kind !== 'text') continue;
+    const cur = b.content.trim();
+    if (!cur) continue;
+    // Incoming already covered by a live block (no length floor — short Chinese
+    // captions are often <12 chars). Do NOT treat "next contains cur" alone as
+    // represented: that means the replay is richer and should still enrich/push.
+    if (cur === next || cur.includes(next)) return true;
+    if (proseOverlaps(cur, next) || isNearDuplicateProse(cur, next)) return true;
+  }
+  return false;
+}
+
+function thinkingAlreadyRepresented(merged: TurnBlock[], text: string): boolean {
+  const next = text.trim();
+  if (!next) return true;
+  for (const b of merged) {
+    if (b.kind !== 'thinking') continue;
+    const cur = b.text.trim();
+    if (!cur) continue;
+    if (cur === next || cur.includes(next)) return true;
+    if (proseOverlaps(cur, next) || isNearDuplicateProse(cur, next)) return true;
+  }
+  return false;
 }
 
 export function reconcileAssistantTurn(
@@ -159,11 +200,31 @@ export function reconcileAssistantTurn(
     content: legacy.content || live.content,
     thinking: legacy.thinking ?? live.thinking,
     tools: legacy.tools ?? live.tools,
-    isStreaming: false,
+    // Keep the live streaming flag. Recovery/transcript merges mid-turn must
+    // not flip the bubble into settled layout (or look like a wholesale replace).
+    isStreaming: Boolean(live.isStreaming),
     ...(thinkingIncomplete
       ? { thinkingIncomplete: true }
       : { thinkingIncomplete: undefined }),
   };
+}
+
+function userMessageCount(messages: TurnChatMessage[]): number {
+  return messages.reduce((n, m) => (m.role === 'user' ? n + 1 : n), 0);
+}
+
+function assistantMessageCount(messages: TurnChatMessage[]): number {
+  return messages.reduce((n, m) => (m.role === 'assistant' ? n + 1 : n), 0);
+}
+
+function assistantProse(message: TurnChatMessage): string {
+  const direct = message.content?.trim() ?? '';
+  if (direct) return direct;
+  return (message.blocks ?? [])
+    .filter((b): b is Extract<TurnBlock, { kind: 'text' }> => b.kind === 'text')
+    .map((b) => b.content)
+    .join('\n')
+    .trim();
 }
 
 export function reconcileMessagesFromThread(
@@ -171,6 +232,22 @@ export function reconcileMessagesFromThread(
   persisted: TurnChatMessage[],
 ): TurnChatMessage[] {
   if (persisted.length === 0) return live;
+  // Stale-snapshot guard: when the persisted replay predates an in-flight turn
+  // (live already has the next user prompt the snapshot lacks), the last
+  // persisted assistant belongs to the PREVIOUS turn. Merging it into live's
+  // fresh streaming bubble would re-render the prior turn's output (duplicate
+  // stream on the 2nd prompt of a session). Keep live; a fresh rebuild runs
+  // when the in-flight turn completes.
+  if (userMessageCount(persisted) < userMessageCount(live)) {
+    return live;
+  }
+  // Equal user counts are not enough: replay often has user C persisted while
+  // assistant C has no items yet (`pushAssistantFromBlocks` skips empty). The
+  // last persisted assistant is still turn B — merging would REPLACE streaming
+  // output C with completed output B (the "C → D replaced C" symptom).
+  if (assistantMessageCount(persisted) < assistantMessageCount(live)) {
+    return live;
+  }
 
   const lastLiveAssistantIdx = [...live].reverse().findIndex((m) => m.role === 'assistant');
   const lastPersistedAssistantIdx = [...persisted]
@@ -186,13 +263,30 @@ export function reconcileMessagesFromThread(
   const liveAssistant = live[liveAssistantIdx];
   const persistedAssistant = persisted[persistedAssistantIdx];
 
+  // Belt-and-suspenders: even with matching assistant counts, never clobber an
+  // in-flight bubble with unrelated completed prose (wrong-turn / wrong-bubble).
+  if (liveAssistant.isStreaming) {
+    const liveText = assistantProse(liveAssistant);
+    const persText = assistantProse(persistedAssistant);
+    if (
+      liveText.length > 0 &&
+      persText.length > 0 &&
+      !proseOverlaps(liveText, persText) &&
+      !isNearDuplicateProse(liveText, persText)
+    ) {
+      return live;
+    }
+  }
+
   const prefix =
     persisted.length > live.length ? persisted.slice(0, persistedAssistantIdx) : live.slice(0, liveAssistantIdx);
 
   const reconciledAssistant = reconcileAssistantTurn(liveAssistant, persistedAssistant);
   const suffix = persisted.slice(persistedAssistantIdx + 1);
-
-  return [...prefix, reconciledAssistant, ...suffix];
+  const merged = [...prefix, reconciledAssistant, ...suffix];
+  // Keep in-flight blocks only on the latest assistant — older bubbles with
+  // stale `running` tools otherwise render a second「生成中」live frame.
+  return finalizeInactiveAssistants(merged, reconciledAssistant.id);
 }
 
 /** Merge live registry transcript with authoritative thread replay (P1). */
@@ -201,6 +295,8 @@ export function mergeThreadTranscript(
   rebuilt: TurnChatMessage[],
 ): TurnChatMessage[] {
   if (rebuilt.length === 0) return live;
-  if (live.length === 0) return rebuilt;
+  if (live.length === 0) {
+    return finalizeInactiveAssistants(rebuilt, lastAssistantMessageId(rebuilt));
+  }
   return reconcileMessagesFromThread(live, rebuilt);
 }

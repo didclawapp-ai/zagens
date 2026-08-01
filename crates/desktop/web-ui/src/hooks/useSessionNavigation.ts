@@ -12,6 +12,8 @@ import {
   resumeSessionThread,
 } from '../api/client';
 import { persistThreadSessionDeduped } from '../lib/chat/persistThreadSessionDedup';
+import { applyRestoredChatMessages } from '../lib/chat/applyRestoredChatMessages';
+import { finalizeInactiveAssistants } from '../lib/chat/finalizeInactiveAssistants';
 import { rebuildMessagesFromThreadEvents } from '../lib/chat/rebuildMessagesFromThread';
 import { mergeThreadTranscript } from './turnSend/completeStreamUi';
 import {
@@ -26,6 +28,7 @@ import {
 } from '../lib/chat/sessionUiCache';
 import { mapSessionDetailToMessages } from '../lib/chat/sessionMessages';
 import { applyStreamingReattach } from '../lib/chat/sessionStreamReattach';
+import type { TurnChatMessage } from './useTurnSend';
 import {
   contextWindowTokensForModel,
   type ThreadContextSnapshot,
@@ -344,16 +347,24 @@ export function useSessionNavigation({
         if (sessionFallback.length > 0) {
           restoreCandidates.push({ source: 'session', messages: sessionFallback });
         }
-        const provisional = pickBestSessionMessagesWithSource(restoreCandidates);
-        if (provisional.messages.length > 0) {
-          setMessages(provisional.messages);
-          setSessionRestoreSource(provisional.source);
-        }
+        // Bind the thread id BEFORE writing provisional messages so
+        // createSetMessagesForView targets the thread bucket (not the draft key).
+        // Otherwise a late migrateDraftToThread can race with "continue conversation".
         resumedThreadIdRef.current = resumed.thread_id;
         setResumedThreadId(resumed.thread_id);
         bindThreadSession?.(resumed.thread_id, sessionId);
         setRuntimeSessionEstablished(true);
         restoreThreadContextFromCache(resumed.thread_id);
+        const provisional = pickBestSessionMessagesWithSource(restoreCandidates);
+        if (provisional.messages.length > 0) {
+          setMessages(
+            finalizeInactiveAssistants(
+              provisional.messages as TurnChatMessage[],
+              null,
+            ) as NavMessage[],
+          );
+          setSessionRestoreSource(provisional.source);
+        }
         try {
           let fromThread = await rebuildMessagesFromThreadEvents(resumed.thread_id, {
             signal: selectAbort.signal,
@@ -400,11 +411,23 @@ export function useSessionNavigation({
           return;
         }
         if (reattachedMessages.length > 0) {
-          setMessages(reattachedMessages);
+          const keepStreaming = reattachedMessages.some(
+            (m) => m.role === 'assistant' && m.isStreaming,
+          );
+          // Functional update: never absolute-replace if the user already sent a
+          // follow-up while thread event replay was still running.
+          setMessages((prev) => {
+            const next = applyRestoredChatMessages(
+              prev as TurnChatMessage[],
+              reattachedMessages as TurnChatMessage[],
+              { keepStreaming },
+            );
+            cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, next);
+            return next as NavMessage[];
+          });
           if (picked.source) {
             setSessionRestoreSource(picked.source);
           }
-          cacheSessionUiMessages(sessionUiCacheRef.current, sessionId, reattachedMessages);
         }
         try {
           const threadDetail = await getThreadDetail(resumed.thread_id);
@@ -562,14 +585,32 @@ export function useSessionNavigation({
           if (gen !== selectSessionGenerationRef.current) {
             return;
           }
-          setMessages(reattached);
+          const keepStreaming = reattached.some(
+            (m) => m.role === 'assistant' && m.isStreaming,
+          );
+          setMessages((prev) =>
+            applyRestoredChatMessages(
+              prev as TurnChatMessage[],
+              reattached as TurnChatMessage[],
+              { keepStreaming },
+            ) as NavMessage[],
+          );
         } else {
           const reattached = await reattachStreamingIfNeeded(trimmed, [], null);
           if (gen !== selectSessionGenerationRef.current) {
             return;
           }
           if (reattached.length > 0) {
-            setMessages(reattached);
+            const keepStreaming = reattached.some(
+              (m) => m.role === 'assistant' && m.isStreaming,
+            );
+            setMessages((prev) =>
+              applyRestoredChatMessages(
+                prev as TurnChatMessage[],
+                reattached as TurnChatMessage[],
+                { keepStreaming },
+              ) as NavMessage[],
+            );
           }
         }
         const threadDetail = await getThreadDetail(trimmed);

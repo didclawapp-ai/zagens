@@ -79,11 +79,14 @@ import { turnCacheHitPercent } from '../lib/cacheUsage';
 import { parseLhtStatusMessage, type LhtChipState } from '../lib/lhtChip';
 import {
   anyAssistantStreaming,
-  clearStreamingAssistants,
   lastAssistantMessageId,
-  rebindStreamingAssistant,
   resolveStreamTargetId,
 } from '../lib/chat/activeTurnStreamUi';
+import {
+  clearStreamingAssistantsUi,
+  finalizeInactiveAssistants,
+  rebindStreamingAssistantUi,
+} from '../lib/chat/finalizeInactiveAssistants';
 import {
   isBackgroundStreamEvent,
 } from '../lib/chat/streamContextStore';
@@ -97,6 +100,7 @@ import {
   writeStreamSession,
   writeThreadTurn,
 } from '../lib/chat/streamContextAccess';
+import { allocateMessageId, noteExistingMessageIds } from '../lib/chat/messageIds';
 import type { ScratchpadStatus } from '../api/client';
 import {
   useTurnStreamRecovery,
@@ -121,9 +125,8 @@ export type TurnChatMessage = {
   thinkingIncomplete?: boolean;
 };
 
-let msgId = 0;
 function nextId() {
-  return `msg-${++msgId}`;
+  return allocateMessageId('msg');
 }
 
 // Monotonic counter for per-send stream keys. Replaces the shared `__pending__`
@@ -336,6 +339,15 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
       const knownThreadAtSend = syncResolvedThread ?? resumedThreadIdRef.current;
       if (knownThreadAtSend) {
         streamRegistry.ensureContext(knownThreadAtSend, ownerSessionId);
+        // Reset any timeline left over from the previous turn on this thread —
+        // otherwise the rehydrate path could adopt it and replay the prior
+        // turn's blocks inside this turn's streaming bubble. Also drop a stale
+        // recoveryCtx from thread-replay reattach so its deliver cannot keep
+        // patching the previous assistant while this send streams a new one.
+        streamRegistry.patchContext(knownThreadAtSend, {
+          timelineState: createEmptyTimelineState(),
+          recoveryCtx: null,
+        });
         bindThreadSession?.(knownThreadAtSend, ownerSessionId);
       }
       // Multi-session cross-talk fix: use a per-send unique key for the
@@ -365,6 +377,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
         content: outbound.displayContent,
       };
       setMessages((prev) => {
+        // Advance id allocation past any restored `msg-N` rows before minting
+        // the user/assistant ids for this send (duplicate-id dual-stream guard).
+        noteExistingMessageIds(prev);
         const editId = sendOptions?.editFromMessageId;
         const base =
           editId != null
@@ -373,7 +388,9 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 return idx >= 0 ? prev.slice(0, idx) : prev;
               })()
             : prev;
-        return [...base, userMsg];
+        // Settle any leftover running tools on prior assistant bubbles so the
+        // new turn cannot show a second live「生成中」frame above the user msg.
+        return [...finalizeInactiveAssistants(base, null), userMsg];
       });
 
       const streamTarget = { assistantId: nextId() };
@@ -578,7 +595,14 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                 return;
               }
               setMessages((prev) => {
-                const cleared = clearStreamingAssistants(prev);
+                // A newer turn may already be streaming by the time this
+                // rebuild resolves (fast follow-up prompt). Its replay snapshot
+                // predates that turn — merging now would copy the finished
+                // turn's output into the new streaming bubble (duplicate).
+                if (anyAssistantStreaming(prev)) {
+                  return prev;
+                }
+                const cleared = clearStreamingAssistantsUi(prev);
                 const reconciled = mergeThreadTranscript(
                   cleared,
                   rebuilt as TurnChatMessage[],
@@ -636,7 +660,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               working = finalized.messages;
               timelineState = finalized.timelineState;
             }
-            const next = clearStreamingAssistants(working);
+            const next = clearStreamingAssistantsUi(working);
             const sid = activeSessionIdRef.current;
             if (sid) {
               cacheSessionUiMessages(sessionUiCacheRef.current, sid, next);
@@ -684,7 +708,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
               }
               setMessages((prev) => {
                 if (!anyAssistantStreaming(prev)) return prev;
-                return clearStreamingAssistants(prev);
+                return clearStreamingAssistantsUi(prev);
               });
             }
             return;
@@ -725,7 +749,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                   if (lastId && lastId !== streamTarget.assistantId) {
                     streamTarget.assistantId = lastId;
                   }
-                  return rebindStreamingAssistant(prev, targetId) as TurnChatMessage[];
+                  return rebindStreamingAssistantUi(prev, targetId) as TurnChatMessage[];
                 });
                 syncRecoveryContext();
                 return;
@@ -969,9 +993,13 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
 
           // Rehydrate closure timeline from registry after a background stretch
           // so foreground deltas do not overwrite richer background state.
+          // Only while the context is actively streaming — a finished turn's
+          // leftover timeline must never be adopted into a new turn's stream.
           if (eventThreadId) {
-            const bgTimeline = streamRegistry.getContext(eventThreadId)?.timelineState;
+            const bgCtx = streamRegistry.getContext(eventThreadId);
+            const bgTimeline = bgCtx?.timelineState;
             if (
+              bgCtx?.isStreaming &&
               bgTimeline &&
               bgTimeline.blocks.length > timelineState.blocks.length
             ) {
@@ -1103,7 +1131,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             case 'error':
               finishOnce({ terminal: true });
               setMessages((prev) => {
-                const next = clearStreamingAssistants(prev);
+                const next = clearStreamingAssistantsUi(prev);
                 const lastId = lastAssistantMessageId(prev) ?? streamTarget.assistantId;
                 return next.map((m) =>
                   m.id === lastId && m.role === 'assistant'
@@ -1230,7 +1258,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
             toast.error(t('composer.worktreeFailed', { message: msg }));
           }
           setMessages((prev) => {
-            const next = clearStreamingAssistants(prev);
+            const next = clearStreamingAssistantsUi(prev);
             const lastId = lastAssistantMessageId(prev) ?? streamTarget.assistantId;
             return next.map((m) =>
               m.id === lastId && m.role === 'assistant'
@@ -1394,7 +1422,7 @@ export function useTurnSend(params: UseTurnSendParams): UseTurnSendResult {
                   const lastId = lastAssistantMessageId(filtered);
                   if (lastId) {
                     streamTarget.assistantId = lastId;
-                    return rebindStreamingAssistant(filtered, lastId) as TurnChatMessage[];
+                    return rebindStreamingAssistantUi(filtered, lastId) as TurnChatMessage[];
                   }
                   const fallbackId = nextId();
                   streamTarget.assistantId = fallbackId;

@@ -142,6 +142,9 @@ export function compactIdleStreamHandles(
     recoveryCtx: null,
     pendingApproval: null,
     isStreaming: false,
+    // Drop the finished turn's timeline so the next turn on this thread cannot
+    // rehydrate stale blocks into its fresh stream (duplicate output guard).
+    timelineState: undefined,
   });
 }
 

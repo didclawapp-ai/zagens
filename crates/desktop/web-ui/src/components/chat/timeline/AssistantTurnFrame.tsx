@@ -69,10 +69,15 @@ export function AssistantTurnFrame({
   const isTurnStreaming = Boolean(message.isStreaming);
   // Prefer live layout while any block is still in flight — guards against a
   // one-frame `isStreaming: false` sticky that flashed settled「工作过程」.
+  // Require explicit `streaming === true` (not `!== false`): thread-replay /
+  // cache restores may omit the flag, and treating undefined as in-flight
+  // showed a second「生成中」on the previous bubble after continue.
+  // Stale `running` tools on older assistants are settled by
+  // `finalizeInactiveAssistants`.
   const hasInFlightBlocks = blocks.some(
     (b) =>
-      (b.kind === 'thinking' && b.streaming !== false) ||
-      (b.kind === 'text' && b.streaming !== false) ||
+      (b.kind === 'thinking' && b.streaming === true) ||
+      (b.kind === 'text' && b.streaming === true) ||
       (b.kind === 'tool' && b.status === 'running'),
   );
   const useLiveLayout = isTurnStreaming || hasInFlightBlocks;

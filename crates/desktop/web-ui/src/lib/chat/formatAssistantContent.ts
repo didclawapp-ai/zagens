@@ -138,6 +138,12 @@ export function mergeAgentMessageSegment(current: string, incoming: string): str
   if (cur.includes(next) && next.length < cur.length) {
     return current;
   }
+  // Lossy streamed copy: delta dedup may have swallowed a few characters, so the
+  // accumulated text is the authoritative full text minus small gaps. Detect it as
+  // a high-coverage subsequence and replace instead of appending a duplicate.
+  if (isLossySubsequenceOf(cur, next)) {
+    return next;
+  }
   // Rewritten final report (same opening, minor path/typo diffs) — keep the longer copy.
   if (isNearDuplicateProse(cur, next)) {
     return next.length >= cur.length ? next : current;
@@ -145,6 +151,40 @@ export function mergeAgentMessageSegment(current: string, incoming: string): str
   const sep = cur.endsWith('\n') ? '\n' : '\n\n';
   return `${current}${sep}${next}`;
 }
+
+/**
+ * True when `partial` reads as `full` with a few characters dropped
+ * (in-order subsequence covering >= 80% of `full`). Distinct sections of one
+ * answer never satisfy this; a delta stream that lost a token or two does.
+ */
+function isLossySubsequenceOf(partial: string, full: string): boolean {
+  if (partial.length >= full.length || partial.length < Math.ceil(full.length * 0.8)) {
+    return false;
+  }
+  let i = 0;
+  for (let j = 0; j < full.length && i < partial.length; j += 1) {
+    if (partial[i] === full[j]) {
+      i += 1;
+    }
+  }
+  return i === partial.length;
+}
+
+/**
+ * Minimum chunk length before the replay-dedup heuristics apply. Short deltas
+ * (single tokens like `0` after `100`, or `art` after `smart`) legitimately
+ * repeat the current suffix all the time; dropping them corrupts the streamed
+ * text, and the later full-text segment merge then duplicates the whole
+ * message. Real replayed/coalesced chunks are batched and comfortably longer.
+ * SSE events are already deduplicated upstream by `seq`.
+ *
+ * Important: do NOT use mid-string `includes(incoming)`. As the accumulated
+ * bubble grows (multi-tool turns, repeated technical phrases), a fresh 16+ char
+ * batch increasingly collides with an earlier substring — a false positive that
+ * only appears after the thread has a lot of prose, then triggers a full-text
+ * duplicate on `item.completed`.
+ */
+const REPLAY_DEDUP_MIN_CHARS = 16;
 
 /**
  * Append an incremental streaming text delta without duplicating replay/coalesced chunks.
@@ -156,17 +196,14 @@ export function appendStreamingTextDelta(current: string, incoming: string): str
   if (!current) {
     return incoming;
   }
-  if (incoming === current) {
-    return current;
-  }
-  if (current.endsWith(incoming)) {
-    return current;
-  }
-  if (incoming.startsWith(current)) {
-    return incoming;
-  }
-  if (current.includes(incoming) && incoming.length >= 16) {
-    return current;
+  if (incoming.length >= REPLAY_DEDUP_MIN_CHARS) {
+    // Exact / trailing replay only — never mid-string containment.
+    if (incoming === current || current.endsWith(incoming)) {
+      return current;
+    }
+    if (current.length >= REPLAY_DEDUP_MIN_CHARS && incoming.startsWith(current)) {
+      return incoming;
+    }
   }
   return current + incoming;
 }
