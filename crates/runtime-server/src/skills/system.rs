@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 /// Bump when bundled skill set changes so existing installs refresh.
-const BUNDLED_SKILL_VERSION: &str = "12";
+const BUNDLED_SKILL_VERSION: &str = "13";
 
 struct BundledFile {
     path: &'static str,
@@ -223,6 +223,11 @@ mod tests {
         let body = skill_md_body(&ZAGENS_OFFICE).expect("skill body");
         assert!(body.contains("zagens-office"));
         assert!(body.contains("exec_shell") || body.contains("schema write"));
+        assert!(
+            body.contains("纪律") || body.contains("Forbidden"),
+            "skill must hard-ban Agent-tool fallbacks for Office work"
+        );
+        assert!(body.contains("填写表格") || body.contains("做报告"));
     }
 
     #[test]

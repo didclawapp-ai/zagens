@@ -502,8 +502,9 @@ instructions when using a specific skill.\n\n",
         "\n### How to use skills\n\
 - Discovery: The list above is the skills available in this session. Skill bodies live on disk at the listed paths.\n\
 - Trigger rules: If the user names a skill (with `$SkillName`, `/skill <name>`, or plain text) OR the task clearly matches a skill description above, use that skill for that turn. Multiple mentions mean use them all. Do not carry skills across turns unless re-mentioned.\n\
-- Missing/blocked: If a named skill is missing or its `SKILL.md` cannot be read, say so briefly and continue with the best fallback.\n\
-- Progressive disclosure: After deciding to use a skill, read only that skill's `SKILL.md`. When it references relative paths such as `scripts/foo.py`, resolve them relative to the skill directory.\n\
+- Office documents: For Word/Excel/PPT/PDF intents (填写表格, 做报告, deck, `.docx`/`.xlsx`/`.pptx`/`.pdf`, …), call `load_skill` with `zagens-office` first, then use **only** that skill's CLI via `exec_shell`. Do not substitute `write_file` / Python office libraries / sub-agents.\n\
+- Missing/blocked: If a named skill is missing or its `SKILL.md` cannot be read, say so briefly and continue with the best fallback. For `zagens-office`, missing CLI means guide install/activate — not ad-hoc generators.\n\
+- Progressive disclosure: After deciding to use a skill, prefer `load_skill` (or read only that skill's `SKILL.md`). When it references relative paths such as `scripts/foo.py`, resolve them relative to the skill directory.\n\
 - Context hygiene: Load only the specific referenced files needed for the task. Avoid bulk-loading unrelated skill resources.\n\
 - Safety: Do not execute scripts from a community skill unless the user explicitly asks or the skill has been trusted for script use.\n",
     );

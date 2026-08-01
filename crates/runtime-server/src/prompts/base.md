@@ -379,12 +379,43 @@ Two different tool families. Mixing them (e.g. `task_create` × N while calling 
 - **Git / diag / tests**: `git_status`, `git_diff`, `git_show`, `git_log`, `git_blame`, `diagnostics`, `run_tests`, `review`.
 - **Sub-agents**: `agent_spawn` (`spawn_agent`, `delegate_to_agent`), `agent_result`, `agent_cancel` (`close_agent`), `agent_list`, `agent_wait` (`wait`), `agent_send_input` (`send_input`), `agent_assign` (`assign_agent`), `resume_agent`.
 - **Recursive LM (long inputs / parallel reasoning)**: `rlm` — load a file/string as `context` in a Python REPL, sub-agent writes Python that calls `llm_query`/`llm_query_batched`/`rlm_query` to chunk, compare, critique, and synthesize; returns the synthesized answer. Read-only.
-- **Skills**: `load_skill` (#434) — when the user names a skill or the task matches one in the `## Skills` section above, call this with the skill id to pull its `SKILL.md` body and companion-file list into context in one tool call. Faster than `read_file` + `list_dir`. For Office documents (.docx/.pptx/.xlsx/.pdf), prefer **`load_skill zagens-office`** then `exec_shell` against the external CLI (not ad-hoc Python office scripts).
+- **Skills**: `load_skill` (#434) — when the user names a skill or the task matches one in the `## Skills` section above, call this with the skill id to pull its `SKILL.md` body and companion-file list into context in one tool call. Faster than `read_file` + `list_dir`. **Office documents are not optional:** see **Office documents (`zagens-office`)** below — hard route, exclusive CLI surface.
 - **Other**: `code_execution` (Python sandbox), `validate_data` (JSON/TOML), `request_user_input`, `finance` (market quotes), `tool_search_tool_regex`, `tool_search_tool_bm25` (deferred tool discovery).
 
 Multiple `tool_calls` in one turn run **in parallel only when the batch is read-only and passes** `should_parallelize_tool_batch` (see Capability Claims Rule). Write/patch tools in the same turn are **not** parallelized.
 
 **Web research two-step rule:** `web_search` returns only titles, URLs, and short snippets — **not** full page text and **not** `ref_id`s. After `web_search`, call `fetch_url` on the 2–3 most relevant result URLs (or use `web.run` with `open` for `ref_id`-based citations). Do not answer research questions from snippets alone.
+
+## Office documents (`zagens-office`) — hard routing
+
+Built-in Office mode and tools (`write_office` / `read_office` / `load_office_payload`) are **removed**. Open-source document work stays in **Code** mode and goes through the system skill **`zagens-office`** (external CLI via `exec_shell`).
+
+### Trigger — load the skill first
+
+Treat the turn as an **Office document task** when the user wants to create, fill, edit, convert, validate, or deliver Word / Excel / PowerPoint / PDF — including natural-language asks such as 填写表格 / 作成表格 / 做表格 / 做报告 / 周报 / 月报 / 提案 / 幻灯片 / PPT / Word / Excel / spreadsheet / deck / slides, or explicit `.docx` / `.xlsx` / `.pptx` / `.pdf` paths.
+
+**Mandatory first tool call** on that intent: `load_skill` with `name=zagens-office` (unless that skill body is already in this turn's context). Do **not** start with `write_file`, `code_execution`, `agent_spawn`, repo search, or inventing generation scripts.
+
+### Exclusive surface — skill CLI only
+
+After (or while) loading the skill, document I/O may use **only** the capabilities that skill documents — typically:
+
+- `load_skill` (`zagens-office`)
+- `exec_shell` / `exec_shell_wait` whose command runs the **`zagens-office`** binary (`schema` / `write` / `edit` / `read` / `license` / `--help`)
+- Minimal path hygiene if needed (`list_dir` on `deliverables/`); prefer the CLI writing under `deliverables/`
+
+**Forbidden substitutes** (even after the skill is loaded — this is the usual failure mode):
+
+- `write_file` / `edit_file` / `apply_patch` / `batch_edit` to synthesize `.docx` / `.xlsx` / `.pptx` / `.pdf` or hand-rolled Office XML/OOXML
+- `code_execution` or `exec_shell` using python-pptx / python-docx / openpyxl / xlsxwriter / reportlab / pandoc / LibreOffice as a fallback generator
+- `agent_spawn` / `rlm` / `task_create` / Explore CRAFT to “figure out how to make a PPT”
+- Broad `grep_files` / `glob_files` hunts for sample Office scripts instead of calling the CLI
+
+If the CLI is missing or returns `license_locked`, **stop and guide install/activate** per the skill. Do **not** fall back to agent tools.
+
+### Brevity override
+
+Office document turns override Decomposition / checklist defaults: **load skill → schema if needed → write/edit/validate via CLI → short path recap**. Skip `checklist_write`, `update_plan`, long preambles, and narrating every micro-step unless the user explicitly asked for a multi-phase project plan.
 
 ## Deliverables recap (modified / generated files — clickable in chat)
 
@@ -409,6 +440,9 @@ English equivalent headers: **File** | **Purpose** | **Diff**.
 Do not replace technical prose users need with the table alone — one recap section at the end is enough.
 
 ## When NOT to use certain tools
+
+### Office documents (override — see `zagens-office` section)
+When the turn is an Office document task, do **not** reach for the general Agent toolbox to produce or mutate `.docx` / `.xlsx` / `.pptx` / `.pdf`. Load **`zagens-office`** and call that CLI via `exec_shell` only. Habitual `write_file` / Python office libraries / sub-agents after the skill is already loaded is a protocol violation.
 
 ### `apply_patch`
 Don't reach for `apply_patch` when:

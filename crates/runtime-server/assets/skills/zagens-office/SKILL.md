@@ -2,14 +2,29 @@
 name: zagens-office
 description: >-
   Create and edit Office documents (.docx/.pptx/.xlsx/.pdf) via the external
-  zagens-office CLI (JSON in / JSON envelope out). Use when the user asks for
-  PPT/Word/Excel/PDF generation, structured edits, or document validation.
-  Prefer this over ad-hoc Python office scripts.
+  zagens-office CLI (JSON in / JSON envelope out). Trigger on PPT/Word/Excel/PDF
+  generation or edits, and on natural asks such as 填写表格 / 作成表格 / 做表格 /
+  做报告 / 周报 / 提案 / 幻灯片 / spreadsheet / deck / slides. Prefer this over
+  ad-hoc Python office scripts. After loading, use ONLY this CLI via exec_shell
+  — do not fall back to write_file / code_execution / agent tools.
 ---
 
 # zagens-office：Office 文档生成与编辑
 
 Zagens 开源版**不再内置** `write_office` / `read_office`。文档能力由独立引擎 **`zagens-office`** 提供（商业授权 / 评估期）。本技能教你通过 `exec_shell` 调用该 CLI。
+
+## 纪律（最高优先级）
+
+加载本技能后，处理 Office 文档时**只使用本技能列出的 CLI 能力**（经 `exec_shell` / `exec_shell_wait`）。
+
+**禁止**（常见坏习惯——即使已经 `load_skill` 也算违规）：
+
+- 用 `write_file` / `edit_file` / `apply_patch` 手写 `.docx` / `.xlsx` / `.pptx` / `.pdf` 或 OOXML
+- 用 `code_execution` 或 shell 跑 python-pptx / python-docx / openpyxl / xlsxwriter / reportlab / pandoc 等替代生成
+- 为「怎么做 PPT」去 `agent_spawn` / `grep_files` / 翻仓库找脚本
+- 冗长 checklist / 多轮旁白；默认路径是：门闩 → schema（如需）→ write/edit → validate → 一句话交付路径
+
+CLI 不在 PATH 或返回 `license_locked`：**停下来引导安装/激活**，不要降级到上述 Agent 工具。
 
 ## 安装门闩（每次新会话先做）
 
