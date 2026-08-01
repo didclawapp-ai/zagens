@@ -190,7 +190,8 @@ pub(crate) fn windows_shell_for(preference: Option<&str>) -> (&'static str, &'st
 }
 
 /// Whether `program` names a PowerShell executable (short name or full path).
-#[cfg(windows)]
+/// Available on all targets so `display_command` can recognize PS argv shapes
+/// without `cfg!(windows)` still type-checking a windows-only helper.
 pub(crate) fn is_powershell_program(program: &str) -> bool {
     let lower = program.to_ascii_lowercase();
     lower == "pwsh"
@@ -237,10 +238,13 @@ impl CommandSpec {
             (program.to_string(), windows_shell_argv(program, command))
         };
         #[cfg(not(windows))]
-        let (program, args) = (
-            "sh".to_string(),
-            vec!["-c".to_string(), command.to_string()],
-        );
+        let (program, args) = {
+            let _ = shell_preference;
+            (
+                "sh".to_string(),
+                vec!["-c".to_string(), command.to_string()],
+            )
+        };
 
         Self {
             program,
