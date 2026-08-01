@@ -9,7 +9,7 @@ import {
 import { openExternalUrl } from '../lib/openExternalUrl';
 import { UPDATE_DOWNLOAD_BASE } from '../lib/updateConfig';
 
-const APP_VERSION = '0.8.9';
+const APP_VERSION = '0.9.0';
 const SUPPORT_EMAIL = 'didclawapp@gmail.com';
 const WEBSITE_URL = 'https://zagens.com/';
 const DOWNLOAD_PAGE_URL = `${WEBSITE_URL}download`;

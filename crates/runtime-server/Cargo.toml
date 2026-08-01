@@ -41,17 +41,17 @@ path = "src/bin/export_runtime_openapi.rs"
 
 [dependencies]
 anyhow.workspace = true
-zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.8.9" }
-zagens-runtime-api = { path = "../runtime-api", version = "0.8.9" }
-zagens-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.8.9" }
-zagens-browser-policy = { path = "../browser-policy", version = "0.8.9" }
-zagens-config = { path = "../config", version = "0.8.9" }
-zagens-core = { path = "../core", version = "0.8.9" }
-zagens-topic-memory = { path = "../topic-memory", version = "0.8.9" }
-zagens-secrets = { path = "../secrets", version = "0.8.9" }
-zagens-protocol = { path = "../protocol", version = "0.8.9" }
-zagens-tools = { path = "../tools", version = "0.8.9" }
-zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.8.9" }
+zagens-runtime-adapters = { path = "../runtime-adapters", version = "0.9.0" }
+zagens-runtime-api = { path = "../runtime-api", version = "0.9.0" }
+zagens-runtime-orchestrator = { path = "../runtime-orchestrator", version = "0.9.0" }
+zagens-browser-policy = { path = "../browser-policy", version = "0.9.0" }
+zagens-config = { path = "../config", version = "0.9.0" }
+zagens-core = { path = "../core", version = "0.9.0" }
+zagens-topic-memory = { path = "../topic-memory", version = "0.9.0" }
+zagens-secrets = { path = "../secrets", version = "0.9.0" }
+zagens-protocol = { path = "../protocol", version = "0.9.0" }
+zagens-tools = { path = "../tools", version = "0.9.0" }
+zagens-windows-sandbox = { path = "../windows-sandbox", version = "0.9.0" }
 schemaui = { version = "0.12.0", default-features = false, optional = true }
 async-stream = "0.3.6"
 async-trait.workspace = true

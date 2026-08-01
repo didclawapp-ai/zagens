@@ -39,10 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: didclawapp-ai/zagens/.github/actions/coverage-gate@v0.8.9
+      - uses: didclawapp-ai/zagens/.github/actions/coverage-gate@v0.9.0
         with:
           workspace: .
-          zagens-ref: v0.8.9
+          zagens-ref: v0.9.0
 ```
 
 ## Inputs
@@ -53,7 +53,7 @@ jobs:
 | `run-tests` | `false` | Also run `cargo test` |
 | `require-checklist-complete` | `false` | LHT checklist gate |
 | `task-id` | *(empty)* | CRAFT task id for verdict lookup |
-| `zagens-ref` | `v0.8.9` | Tag/branch when fetching Zagens sources |
+| `zagens-ref` | `v0.9.0` | Tag/branch when fetching Zagens sources |
 | `zagens-path` | *(empty)* | Pre-built `zagens` binary (skip compile) |
 | `upload-report` | `true` | Upload JSON report artifact |
 | `toolchain` | `1.96.0` | Rust toolchain for build + gate |
